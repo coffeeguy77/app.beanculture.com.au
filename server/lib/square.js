@@ -128,6 +128,18 @@ async function getMenu() {
     }
   }
 
+  // Diagnostic: how many category objects came back, and how the first few
+  // items reference categories — tells us if items are categorised in Square.
+  console.log(
+    `[menu] fetched ${objects.length} objects | ${categories.size} categories [${[...categories.values()].slice(0, 50).join(', ')}] | ${items.length} items`
+  );
+  for (const it of items.slice(0, 4)) {
+    const s = it.item_data || {};
+    console.log(
+      `[menu] item "${s.name}" categories=${JSON.stringify(s.categories)} reporting_category=${JSON.stringify(s.reporting_category)} category_id=${JSON.stringify(s.category_id)}`
+    );
+  }
+
   function resolveCategoryId(itemData) {
     // Prefer the assigned category (lowest ordinal), then reporting category,
     // then the legacy single category_id field.
