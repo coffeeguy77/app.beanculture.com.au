@@ -20,6 +20,18 @@ const CURRENCY = process.env.SQUARE_CURRENCY || 'AUD';
 // If you are accepted into Square's IN_STORE beta, set SQUARE_DINEIN_FULFILLMENT=IN_STORE.
 const DINEIN_FULFILLMENT = (process.env.SQUARE_DINEIN_FULFILLMENT || 'PICKUP').toUpperCase();
 
+// Curate which catalog categories appear in the app: a comma-separated list of
+// category names, in the order you want them shown. Case-insensitive. Leave it
+// unset to show every category. e.g. SQUARE_MENU_CATEGORIES="Coffee, Cold Drinks, Food"
+const MENU_CATEGORIES = (process.env.SQUARE_MENU_CATEGORIES || '')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+// If true, only show items marked "Visible" for online/e-commerce in Square
+// (i.e. hide anything you've set to Hidden/Unavailable online). Default off.
+const ONLY_ECOM_VISIBLE = (process.env.SQUARE_ONLY_VISIBLE || 'false').toLowerCase() === 'true';
+
 function assertConfigured() {
   if (!ACCESS_TOKEN) throw new Error('SQUARE_ACCESS_TOKEN is not set');
   if (!LOCATION_ID) throw new Error('SQUARE_LOCATION_ID is not set');
@@ -117,8 +129,13 @@ async function getMenu() {
   }
 
   function resolveCategoryId(itemData) {
+    // Prefer the assigned category (lowest ordinal), then reporting category,
+    // then the legacy single category_id field.
+    if (Array.isArray(itemData.categories) && itemData.categories.length) {
+      const sorted = [...itemData.categories].sort((a, b) => (a.ordinal || 0) - (b.ordinal || 0));
+      if (sorted[0]?.id) return sorted[0].id;
+    }
     if (itemData.reporting_category?.id) return itemData.reporting_category.id;
-    if (Array.isArray(itemData.categories) && itemData.categories[0]?.id) return itemData.categories[0].id;
     if (itemData.category_id) return itemData.category_id;
     return null;
   }
@@ -157,6 +174,7 @@ async function getMenu() {
   for (const item of items) {
     const d = item.item_data || {};
     if (d.is_archived) continue;
+    if (ONLY_ECOM_VISIBLE && d.ecom_visibility && d.ecom_visibility !== 'VISIBLE') continue;
     // Only show items available at this location (present_at_all_locations or explicit).
     const present =
       item.present_at_all_locations ||
@@ -192,10 +210,29 @@ async function getMenu() {
     byCategory.get(catName).push(menuItem);
   }
 
-  const menu = [...byCategory.entries()].map(([name, catItems]) => ({
-    category: name,
-    items: catItems,
-  }));
+  const allEntries = [...byCategory.entries()];
+
+  // Diagnostic: prints to the Railway logs so you can see the real category
+  // names Square is returning, which is what you put in SQUARE_MENU_CATEGORIES.
+  console.log(
+    `[menu] ${items.length} catalog items → ${allEntries.length} categor${
+      allEntries.length === 1 ? 'y' : 'ies'
+    }: ${allEntries.map(([n, i]) => `${n} (${i.length})`).join(' | ')}`
+  );
+
+  let entries = allEntries;
+  if (MENU_CATEGORIES.length) {
+    entries = MENU_CATEGORIES.map((wanted) =>
+      allEntries.find(([name]) => name.toLowerCase() === wanted.toLowerCase())
+    ).filter(Boolean);
+    console.log(
+      `[menu] SQUARE_MENU_CATEGORIES active → showing: ${
+        entries.map(([n]) => n).join(', ') || '(no category names matched — check spelling)'
+      }`
+    );
+  }
+
+  const menu = entries.map(([name, catItems]) => ({ category: name, items: catItems }));
 
   return { currency: CURRENCY, categories: menu };
 }
