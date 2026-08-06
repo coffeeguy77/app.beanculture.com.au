@@ -80,10 +80,12 @@ async function getMenu() {
     }
   }
 
-  // Find the master parent category (e.g. "APPs") and its children.
+  // Find the master parent category (e.g. "APPs"/"APP") and its children.
+  // Normalize a trailing "s" so "APP" and "APPs" both match.
+  const norm = (x) => (x || '').trim().toLowerCase().replace(/s$/, '');
   let parentId = null;
   for (const [id, c] of categories) {
-    if (c.name.trim().toLowerCase() === PARENT_CATEGORY.toLowerCase()) {
+    if (norm(c.name) === norm(PARENT_CATEGORY)) {
       parentId = id;
       break;
     }
@@ -94,6 +96,14 @@ async function getMenu() {
       if (c.parentId === parentId) childIds.add(id);
     }
   }
+
+  // One-time hierarchy diagnostic: category -> parent.
+  console.log(
+    '[cats] ' +
+      [...categories.entries()]
+        .map(([, c]) => `${c.name}${c.parentId ? ` <- ${categories.get(c.parentId)?.name || '?'}` : ''}`)
+        .join(' | ')
+  );
 
   function resolveCategoryId(itemData) {
     if (Array.isArray(itemData.categories) && itemData.categories.length) {
