@@ -97,13 +97,6 @@ async function getMenu() {
     }
   }
 
-  // One-time hierarchy diagnostic: category -> parent.
-  console.log(
-    '[cats] ' +
-      [...categories.entries()]
-        .map(([, c]) => `${c.name}${c.parentId ? ` <- ${categories.get(c.parentId)?.name || '?'}` : ''}`)
-        .join(' | ')
-  );
 
   function resolveCategoryId(itemData) {
     if (Array.isArray(itemData.categories) && itemData.categories.length) {
