@@ -38,11 +38,11 @@ app.get('/api/menu', async (_req, res) => {
 // --- Create an order (dine-in/table or takeaway forced onto ticket_name + note) ---
 app.post('/api/orders', async (req, res) => {
   try {
-    const { cart, dineIn, table, name } = req.body || {};
+    const { cart, dineIn, table, name, coupon } = req.body || {};
     if (dineIn && !table) {
       return res.status(400).json({ error: 'Table number is required for dine-in orders' });
     }
-    const order = await square.createOrder({ cart, dineIn: !!dineIn, table, name });
+    const order = await square.createOrder({ cart, dineIn: !!dineIn, table, name, coupon });
     res.json({
       orderId: order.id,
       totalMoney: order.total_money, // { amount, currency }

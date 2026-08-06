@@ -99,6 +99,7 @@ export default function App() {
               ? `We’ll bring it to table ${table}.`
               : 'We’ll call your name when it’s ready.'}
           </p>
+          {payment.comped && <p className="muted">Test order — no payment was taken.</p>}
           {payment.receiptUrl && (
             <a className="btn ghost" href={payment.receiptUrl} target="_blank" rel="noreferrer">
               View receipt

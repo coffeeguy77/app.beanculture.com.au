@@ -27,7 +27,10 @@ export default function Checkout({ config, cart, currency, dineIn, table, name, 
   const [status, setStatus] = useState('init'); // init | ready | error
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [coupon, setCoupon] = useState('');
   const [wallets, setWallets] = useState({ googlePay: false, applePay: false });
+
+  const hasCoupon = coupon.trim().length > 0;
 
   const paymentsRef = useRef(null);
   const cardRef = useRef(null);
@@ -127,12 +130,17 @@ export default function Checkout({ config, cart, currency, dineIn, table, name, 
     setBusy(true);
     setError('');
     try {
+      // Create the order first — the server calculates the real total and applies
+      // any valid promo code. A $0 total means it's comped, so skip payment.
+      const order = await api.createOrder({ cart: cartPayload, dineIn, table, name, coupon });
+      if (!order.totalMoney || order.totalMoney.amount === 0) {
+        onPaid({ status: 'COMPLETED', comped: true }, order);
+        return;
+      }
       const result = await cardRef.current.tokenize();
       if (result.status !== 'OK') {
         throw new Error('Please check your card details.');
       }
-      // Create order first so we verify + charge the real total.
-      const order = await api.createOrder({ cart: cartPayload, dineIn, table, name });
       let verificationToken;
       try {
         const v = await paymentsRef.current.verifyBuyer(result.token, {
@@ -193,7 +201,17 @@ export default function Checkout({ config, cart, currency, dineIn, table, name, 
 
       {status !== 'error' && (
         <>
-          {wallets.applePay && (
+          <label className="field">
+            <span>Promo code (optional)</span>
+            <input
+              value={coupon}
+              onChange={(e) => setCoupon(e.target.value)}
+              placeholder="Enter code"
+              autoCapitalize="characters"
+            />
+          </label>
+
+          {!hasCoupon && wallets.applePay && (
             <button
               className="wallet-btn apple"
               disabled={busy}
@@ -203,16 +221,23 @@ export default function Checkout({ config, cart, currency, dineIn, table, name, 
                Pay
             </button>
           )}
-          <div id="google-pay-button" className="wallet-btn-slot" style={{ display: wallets.googlePay ? 'block' : 'none' }} onClick={() => !busy && payWithWallet(googlePayRef)} />
+          <div
+            id="google-pay-button"
+            className="wallet-btn-slot"
+            style={{ display: !hasCoupon && wallets.googlePay ? 'block' : 'none' }}
+            onClick={() => !busy && payWithWallet(googlePayRef)}
+          />
 
-          {(wallets.applePay || wallets.googlePay) && <div className="or">or pay by card</div>}
+          {!hasCoupon && (wallets.applePay || wallets.googlePay) && (
+            <div className="or">or pay by card</div>
+          )}
 
-          <div id="card-container" className="card-container" />
+          <div id="card-container" className="card-container" style={{ display: hasCoupon ? 'none' : 'block' }} />
 
           {error && <p className="error-text">{error}</p>}
 
           <button className="btn full" disabled={busy || status !== 'ready'} onClick={payWithCard} type="button">
-            {busy ? 'Processing…' : `Pay ${formatMoney(cartTotal, currency)}`}
+            {busy ? 'Processing…' : hasCoupon ? 'Place order' : `Pay ${formatMoney(cartTotal, currency)}`}
           </button>
           <button className="link center-link" onClick={onBack} type="button" disabled={busy}>
             Back to order

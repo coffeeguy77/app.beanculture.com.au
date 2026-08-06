@@ -32,6 +32,13 @@ const MENU_CATEGORIES = (process.env.SQUARE_MENU_CATEGORIES || '')
 // (i.e. hide anything you've set to Hidden/Unavailable online). Default off.
 const ONLY_ECOM_VISIBLE = (process.env.SQUARE_ONLY_VISIBLE || 'false').toLowerCase() === 'true';
 
+// Optional test/comp coupon. When COMP_COUPON_CODE is set, entering that code at
+// checkout applies a 100% discount so the order total is $0 and no card is charged
+// — but the order is still created in Square so you can watch it hit the kitchen.
+// IMPORTANT: leave this UNSET in normal operation; anyone who knows the code would
+// otherwise order for free. Set it only while testing, then remove it.
+const COMP_COUPON_CODE = (process.env.COMP_COUPON_CODE || '').trim();
+
 function assertConfigured() {
   if (!ACCESS_TOKEN) throw new Error('SQUARE_ACCESS_TOKEN is not set');
   if (!LOCATION_ID) throw new Error('SQUARE_LOCATION_ID is not set');
@@ -266,8 +273,14 @@ function buildFulfillmentNote({ dineIn, table }) {
   return dineIn ? `DINE-IN · Table ${table || '?'}` : 'TAKEAWAY';
 }
 
-async function createOrder({ cart, dineIn, table, name }) {
+async function createOrder({ cart, dineIn, table, name, coupon }) {
   if (!Array.isArray(cart) || cart.length === 0) throw new Error('Cart is empty');
+
+  // Does the entered coupon match the (env-configured) test/comp code?
+  const isComp =
+    !!COMP_COUPON_CODE &&
+    !!coupon &&
+    String(coupon).trim().toLowerCase() === COMP_COUPON_CODE.toLowerCase();
 
   const lineItems = cart.map((ci) => {
     const li = {
@@ -316,6 +329,13 @@ async function createOrder({ cart, dineIn, table, name }) {
     },
     idempotency_key: cryptoRandom(),
   };
+
+  // Test/comp code: apply a 100% order-level discount so the total is $0.
+  if (isComp) {
+    orderBody.order.discounts = [
+      { uid: 'comp', name: `Test comp (${COMP_COUPON_CODE})`, percentage: '100', scope: 'ORDER' },
+    ];
+  }
 
   const data = await squareFetch('/v2/orders', { method: 'POST', body: orderBody });
   return data.order;
