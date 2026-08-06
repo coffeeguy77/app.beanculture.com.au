@@ -1,12 +1,19 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { api, formatMoney } from './api.js';
+import { applyTheme } from './theme.js';
+import { getUser, setUser as saveUser, getSavedTheme, setSavedTheme } from './store.js';
+import HeroSlider from './components/HeroSlider.jsx';
 import OrderTypeBar from './components/OrderTypeBar.jsx';
+import CategoryNav from './components/CategoryNav.jsx';
 import MenuList from './components/MenuList.jsx';
 import ItemModal from './components/ItemModal.jsx';
 import CartView from './components/CartView.jsx';
 import Checkout from './components/Checkout.jsx';
+import Account from './components/Account.jsx';
+import ThemePicker from './components/ThemePicker.jsx';
+import Admin from './components/Admin.jsx';
 
-function readTableFromUrl() {
+function readTable() {
   const p = new URLSearchParams(window.location.search);
   const t = p.get('table') || p.get('t');
   return t ? t.trim() : '';
@@ -15,105 +22,142 @@ function readTableFromUrl() {
 export default function App() {
   const [config, setConfig] = useState(null);
   const [menu, setMenu] = useState(null);
-  const [loadError, setLoadError] = useState('');
+  const [loadErr, setLoadErr] = useState('');
 
-  // Order type. If a ?table= is present (QR at the table), default to dine-in.
-  const initialTable = readTableFromUrl();
-  const [dineIn, setDineIn] = useState(!!initialTable);
-  const [table, setTable] = useState(initialTable);
-  const [name, setName] = useState('');
-
-  const [cart, setCart] = useState([]);
-  const [activeItem, setActiveItem] = useState(null); // item being configured in modal
-  const [screen, setScreen] = useState('menu'); // 'menu' | 'cart' | 'checkout' | 'done'
+  const [user, setUserState] = useState(getUser());
+  const [view, setView] = useState('home'); // home | cart | checkout | done | account | admin
+  const [activeItem, setActiveItem] = useState(null);
+  const [showTheme, setShowTheme] = useState(false);
   const [completed, setCompleted] = useState(null);
 
+  const initialTable = readTable();
+  const [dineIn, setDineIn] = useState(!!initialTable);
+  const [table, setTable] = useState(initialTable);
+  const [name, setName] = useState(user?.name || '');
+  const [cart, setCart] = useState([]);
+  const [query, setQuery] = useState('');
+  const [activeCat, setActiveCat] = useState(null);
+
+  // Load config + menu; apply theme (saved user theme wins over store default).
   useEffect(() => {
-    Promise.all([api.getConfig(), api.getMenu()])
-      .then(([cfg, m]) => {
+    api.getConfig()
+      .then((cfg) => {
         setConfig(cfg);
-        setMenu(m);
+        applyTheme(getSavedTheme() || cfg.theme);
       })
-      .catch((e) => setLoadError(e.message));
+      .catch((e) => setLoadErr(e.message));
+    api.getMenu().then(setMenu).catch((e) => setLoadErr(e.message));
+  }, []);
+
+  // Admin route
+  useEffect(() => {
+    if (window.location.pathname.replace(/\/$/, '') === '/admin') setView('admin');
   }, []);
 
   const currency = config?.currency || menu?.currency || 'AUD';
+  const canOrder = config?.hours?.canOrderNow !== false;
+  const preorder = config?.hours?.preorder;
 
   const cartCount = cart.reduce((n, c) => n + c.quantity, 0);
   const cartTotal = cart.reduce((n, c) => n + c.unitPrice * c.quantity, 0);
 
+  function updateTheme(t) {
+    applyTheme(t);
+    setSavedTheme(t);
+  }
+  function resetTheme() {
+    setSavedTheme(null);
+    if (config) applyTheme(config.theme);
+  }
+  function onSignIn(u) {
+    setUserState(u);
+    saveUser(u);
+    if (u?.name && !name) setName(u.name);
+  }
+  function onSignOut() {
+    setUserState(null);
+    saveUser(null);
+  }
+
   function addToCart(entry) {
-    setCart((prev) => [...prev, entry]);
+    setCart((prev) => {
+      const existing = prev.find((c) => c.key === entry.key);
+      if (existing)
+        return prev.map((c) => (c.key === entry.key ? { ...c, quantity: c.quantity + entry.quantity } : c));
+      return [...prev, entry];
+    });
     setActiveItem(null);
   }
-
   function updateQty(key, delta) {
     setCart((prev) =>
-      prev
-        .map((c) => (c.key === key ? { ...c, quantity: c.quantity + delta } : c))
-        .filter((c) => c.quantity > 0)
+      prev.map((c) => (c.key === key ? { ...c, quantity: c.quantity + delta } : c)).filter((c) => c.quantity > 0)
     );
   }
-
   function onPaid(payment, order) {
     setCompleted({ payment, order });
     setCart([]);
-    setScreen('done');
+    setView('done');
   }
 
-  if (loadError) {
+  // Live search across all loaded categories
+  const filteredMenu = useMemo(() => {
+    if (!menu) return null;
+    const q = query.trim().toLowerCase();
+    if (!q) return menu.categories;
+    return menu.categories
+      .map((c) => ({
+        ...c,
+        items: c.items.filter(
+          (i) => i.name.toLowerCase().includes(q) || (i.description || '').toLowerCase().includes(q)
+        ),
+      }))
+      .filter((c) => c.items.length);
+  }, [menu, query]);
+
+  if (loadErr && !config) {
     return (
-      <div className="screen center">
-        <div className="card">
-          <h2>Can’t load the menu</h2>
-          <p className="muted">{loadError}</p>
-          <button className="btn" onClick={() => window.location.reload()}>
-            Try again
-          </button>
+      <div className="app">
+        <div className="center-screen">
+          <div className="card">
+            <h2 className="serif">Can’t load right now</h2>
+            <p className="muted">{loadErr}</p>
+            <button className="btn" onClick={() => window.location.reload()}>Retry</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  if (!config || !menu) {
+    return (
+      <div className="app">
+        <div className="center-screen">
+          <div className="serif" style={{ fontSize: 30, color: 'var(--brand)' }}>Bean Culture</div>
+          <div className="spinner" />
         </div>
       </div>
     );
   }
 
-  if (!config || !menu) {
-    return (
-      <div className="screen center">
-        <div className="brandmark">Bean Culture</div>
-        <p className="muted">Loading menu…</p>
-      </div>
-    );
-  }
+  if (view === 'admin') return <Admin config={config} onExit={() => { window.history.pushState({}, '', '/'); setView('home'); }} />;
 
-  if (screen === 'done' && completed) {
+  if (view === 'done' && completed) {
     const { payment, order } = completed;
     return (
-      <div className="screen center">
-        <div className="card success">
-          <div className="tick">✓</div>
-          <h2>Order placed</h2>
-          <p className="muted">
-            {order.ticketName ? `Ticket: ${order.ticketName}` : 'Thanks!'}
-          </p>
-          <p>
-            {dineIn
-              ? `We’ll bring it to table ${table}.`
-              : 'We’ll call your name when it’s ready.'}
-          </p>
-          {payment.comped && <p className="muted">Test order — no payment was taken.</p>}
-          {payment.receiptUrl && (
-            <a className="btn ghost" href={payment.receiptUrl} target="_blank" rel="noreferrer">
-              View receipt
-            </a>
-          )}
-          <button
-            className="btn"
-            onClick={() => {
-              setCompleted(null);
-              setScreen('menu');
-            }}
-          >
-            Start a new order
-          </button>
+      <div className="app">
+        <div className="center-screen">
+          <div className="card center" style={{ maxWidth: 380 }}>
+            <div className="tick">✓</div>
+            <h2 className="serif">Order placed</h2>
+            {order.ticketName && <p className="muted">Ticket: {order.ticketName}</p>}
+            <p>{dineIn ? `We’ll bring it to table ${table}.` : `Thanks ${name || ''} — we’ll call your name.`}</p>
+            {payment.comped && <p className="muted">No card charged.</p>}
+            {payment.receiptUrl && (
+              <a className="link" href={payment.receiptUrl} target="_blank" rel="noreferrer">View receipt</a>
+            )}
+            <button className="btn full" onClick={() => { setCompleted(null); setView('home'); }}>
+              Start a new order
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -122,68 +166,113 @@ export default function App() {
   return (
     <div className="app">
       <header className="topbar">
-        <div className="brandmark small">Bean Culture</div>
-        {screen !== 'menu' && (
-          <button className="link" onClick={() => setScreen('menu')}>
-            ← Menu
+        <div className="brand">{config.storeName || 'Bean Culture'}</div>
+        <div className="icon-row">
+          <button className="iconbtn" title="Theme" onClick={() => setShowTheme(true)}>🎨</button>
+          <button className="iconbtn" title="Account" onClick={() => setView('account')}>
+            {user ? (user.name || '·')[0].toUpperCase() : '☰'}
           </button>
-        )}
+        </div>
       </header>
 
-      {screen === 'menu' && (
-        <>
-          <OrderTypeBar
-            dineIn={dineIn}
-            setDineIn={setDineIn}
-            table={table}
-            setTable={setTable}
-            name={name}
-            setName={setName}
-          />
-          <MenuList menu={menu} currency={currency} onPick={setActiveItem} />
-        </>
+      {config.announcement ? <div className="announce">{config.announcement}</div> : null}
+      {!canOrder && (
+        <div className="closed-banner">
+          <span>🌙</span>
+          <span>
+            We’re closed right now{config.hours?.nextOpen ? ` · opens ${config.hours.nextOpen.day} ${config.hours.nextOpen.time?.slice(0,5)}` : ''}.
+          </span>
+        </div>
+      )}
+      {canOrder && preorder && (
+        <div className="closed-banner"><span>⏰</span><span>Pre-order now — we’ll start it when we open.</span></div>
       )}
 
-      {screen === 'cart' && (
-        <CartView
-          cart={cart}
+      {view === 'account' && (
+        <Account
+          user={user}
           currency={currency}
-          onQty={updateQty}
-          dineIn={dineIn}
-          table={table}
-          onCheckout={() => setScreen('checkout')}
-          onBack={() => setScreen('menu')}
+          onSignIn={onSignIn}
+          onSignOut={onSignOut}
+          onBack={() => setView('home')}
         />
       )}
 
-      {screen === 'checkout' && (
+      {view === 'home' && (
+        <>
+          <HeroSlider
+            hero={config.hero || []}
+            onLink={(link) => {
+              if (!link) return;
+              if (link.type === 'category') setActiveCat(link.value);
+              else if (link.type === 'account') setView('account');
+            }}
+          />
+          <OrderTypeBar dineIn={dineIn} setDineIn={setDineIn} table={table} setTable={setTable} />
+          <div className="search">
+            <input placeholder="Search the menu…" value={query} onChange={(e) => setQuery(e.target.value)} />
+          </div>
+          {!query && (
+            <CategoryNav
+              categories={menu.categories.map((c) => c.category)}
+              active={activeCat}
+              onPick={setActiveCat}
+            />
+          )}
+          <MenuList
+            categories={filteredMenu}
+            currency={currency}
+            onPick={setActiveItem}
+            scrollTo={activeCat}
+            onScrolled={() => setActiveCat(null)}
+          />
+        </>
+      )}
+
+      {view === 'cart' && (
+        <CartView
+          cart={cart} currency={currency} onQty={updateQty}
+          dineIn={dineIn} table={table}
+          onCheckout={() => setView('checkout')} onBack={() => setView('home')}
+        />
+      )}
+
+      {view === 'checkout' && (
         <Checkout
-          config={config}
-          cart={cart}
-          currency={currency}
-          dineIn={dineIn}
-          table={table}
-          name={name}
-          onPaid={onPaid}
-          onBack={() => setScreen('cart')}
+          config={config} cart={cart} currency={currency}
+          dineIn={dineIn} setDineIn={setDineIn} table={table} setTable={setTable}
+          name={name} setName={setName} user={user} canOrder={canOrder}
+          onPaid={onPaid} onBack={() => setView('cart')}
         />
       )}
 
       {activeItem && (
-        <ItemModal
-          item={activeItem}
-          currency={currency}
-          onClose={() => setActiveItem(null)}
-          onAdd={addToCart}
+        <ItemModal item={activeItem} currency={currency} onClose={() => setActiveItem(null)} onAdd={addToCart} />
+      )}
+      {showTheme && (
+        <ThemePicker
+          presets={config.themePresets || []} baseTheme={config.theme}
+          current={getSavedTheme()} onApply={updateTheme} onReset={resetTheme} onClose={() => setShowTheme(false)}
         />
       )}
 
-      {screen === 'menu' && cartCount > 0 && (
-        <button className="cartbar" onClick={() => setScreen('cart')}>
+      {view === 'home' && cartCount > 0 && (
+        <button className="cartbar" onClick={() => setView('cart')}>
           <span className="badge">{cartCount}</span>
           <span>View order</span>
           <span className="cartbar-total">{formatMoney(cartTotal, currency)}</span>
         </button>
+      )}
+
+      {(view === 'home' || view === 'account') && (
+        <nav className="bottomnav">
+          <button className={`navitem ${view === 'home' ? 'on' : ''}`} onClick={() => setView('home')}>
+            <span className="ic">🏠</span>Menu
+          </button>
+          <button className={`navitem ${view === 'account' ? 'on' : ''}`} onClick={() => setView('account')}>
+            <span className="ic">👤</span>{user ? 'Account' : 'Sign in'}
+          </button>
+        </nav>
       )}
     </div>
   );
