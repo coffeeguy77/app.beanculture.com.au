@@ -133,13 +133,6 @@ async function getMenu() {
   console.log(
     `[menu] fetched ${objects.length} objects | ${categories.size} categories [${[...categories.values()].slice(0, 50).join(', ')}] | ${items.length} items`
   );
-  for (const it of items.slice(0, 4)) {
-    const s = it.item_data || {};
-    console.log(
-      `[menu] item "${s.name}" categories=${JSON.stringify(s.categories)} reporting_category=${JSON.stringify(s.reporting_category)} category_id=${JSON.stringify(s.category_id)}`
-    );
-  }
-
   function resolveCategoryId(itemData) {
     // Prefer the assigned category (lowest ordinal), then reporting category,
     // then the legacy single category_id field.
@@ -234,9 +227,12 @@ async function getMenu() {
 
   let entries = allEntries;
   if (MENU_CATEGORIES.length) {
-    entries = MENU_CATEGORIES.map((wanted) =>
-      allEntries.find(([name]) => name.toLowerCase() === wanted.toLowerCase())
-    ).filter(Boolean);
+    entries = MENU_CATEGORIES.map((wanted) => {
+      // Exact (case-sensitive) match first, so "TEA" doesn't collide with a
+      // legacy "Tea" category; fall back to case-insensitive if no exact match.
+      const exact = allEntries.find(([name]) => name === wanted);
+      return exact || allEntries.find(([name]) => name.toLowerCase() === wanted.toLowerCase());
+    }).filter(Boolean);
     console.log(
       `[menu] SQUARE_MENU_CATEGORIES active → showing: ${
         entries.map(([n]) => n).join(', ') || '(no category names matched — check spelling)'
