@@ -1,154 +1,87 @@
 # Bean Culture — Square ordering app
 
-A self-order web app for Bean Culture cafe, connected to Square. Customers scan a
-QR at their table, order and pay in the browser, and the order lands on your Square
-POS / KDS **already tagged dine-in + table number, or takeaway** — so staff never
-have to guess who's eating in, who's taking away, or where they're sitting.
+A mobile-first self-order web app for Bean Culture cafe, deployed at
+**app.beanculture.com.au** (Railway) and connected to Square. Customers browse a
+live menu, order dine-in (with table) or takeaway, pay by card / Apple Pay /
+Google Pay, sign in to see order history, and redeem Square loyalty points.
 
-Deployed as a single service at `app.beanculture.com.au`.
+Everything menu-, stock-, hours-, loyalty-, customer- and order-related is
+sourced live from **Square** so it stays in sync with the cafe's POS.
 
 ---
 
-## Why this exists (the Square gotcha)
+## Features
 
-Square's Orders API has **no native dine-in or table-number field**. Publicly it only
-supports `PICKUP`, `SHIPMENT`, `DELIVERY`, plus a restricted-beta `IN_STORE` type. So a
-naive ordering app produces a kitchen ticket that literally can't say "table 12".
+**Storefront (mobile-first)**
+- Hero carousel with ad slides that link to a category or the account page.
+- Menu = the child categories of the Square master category **"APP"/"APPs"**,
+  with the "APP" prefix stripped. Only those curated categories show.
+- Sticky category chips + live search across the menu.
+- Item sheets with variations, modifier groups (single/multi, prices), notes.
+- Live **sold-out** state from Square (per-location `sold_out` + `ecom_visibility`).
+- Cart, and a checkout that **requires a name** (and a **table number** for dine-in).
+- QR per table (`?table=12`) pre-fills dine-in + table; the customer still adds their name.
+- Bean Culture **pastel-pink theme** + a per-device **theme customiser** (presets + custom colours), remembered on return.
 
-This app forces that information onto the fields Square **does** surface on the ticket/KDS:
+**Accounts & loyalty**
+- Passwordless sign-in: phone (+ name) → looked up/created as a Square customer, remembered on device.
+- Account page shows **order history** (Square SearchOrders) and **loyalty balance**.
+- Redeem loyalty reward tiers at checkout (e.g. **Free Coffee! = 10 Stars**); the discount is applied to the order and the card step is skipped if the total reaches $0.
 
-- **`ticket_name`** on the order → shows large on the KDS ticket, e.g. `T12 DINE-IN` or `TAKEAWAY Shaun`.
-- **Fulfillment `note`** and **order `note`** → `DINE-IN · Table 12` as a second surface.
-- **Correct fulfillment type** → `PICKUP` for takeaway (works on every account today);
-  `IN_STORE` for dine-in *if* you're accepted into Square's beta (env-switchable, see below).
-
-Because the menu is pulled live from your **Square Catalog**, every ordered line item
-references a real catalog item in a real category. That means Square's own **kitchen
-routing** does the work — you configure it once in the KDS app (food → kitchen screen,
-coffee → barista screen, selected categories → printer). No routing code lives here.
+**Operations**
+- **Business hours** from the Square location → open/closed banner; ordering blocked when closed unless **pre-order** is enabled.
+- **Test/comp code** (`COMP_COUPON_CODE`) to place $0 test orders.
+- **Merchant portal** at `/admin`: store status, live category list, and an editor/exporter for theme/hero/announcement settings.
 
 ---
 
 ## Architecture
 
 ```
-client/   Vite + React storefront (menu, cart, dine-in/table, checkout)
-server/   Express API + Square REST integration; also serves the built client
+client/   Vite + React mobile storefront (theme engine, hero, menu, cart,
+          checkout, account, theme picker, admin)
+server/   Express API + Square integration; serves the built client
+  lib/squareClient.js  core REST client + config
+  lib/catalog.js       menu (APP children, prefix strip, sold-out, sync)
+  lib/orders.js        create / pay / $0-complete / history
+  lib/customers.js     passwordless phone identity
+  lib/loyalty.js       program tiers, balance, redemption
+  lib/hours.js         open/closed from Square business hours
+  lib/settings.js      theme / hero / announcement (env-overridable)
 ```
 
-Single Railway service, single domain. In production Express serves `client/dist`.
-
-API endpoints:
-
-| Method | Path          | Purpose                                                        |
-|--------|---------------|----------------------------------------------------------------|
-| GET    | `/api/config` | Public Square app id + location + environment (for the browser)|
-| GET    | `/api/menu`   | Live menu from Square Catalog (60s cache)                      |
-| POST   | `/api/orders` | Create the Square order with dine-in/table on `ticket_name`   |
-| POST   | `/api/pay`    | Charge the order total via the Web Payments SDK token          |
+API: `/api/config`, `/api/menu`, `/api/hours`, `/api/auth`, `/api/loyalty`,
+`/api/history`, `/api/orders`, `/api/pay`, `/api/admin/overview`.
 
 ---
 
-## 1. Create a Square Developer app (get credentials)
+## Configuration
 
-1. Go to https://developer.squareup.com/apps and sign in with the Bean Culture Square login.
-2. **+ Create app** → name it "Bean Culture Ordering".
-3. Open the app → **Credentials**. You need three values:
-   - **Application ID** (production starts with `sq0idp-...`) → `SQUARE_APPLICATION_ID`
-   - **Access token** (production, the secret one) → `SQUARE_ACCESS_TOKEN`
-   - **Location ID** — from **Locations** in the app, or Square Dashboard → Account & Settings → Locations → `SQUARE_LOCATION_ID`
+All configuration is via environment variables in Railway — see
+`server/.env.example` for the full annotated list. Highlights:
 
-> Test first with the **Sandbox** tab (fake cards, no real money): set `SQUARE_ENV=sandbox`
-> and use the sandbox Application ID / Access Token / Location ID. Flip to production when happy.
+- `SQUARE_PARENT_CATEGORY` (default `APPs`) — the master category whose children become the menu.
+- `PREORDER_ENABLED` / `ORDERING_DISABLED` — hours behaviour.
+- `COMP_COUPON_CODE` — test/comp code (remove before public launch).
+- `ADMIN_PASSCODE` — protects `/admin`.
+- `SETTINGS_JSON` — live theme/hero/announcement overrides (exported by `/admin`).
 
----
+## Managing the app day-to-day
 
-## 2. Environment variables
+- **Menu, prices, sold-out, hours** → managed in **Square**; the app syncs automatically (≤45s).
+- **Which categories appear** → put items under the **APP** master category in Square.
+- **Theme / hero ads / announcement** → edit in `/admin`, copy the JSON, paste into the `SETTINGS_JSON` Railway variable to publish. (A live database-backed editor is the next upgrade.)
 
-Set these in Railway → your service → **Variables** (see `server/.env.example`):
-
-```
-SQUARE_ENV=production            # or 'sandbox' while testing
-SQUARE_ACCESS_TOKEN=<secret>     # treat like a password — never commit it
-SQUARE_APPLICATION_ID=sq0idp-... 
-SQUARE_LOCATION_ID=<location id>
-SQUARE_CURRENCY=AUD
-SQUARE_DINEIN_FULFILLMENT=PICKUP # switch to IN_STORE only if accepted into the beta
-```
-
----
-
-## 3. Run locally
+## Local dev
 
 ```bash
 npm run install:all
-# terminal 1 — API on :8080 (create server/.env from server/.env.example first)
-npm run dev:server
-# terminal 2 — client on :5173, proxying /api to :8080
-npm run dev:client
+npm run dev:server     # API on :8080 (create server/.env from the example first)
+npm run dev:client     # client on :5173, proxying /api to :8080
 ```
 
-Open http://localhost:5173?table=12 to simulate scanning table 12's QR code.
+## Deploy
 
----
-
-## 4. Deploy to Railway
-
-1. Push this repo to GitHub, then in Railway **New Project → Deploy from GitHub repo**
-   (or `railway up` with the CLI). `railway.json` sets build = `npm run build`, start = `npm start`.
-2. Add the environment variables from step 2.
-3. Railway gives the service a URL — confirm it loads and the menu appears.
-
-### Custom domain `app.beanculture.com.au`
-
-1. Railway → service → **Settings → Networking → Custom Domain** → enter `app.beanculture.com.au`.
-2. Railway shows a **CNAME target** (e.g. `xxxx.up.railway.app`).
-3. In your DNS host, add a **CNAME** record: `app` → that Railway target. Wait for it to verify (HTTPS is automatic).
-
----
-
-## 5. Configure Square KDS routing (the kitchen/coffee/printer split)
-
-This is done in Square, not in code — and it's what sends food to the kitchen screen,
-coffee to the machine, and prints selected categories.
-
-1. In the **Square KDS** app on each screen: **Settings → Items & categories** → assign
-   which catalog categories that screen shows. Kitchen screen = food categories; the
-   coffee-machine screen = drinks/coffee categories.
-2. **Settings → Routing → Source & Fulfillment** → optionally filter a station to only
-   Dine-In or only Pickup/To-Go orders.
-3. **Kitchen printer**: Square Dashboard → **Devices → Printers** → create a printer
-   profile, tick **In-person / online orders**, and select the categories that should
-   auto-print. (Requires a Square-compatible printer.)
-
-Because orders arrive with real catalog items, all of the above "just works" on them.
-
----
-
-## 6. Apple Pay & Google Pay
-
-- **Google Pay** works once the app is on HTTPS (Railway domain) with no extra setup.
-- **Apple Pay** additionally needs domain verification: Square Developer app →
-  **Apple Pay** → register `app.beanculture.com.au`, download the association file, and
-  host it at `https://app.beanculture.com.au/.well-known/apple-developer-merchantid-domain-association`.
-  Until that's done the app quietly hides the Apple Pay button and card payment still works.
-
----
-
-## 7. Dine-in fulfillment beta (optional, later)
-
-To have dine-in orders use Square's dedicated `IN_STORE` fulfillment type instead of
-`PICKUP`, apply for the beta (Square Developer forums → "IN_STORE fulfillment") and, once
-accepted, set `SQUARE_DINEIN_FULFILLMENT=IN_STORE`. Not required — the `ticket_name` +
-note approach already makes dine-in and table unmistakable on the ticket.
-
----
-
-## Go-live checklist
-
-- [ ] Sandbox tested end-to-end (order → pay with test card → appears on KDS)
-- [ ] Production credentials set in Railway, `SQUARE_ENV=production`
-- [ ] `app.beanculture.com.au` CNAME verified, HTTPS live
-- [ ] KDS routing configured (kitchen / coffee / printer categories)
-- [ ] Apple Pay domain verified (optional)
-- [ ] Printed QR codes per table linking to `https://app.beanculture.com.au?table=<N>`
+Push to `main` → Railway auto-builds (`npm run build`) and deploys (`npm start`).
+Custom domain `app.beanculture.com.au` is a CNAME to the Railway service
+(Cloudflare proxy must be **DNS-only / grey cloud** so Railway can issue TLS).
