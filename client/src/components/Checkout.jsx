@@ -172,7 +172,12 @@ export default function Checkout({ config, cart, currency, dineIn, setDineIn, ta
         {(usingReward || hasCoupon) && <div className="row discount"><span>Discount applied at payment</span><span>—</span></div>}
       </div>
 
-      {status === 'error' && <p className="error-text">{error}</p>}
+      {status === 'error' && (
+        <div className="card">
+          <p className="error-text">{error}</p>
+          <button className="btn ghost full" onClick={onBack}>Back to order</button>
+        </div>
+      )}
 
       {status !== 'error' && (
         <>
