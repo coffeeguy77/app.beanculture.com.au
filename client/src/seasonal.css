@@ -55,8 +55,8 @@
   color: var(--season-red-deep);
   border: 1px solid var(--season-gold);
 }
-[data-season='christmas'] .hero-dots span { background: rgba(255, 245, 223, 0.3); }
-[data-season='christmas'] .hero-dots span.on { background: var(--season-gold); }
+[data-season='christmas'] .hero-dots button { background: rgba(255, 245, 223, 0.3); }
+[data-season='christmas'] .hero-dots button.on { background: var(--season-gold); }
 
 /* ── Order type toggle ── */
 [data-season='christmas'] .segmented { background: rgba(0, 0, 0, 0.28); border: 1px solid var(--season-gold); }

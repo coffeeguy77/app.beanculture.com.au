@@ -45,6 +45,8 @@ app.get('/api/config', async (_req, res) => {
     activeSeasonalTheme: activeSeasonal(settings),
     hero: settings.hero,
     heroRatio: settings.heroRatio,
+    heroAutoplay: settings.heroAutoplay,
+    heroInterval: settings.heroInterval,
     layoutMode: settings.layoutMode,
     footer: settings.footer,
     cloudinary: cloudinary.configured(),

@@ -305,6 +305,8 @@ export default function App() {
             <HeroSlider
               hero={config.hero || []}
               ratio={config.heroRatio}
+              autoplay={config.heroAutoplay !== false}
+              interval={config.heroInterval}
               onLink={(link) => {
                 if (!link) return;
                 if (link.type === 'category') setActiveCat(link.value);

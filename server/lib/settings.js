@@ -65,6 +65,9 @@ const DEFAULTS = {
   // Banner box shape (CSS aspect-ratio). All banners share this fixed size;
   // build banners to this shape to fill it edge-to-edge (default 3:2 = 1200x800).
   heroRatio: '3 / 2',
+  // Banner auto-scroll: on/off and speed (seconds between slides).
+  heroAutoplay: true,
+  heroInterval: 5,
   // Menu layout: 'onepage' (all categories on one scroll) or 'single' (one
   // category/group at a time, chosen from the footer).
   layoutMode: 'onepage',

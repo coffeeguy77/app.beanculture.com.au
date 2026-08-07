@@ -97,8 +97,8 @@ img { max-width: 100%; }
   border: none; border-radius: 999px; padding: 8px 16px; font-weight: 700; font-size: 13px; cursor: pointer;
 }
 .hero-dots { display: flex; gap: 6px; justify-content: center; margin-top: 8px; }
-.hero-dots span { width: 6px; height: 6px; border-radius: 50%; background: var(--line); }
-.hero-dots span.on { background: var(--brand); width: 18px; border-radius: 3px; }
+.hero-dots button { width: 8px; height: 8px; padding: 0; border: none; cursor: pointer; border-radius: 50%; background: var(--line); transition: width 0.2s; }
+.hero-dots button.on { background: var(--brand); width: 20px; border-radius: 4px; }
 
 /* Order type toggle */
 .ordertype { padding: 8px 16px 4px; display: flex; flex-direction: column; gap: 10px; }

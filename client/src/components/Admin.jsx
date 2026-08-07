@@ -336,6 +336,19 @@ export default function Admin({ onExit }) {
       {/* Banners */}
       <div className="card" style={card}>
         <div className="group-title">Banners (hero carousel)</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', margin: '2px 0 12px', paddingBottom: 12, borderBottom: '1px solid var(--line)' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+            <input type="checkbox" checked={s.heroAutoplay !== false} onChange={(e) => set({ heroAutoplay: e.target.checked })} />
+            <span>Auto-scroll banners</span>
+          </label>
+          {s.heroAutoplay !== false && (
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, flex: '1 1 180px', minWidth: 160 }}>
+              <span className="muted" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>Every {Number(s.heroInterval) || 5}s</span>
+              <input type="range" min="2" max="15" step="1" value={Number(s.heroInterval) || 5}
+                onChange={(e) => set({ heroInterval: Number(e.target.value) })} style={{ flex: 1 }} />
+            </label>
+          )}
+        </div>
         {!data.cloudinary && <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>Add Cloudinary keys in Railway to enable image upload; you can still paste a URL.</p>}
         {hero.map((sl, i) => (
           <div key={i} style={{ border: '1px solid var(--line)', borderRadius: 12, padding: 10, marginBottom: 10 }}>
