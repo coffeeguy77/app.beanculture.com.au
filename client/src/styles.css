@@ -436,3 +436,56 @@ img { max-width: 100%; }
 @media (min-width: 1200px) {
   .layout { grid-template-columns: minmax(0, 1fr) 372px; gap: 32px; }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Control panel (admin) — tabbed, responsive, 1440px on desktop.
+   ═══════════════════════════════════════════════════════════════════════════ */
+.admin-root { min-height: 100vh; background: var(--bg); }
+.admin-shell { max-width: 1440px; margin: 0 auto; padding: 12px 16px 104px; }
+.admin-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.admin-head h2 { font-size: 20px; }
+
+/* Tabs: horizontal scroller on mobile, vertical rail on desktop. */
+.admin-tabs {
+  display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none;
+  position: sticky; top: 0; z-index: 6; padding: 8px 0;
+  background: color-mix(in srgb, var(--bg) 92%, transparent); backdrop-filter: blur(8px);
+}
+.admin-tabs::-webkit-scrollbar { display: none; }
+.admin-tab {
+  flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; gap: 4px;
+  min-width: 66px; padding: 8px 10px; border-radius: 12px; border: 1px solid transparent;
+  background: transparent; color: var(--muted); font-size: 11px; font-weight: 700; cursor: pointer;
+}
+.admin-tab.on { background: var(--surface); color: var(--brand); border-color: var(--line); box-shadow: var(--shadow-sm); }
+.admin-panel { padding-top: 12px; }
+
+/* Sticky save bar spans full width; content aligns to the 1440 shell. */
+.admin-savebar { position: fixed; left: 0; right: 0; bottom: 0; background: var(--surface); border-top: 1px solid var(--line); z-index: 40; }
+.admin-savebar-inner { max-width: 1440px; margin: 0 auto; padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); display: flex; gap: 10px; align-items: center; }
+
+.admin-itemgrid, .admin-bannergrid { display: block; }
+
+/* Tablet: two-up item + banner grids. */
+@media (min-width: 700px) {
+  .admin-itemgrid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0 18px; }
+  .admin-bannergrid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+}
+
+/* Desktop: side rail of tabs + wide content, up to 1440px. */
+@media (min-width: 960px) {
+  .admin-layout { display: grid; grid-template-columns: 232px minmax(0, 1fr); gap: 28px; align-items: start; }
+  .admin-tabs {
+    flex-direction: column; overflow: visible; position: sticky; top: 16px;
+    background: transparent; backdrop-filter: none; padding: 0; gap: 6px;
+  }
+  .admin-tab { flex-direction: row; justify-content: flex-start; width: 100%; min-width: 0; gap: 12px; padding: 12px 14px; font-size: 14px; }
+  .admin-panel { padding-top: 0; max-width: 1180px; }
+  /* Keep text inputs readable rather than stretching the full panel. */
+  .admin-panel .field input, .admin-panel .field textarea { max-width: 480px; }
+}
+
+@media (min-width: 1200px) {
+  .admin-itemgrid { grid-template-columns: repeat(3, 1fr); }
+  .admin-bannergrid { grid-template-columns: repeat(3, 1fr); }
+}
