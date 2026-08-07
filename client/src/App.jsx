@@ -62,6 +62,9 @@ export default function App() {
   const initialTable = readTable();
   const [dineIn, setDineIn] = useState(!!initialTable);
   const [table, setTable] = useState(initialTable);
+  // A table scanned from a QR (?table=N) is locked in until the guest taps ✕.
+  const [tableLocked, setTableLocked] = useState(!!initialTable);
+  const unlockTable = () => setTableLocked(false);
   const [name, setName] = useState(user?.name || '');
   const [cart, setCart] = useState([]);
   const [query, setQuery] = useState('');
@@ -308,7 +311,7 @@ export default function App() {
                 else if (link.type === 'account') setView('account');
               }}
             />
-            <OrderTypeBar dineIn={dineIn} setDineIn={setDineIn} table={table} setTable={setTable} />
+            <OrderTypeBar dineIn={dineIn} setDineIn={setDineIn} table={table} setTable={setTable} locked={tableLocked} onUnlock={unlockTable} />
             <div className="search">
               <input placeholder="Search the menu…" value={query} onChange={(e) => setQuery(e.target.value)} />
             </div>
@@ -352,6 +355,7 @@ export default function App() {
         <Checkout
           config={config} cart={cart} currency={currency}
           dineIn={dineIn} setDineIn={setDineIn} table={table} setTable={setTable}
+          tableLocked={tableLocked} onUnlockTable={unlockTable}
           name={name} setName={setName} user={user} canOrder={canOrder}
           onPaid={onPaid} onBack={() => setView(wide ? 'home' : 'cart')}
         />

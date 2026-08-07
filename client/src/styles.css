@@ -109,6 +109,21 @@ img { max-width: 100%; }
 }
 .seg.active { background: var(--surface); color: var(--brand); box-shadow: var(--shadow-sm); }
 
+/* Locked table (scanned from a QR code) */
+.table-lock {
+  display: flex; align-items: center; gap: 12px;
+  background: var(--brand); color: #fff; border-radius: 14px; padding: 12px 14px;
+}
+.table-lock-info { display: flex; flex-direction: column; line-height: 1.15; flex: 1; }
+.table-lock-eyebrow { font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px; opacity: 0.8; }
+.table-lock-table { font-size: 18px; font-weight: 800; }
+.table-lock-x {
+  width: 34px; height: 34px; flex: none; border-radius: 50%; cursor: pointer;
+  border: none; background: rgba(255,255,255,0.22); color: #fff; font-size: 15px; line-height: 1;
+  display: grid; place-items: center;
+}
+.table-lock-x:active { transform: scale(0.94); }
+
 /* Search */
 .search { padding: 8px 16px; position: sticky; top: 64px; z-index: 20; background: var(--bg); }
 .search input {
@@ -297,6 +312,27 @@ img { max-width: 100%; }
 .fx-orn-string { width: 1px; background: rgba(60,40,20,0.4); }
 .fx-orn-ball { font-size: 15px; line-height: 1; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.25)); }
 @keyframes fx-sway { 0%,100% { transform: rotate(-6deg); } 50% { transform: rotate(6deg); } }
+
+/* ── Table QR cards (admin generator + print) ── */
+.qr-print { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; margin-top: 10px; }
+.qr-card { border: 1px solid var(--line); border-radius: 12px; padding: 14px 12px; text-align: center; background: #fff; color: #2b2126; }
+.qr-card-brand { font-family: Georgia, serif; font-weight: 700; font-size: 15px; }
+.qr-card-scan { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: #9c8890; margin: 2px 0 8px; }
+.qr-card img { width: 100%; max-width: 200px; height: auto; display: block; margin: 0 auto; }
+.qr-card-table { font-weight: 800; font-size: 18px; margin-top: 8px; }
+
+@media print {
+  body * { visibility: hidden !important; }
+  .qr-print, .qr-print * { visibility: visible !important; }
+  .qr-print {
+    position: absolute; left: 0; top: 0; width: 100%;
+    grid-template-columns: repeat(2, 1fr); gap: 18px; padding: 12px;
+  }
+  .qr-card { break-inside: avoid; page-break-inside: avoid; border: 1px dashed #bbb; padding: 24px 16px; }
+  .qr-card img { max-width: 300px; }
+  .qr-card-brand { font-size: 20px; }
+  .qr-card-table { font-size: 24px; }
+}
 
 /* ═══════════════════════════════════════════════════════════════════════════
    Responsive layout — mobile (portrait/landscape) · tablet · desktop.

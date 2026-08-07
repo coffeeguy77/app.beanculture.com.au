@@ -15,7 +15,8 @@ function loadSquareSdk(environment) {
   });
 }
 
-export default function Checkout({ config, cart, currency, dineIn, setDineIn, table, setTable, name, setName, user, canOrder, onPaid, onBack }) {
+export default function Checkout({ config, cart, currency, dineIn, setDineIn, table, setTable, tableLocked, onUnlockTable, name, setName, user, canOrder, onPaid, onBack }) {
+  const lockedTable = tableLocked && dineIn && table;
   const [status, setStatus] = useState('init');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -125,17 +126,27 @@ export default function Checkout({ config, cart, currency, dineIn, setDineIn, ta
       <button className="link" onClick={onBack}>← Order</button>
       <h2>Checkout</h2>
 
-      <div className="segmented" style={{ marginBottom: 12 }}>
-        <button className={dineIn ? 'seg active' : 'seg'} onClick={() => setDineIn(true)} type="button">Dine in</button>
-        <button className={!dineIn ? 'seg active' : 'seg'} onClick={() => setDineIn(false)} type="button">Takeaway</button>
-      </div>
+      {lockedTable ? (
+        <div className="table-lock" style={{ marginBottom: 12 }}>
+          <div className="table-lock-info">
+            <span className="table-lock-eyebrow">Dine in</span>
+            <span className="table-lock-table">Table {table}</span>
+          </div>
+          <button className="table-lock-x" onClick={onUnlockTable} type="button" aria-label="Change table or order type">✕</button>
+        </div>
+      ) : (
+        <div className="segmented" style={{ marginBottom: 12 }}>
+          <button className={dineIn ? 'seg active' : 'seg'} onClick={() => setDineIn(true)} type="button">Dine in</button>
+          <button className={!dineIn ? 'seg active' : 'seg'} onClick={() => setDineIn(false)} type="button">Takeaway</button>
+        </div>
+      )}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <label className="field">
           <span className="req">Your name</span>
           <input placeholder="e.g. Shaun" value={name} onChange={(e) => setName(e.target.value)} />
         </label>
-        {dineIn && (
+        {dineIn && !lockedTable && (
           <label className="field">
             <span className="req">Table number</span>
             <input inputMode="numeric" placeholder="e.g. 12" value={table} onChange={(e) => setTable(e.target.value)} />

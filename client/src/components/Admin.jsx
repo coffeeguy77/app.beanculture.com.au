@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import QRCode from 'qrcode';
 import { ICONS } from './icons.jsx';
 
 const ICON_NAMES = ['cup', 'mug', 'burger', 'bag', 'smoothie', 'can', 'bean', 'ice', 'shake', 'tea', 'drink'];
@@ -15,6 +16,33 @@ export default function Admin({ onExit }) {
   const [syncMsg, setSyncMsg] = useState('');
   const [adminCat, setAdminCat] = useState([]);
   const [expanded, setExpanded] = useState({});
+  const [qrFrom, setQrFrom] = useState(1);
+  const [qrTo, setQrTo] = useState(12);
+  const [qrCodes, setQrCodes] = useState([]);
+  const [qrBusy, setQrBusy] = useState(false);
+  const origin = typeof window !== 'undefined' ? window.location.origin : '';
+
+  async function generateQR() {
+    setQrBusy(true);
+    try {
+      const from = Math.max(1, parseInt(qrFrom, 10) || 1);
+      const to = Math.max(from, parseInt(qrTo, 10) || from);
+      const nums = [];
+      for (let n = from; n <= to && nums.length < 200; n++) nums.push(n);
+      const codes = await Promise.all(
+        nums.map(async (n) => {
+          const url = `${origin}/?table=${n}`;
+          const img = await QRCode.toDataURL(url, { margin: 1, width: 360, errorCorrectionLevel: 'M' });
+          return { n, url, img };
+        })
+      );
+      setQrCodes(codes);
+    } catch (e) {
+      alert('QR generation failed: ' + e.message);
+    } finally {
+      setQrBusy(false);
+    }
+  }
 
   async function load(p) {
     setError('');
@@ -163,6 +191,42 @@ export default function Admin({ onExit }) {
         <div className="muted" style={{ fontSize: 12 }}>{h.timezone} · {h.hasHours ? 'hours from Square' : 'no hours set in Square'}</div>
         <button className="btn full" style={{ marginTop: 12 }} onClick={syncNow}>Sync menu from Square now</button>
         {syncMsg && <p className="muted" style={{ fontSize: 13, margin: '6px 0 0' }}>{syncMsg}</p>}
+      </div>
+
+      {/* Table QR codes */}
+      <div className="card" style={card}>
+        <div className="group-title">Table QR codes</div>
+        <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>
+          Generate a QR for each table. Scanning it opens the app with <strong>Dine in</strong> and that
+          table number locked in — the guest taps ✕ only if they need to change it. Print and place one on each table.
+        </p>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+          <label className="field" style={{ flex: '1 1 90px' }}><span>From table</span>
+            <input type="number" min="1" value={qrFrom} onChange={(e) => setQrFrom(e.target.value)} /></label>
+          <label className="field" style={{ flex: '1 1 90px' }}><span>To table</span>
+            <input type="number" min="1" value={qrTo} onChange={(e) => setQrTo(e.target.value)} /></label>
+          <button className="btn" style={{ minWidth: 120 }} disabled={qrBusy} onClick={generateQR}>
+            {qrBusy ? 'Generating…' : 'Generate'}
+          </button>
+        </div>
+        {qrCodes.length > 0 && (
+          <>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '12px 0 2px' }}>
+              <span className="muted" style={{ fontSize: 12 }}>{qrCodes.length} table{qrCodes.length === 1 ? '' : 's'} · links to {origin || 'this site'}</span>
+              <button className="link" onClick={() => window.print()}>🖨 Print cards</button>
+            </div>
+            <div className="qr-print">
+              {qrCodes.map((q) => (
+                <div key={q.n} className="qr-card">
+                  <div className="qr-card-brand">{(s && s.storeName) || 'Bean Culture'}</div>
+                  <div className="qr-card-scan">Scan to order</div>
+                  <img src={q.img} alt={`Table ${q.n} QR code`} />
+                  <div className="qr-card-table">Table {q.n}</div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
       </div>
 
       {/* Store basics */}
