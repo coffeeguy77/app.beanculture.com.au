@@ -8,6 +8,7 @@ import CategoryNav from './components/CategoryNav.jsx';
 import MenuList from './components/MenuList.jsx';
 import ItemModal from './components/ItemModal.jsx';
 import CartView from './components/CartView.jsx';
+import CartPanel from './components/CartPanel.jsx';
 import Checkout from './components/Checkout.jsx';
 import Account from './components/Account.jsx';
 import ThemePicker from './components/ThemePicker.jsx';
@@ -28,6 +29,22 @@ function readTable() {
   const p = new URLSearchParams(window.location.search);
   const t = p.get('table') || p.get('t');
   return t ? t.trim() : '';
+}
+
+// Wide layout = desktop + landscape tablet (persistent side cart).
+function useMediaQuery(query) {
+  const get = () => (typeof window !== 'undefined' && window.matchMedia
+    ? window.matchMedia(query).matches : false);
+  const [matches, setMatches] = useState(get);
+  useEffect(() => {
+    if (!window.matchMedia) return;
+    const mq = window.matchMedia(query);
+    const on = () => setMatches(mq.matches);
+    on();
+    mq.addEventListener ? mq.addEventListener('change', on) : mq.addListener(on);
+    return () => (mq.removeEventListener ? mq.removeEventListener('change', on) : mq.removeListener(on));
+  }, [query]);
+  return matches;
 }
 
 export default function App() {
@@ -75,6 +92,12 @@ export default function App() {
   const currency = config?.currency || menu?.currency || 'AUD';
   const layoutMode = config?.layoutMode || 'onepage';
   const xmas = activeTheme?.id === 'christmas';
+  const wide = useMediaQuery('(min-width: 900px)'); // desktop + landscape tablet
+
+  // On wide layouts the cart lives in the sidebar — no separate cart page.
+  useEffect(() => {
+    if (wide && view === 'cart') setView('home');
+  }, [wide, view]);
 
   // Footer slots from config → only keep categories that exist in the live menu.
   const footerSlots = useMemo(() => {
@@ -274,38 +297,47 @@ export default function App() {
       )}
 
       {view === 'home' && (
-        <>
-          <HeroSlider
-            hero={config.hero || []}
-            ratio={config.heroRatio}
-            onLink={(link) => {
-              if (!link) return;
-              if (link.type === 'category') setActiveCat(link.value);
-              else if (link.type === 'account') setView('account');
-            }}
-          />
-          <OrderTypeBar dineIn={dineIn} setDineIn={setDineIn} table={table} setTable={setTable} />
-          <div className="search">
-            <input placeholder="Search the menu…" value={query} onChange={(e) => setQuery(e.target.value)} />
-          </div>
-          {!query && (
-            <CategoryNav
-              categories={menu.categories.map((c) => c.category)}
-              active={layoutMode === 'single' ? (activeGroup && activeGroup.length === 1 ? activeGroup[0] : null) : activeCat}
-              onPick={(cat) => {
-                if (layoutMode === 'single') { setActiveGroup([cat]); window.scrollTo({ top: 0 }); }
-                else setActiveCat(cat);
+        <div className="layout">
+          <div className="main-col">
+            <HeroSlider
+              hero={config.hero || []}
+              ratio={config.heroRatio}
+              onLink={(link) => {
+                if (!link) return;
+                if (link.type === 'category') setActiveCat(link.value);
+                else if (link.type === 'account') setView('account');
               }}
             />
-          )}
-          <MenuList
-            categories={filteredMenu}
-            currency={currency}
-            onPick={setActiveItem}
-            scrollTo={activeCat}
-            onScrolled={() => setActiveCat(null)}
-          />
-        </>
+            <OrderTypeBar dineIn={dineIn} setDineIn={setDineIn} table={table} setTable={setTable} />
+            <div className="search">
+              <input placeholder="Search the menu…" value={query} onChange={(e) => setQuery(e.target.value)} />
+            </div>
+            {!query && (
+              <CategoryNav
+                categories={menu.categories.map((c) => c.category)}
+                active={layoutMode === 'single' ? (activeGroup && activeGroup.length === 1 ? activeGroup[0] : null) : activeCat}
+                onPick={(cat) => {
+                  if (layoutMode === 'single') { setActiveGroup([cat]); window.scrollTo({ top: 0 }); }
+                  else setActiveCat(cat);
+                }}
+              />
+            )}
+            <MenuList
+              categories={filteredMenu}
+              currency={currency}
+              onPick={setActiveItem}
+              scrollTo={activeCat}
+              onScrolled={() => setActiveCat(null)}
+            />
+          </div>
+          <aside className="cart-aside">
+            <CartPanel
+              cart={cart} currency={currency} onQty={updateQty}
+              dineIn={dineIn} table={table}
+              onCheckout={() => setView('checkout')}
+            />
+          </aside>
+        </div>
       )}
 
       {view === 'cart' && (
@@ -321,7 +353,7 @@ export default function App() {
           config={config} cart={cart} currency={currency}
           dineIn={dineIn} setDineIn={setDineIn} table={table} setTable={setTable}
           name={name} setName={setName} user={user} canOrder={canOrder}
-          onPaid={onPaid} onBack={() => setView('cart')}
+          onPaid={onPaid} onBack={() => setView(wide ? 'home' : 'cart')}
         />
       )}
 
