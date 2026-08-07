@@ -85,9 +85,18 @@ export default function App() {
       const s = (cfg.seasonalThemes || []).find((x) => x.id === previewId);
       if (s) return s;
     }
-    const saved = getSavedTheme();
     if (!getSeasonOptOut() && cfg.activeSeasonalTheme) return cfg.activeSeasonalTheme;
-    return saved || cfg.theme;
+    const saved = getSavedTheme();
+    if (saved) {
+      // A saved seasonal choice always uses the CURRENT server definition, so
+      // colour/decoration updates propagate (the saved copy can be stale).
+      if (saved.id) {
+        const cur = (cfg.seasonalThemes || []).find((x) => x.id === saved.id);
+        return cur || saved;
+      }
+      return saved;
+    }
+    return cfg.theme;
   }
 
   function updateTheme(t) {
@@ -207,7 +216,7 @@ export default function App() {
         <SeasonalPerimeter id={activeTheme.id} decor={activeTheme.decor} />
       )}
       <header className="topbar">
-        <div className="logo-wrap"><Logo height={26} /></div>
+        <div className="logo-wrap"><Logo height={33} /></div>
         <div className="icon-row">
           <button className="iconbtn" title="Theme" onClick={() => setShowTheme(true)}>🎨</button>
           <button className="iconbtn" title="Account" onClick={() => setView('account')}>
@@ -308,10 +317,10 @@ export default function App() {
       {(view === 'home' || view === 'account') && (
         <nav className="bottomnav">
           <button className={`navitem ${view === 'home' ? 'on' : ''}`} onClick={() => setView('home')} aria-label="Menu">
-            <span className="ic">{xmas ? <GingerbreadHouse size={22} /> : '🏠'}</span>Menu
+            <span className="ic">{xmas ? <GingerbreadHouse size={30} /> : '🏠'}</span>Menu
           </button>
           <button className={`navitem ${view === 'account' ? 'on' : ''}`} onClick={() => setView('account')} aria-label={user ? 'Account' : 'Sign in'}>
-            <span className="ic">{xmas ? <SantaUser size={22} /> : '👤'}</span>{user ? 'Account' : 'Sign in'}
+            <span className="ic">{xmas ? <SantaUser size={30} /> : '👤'}</span>{user ? 'Account' : 'Sign in'}
           </button>
         </nav>
       )}
