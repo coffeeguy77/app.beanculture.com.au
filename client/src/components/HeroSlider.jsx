@@ -1,8 +1,35 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 export default function HeroSlider({ hero, onLink }) {
   const trackRef = useRef(null);
   const [idx, setIdx] = useState(0);
+  const [trackH, setTrackH] = useState(0);
+
+  // Size the hero to the currently-visible slide so short (wide) banners don't
+  // leave a gap and tall ones aren't cropped. Image slides use their natural
+  // aspect ratio at the current width; text slides get a sensible default.
+  const measure = useCallback(() => {
+    const el = trackRef.current;
+    if (!el) return;
+    const w = el.clientWidth;
+    const slide = el.children[idx];
+    if (!slide) return;
+    const img = slide.querySelector('img');
+    let h;
+    if (img && img.naturalWidth) {
+      h = Math.round((w * img.naturalHeight) / img.naturalWidth);
+    } else {
+      h = 168; // text / gradient slide
+    }
+    setTrackH(h || 168);
+  }, [idx]);
+
+  useEffect(() => { measure(); }, [measure, hero]);
+  useEffect(() => {
+    const onResize = () => measure();
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, [measure]);
 
   useEffect(() => {
     const el = trackRef.current;
@@ -19,7 +46,11 @@ export default function HeroSlider({ hero, onLink }) {
 
   return (
     <div className="hero">
-      <div className="hero-track" ref={trackRef}>
+      <div
+        className="hero-track"
+        ref={trackRef}
+        style={trackH ? { height: trackH + 'px' } : undefined}
+      >
         {hero.map((s) => {
           // Use a real <img> for uploaded/linked banners so the whole graphic
           // shows (never cropped). Fall back to the gradient bg for text slides.
@@ -35,7 +66,7 @@ export default function HeroSlider({ hero, onLink }) {
               style={imgUrl ? { color: s.textColor || '#fff' } : { background: s.bg, color: s.textColor || '#fff' }}
               onClick={() => onLink(s.link)}
             >
-              {imgUrl && <img className="hero-img" src={imgUrl} alt={s.title || ''} loading="lazy" />}
+              {imgUrl && <img className="hero-img" src={imgUrl} alt={s.title || ''} onLoad={measure} />}
               {hasCopy && (
                 <div className="hero-copy">
                   {s.title && <h3>{s.title}</h3>}
