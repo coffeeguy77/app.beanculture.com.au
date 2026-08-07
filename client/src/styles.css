@@ -124,6 +124,29 @@ img { max-width: 100%; }
 }
 .table-lock-x:active { transform: scale(0.94); }
 
+/* Dine-in: 50% table input · 50% scan button */
+.dinein-row { display: flex; gap: 10px; align-items: flex-end; }
+.dinein-field { flex: 1 1 50%; min-width: 0; }
+.scan-btn {
+  flex: 1 1 50%; height: 48px; padding: 0 12px; border-radius: 12px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  font-size: 15px; font-weight: 700;
+}
+
+/* Camera QR scanner overlay */
+.scanner {
+  background: var(--surface); width: 100%; max-width: 440px; border-radius: 22px;
+  overflow: hidden; position: relative; margin: 12px; animation: slideup 0.22s ease;
+}
+.scanner-head { font-family: Georgia, serif; font-weight: 700; font-size: 18px; padding: 16px 18px 10px; color: var(--ink); }
+.scanner-video-wrap { position: relative; width: 100%; aspect-ratio: 1 / 1; background: #000; overflow: hidden; }
+.scanner-video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.scanner-frame {
+  position: absolute; inset: 16%; border: 3px solid rgba(255,255,255,0.9);
+  border-radius: 18px; box-shadow: 0 0 0 100vmax rgba(0,0,0,0.35);
+}
+.scanner-hint { text-align: center; font-size: 13px; padding: 12px 18px 18px; margin: 0; }
+
 /* Search */
 .search { padding: 8px 16px; position: sticky; top: 64px; z-index: 20; background: var(--bg); }
 .search input {

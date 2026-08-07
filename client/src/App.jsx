@@ -65,6 +65,17 @@ export default function App() {
   // A table scanned from a QR (?table=N) is locked in until the guest taps ✕.
   const [tableLocked, setTableLocked] = useState(!!initialTable);
   const unlockTable = () => setTableLocked(false);
+
+  // Handle a QR scanned in-app: the code holds a URL like .../?table=7 (or a
+  // bare number). Pull out the table, switch to Dine in and lock it in.
+  function applyScannedTable(raw) {
+    let t = '';
+    try { const u = new URL(raw); t = u.searchParams.get('table') || u.searchParams.get('t') || ''; } catch {}
+    if (!t) { const m = String(raw).match(/(?:table|t)=([^&\s]+)/i); if (m) t = m[1]; }
+    if (!t) { const n = String(raw).match(/\d+/); if (n) t = n[0]; }
+    t = String(t || '').trim();
+    if (t) { setTable(t); setDineIn(true); setTableLocked(true); }
+  }
   const [name, setName] = useState(user?.name || '');
   const [cart, setCart] = useState([]);
   const [query, setQuery] = useState('');
@@ -313,7 +324,7 @@ export default function App() {
                 else if (link.type === 'account') setView('account');
               }}
             />
-            <OrderTypeBar dineIn={dineIn} setDineIn={setDineIn} table={table} setTable={setTable} locked={tableLocked} onUnlock={unlockTable} />
+            <OrderTypeBar dineIn={dineIn} setDineIn={setDineIn} table={table} setTable={setTable} locked={tableLocked} onUnlock={unlockTable} onScanned={applyScannedTable} />
             <div className="search">
               <input placeholder="Search the menu…" value={query} onChange={(e) => setQuery(e.target.value)} />
             </div>
