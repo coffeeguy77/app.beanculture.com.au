@@ -127,14 +127,14 @@ app.get('/api/history', async (req, res) => {
 // ---- Create an order (with optional loyalty redemption) ----
 app.post('/api/orders', async (req, res) => {
   try {
-    const { cart, dineIn, table, name, coupon, customerId, pickupAt, loyalty: loy } = req.body || {};
+    const { cart, dineIn, table, name, coupon, customerId, pickupAt, note, loyalty: loy } = req.body || {};
     if (!name || !String(name).trim()) {
       return res.status(400).json({ error: 'Name is required' });
     }
     if (dineIn && !table) {
       return res.status(400).json({ error: 'Table number is required for dine-in orders' });
     }
-    const order = await orders.createOrder({ cart, dineIn: !!dineIn, table, name, coupon, customerId, pickupAt });
+    const order = await orders.createOrder({ cart, dineIn: !!dineIn, table, name, coupon, customerId, pickupAt, note });
 
     let rewardApplied = false;
     if (loy && loy.accountId && loy.tierId) {

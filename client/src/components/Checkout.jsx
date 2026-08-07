@@ -28,6 +28,7 @@ export default function Checkout({ config, cart, currency, dineIn, setDineIn, ta
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [coupon, setCoupon] = useState('');
+  const [note, setNote] = useState('');
   const [wallets, setWallets] = useState({ googlePay: false, applePay: false });
   const [loyalty, setLoyalty] = useState(null);
   const [tierId, setTierId] = useState(null);
@@ -159,7 +160,7 @@ export default function Checkout({ config, cart, currency, dineIn, setDineIn, ta
 
   async function createOrder(pickupAt) {
     return api.createOrder({
-      cart: cartPayload, dineIn, table, name, coupon, pickupAt,
+      cart: cartPayload, dineIn, table, name, coupon, pickupAt, note,
       customerId: user?.customerId,
       loyalty: tierId && loyalty?.accountId ? { accountId: loyalty.accountId, tierId } : undefined,
     });
@@ -342,6 +343,11 @@ export default function Checkout({ config, cart, currency, dineIn, setDineIn, ta
           <input value={coupon} onChange={(e) => setCoupon(e.target.value)} placeholder="Enter code" autoCapitalize="characters" />
         </label>
       )}
+
+      <label className="field" style={{ marginTop: 14 }}>
+        <span>Notes for the kitchen (optional)</span>
+        <textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. extra hot, no sugar, allergy info" />
+      </label>
 
       {/* Payment method */}
       <div className="group" style={{ marginTop: 16 }}>

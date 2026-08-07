@@ -20,7 +20,7 @@ function buildNote({ dineIn, table }) {
   return dineIn ? `DINE-IN · Table ${table || '?'}` : 'TAKEAWAY';
 }
 
-async function createOrder({ cart, dineIn, table, name, coupon, customerId, pickupAt, idempotencyKey }) {
+async function createOrder({ cart, dineIn, table, name, coupon, customerId, pickupAt, idempotencyKey, note: customerNote }) {
   if (!Array.isArray(cart) || cart.length === 0) throw new Error('Cart is empty');
 
   const isComp =
@@ -59,12 +59,14 @@ async function createOrder({ cart, dineIn, table, name, coupon, customerId, pick
     fulfillment = { type: 'PICKUP', state: 'PROPOSED', pickup_details };
   }
 
+  const cleanNote = customerNote ? String(customerNote).trim().slice(0, 250) : '';
+  if (cleanNote) fulfillment.pickup_details && (fulfillment.pickup_details.note = `${fulfillment.pickup_details.note} · ${cleanNote}`.slice(0, 500));
   const order = {
     location_id: LOCATION_ID,
     ticket_name: buildTicketName({ dineIn, table, name }),
     line_items: lineItems,
     fulfillments: [fulfillment],
-    note: buildNote({ dineIn, table }),
+    note: (buildNote({ dineIn, table }) + (cleanNote ? ` · ${cleanNote}` : '')).slice(0, 500),
     source: { name: 'Bean Culture App' },
   };
   if (customerId) order.customer_id = customerId;
