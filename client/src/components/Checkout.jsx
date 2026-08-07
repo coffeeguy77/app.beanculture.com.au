@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { api, formatMoney } from '../api.js';
+import { TableLockPill, TableEntry } from './TableControls.jsx';
 
 function loadSquareSdk(environment) {
   const src = environment === 'sandbox'
@@ -15,8 +16,8 @@ function loadSquareSdk(environment) {
   });
 }
 
-export default function Checkout({ config, cart, currency, dineIn, setDineIn, table, setTable, tableLocked, onUnlockTable, name, setName, user, canOrder, onPaid, onBack }) {
-  const lockedTable = tableLocked && dineIn && table;
+export default function Checkout({ config, cart, currency, dineIn, setDineIn, table, setTable, tableLock, onUnlockTable, onScanTable, name, setName, user, canOrder, onPaid, onBack }) {
+  const bigPill = tableLock >= 2 && dineIn && table;
   const [status, setStatus] = useState('init');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -126,13 +127,9 @@ export default function Checkout({ config, cart, currency, dineIn, setDineIn, ta
       <button className="link" onClick={onBack}>← Order</button>
       <h2>Checkout</h2>
 
-      {lockedTable ? (
-        <div className="table-lock" style={{ marginBottom: 12 }}>
-          <div className="table-lock-info">
-            <span className="table-lock-eyebrow">Dine in</span>
-            <span className="table-lock-table">Table {table}</span>
-          </div>
-          <button className="table-lock-x" onClick={onUnlockTable} type="button" aria-label="Change table or order type">✕</button>
+      {bigPill ? (
+        <div style={{ marginBottom: 12 }}>
+          <TableLockPill table={table} onUnlock={onUnlockTable} />
         </div>
       ) : (
         <div className="segmented" style={{ marginBottom: 12 }}>
@@ -146,11 +143,8 @@ export default function Checkout({ config, cart, currency, dineIn, setDineIn, ta
           <span className="req">Your name</span>
           <input placeholder="e.g. Shaun" value={name} onChange={(e) => setName(e.target.value)} />
         </label>
-        {dineIn && !lockedTable && (
-          <label className="field">
-            <span className="req">Table number</span>
-            <input inputMode="numeric" placeholder="e.g. 12" value={table} onChange={(e) => setTable(e.target.value)} />
-          </label>
+        {dineIn && !bigPill && (
+          <TableEntry lock={tableLock} table={table} setTable={setTable} onUnlock={onUnlockTable} onScanned={onScanTable} />
         )}
       </div>
 

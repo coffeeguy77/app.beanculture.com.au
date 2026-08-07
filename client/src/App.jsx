@@ -62,9 +62,10 @@ export default function App() {
   const initialTable = readTable();
   const [dineIn, setDineIn] = useState(!!initialTable);
   const [table, setTable] = useState(initialTable);
-  // A table scanned from a QR (?table=N) is locked in until the guest taps ✕.
-  const [tableLocked, setTableLocked] = useState(!!initialTable);
-  const unlockTable = () => setTableLocked(false);
+  // Table lock level: 2 = scanned (solid pill), 1 = solid chip (not editable),
+  // 0 = manual entry. Each ✕ steps down one level.
+  const [tableLock, setTableLock] = useState(initialTable ? 2 : 0);
+  const unlockTable = () => setTableLock((l) => Math.max(0, l - 1));
 
   // Handle a QR scanned in-app: the code holds a URL like .../?table=7 (or a
   // bare number). Pull out the table, switch to Dine in and lock it in.
@@ -74,7 +75,7 @@ export default function App() {
     if (!t) { const m = String(raw).match(/(?:table|t)=([^&\s]+)/i); if (m) t = m[1]; }
     if (!t) { const n = String(raw).match(/\d+/); if (n) t = n[0]; }
     t = String(t || '').trim();
-    if (t) { setTable(t); setDineIn(true); setTableLocked(true); }
+    if (t) { setTable(t); setDineIn(true); setTableLock(2); }
   }
   const [name, setName] = useState(user?.name || '');
   const [cart, setCart] = useState([]);
@@ -324,7 +325,7 @@ export default function App() {
                 else if (link.type === 'account') setView('account');
               }}
             />
-            <OrderTypeBar dineIn={dineIn} setDineIn={setDineIn} table={table} setTable={setTable} locked={tableLocked} onUnlock={unlockTable} onScanned={applyScannedTable} />
+            <OrderTypeBar dineIn={dineIn} setDineIn={setDineIn} table={table} setTable={setTable} lock={tableLock} onUnlock={unlockTable} onScanned={applyScannedTable} />
             <div className="search">
               <input placeholder="Search the menu…" value={query} onChange={(e) => setQuery(e.target.value)} />
             </div>
@@ -368,7 +369,7 @@ export default function App() {
         <Checkout
           config={config} cart={cart} currency={currency}
           dineIn={dineIn} setDineIn={setDineIn} table={table} setTable={setTable}
-          tableLocked={tableLocked} onUnlockTable={unlockTable}
+          tableLock={tableLock} onUnlockTable={unlockTable} onScanTable={applyScannedTable}
           name={name} setName={setName} user={user} canOrder={canOrder}
           onPaid={onPaid} onBack={() => setView(wide ? 'home' : 'cart')}
         />

@@ -126,7 +126,21 @@ img { max-width: 100%; }
 
 /* Dine-in: 50% table input · 50% scan button */
 .dinein-row { display: flex; gap: 10px; align-items: flex-end; }
+.dinein-row.semi { align-items: center; }
 .dinein-field { flex: 1 1 50%; min-width: 0; }
+
+/* Stage 1 — solid (non-editable) table chip */
+.table-chip {
+  flex: 1 1 50%; min-width: 0; height: 48px; display: flex; align-items: center;
+  justify-content: space-between; gap: 8px; background: var(--brand); color: #fff;
+  border-radius: 12px; padding: 0 6px 0 14px; font-weight: 700; font-size: 15px;
+}
+.table-chip > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.table-chip-x {
+  flex: none; width: 30px; height: 30px; border-radius: 50%; border: none; cursor: pointer;
+  background: rgba(255,255,255,0.24); color: #fff; font-size: 13px; display: grid; place-items: center;
+}
+.table-chip-x:active { transform: scale(0.94); }
 .scan-btn {
   flex: 1 1 50%; height: 48px; padding: 0 12px; border-radius: 12px;
   display: inline-flex; align-items: center; justify-content: center; gap: 8px;
