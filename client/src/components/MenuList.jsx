@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import { formatMoney } from '../api.js';
+import { MugIcon } from './icons.jsx';
 
 function slug(s) {
   return 'cat-' + s.toLowerCase().replace(/[^a-z0-9]+/g, '-');
@@ -42,7 +43,7 @@ export default function MenuList({ categories, currency, onPick, scrollTo, onScr
                   {item.image ? (
                     <img className="item-img" src={item.image} alt="" loading="lazy" />
                   ) : (
-                    <span className="item-noimg">☕</span>
+                    <span className="item-noimg"><MugIcon size={30} /></span>
                   )}
                   <div className="item-body">
                     <div className="item-name">{item.name}</div>

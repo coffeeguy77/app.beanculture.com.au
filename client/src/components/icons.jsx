@@ -13,6 +13,29 @@ const base = (size) => ({
   'aria-hidden': true,
 });
 
+// Palette → Theme customiser
+export function ThemeIcon({ size = 22 }) {
+  return (
+    <svg {...base(size)}>
+      <path d="M12 3C6.8 3 3 6.7 3 11.2c0 3.7 3 6.3 6.3 6.3.9 0 1.5.6 1.5 1.4 0 .4-.2.8-.4 1.1-.2.3-.3.6-.3.9 0 .9.8 1.6 1.9 1.6C18.5 22.5 21 18.3 21 13 21 7.5 17 3 12 3z" />
+      <circle cx="8" cy="11" r="1.1" />
+      <circle cx="12" cy="8" r="1.1" />
+      <circle cx="16" cy="11" r="1.1" />
+    </svg>
+  );
+}
+
+// Coffee mug (item image fallback)
+export function MugIcon({ size = 30 }) {
+  return (
+    <svg {...base(size)}>
+      <path d="M5 8.5h11v6.5a4 4 0 0 1-4 4H9a4 4 0 0 1-4-4V8.5z" />
+      <path d="M16 10.5h2.4a2.4 2.4 0 0 1 0 4.8H16" />
+      <path d="M8 3.5c0 1-1 1-1 2M11.5 3.5c0 1-1 1-1 2" />
+    </svg>
+  );
+}
+
 export function AccountIcon({ size = 26 }) {
   return (
     <svg {...base(size)}>

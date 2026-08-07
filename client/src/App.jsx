@@ -15,7 +15,7 @@ import Admin from './components/Admin.jsx';
 import Logo from './components/Logo.jsx';
 import SeasonalEffects from './components/SeasonalEffects.jsx';
 import SeasonalPerimeter from './components/SeasonalPerimeter.jsx';
-import { AccountIcon, CupIcon, BurgerIcon, BagIcon, SmoothieIcon, CanIcon, BeanIcon } from './components/icons.jsx';
+import { AccountIcon, ThemeIcon, CupIcon, BurgerIcon, BagIcon, SmoothieIcon, CanIcon, BeanIcon } from './components/icons.jsx';
 
 // Footer "hot category" shortcuts → jump to that section of the menu.
 const HOT_CATEGORIES = [
@@ -230,7 +230,7 @@ export default function App() {
           <Logo height={33} />
         </button>
         <div className="icon-row">
-          <button className="iconbtn" title="Theme" aria-label="Theme" onClick={() => setShowTheme(true)}>🎨</button>
+          <button className="iconbtn" title="Theme" aria-label="Theme" onClick={() => setShowTheme(true)}><ThemeIcon size={22} /></button>
           <button className="iconbtn" title="Account" aria-label={user ? 'Account' : 'Sign in'} onClick={() => setView('account')}>
             <AccountIcon size={26} />
           </button>
@@ -240,14 +240,13 @@ export default function App() {
       {config.announcement ? <div className="announce">{config.announcement}</div> : null}
       {!canOrder && (
         <div className="closed-banner">
-          <span>🌙</span>
           <span>
             We’re closed right now{config.hours?.nextOpen ? ` · opens ${config.hours.nextOpen.day} ${config.hours.nextOpen.time?.slice(0,5)}` : ''}.
           </span>
         </div>
       )}
       {canOrder && preorder && (
-        <div className="closed-banner"><span>⏰</span><span>Pre-order now — we’ll start it when we open.</span></div>
+        <div className="closed-banner"><span>Pre-order now — we’ll start it when we open.</span></div>
       )}
 
       {view === 'account' && (

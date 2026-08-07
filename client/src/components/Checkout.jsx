@@ -126,8 +126,8 @@ export default function Checkout({ config, cart, currency, dineIn, setDineIn, ta
       <h2>Checkout</h2>
 
       <div className="segmented" style={{ marginBottom: 12 }}>
-        <button className={dineIn ? 'seg active' : 'seg'} onClick={() => setDineIn(true)} type="button">🍽️ Dine in</button>
-        <button className={!dineIn ? 'seg active' : 'seg'} onClick={() => setDineIn(false)} type="button">🥡 Takeaway</button>
+        <button className={dineIn ? 'seg active' : 'seg'} onClick={() => setDineIn(true)} type="button">Dine in</button>
+        <button className={!dineIn ? 'seg active' : 'seg'} onClick={() => setDineIn(false)} type="button">Takeaway</button>
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -192,7 +192,7 @@ export default function Checkout({ config, cart, currency, dineIn, setDineIn, ta
           <button className="btn full" style={{ marginTop: 10 }} disabled={busy || status !== 'ready'} onClick={payWithCard}>
             {busy ? 'Processing…' : hasCoupon ? 'Place order' : `Pay ${formatMoney(cartTotal, currency)}`}
           </button>
-          <p className="secure-note">🔒 Payments processed securely by Square.</p>
+          <p className="secure-note">Payments processed securely by Square.</p>
         </>
       )}
     </main>

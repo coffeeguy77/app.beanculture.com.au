@@ -30,7 +30,7 @@ const DEFAULTS = {
   seasonalThemes: [
     {
       id: 'christmas',
-      name: '🎄 Christmas',
+      name: 'Christmas',
       from: '12-01',
       to: '12-30',
       // Base variables (fallback look before the seasonal stylesheet applies).

@@ -5,10 +5,10 @@ export default function OrderTypeBar({ dineIn, setDineIn, table, setTable }) {
     <section className="ordertype">
       <div className="segmented">
         <button className={dineIn ? 'seg active' : 'seg'} onClick={() => setDineIn(true)} type="button">
-          🍽️ Dine in
+          Dine in
         </button>
         <button className={!dineIn ? 'seg active' : 'seg'} onClick={() => setDineIn(false)} type="button">
-          🥡 Takeaway
+          Takeaway
         </button>
       </div>
       {dineIn && (
