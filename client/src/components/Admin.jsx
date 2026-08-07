@@ -7,6 +7,45 @@ export default function Admin({ onExit }) {
   const [error, setError] = useState('');
   const [json, setJson] = useState('');
   const [copied, setCopied] = useState(false);
+  const [syncMsg, setSyncMsg] = useState('');
+  const [upBusy, setUpBusy] = useState(false);
+  const [upUrl, setUpUrl] = useState('');
+  const [upErr, setUpErr] = useState('');
+
+  async function syncNow() {
+    setSyncMsg('Syncing…');
+    try {
+      const r = await fetch(`/api/admin/sync?pass=${encodeURIComponent(pass)}`, { method: 'POST' });
+      setSyncMsg(r.ok ? 'Menu re-synced from Square.' : 'Sync failed.');
+    } catch {
+      setSyncMsg('Sync failed.');
+    }
+    setTimeout(() => setSyncMsg(''), 3500);
+  }
+
+  function uploadImage(e) {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    setUpBusy(true); setUpErr(''); setUpUrl('');
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        const r = await fetch(`/api/admin/upload?pass=${encodeURIComponent(pass)}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ dataUri: reader.result, folder: 'banners' }),
+        });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error || 'Upload failed');
+        setUpUrl(d.url);
+      } catch (err) {
+        setUpErr(err.message);
+      } finally {
+        setUpBusy(false);
+      }
+    };
+    reader.readAsDataURL(file);
+  }
 
   async function load(p) {
     setError('');
@@ -52,6 +91,31 @@ export default function Admin({ onExit }) {
         <div className="muted" style={{ fontSize: 13 }}>
           {h.timezone} · {h.hasHours ? 'hours synced from Square' : 'no business hours set in Square'}
           {h.nextOpen ? ` · next open ${h.nextOpen.day} ${h.nextOpen.time?.slice(0,5)}` : ''}
+        </div>
+      </div>
+
+      <div className="card" style={{ marginBottom: 14 }}>
+        <div className="group-title">Tools</div>
+        <button className="btn full" onClick={syncNow}>Sync menu from Square now</button>
+        {syncMsg && <p className="muted" style={{ fontSize: 13, marginBottom: 0 }}>{syncMsg}</p>}
+        <div style={{ marginTop: 16 }}>
+          <div className="group-title">Upload banner / image</div>
+          <input type="file" accept="image/*" onChange={uploadImage} disabled={upBusy} />
+          {upBusy && <p className="muted">Uploading…</p>}
+          {upErr && <p className="error-text">{upErr}</p>}
+          {upUrl && (
+            <div style={{ marginTop: 8 }}>
+              <p className="muted" style={{ fontSize: 12, wordBreak: 'break-all' }}>{upUrl}</p>
+              <button className="btn ghost full" onClick={() => navigator.clipboard && navigator.clipboard.writeText(upUrl)}>
+                Copy image URL
+              </button>
+            </div>
+          )}
+          <p className="muted" style={{ fontSize: 12 }}>
+            {!data.cloudinary
+              ? 'Add CLOUDINARY_CLOUD_NAME / API_KEY / API_SECRET in Railway to enable uploads.'
+              : 'Paste the URL into a hero slide’s "bg" as: url(THE_URL) center/cover'}
+          </p>
         </div>
       </div>
 

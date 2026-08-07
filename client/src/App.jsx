@@ -15,17 +15,7 @@ import Admin from './components/Admin.jsx';
 import Logo from './components/Logo.jsx';
 import SeasonalEffects from './components/SeasonalEffects.jsx';
 import SeasonalPerimeter from './components/SeasonalPerimeter.jsx';
-import { AccountIcon, ThemeIcon, CupIcon, BurgerIcon, BagIcon, SmoothieIcon, CanIcon, BeanIcon } from './components/icons.jsx';
-
-// Footer "hot category" shortcuts → jump to that section of the menu.
-const HOT_CATEGORIES = [
-  { cat: 'COFFEE', label: 'Coffee', Icon: CupIcon },
-  { cat: 'ALL DAY MENU', label: 'All Day', Icon: BurgerIcon },
-  { cat: 'GRAB AND GO', label: 'Grab & Go', Icon: BagIcon },
-  { cat: 'SMOOTHIES', label: 'Smoothies', Icon: SmoothieIcon },
-  { cat: 'COLD DRINKS', label: 'Cold Drinks', Icon: CanIcon },
-  { cat: 'COFFEE BAGS', label: 'Coffee Bags', Icon: BeanIcon },
-];
+import { AccountIcon, ThemeIcon, ICONS } from './components/icons.jsx';
 
 // Admin/dev preview: ?themePreview=christmas (or ?season=christmas) forces a
 // seasonal theme regardless of date; ?season=off forces the base theme.
@@ -59,6 +49,7 @@ export default function App() {
   const [cart, setCart] = useState([]);
   const [query, setQuery] = useState('');
   const [activeCat, setActiveCat] = useState(null);
+  const [activeGroup, setActiveGroup] = useState(null); // category names shown in 'single' layout
 
   // Load config + menu; apply theme (saved user theme wins over store default).
   useEffect(() => {
@@ -68,6 +59,9 @@ export default function App() {
         const active = resolveTheme(cfg);
         applyTheme(active);
         setActiveTheme(active);
+        if (cfg.layoutMode === 'single' && cfg.footer && cfg.footer[0]) {
+          setActiveGroup(cfg.footer[0].categories);
+        }
       })
       .catch((e) => setLoadErr(e.message));
     api.getMenu().then(setMenu).catch((e) => setLoadErr(e.message));
@@ -79,7 +73,21 @@ export default function App() {
   }, []);
 
   const currency = config?.currency || menu?.currency || 'AUD';
+  const layoutMode = config?.layoutMode || 'onepage';
   const xmas = activeTheme?.id === 'christmas';
+
+  // Footer slots from config → only keep categories that exist in the live menu.
+  const footerSlots = useMemo(() => {
+    if (!config?.footer || !menu) return [];
+    return config.footer
+      .map((slot) => ({
+        ...slot,
+        cats: (slot.categories || []).filter((cat) =>
+          menu.categories.some((c) => c.category.toLowerCase() === cat.toLowerCase())
+        ),
+      }))
+      .filter((slot) => slot.cats.length);
+  }, [config, menu]);
   const canOrder = config?.hours?.canOrderNow !== false;
   const preorder = config?.hours?.preorder;
 
@@ -159,16 +167,22 @@ export default function App() {
   const filteredMenu = useMemo(() => {
     if (!menu) return null;
     const q = query.trim().toLowerCase();
-    if (!q) return menu.categories;
-    return menu.categories
-      .map((c) => ({
-        ...c,
-        items: c.items.filter(
-          (i) => i.name.toLowerCase().includes(q) || (i.description || '').toLowerCase().includes(q)
-        ),
-      }))
-      .filter((c) => c.items.length);
-  }, [menu, query]);
+    if (q) {
+      return menu.categories
+        .map((c) => ({
+          ...c,
+          items: c.items.filter(
+            (i) => i.name.toLowerCase().includes(q) || (i.description || '').toLowerCase().includes(q)
+          ),
+        }))
+        .filter((c) => c.items.length);
+    }
+    if (layoutMode === 'single' && activeGroup && activeGroup.length) {
+      const set = new Set(activeGroup.map((s) => s.toLowerCase()));
+      return menu.categories.filter((c) => set.has(c.category.toLowerCase()));
+    }
+    return menu.categories;
+  }, [menu, query, layoutMode, activeGroup]);
 
   if (loadErr && !config) {
     return (
@@ -276,8 +290,11 @@ export default function App() {
           {!query && (
             <CategoryNav
               categories={menu.categories.map((c) => c.category)}
-              active={activeCat}
-              onPick={setActiveCat}
+              active={layoutMode === 'single' ? (activeGroup && activeGroup.length === 1 ? activeGroup[0] : null) : activeCat}
+              onPick={(cat) => {
+                if (layoutMode === 'single') { setActiveGroup([cat]); window.scrollTo({ top: 0 }); }
+                else setActiveCat(cat);
+              }}
             />
           )}
           <MenuList
@@ -325,21 +342,28 @@ export default function App() {
         </button>
       )}
 
-      {(view === 'home' || view === 'account' || view === 'cart') && (
+      {(view === 'home' || view === 'account' || view === 'cart') && footerSlots.length > 0 && (
         <nav className="bottomnav catbar">
-          {HOT_CATEGORIES.filter((h) =>
-            menu.categories.some((c) => c.category.toLowerCase() === h.cat.toLowerCase())
-          ).map((h) => {
-            const Icon = h.Icon;
+          {footerSlots.map((slot, i) => {
+            const Icon = ICONS[slot.icon] || ICONS.cup;
+            const activeSlot =
+              layoutMode === 'single' &&
+              activeGroup &&
+              slot.cats.length === activeGroup.length &&
+              slot.cats.every((c) => activeGroup.includes(c));
             return (
               <button
-                key={h.cat}
-                className="navitem"
-                onClick={() => { setView('home'); setActiveCat(h.cat); }}
-                aria-label={h.label}
+                key={i}
+                className={`navitem ${activeSlot ? 'on' : ''}`}
+                onClick={() => {
+                  setQuery('');
+                  if (layoutMode === 'single') { setActiveGroup(slot.cats); setView('home'); window.scrollTo({ top: 0 }); }
+                  else { setView('home'); setActiveCat(slot.cats[0]); }
+                }}
+                aria-label={slot.label}
               >
                 <span className="ic"><Icon size={30} /></span>
-                <span className="navlabel">{h.label}</span>
+                {slot.label ? <span className="navlabel">{slot.label}</span> : null}
               </button>
             );
           })}

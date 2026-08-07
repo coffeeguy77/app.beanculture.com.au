@@ -8,9 +8,15 @@ const customers = require('./lib/customers');
 const loyalty = require('./lib/loyalty');
 const hours = require('./lib/hours');
 const { getSettings, activeSeasonal, seasonalForPicker } = require('./lib/settings');
+const cloudinary = require('./lib/cloudinary');
 
 const app = express();
-app.use(express.json({ limit: '256kb' }));
+app.use(express.json({ limit: '12mb' }));
+
+function adminOk(req) {
+  const pass = process.env.ADMIN_PASSCODE || '';
+  return !pass || req.query.pass === pass || (req.body && req.body.pass === pass);
+}
 app.use((req, _res, next) => {
   if (req.path.startsWith('/api')) console.log(`${req.method} ${req.path}`);
   next();
@@ -37,6 +43,9 @@ app.get('/api/config', async (_req, res) => {
     seasonalThemes: seasonalForPicker(settings),
     activeSeasonalTheme: activeSeasonal(settings),
     hero: settings.hero,
+    layoutMode: settings.layoutMode,
+    footer: settings.footer,
+    cloudinary: cloudinary.configured(),
     hours: hoursStatus,
   });
 });
@@ -185,10 +194,30 @@ app.get('/api/admin/overview', async (req, res) => {
   res.json({
     settings,
     hours: hoursStatus,
+    cloudinary: cloudinary.configured(),
     categories: menu ? menu.categories.map((c) => ({ name: c.category, count: c.items.length })) : [],
     settingsJsonHint:
       'To change theme/hero/announcement live, set a SETTINGS_JSON env var in Railway with the edited settings object.',
   });
+});
+
+// ---- Admin: force a menu re-sync (clears the cache immediately) ----
+app.post('/api/admin/sync', (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  menuCache = { data: null, at: 0 };
+  res.json({ ok: true });
+});
+
+// ---- Admin: upload an image (banner/icon) to Cloudinary ----
+app.post('/api/admin/upload', async (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const { dataUri, folder } = req.body || {};
+    const url = await cloudinary.upload(dataUri, folder);
+    res.json({ url });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
 });
 
 // ---- Serve the built client (single service) ----

@@ -108,3 +108,56 @@ export function BeanIcon({ size = 30 }) {
     </svg>
   );
 }
+
+// Iced drink / ice cubes → Cold Drinks (or a combined cold group)
+export function IceIcon({ size = 30 }) {
+  return (
+    <svg {...base(size)}>
+      <path d="M6.5 7h11l-1.2 12.2a2 2 0 0 1-2 1.8H9.7a2 2 0 0 1-2-1.8L6.5 7z" />
+      <path d="M5.5 7h13" />
+      <rect x="9" y="10" width="3.6" height="3.6" rx="0.6" transform="rotate(10 10.8 11.8)" />
+      <rect x="12" y="13" width="3.4" height="3.4" rx="0.6" transform="rotate(-12 13.7 14.7)" />
+    </svg>
+  );
+}
+
+// Milkshake → Shakes
+export function ShakeIcon({ size = 30 }) {
+  return (
+    <svg {...base(size)}>
+      <path d="M7 9h10l-1 10.2a2 2 0 0 1-2 1.8h-4a2 2 0 0 1-2-1.8L7 9z" />
+      <path d="M6.4 9a5.6 3 0 0 1 11.2 0" />
+      <path d="M12 6V3.6" />
+      <circle cx="12" cy="2.8" r="1" />
+    </svg>
+  );
+}
+
+// Tea cup → Tea
+export function TeaIcon({ size = 30 }) {
+  return (
+    <svg {...base(size)}>
+      <path d="M5.5 8.5h9.5v3.5a4.8 4.8 0 0 1-9.5 0V8.5z" />
+      <path d="M15 9.5h1.7a2.1 2.1 0 0 1 0 4.2H15" />
+      <path d="M4.5 18.5h12.5" />
+      <path d="M8.5 3.4c0 1-1 1-1 2M11.5 3.4c0 1-1 1-1 2" />
+    </svg>
+  );
+}
+
+// Name → component registry, so config can pick icons by name.
+export const ICONS = {
+  cup: CupIcon,
+  mug: MugIcon,
+  burger: BurgerIcon,
+  bag: BagIcon,
+  smoothie: SmoothieIcon,
+  can: CanIcon,
+  bean: BeanIcon,
+  ice: IceIcon,
+  shake: ShakeIcon,
+  tea: TeaIcon,
+  drink: SmoothieIcon,
+  account: AccountIcon,
+  theme: ThemeIcon,
+};
