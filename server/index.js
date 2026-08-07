@@ -44,6 +44,7 @@ app.get('/api/config', async (_req, res) => {
     seasonalThemes: seasonalForPicker(settings),
     activeSeasonalTheme: activeSeasonal(settings),
     hero: settings.hero,
+    heroRatio: settings.heroRatio,
     layoutMode: settings.layoutMode,
     footer: settings.footer,
     cloudinary: cloudinary.configured(),

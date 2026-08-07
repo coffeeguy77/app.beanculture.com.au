@@ -62,6 +62,9 @@ const DEFAULTS = {
       effects: { snow: true },
     },
   ],
+  // Banner box shape (CSS aspect-ratio). All banners share this fixed size;
+  // build banners to this shape to fill it edge-to-edge (default 3:2 = 1200x800).
+  heroRatio: '3 / 2',
   // Menu layout: 'onepage' (all categories on one scroll) or 'single' (one
   // category/group at a time, chosen from the footer).
   layoutMode: 'onepage',
