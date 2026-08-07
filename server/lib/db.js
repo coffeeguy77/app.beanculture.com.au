@@ -32,6 +32,7 @@ async function init() {
         tbl text,
         cart jsonb not null default '[]'::jsonb,
         card_id text,
+        payment_id text,
         mode text default 'autocharge',
         recurrence jsonb,
         pickup_at timestamptz,
@@ -44,6 +45,7 @@ async function init() {
         updated_at timestamptz default now()
       )
     `);
+    await pool.query('ALTER TABLE scheduled_orders ADD COLUMN IF NOT EXISTS payment_id text');
     await pool.query('CREATE INDEX IF NOT EXISTS scheduled_due ON scheduled_orders (status, next_run)');
     await pool.query(`
       CREATE TABLE IF NOT EXISTS analytics_events (
@@ -93,6 +95,7 @@ function rowToScheduled(r) {
     table: r.tbl,
     cart: r.cart,
     cardId: r.card_id,
+    paymentId: r.payment_id,
     mode: r.mode,
     recurrence: r.recurrence,
     pickupAt: r.pickup_at,
@@ -108,12 +111,12 @@ function rowToScheduled(r) {
 async function insertScheduled(o) {
   if (!pool) throw new Error('Scheduling is not available (no database configured)');
   const q = `INSERT INTO scheduled_orders
-    (id, customer_id, name, phone, dine_in, tbl, cart, card_id, mode, recurrence, pickup_at, next_run, status, label)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'active',$13) RETURNING *`;
+    (id, customer_id, name, phone, dine_in, tbl, cart, card_id, payment_id, mode, recurrence, pickup_at, next_run, status, label, last_order_id)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'active',$14,$15) RETURNING *`;
   const vals = [
     o.id, o.customerId, o.name || null, o.phone || null, !!o.dineIn, o.table || null,
-    JSON.stringify(o.cart || []), o.cardId || null, o.mode || 'autocharge',
-    o.recurrence ? JSON.stringify(o.recurrence) : null, o.pickupAt, o.nextRun, o.label || null,
+    JSON.stringify(o.cart || []), o.cardId || null, o.paymentId || null, o.mode || 'autocharge',
+    o.recurrence ? JSON.stringify(o.recurrence) : null, o.pickupAt, o.nextRun, o.label || null, o.lastOrderId || null,
   ];
   const r = await pool.query(q, vals);
   return rowToScheduled(r.rows[0]);
@@ -131,10 +134,10 @@ async function listScheduledByCustomer(customerId) {
 async function cancelScheduled(id, customerId) {
   if (!pool) throw new Error('No database configured');
   const r = await pool.query(
-    "UPDATE scheduled_orders SET status='cancelled', updated_at=now() WHERE id=$1 AND customer_id=$2 AND status IN ('active','failed') RETURNING id",
+    "UPDATE scheduled_orders SET status='cancelled', updated_at=now() WHERE id=$1 AND customer_id=$2 AND status IN ('active','failed') RETURNING *",
     [id, customerId]
   );
-  return r.rowCount > 0;
+  return r.rows[0] ? rowToScheduled(r.rows[0]) : null;
 }
 
 // Atomically claim due orders so a restart / overlap can't double-charge.

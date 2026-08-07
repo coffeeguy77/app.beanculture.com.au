@@ -102,6 +102,35 @@ async function createPayment({ sourceId, orderId, amountMoney, verificationToken
   return data.payment;
 }
 
+// Authorize (hold) a card without charging — the funds check for pre-orders.
+// autocomplete:false holds the amount; online auth is valid ~7 days, then we
+// either complete (capture) at pickup or cancel (void). A decline here means
+// the customer has no funds / the card failed, surfaced immediately.
+async function authorizePayment({ sourceId, orderId, amountMoney, customerId, verificationToken }) {
+  const body = {
+    source_id: sourceId,
+    idempotency_key: idem(),
+    amount_money: amountMoney,
+    autocomplete: false,
+    location_id: LOCATION_ID,
+  };
+  if (orderId) body.order_id = orderId;
+  if (customerId) body.customer_id = customerId;
+  if (verificationToken) body.verification_token = verificationToken;
+  const data = await squareFetch('/v2/payments', { method: 'POST', body });
+  return data.payment;
+}
+async function completePayment(paymentId) {
+  const data = await squareFetch(`/v2/payments/${paymentId}/complete`, { method: 'POST', body: {} });
+  return data.payment;
+}
+async function cancelPayment(paymentId) {
+  try {
+    const data = await squareFetch(`/v2/payments/${paymentId}/cancel`, { method: 'POST', body: {} });
+    return data.payment;
+  } catch (e) { return null; }
+}
+
 // Pay a $0 order (comp or fully loyalty-covered) so it completes and routes to KDS.
 async function payZeroOrder(orderId, orderVersion) {
   const body = {
@@ -148,4 +177,4 @@ async function getHistory(customerId, limit = 25) {
   }));
 }
 
-module.exports = { createOrder, getOrder, createPayment, payZeroOrder, getHistory };
+module.exports = { createOrder, getOrder, createPayment, authorizePayment, completePayment, cancelPayment, payZeroOrder, getHistory };

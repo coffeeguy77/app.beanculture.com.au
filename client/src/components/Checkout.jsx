@@ -181,7 +181,7 @@ export default function Checkout({ config, cart, currency, dineIn, setDineIn, ta
           : `Pickup ${schedDate} ${schedTime}`;
         const r = await api.schedule({
           cart: cartPayload, dineIn, table, name, phone: user?.phone,
-          customerId: user.customerId, cardId, recurrence, pickupAt, label,
+          customerId: user.customerId, cardId, recurrence, pickupAt, label, amount: cartTotal,
         });
         onScheduled(r.scheduled, { recurring: isRepeat, when: label });
         return;
@@ -213,7 +213,10 @@ export default function Checkout({ config, cart, currency, dineIn, setDineIn, ta
       });
       if (pay.status === 'COMPLETED' || pay.status === 'APPROVED') onPaid(pay, order, { pickupAt });
       else throw new Error(`Payment ${pay.status}`);
-    } catch (e) { setError(e.message); } finally { setBusy(false); }
+    } catch (e) {
+      const declined = /insufficient|declin|cvv|card|402|fund/i.test(e.message || '');
+      setError(declined ? 'Your card was declined — your order is still here. Try another card.' : e.message);
+    } finally { setBusy(false); }
   }
 
   async function payWithWallet(ref) {
@@ -230,7 +233,10 @@ export default function Checkout({ config, cart, currency, dineIn, setDineIn, ta
   }
 
   const minDate = dateStr(new Date());
-  const maxDate = dateStr(new Date(Date.now() + (sched.maxDaysAhead || 14) * 86400000));
+  // Auto-charge holds funds via a card authorization (valid ~7 days), so cap the
+  // "later + auto-charge" window to a week; pay-now scheduling can be further out.
+  const maxAhead = (isSchedule && payTiming === 'later') ? 7 : (sched.maxDaysAhead || 14);
+  const maxDate = dateStr(new Date(Date.now() + maxAhead * 86400000));
   const scheduleAllowed = true; // pay-now scheduling always ok; auto-charge needs sched.enabled (checked on submit)
   const ctaLabel = autocharge
     ? (isRepeat ? 'Set up repeating order' : 'Schedule order')
@@ -281,6 +287,7 @@ export default function Checkout({ config, cart, currency, dineIn, setDineIn, ta
               <button className={payTiming === 'now' ? 'seg active' : 'seg'} onClick={() => setPayTiming('now')} type="button">Pay now</button>
               <button className={payTiming === 'later' ? 'seg active' : 'seg'} onClick={() => setPayTiming('later')} type="button">Auto-charge at pickup</button>
             </div>
+            {payTiming === 'later' && <p className="muted" style={{ fontSize: 11, margin: 0 }}>We hold the amount on your card now to confirm funds, then charge it at pickup (within 7 days).</p>}
           </div>
         )}
 

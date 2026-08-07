@@ -234,18 +234,44 @@ app.get('/api/scheduled', async (req, res) => {
 app.post('/api/scheduled', async (req, res) => {
   try {
     if (!db.enabled) return res.status(400).json({ error: 'Scheduling is not available right now.' });
-    const { cart, dineIn, table, name, phone, customerId, cardId, recurrence, pickupAt, label } = req.body || {};
+    const { cart, dineIn, table, name, phone, customerId, cardId, recurrence, pickupAt, label, amount } = req.body || {};
     if (!customerId) return res.status(400).json({ error: 'Please sign in to schedule an order.' });
     if (!cardId) return res.status(400).json({ error: 'A saved card is required for scheduled orders.' });
     if (!Array.isArray(cart) || !cart.length) return res.status(400).json({ error: 'Your order is empty.' });
     if (!name || !String(name).trim()) return res.status(400).json({ error: 'Name is required.' });
     if (dineIn && !table) return res.status(400).json({ error: 'Table number is required for dine-in.' });
+
     const plan = scheduler.planSchedule({ recurrence, pickupAt });
+    const isRecurring = recurrence && recurrence.type && recurrence.type !== 'none';
+    // Delayed capture is possible when a single pickup is within the ~7-day
+    // online authorization window; otherwise we do a funds check then void.
+    const withinCapture = !isRecurring &&
+      (new Date(plan.pickupAt).getTime() - Date.now()) <= (7 * 86400000 - 3600000);
+
+    let paymentId = null, lastOrderId = null, mode = 'autocharge';
+    try {
+      if (withinCapture) {
+        // Create the order now (kitchen sees it scheduled), authorize (hold) the
+        // funds, and capture at pickup. A decline here = insufficient funds.
+        const order = await orders.createOrder({ cart, dineIn: !!dineIn, table, name, customerId, pickupAt: plan.pickupAt });
+        const payment = await orders.authorizePayment({ sourceId: cardId, orderId: order.id, amountMoney: order.total_money, customerId });
+        paymentId = payment.id; lastOrderId = order.id; mode = 'capture';
+      } else {
+        // Recurring / far-out: verify the card has funds now, then void the hold.
+        const amt = { amount: Math.max(50, Number(amount) || 0), currency: sq.CURRENCY };
+        const payment = await orders.authorizePayment({ sourceId: cardId, amountMoney: amt, customerId });
+        await orders.cancelPayment(payment.id);
+        mode = 'autocharge';
+      }
+    } catch (e) {
+      return res.status(402).json({ error: e.message, declined: true });
+    }
+
     const id = 'sch_' + sq.idem();
     const row = await db.insertScheduled({
       id, customerId, name, phone, dineIn: !!dineIn, table,
-      cart, cardId, mode: 'autocharge', recurrence: recurrence || { type: 'none' },
-      pickupAt: plan.pickupAt, nextRun: plan.nextRun, label,
+      cart, cardId, paymentId, mode, recurrence: recurrence || { type: 'none' },
+      pickupAt: plan.pickupAt, nextRun: plan.nextRun, label, lastOrderId,
     });
     res.json({ scheduled: row });
   } catch (e) {
@@ -255,8 +281,12 @@ app.post('/api/scheduled', async (req, res) => {
 app.post('/api/scheduled/:id/cancel', async (req, res) => {
   try {
     const { customerId } = req.body || {};
-    const ok = await db.cancelScheduled(req.params.id, customerId);
-    res.json({ ok });
+    const row = await db.cancelScheduled(req.params.id, customerId);
+    // Release the authorization hold if this was a pending delayed capture.
+    if (row && row.mode === 'capture' && row.paymentId) {
+      try { await orders.cancelPayment(row.paymentId); } catch {}
+    }
+    res.json({ ok: !!row });
   } catch (e) {
     res.status(400).json({ error: e.message });
   }

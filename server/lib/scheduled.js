@@ -77,6 +77,12 @@ async function processOne(row) {
   // second order or double-charge — Square returns the original result.
   const base = `${row.id}:${new Date(row.pickupAt).getTime()}`;
   try {
+    // Delayed-capture path: the order + authorization already exist; just capture.
+    if (row.mode === 'capture' && row.paymentId) {
+      await orders.completePayment(row.paymentId);
+      await db.updateScheduled(row.id, { status: 'done', lastError: null });
+      return;
+    }
     const order = await orders.createOrder({
       cart: row.cart, dineIn: row.dineIn, table: row.table,
       name: row.name, customerId: row.customerId, pickupAt: row.pickupAt,
