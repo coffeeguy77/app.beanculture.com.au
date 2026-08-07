@@ -108,6 +108,7 @@ img { max-width: 100%; }
   font-size: 14px; font-weight: 700; color: var(--muted); cursor: pointer;
 }
 .seg.active { background: var(--surface); color: var(--brand); box-shadow: var(--shadow-sm); }
+.segmented.three .seg { padding: 10px 6px; font-size: 13px; }
 
 /* Locked table (scanned from a QR code) */
 .table-lock {

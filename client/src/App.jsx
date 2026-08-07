@@ -195,8 +195,13 @@ export default function App() {
       prev.map((c) => (c.key === key ? { ...c, quantity: c.quantity + delta } : c)).filter((c) => c.quantity > 0)
     );
   }
-  function onPaid(payment, order) {
-    setCompleted({ payment, order });
+  function onPaid(payment, order, meta) {
+    setCompleted({ payment, order, meta: meta || {} });
+    setCart([]);
+    setView('done');
+  }
+  function onScheduledOrder(scheduled, meta) {
+    setCompleted({ scheduled, meta: meta || {} });
     setCart([]);
     setView('done');
   }
@@ -249,15 +254,35 @@ export default function App() {
   if (view === 'admin') return <Admin config={config} onExit={() => { window.history.pushState({}, '', '/'); setView('home'); }} />;
 
   if (view === 'done' && completed) {
-    const { payment, order } = completed;
+    const { payment, order, scheduled, meta = {} } = completed;
+    if (scheduled) {
+      return (
+        <div className="app">
+          <div className="center-screen">
+            <div className="card center" style={{ maxWidth: 380 }}>
+              <div className="tick">✓</div>
+              <h2 className="serif">{meta.recurring ? 'Repeating order set up' : 'Pre-order scheduled'}</h2>
+              <p>{meta.recurring
+                ? `We’ll place this order and charge your saved card ${meta.when || 'on schedule'}.`
+                : `We’ll have it ready for ${meta.when || 'your chosen time'} and charge your saved card then.`}</p>
+              <p className="muted" style={{ fontSize: 13 }}>Manage or cancel it any time from your Account.</p>
+              <button className="btn full" onClick={() => { setCompleted(null); setView('home'); }}>Done</button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+    const pickupAt = meta.pickupAt ? new Date(meta.pickupAt) : null;
     return (
       <div className="app">
         <div className="center-screen">
           <div className="card center" style={{ maxWidth: 380 }}>
             <div className="tick">✓</div>
-            <h2 className="serif">Order placed</h2>
+            <h2 className="serif">{pickupAt ? 'Pre-order confirmed' : 'Order placed'}</h2>
             {order.ticketName && <p className="muted">Ticket: {order.ticketName}</p>}
-            <p>{dineIn ? `We’ll bring it to table ${table}.` : `Thanks ${name || ''} — we’ll call your name.`}</p>
+            {pickupAt
+              ? <p>Ready {pickupAt.toLocaleString('en-AU', { weekday: 'short', hour: 'numeric', minute: '2-digit', day: 'numeric', month: 'short' })}{dineIn ? ` · table ${table}` : ''}.</p>
+              : <p>{dineIn ? `We’ll bring it to table ${table}.` : `Thanks ${name || ''} — we’ll call your name.`}</p>}
             {payment.comped && <p className="muted">No card charged.</p>}
             {payment.receiptUrl && (
               <a className="link" href={payment.receiptUrl} target="_blank" rel="noreferrer">View receipt</a>
@@ -371,7 +396,7 @@ export default function App() {
           dineIn={dineIn} setDineIn={setDineIn} table={table} setTable={setTable}
           tableLock={tableLock} onUnlockTable={unlockTable} onScanTable={applyScannedTable}
           name={name} setName={setName} user={user} canOrder={canOrder}
-          onPaid={onPaid} onBack={() => setView(wide ? 'home' : 'cart')}
+          onPaid={onPaid} onScheduled={onScheduledOrder} onBack={() => setView(wide ? 'home' : 'cart')}
         />
       )}
 

@@ -20,7 +20,7 @@ function buildNote({ dineIn, table }) {
   return dineIn ? `DINE-IN · Table ${table || '?'}` : 'TAKEAWAY';
 }
 
-async function createOrder({ cart, dineIn, table, name, coupon, customerId }) {
+async function createOrder({ cart, dineIn, table, name, coupon, customerId, pickupAt, idempotencyKey }) {
   if (!Array.isArray(cart) || cart.length === 0) throw new Error('Cart is empty');
 
   const isComp =
@@ -39,19 +39,24 @@ async function createOrder({ cart, dineIn, table, name, coupon, customerId }) {
 
   const displayName = name || (dineIn ? `Table ${table || ''}`.trim() : 'Takeaway');
 
+  // A future pickup time turns this into a scheduled order (kitchen sees the time).
+  const scheduled = pickupAt && new Date(pickupAt).getTime() > Date.now() + 60_000;
+
   let fulfillment;
-  if (dineIn && DINEIN_FULFILLMENT === 'IN_STORE') {
+  if (dineIn && DINEIN_FULFILLMENT === 'IN_STORE' && !scheduled) {
     fulfillment = { type: 'IN_STORE', state: 'PROPOSED' };
   } else {
-    fulfillment = {
-      type: 'PICKUP',
-      state: 'PROPOSED',
-      pickup_details: {
-        recipient: { display_name: displayName },
-        schedule_type: 'ASAP',
-        note: buildNote({ dineIn, table }),
-      },
+    const pickup_details = {
+      recipient: { display_name: displayName },
+      note: buildNote({ dineIn, table }),
     };
+    if (scheduled) {
+      pickup_details.schedule_type = 'SCHEDULED';
+      pickup_details.pickup_at = new Date(pickupAt).toISOString();
+    } else {
+      pickup_details.schedule_type = 'ASAP';
+    }
+    fulfillment = { type: 'PICKUP', state: 'PROPOSED', pickup_details };
   }
 
   const order = {
@@ -71,7 +76,7 @@ async function createOrder({ cart, dineIn, table, name, coupon, customerId }) {
 
   const data = await squareFetch('/v2/orders', {
     method: 'POST',
-    body: { order, idempotency_key: idem() },
+    body: { order, idempotency_key: idempotencyKey || idem() },
   });
   return data.order;
 }

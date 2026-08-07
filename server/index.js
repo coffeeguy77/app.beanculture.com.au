@@ -10,6 +10,11 @@ const hours = require('./lib/hours');
 const { getSettings, activeSeasonal, seasonalForPicker } = require('./lib/settings');
 const cloudinary = require('./lib/cloudinary');
 const db = require('./lib/db');
+const cards = require('./lib/cards');
+const scheduler = require('./lib/scheduled');
+
+const PREORDER_TZ = process.env.PREORDER_TZ || process.env.SEASON_TZ || 'Australia/Sydney';
+const PREORDER_MAX_DAYS = Number(process.env.PREORDER_MAX_DAYS || 14);
 
 const app = express();
 app.use(express.json({ limit: '12mb' }));
@@ -51,6 +56,12 @@ app.get('/api/config', async (_req, res) => {
     footer: settings.footer,
     cloudinary: cloudinary.configured(),
     hours: hoursStatus,
+    scheduling: {
+      enabled: db.enabled,          // recurring / auto-charge need the database
+      savedCards: true,             // card-on-file is available (Square Cards API)
+      timezone: PREORDER_TZ,
+      maxDaysAhead: PREORDER_MAX_DAYS,
+    },
   });
 });
 
@@ -113,14 +124,14 @@ app.get('/api/history', async (req, res) => {
 // ---- Create an order (with optional loyalty redemption) ----
 app.post('/api/orders', async (req, res) => {
   try {
-    const { cart, dineIn, table, name, coupon, customerId, loyalty: loy } = req.body || {};
+    const { cart, dineIn, table, name, coupon, customerId, pickupAt, loyalty: loy } = req.body || {};
     if (!name || !String(name).trim()) {
       return res.status(400).json({ error: 'Name is required' });
     }
     if (dineIn && !table) {
       return res.status(400).json({ error: 'Table number is required for dine-in orders' });
     }
-    const order = await orders.createOrder({ cart, dineIn: !!dineIn, table, name, coupon, customerId });
+    const order = await orders.createOrder({ cart, dineIn: !!dineIn, table, name, coupon, customerId, pickupAt });
 
     let rewardApplied = false;
     if (loy && loy.accountId && loy.tierId) {
@@ -177,6 +188,74 @@ app.post('/api/pay', async (req, res) => {
   } catch (err) {
     console.error('payment error', err.message);
     res.status(402).json({ error: 'Payment failed', detail: err.message });
+  }
+});
+
+// ---- Saved cards (card-on-file) ----
+app.get('/api/cards', async (req, res) => {
+  try {
+    const { customerId } = req.query;
+    if (!customerId) return res.json({ cards: [] });
+    res.json({ cards: await cards.listCards(customerId) });
+  } catch (e) {
+    res.json({ cards: [], error: e.message });
+  }
+});
+app.post('/api/cards', async (req, res) => {
+  try {
+    const { sourceId, customerId, verificationToken, cardholderName } = req.body || {};
+    const card = await cards.saveCard({ sourceId, customerId, verificationToken, cardholderName });
+    res.json({ card });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+app.post('/api/cards/:id/disable', async (req, res) => {
+  try {
+    await cards.disableCard(req.params.id);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+// ---- Scheduled / recurring pre-orders (auto-charged from a saved card) ----
+app.get('/api/scheduled', async (req, res) => {
+  try {
+    const { customerId } = req.query;
+    res.json({ orders: await db.listScheduledByCustomer(customerId) });
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+app.post('/api/scheduled', async (req, res) => {
+  try {
+    if (!db.enabled) return res.status(400).json({ error: 'Scheduling is not available right now.' });
+    const { cart, dineIn, table, name, phone, customerId, cardId, recurrence, pickupAt, label } = req.body || {};
+    if (!customerId) return res.status(400).json({ error: 'Please sign in to schedule an order.' });
+    if (!cardId) return res.status(400).json({ error: 'A saved card is required for scheduled orders.' });
+    if (!Array.isArray(cart) || !cart.length) return res.status(400).json({ error: 'Your order is empty.' });
+    if (!name || !String(name).trim()) return res.status(400).json({ error: 'Name is required.' });
+    if (dineIn && !table) return res.status(400).json({ error: 'Table number is required for dine-in.' });
+    const plan = scheduler.planSchedule({ recurrence, pickupAt });
+    const id = 'sch_' + sq.idem();
+    const row = await db.insertScheduled({
+      id, customerId, name, phone, dineIn: !!dineIn, table,
+      cart, cardId, mode: 'autocharge', recurrence: recurrence || { type: 'none' },
+      pickupAt: plan.pickupAt, nextRun: plan.nextRun, label,
+    });
+    res.json({ scheduled: row });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+app.post('/api/scheduled/:id/cancel', async (req, res) => {
+  try {
+    const { customerId } = req.body || {};
+    const ok = await db.cancelScheduled(req.params.id, customerId);
+    res.json({ ok });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
   }
 });
 
@@ -264,5 +343,6 @@ app.get('*', (_req, res) => res.sendFile(path.join(clientDist, 'index.html')));
 
 const PORT = process.env.PORT || 8080;
 db.init().finally(() => {
+  scheduler.start();
   app.listen(PORT, () => console.log(`Bean Culture app on :${PORT} (Square env: ${sq.ENV})`));
 });
