@@ -130,6 +130,7 @@ img { max-width: 100%; }
   padding: 12px; cursor: pointer; box-shadow: var(--shadow-sm); position: relative;
 }
 .item:active { transform: scale(0.99); }
+.items.noimg .item { padding: 12px 14px; }
 .item.sold { opacity: 0.55; }
 .item-img { width: 68px; height: 68px; border-radius: 14px; object-fit: cover; flex: none; background: var(--brand-soft); }
 .item-noimg { width: 68px; height: 68px; border-radius: 14px; background: var(--brand-soft); flex: none; display: grid; place-items: center; color: var(--brand); font-size: 24px; }

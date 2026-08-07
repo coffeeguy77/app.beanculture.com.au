@@ -257,7 +257,12 @@ async function getMenu(opts = {}) {
     `[menu] parent="${PARENT_CATEGORY}"${parentId ? ' found' : ' NOT found'} | ${childIds.size} child categories | showing ${entries.length}: ${entries.map((e) => `${e.name}(${e.items.length})`).join(', ')}`
   );
 
-  const menu = entries.map((e) => ({ category: e.name, items: e.items }));
+  const menu = entries.map((e) => {
+    // Per-category image visibility (admin toggle). Default: show images.
+    const sel = selLower[e.name.toLowerCase()];
+    const showImages = !sel || sel.showImages !== false;
+    return { category: e.name, items: e.items, showImages };
+  });
   return { currency: CURRENCY, categories: menu };
 }
 

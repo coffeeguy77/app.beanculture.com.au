@@ -25,10 +25,12 @@ export default function MenuList({ categories, currency, onPick, scrollTo, onScr
 
   return (
     <main className="menu">
-      {categories.map((cat) => (
+      {categories.map((cat) => {
+        const showImages = cat.showImages !== false;
+        return (
         <section key={cat.category}>
           <h2 className="cat-title" id={slug(cat.category)}>{cat.category}</h2>
-          <div className="items">
+          <div className={`items ${showImages ? '' : 'noimg'}`}>
             {cat.items.map((item) => {
               const from = fromPrice(item);
               const multi = item.variations.length > 1;
@@ -40,11 +42,11 @@ export default function MenuList({ categories, currency, onPick, scrollTo, onScr
                   type="button"
                 >
                   {item.soldOut && <span className="sold-tag">Sold out</span>}
-                  {item.image ? (
+                  {showImages && (item.image ? (
                     <img className="item-img" src={item.image} alt="" loading="lazy" />
                   ) : (
                     <span className="item-noimg"><MugIcon size={30} /></span>
-                  )}
+                  ))}
                   <div className="item-body">
                     <div className="item-name">{item.name}</div>
                     {item.description && <div className="item-desc">{item.description}</div>}
@@ -56,7 +58,8 @@ export default function MenuList({ categories, currency, onPick, scrollTo, onScr
             })}
           </div>
         </section>
-      ))}
+        );
+      })}
     </main>
   );
 }

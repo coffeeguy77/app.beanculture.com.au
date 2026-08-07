@@ -66,6 +66,7 @@ export default function Admin({ onExit }) {
       return { ...cur, menuSelection: { ...(cur.menuSelection || {}), [cat]: { ...prev, ...patch } } };
     });
   const catEnabled = (cat) => (ms[cat]?.enabled ?? true);
+  const showImages = (cat) => (ms[cat]?.showImages ?? true);
   const itemOffered = (cat, id) => {
     const sel = ms[cat];
     if (!sel || sel.items == null) return true; // whole category
@@ -237,6 +238,11 @@ export default function Admin({ onExit }) {
                   <span className="muted" style={{ fontSize: 12 }}>
                     {partial ? `${nOffered}/${c.items.length} items` : `all ${c.items.length}`}
                   </span>
+                </label>
+                <label style={{ ...row, cursor: 'pointer', fontSize: 12 }} className="muted" title="Show product images for this category">
+                  <input type="checkbox" checked={showImages(c.category)} disabled={!on}
+                    onChange={(e) => setMS(c.category, { showImages: e.target.checked })} />
+                  <span>Images</span>
                 </label>
                 <button className="link" onClick={() => setExpanded((x) => ({ ...x, [c.category]: !isOpen }))}>
                   {isOpen ? '▲' : '▼'}
