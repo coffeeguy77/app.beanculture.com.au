@@ -9,6 +9,7 @@ const loyalty = require('./lib/loyalty');
 const hours = require('./lib/hours');
 const { getSettings, activeSeasonal, seasonalForPicker } = require('./lib/settings');
 const cloudinary = require('./lib/cloudinary');
+const db = require('./lib/db');
 
 const app = express();
 app.use(express.json({ limit: '12mb' }));
@@ -201,6 +202,23 @@ app.get('/api/admin/overview', async (req, res) => {
   });
 });
 
+// ---- Admin: read + save the full editable settings (persisted in Postgres) ----
+app.get('/api/admin/settings', (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  res.json({ settings: getSettings(), dbEnabled: db.enabled });
+});
+app.post('/api/admin/settings', async (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const { settings } = req.body || {};
+    if (!settings || typeof settings !== 'object') return res.status(400).json({ error: 'Missing settings' });
+    await db.saveOverrides(settings);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
 // ---- Admin: force a menu re-sync (clears the cache immediately) ----
 app.post('/api/admin/sync', (req, res) => {
   if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
@@ -226,4 +244,6 @@ app.use(express.static(clientDist));
 app.get('*', (_req, res) => res.sendFile(path.join(clientDist, 'index.html')));
 
 const PORT = process.env.PORT || 8080;
-app.listen(PORT, () => console.log(`Bean Culture app on :${PORT} (Square env: ${sq.ENV})`));
+db.init().finally(() => {
+  app.listen(PORT, () => console.log(`Bean Culture app on :${PORT} (Square env: ${sq.ENV})`));
+});

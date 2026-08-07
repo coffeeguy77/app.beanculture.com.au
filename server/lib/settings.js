@@ -120,16 +120,20 @@ function deepMerge(base, over) {
   return over === undefined ? base : over;
 }
 
+const db = require('./db');
+
 function getSettings() {
-  let over = {};
+  let env = {};
   if (process.env.SETTINGS_JSON) {
     try {
-      over = JSON.parse(process.env.SETTINGS_JSON);
+      env = JSON.parse(process.env.SETTINGS_JSON);
     } catch (e) {
       console.error('[settings] SETTINGS_JSON is not valid JSON:', e.message);
     }
   }
-  return deepMerge(DEFAULTS, over);
+  // Precedence: DEFAULTS < SETTINGS_JSON env < admin edits stored in the DB.
+  const merged = deepMerge(DEFAULTS, env);
+  return deepMerge(merged, db.getOverrides());
 }
 
 // Today's MM-DD in the cafe's timezone.
