@@ -10,9 +10,13 @@ const DEFAULTS = {
   contact: { address: '', phone: '', mapsUrl: '' },
   logoUrl: '',
   faviconUrl: '',
-  // Closure dates (annual leave, public holidays). date = 'YYYY-MM-DD'.
-  // annual:true repeats every year on that month/day.
+  // Closure dates (annual leave, public holidays). Each entry is either a single
+  // day { date:'YYYY-MM-DD' } or a range { from:'YYYY-MM-DD', to:'YYYY-MM-DD' }.
+  // annual:true repeats every year on the same month/day(s).
   closures: [],
+  // Which Square categories appear in the app (category IDs). Empty = use the
+  // "APP" parent category's children automatically (legacy behaviour).
+  menuCategories: [],
   // Default theme — light pastel pink.
   theme: {
     bg: '#fdf1f4',
@@ -180,4 +184,24 @@ function seasonalForPicker(settings) {
   return (settings.seasonalThemes || []).map(flatten);
 }
 
-module.exports = { getSettings, DEFAULTS, todayMMDD, activeSeasonal, seasonalForPicker };
+// Does a closure entry (single day or range, optionally annual) cover fullDate
+// ('YYYY-MM-DD')? Used by hours + the scheduler.
+function closureMatches(closure, fullDate) {
+  if (!closure) return false;
+  const md = String(fullDate).slice(5);
+  if (closure.from && closure.to) {
+    if (closure.annual) {
+      const f = String(closure.from).slice(5);
+      const t = String(closure.to).slice(5);
+      return f <= t ? (md >= f && md <= t) : (md >= f || md <= t); // handle year-wrap
+    }
+    return fullDate >= closure.from && fullDate <= closure.to;
+  }
+  if (closure.date) return closure.date === fullDate || (closure.annual && String(closure.date).slice(5) === md);
+  return false;
+}
+function isClosedDate(closures, fullDate) {
+  return (closures || []).some((c) => closureMatches(c, fullDate));
+}
+
+module.exports = { getSettings, DEFAULTS, todayMMDD, activeSeasonal, seasonalForPicker, closureMatches, isClosedDate };

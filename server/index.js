@@ -370,6 +370,16 @@ app.get('/api/admin/catalog', async (req, res) => {
   }
 });
 
+// ---- Admin: every Square category (to choose which appear in the app) ----
+app.get('/api/admin/square-categories', async (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    res.json({ categories: await catalog.getAllCategories() });
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+
 // ---- Admin: force a menu re-sync (clears the cache immediately) ----
 app.post('/api/admin/sync', (req, res) => {
   if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });

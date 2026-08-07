@@ -62,6 +62,7 @@ export default function Admin({ onExit }) {
   const [savedMsg, setSavedMsg] = useState('');
   const [syncMsg, setSyncMsg] = useState('');
   const [adminCat, setAdminCat] = useState([]);
+  const [sqCats, setSqCats] = useState([]);
   const [expanded, setExpanded] = useState({});
   const [tab, setTab] = useState('store');
   const [qrFrom, setQrFrom] = useState(1);
@@ -128,6 +129,10 @@ export default function Admin({ onExit }) {
         const cr = await fetch(`/api/admin/catalog?pass=${encodeURIComponent(p || '')}`);
         if (cr.ok) { const cd = await cr.json(); setAdminCat(cd.categories || []); }
       } catch {}
+      try {
+        const sc = await fetch(`/api/admin/square-categories?pass=${encodeURIComponent(p || '')}`);
+        if (sc.ok) { const sd = await sc.json(); setSqCats(sd.categories || []); }
+      } catch {}
     } catch (e) { setError(e.message); }
   }
   useEffect(() => { load(''); }, []);
@@ -139,14 +144,26 @@ export default function Admin({ onExit }) {
   const setTheme = (k, v) => setS((cur) => ({ ...cur, theme: { ...cur.theme, [k]: v } }));
   const setContact = (k, v) => setS((cur) => ({ ...cur, contact: { ...(cur.contact || {}), [k]: v } }));
 
-  // ---- closures ----
+  // ---- closures (single day or date range) ----
   const closures = s?.closures || [];
   const addClosure = () => {
-    if (!newClosure.date) return;
-    set({ closures: [...closures, { ...newClosure }].sort((a, b) => String(a.date).localeCompare(String(b.date))) });
-    setNewClosure({ date: '', annual: false, label: '' });
+    const c = { annual: !!newClosure.annual };
+    if (newClosure.label) c.label = newClosure.label;
+    if (newClosure.range) {
+      if (!newClosure.from || !newClosure.to) return;
+      c.from = newClosure.from; c.to = newClosure.to;
+    } else {
+      if (!newClosure.date) return;
+      c.date = newClosure.date;
+    }
+    set({ closures: [...closures, c] });
+    setNewClosure({ date: '', from: '', to: '', annual: false, label: '', range: newClosure.range });
   };
   const rmClosure = (i) => set({ closures: closures.filter((_, j) => j !== i) });
+
+  // ---- which Square categories appear in the app ----
+  const menuCategories = s?.menuCategories || [];
+  const toggleMenuCat = (id) => set({ menuCategories: menuCategories.includes(id) ? menuCategories.filter((x) => x !== id) : [...menuCategories, id] });
 
   // ---- footer builder ----
   const footer = s?.footer || [];
@@ -324,18 +341,29 @@ export default function Admin({ onExit }) {
 
                 <div className="card" style={card}>
                   <div className="group-title">Closed dates</div>
-                  <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>Annual leave, public holidays. Closed days can’t be booked for pre-orders. Tick “every year” for dates that recur (e.g. Christmas).</p>
+                  <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>Annual leave, public holidays. Closed days can’t be booked for pre-orders. Use a range for multi-day closures (e.g. late Dec – mid Jan). Tick “every year” for recurring dates.</p>
+                  <div className="segmented" style={{ maxWidth: 280, marginBottom: 10 }}>
+                    <button type="button" className={!newClosure.range ? 'seg active' : 'seg'} onClick={() => setNewClosure((c) => ({ ...c, range: false }))}>Single day</button>
+                    <button type="button" className={newClosure.range ? 'seg active' : 'seg'} onClick={() => setNewClosure((c) => ({ ...c, range: true }))}>Date range</button>
+                  </div>
                   <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
-                    <label className="field" style={{ flex: '1 1 130px' }}><span>Date</span><input type="date" value={newClosure.date} onChange={(e) => setNewClosure((c) => ({ ...c, date: e.target.value }))} /></label>
-                    <label className="field" style={{ flex: '2 1 150px' }}><span>Label</span><input value={newClosure.label} onChange={(e) => setNewClosure((c) => ({ ...c, label: e.target.value }))} placeholder="e.g. Christmas Day" /></label>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, paddingBottom: 12, whiteSpace: 'nowrap' }}><input type="checkbox" checked={newClosure.annual} onChange={(e) => setNewClosure((c) => ({ ...c, annual: e.target.checked }))} /> Every year</label>
+                    {newClosure.range ? (
+                      <>
+                        <label className="field" style={{ flex: '1 1 120px' }}><span>From</span><input type="date" value={newClosure.from || ''} onChange={(e) => setNewClosure((c) => ({ ...c, from: e.target.value }))} /></label>
+                        <label className="field" style={{ flex: '1 1 120px' }}><span>To</span><input type="date" value={newClosure.to || ''} onChange={(e) => setNewClosure((c) => ({ ...c, to: e.target.value }))} /></label>
+                      </>
+                    ) : (
+                      <label className="field" style={{ flex: '1 1 130px' }}><span>Date</span><input type="date" value={newClosure.date || ''} onChange={(e) => setNewClosure((c) => ({ ...c, date: e.target.value }))} /></label>
+                    )}
+                    <label className="field" style={{ flex: '2 1 150px' }}><span>Label</span><input value={newClosure.label || ''} onChange={(e) => setNewClosure((c) => ({ ...c, label: e.target.value }))} placeholder="e.g. Summer break" /></label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, paddingBottom: 12, whiteSpace: 'nowrap' }}><input type="checkbox" checked={!!newClosure.annual} onChange={(e) => setNewClosure((c) => ({ ...c, annual: e.target.checked }))} /> Every year</label>
                     <button className="btn" onClick={addClosure}>Add</button>
                   </div>
                   {closures.length > 0 && (
                     <div style={{ marginTop: 8 }}>
                       {closures.map((c, i) => (
                         <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderTop: '1px solid var(--line)' }}>
-                          <span>{c.date}{c.annual ? ' · every year' : ''}{c.label ? ` · ${c.label}` : ''}</span>
+                          <span>{c.from ? `${c.from} → ${c.to}` : c.date}{c.annual ? ' · every year' : ''}{c.label ? ` · ${c.label}` : ''}</span>
                           <button className="link" style={{ color: '#c0392b' }} onClick={() => rmClosure(i)}>Remove</button>
                         </div>
                       ))}
@@ -425,6 +453,27 @@ export default function Admin({ onExit }) {
             {/* ───────── MENU ───────── */}
             {tab === 'menu' && (
               <>
+                <div className="card" style={card}>
+                  <div className="group-title">Categories in the app</div>
+                  <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>
+                    Pick which of your Square categories appear in the app. New categories show up here after you
+                    press Sync (Store tab). Leave all unticked to use your “APP” parent category automatically.
+                  </p>
+                  {sqCats.length === 0 && <p className="muted" style={{ fontSize: 12 }}>No Square categories loaded yet — create categories in Square, then Sync.</p>}
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                    {sqCats.map((c) => {
+                      const on = menuCategories.includes(c.id);
+                      return (
+                        <button key={c.id} type="button" className={`chip ${on ? 'on' : ''}`} onClick={() => toggleMenuCat(c.id)}
+                          title={c.isParent ? 'This is your APP master category' : ''}>
+                          {c.name}{c.isParent ? ' ★' : ''}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {menuCategories.length > 0 && <p className="muted" style={{ fontSize: 11, marginTop: 8 }}>{menuCategories.length} categor{menuCategories.length === 1 ? 'y' : 'ies'} selected · unticked categories are hidden from the app.</p>}
+                </div>
+
                 <div className="card" style={card}>
                   <div className="group-title">Menu layout</div>
                   <label style={{ ...row, marginBottom: 6 }}><input type="radio" checked={s.layoutMode !== 'single'} onChange={() => set({ layoutMode: 'onepage' })} /> One page (all categories scroll)</label>

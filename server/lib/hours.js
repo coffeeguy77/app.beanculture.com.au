@@ -3,7 +3,7 @@
 // mode (accept orders while closed, flagged as scheduled).
 
 const { squareFetch, LOCATION_ID } = require('./squareClient');
-const { getSettings } = require('./settings');
+const { getSettings, isClosedDate } = require('./settings');
 
 const PREORDER_ENABLED = (process.env.PREORDER_ENABLED || 'false').toLowerCase() === 'true';
 const ORDERING_DISABLED = (process.env.ORDERING_DISABLED || 'false').toLowerCase() === 'true';
@@ -93,11 +93,7 @@ function withRuntime(base) {
   let closures = [];
   try { closures = getSettings().closures || []; } catch {}
   const td = todayDate(base.timezone);
-  const isClosureDate = (fullDate) => {
-    const md = String(fullDate).slice(5);
-    return closures.some((c) => c && (c.date === fullDate || (c.annual && String(c.date).slice(5) === md)));
-  };
-  const closedToday = isClosureDate(td.full);
+  const closedToday = isClosedDate(closures, td.full);
 
   let open = false;
   let closesAt = null;

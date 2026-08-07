@@ -37,11 +37,20 @@ export default function Checkout({ config, cart, currency, dineIn, setDineIn, ta
   const sched = config.scheduling || {};
   const openDays = config.hours?.openDays || null; // null = open every day
   const closures = config.hours?.closures || [];
+  function closureHit(c, ds) {
+    if (!c) return false;
+    const md = ds.slice(5);
+    if (c.from && c.to) {
+      if (c.annual) { const f = c.from.slice(5), t = c.to.slice(5); return f <= t ? (md >= f && md <= t) : (md >= f || md <= t); }
+      return ds >= c.from && ds <= c.to;
+    }
+    if (c.date) return c.date === ds || (c.annual && String(c.date).slice(5) === md);
+    return false;
+  }
   function closedReason(ds) {
     if (!ds) return null;
     if (openDays) { const wd = new Date(`${ds}T12:00:00`).getDay(); if (!openDays.includes(wd)) return 'closed that day'; }
-    const md = ds.slice(5);
-    if (closures.some((c) => c && (c.date === ds || (c.annual && String(c.date).slice(5) === md)))) return 'closed (holiday)';
+    if (closures.some((c) => closureHit(c, ds))) return 'closed (holiday)';
     return null;
   }
 

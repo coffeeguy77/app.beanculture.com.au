@@ -34,6 +34,9 @@ function formatDescription(text) {
   return t.replace(/\n{2,}/g, '\n').replace(/^\n+/, '').trim();
 }
 
+// Normalize a name for comparison (lowercase, trim, drop trailing "s").
+const norm = (x) => (x || '').trim().toLowerCase().replace(/s$/, '');
+
 // Remove a leading "APP"/"APPS" token from a category name for display.
 function cleanName(name) {
   if (!name) return name;
@@ -107,22 +110,28 @@ async function getMenu(opts = {}) {
     }
   }
 
-  // Find the master parent category (e.g. "APPs"/"APP") and its children.
-  // Normalize a trailing "s" so "APP" and "APPs" both match.
-  const norm = (x) => (x || '').trim().toLowerCase().replace(/s$/, '');
+  // Which categories to show. If the admin picked specific Square categories
+  // (settings.menuCategories), use those directly. Otherwise fall back to the
+  // children of a master "APP" parent category.
+  const included = (getSettings().menuCategories || []).map(String);
   let parentId = null;
-  for (const [id, c] of categories) {
-    if (norm(c.name) === norm(PARENT_CATEGORY)) {
-      parentId = id;
-      break;
-    }
-  }
   const childIds = new Set();
-  if (parentId) {
+  if (included.length) {
+    const sel = new Set(included);
     for (const [id, c] of categories) {
-      if (c.parentId === parentId) childIds.add(id);
+      if (sel.has(id) || sel.has(c.name)) childIds.add(id);
+    }
+  } else {
+    for (const [id, c] of categories) {
+      if (norm(c.name) === norm(PARENT_CATEGORY)) { parentId = id; break; }
+    }
+    if (parentId) {
+      for (const [id, c] of categories) {
+        if (c.parentId === parentId) childIds.add(id);
+      }
     }
   }
+  const restrictToChildren = included.length > 0 || !!parentId;
 
 
   function resolveCategoryId(itemData) {
@@ -183,8 +192,8 @@ async function getMenu(opts = {}) {
 
     const catId = resolveCategoryId(d);
 
-    // If we found a master parent, only show items in its children.
-    if (parentId) {
+    // Only show items in the selected / child categories.
+    if (restrictToChildren) {
       if (!catId || !childIds.has(catId)) continue;
     } else if (MENU_CATEGORIES.length && catId) {
       const cname = categories.get(catId)?.name;
@@ -244,7 +253,7 @@ async function getMenu(opts = {}) {
 
   // Admin views include brand-new / empty child categories so they can be
   // configured (offered, given a footer button) as soon as they exist in Square.
-  if (opts.includeEmpty && parentId) {
+  if (opts.includeEmpty && childIds.size) {
     const present = new Set(entries.map((e) => e.name.toLowerCase()));
     for (const [id, c] of categories) {
       if (!childIds.has(id)) continue;
@@ -253,7 +262,7 @@ async function getMenu(opts = {}) {
     }
   }
 
-  if (parentId) {
+  if (childIds.size) {
     // Order children by their ordinal under the parent.
     const childOrder = new Map();
     let i = 0;
@@ -284,4 +293,20 @@ async function getFullMenu() {
   return getMenu({ applySelection: false, includeEmpty: true });
 }
 
-module.exports = { getMenu, getFullMenu, cleanName };
+// Every Square category (for the admin "categories in the app" picker), so new
+// categories can be added to the app without needing an "APP" parent in Square.
+async function getAllCategories() {
+  const objects = await listAllCatalog('CATEGORY');
+  const parentNorm = norm(PARENT_CATEGORY);
+  const out = [];
+  for (const obj of objects) {
+    if (obj.is_deleted) continue;
+    const name = obj.category_data?.name || '';
+    if (!name) continue;
+    out.push({ id: obj.id, name: cleanName(name), rawName: name, isParent: norm(name) === parentNorm });
+  }
+  out.sort((a, b) => a.name.localeCompare(b.name));
+  return out;
+}
+
+module.exports = { getMenu, getFullMenu, getAllCategories, cleanName };

@@ -8,7 +8,7 @@
 const db = require('./db');
 const orders = require('./orders');
 const cards = require('./cards');
-const { getSettings } = require('./settings');
+const { getSettings, isClosedDate } = require('./settings');
 
 const TZ = process.env.PREORDER_TZ || process.env.SEASON_TZ || 'Australia/Sydney';
 const LEAD_MIN = Number(process.env.PREORDER_LEAD_MIN || 15);
@@ -30,8 +30,7 @@ function zonedWallToUtc(y, m, d, hh, mm, tz) {
 function isClosureDate(fullDate) {
   let closures = [];
   try { closures = getSettings().closures || []; } catch {}
-  const md = String(fullDate).slice(5);
-  return closures.some((c) => c && (c.date === fullDate || (c.annual && String(c.date).slice(5) === md)));
+  return isClosedDate(closures, fullDate);
 }
 
 // Next occurrence (UTC Date) strictly after `after` for a recurrence rule.
