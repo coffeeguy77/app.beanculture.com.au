@@ -12,6 +12,8 @@ import Checkout from './components/Checkout.jsx';
 import Account from './components/Account.jsx';
 import ThemePicker from './components/ThemePicker.jsx';
 import Admin from './components/Admin.jsx';
+import Logo from './components/Logo.jsx';
+import SeasonalEffects from './components/SeasonalEffects.jsx';
 
 function readTable() {
   const p = new URLSearchParams(window.location.search);
@@ -29,6 +31,7 @@ export default function App() {
   const [activeItem, setActiveItem] = useState(null);
   const [showTheme, setShowTheme] = useState(false);
   const [completed, setCompleted] = useState(null);
+  const [activeTheme, setActiveTheme] = useState(null);
 
   const initialTable = readTable();
   const [dineIn, setDineIn] = useState(!!initialTable);
@@ -43,7 +46,10 @@ export default function App() {
     api.getConfig()
       .then((cfg) => {
         setConfig(cfg);
-        applyTheme(getSavedTheme() || cfg.theme);
+        // Priority: the customer's saved choice → active seasonal theme → default.
+        const active = getSavedTheme() || cfg.activeSeasonalTheme || cfg.theme;
+        applyTheme(active);
+        setActiveTheme(active);
       })
       .catch((e) => setLoadErr(e.message));
     api.getMenu().then(setMenu).catch((e) => setLoadErr(e.message));
@@ -64,10 +70,15 @@ export default function App() {
   function updateTheme(t) {
     applyTheme(t);
     setSavedTheme(t);
+    setActiveTheme(t);
   }
   function resetTheme() {
     setSavedTheme(null);
-    if (config) applyTheme(config.theme);
+    const a = (config && (config.activeSeasonalTheme || config.theme)) || null;
+    if (a) {
+      applyTheme(a);
+      setActiveTheme(a);
+    }
   }
   function onSignIn(u) {
     setUserState(u);
@@ -165,8 +176,9 @@ export default function App() {
 
   return (
     <div className="app">
+      {activeTheme?.effects && <SeasonalEffects effects={activeTheme.effects} />}
       <header className="topbar">
-        <div className="brand">{config.storeName || 'Bean Culture'}</div>
+        <div className="logo-wrap"><Logo height={26} /></div>
         <div className="icon-row">
           <button className="iconbtn" title="Theme" onClick={() => setShowTheme(true)}>🎨</button>
           <button className="iconbtn" title="Account" onClick={() => setView('account')}>
@@ -251,7 +263,7 @@ export default function App() {
       )}
       {showTheme && (
         <ThemePicker
-          presets={config.themePresets || []} baseTheme={config.theme}
+          presets={config.themePresets || []} seasonal={config.seasonalThemes || []} baseTheme={config.theme}
           current={getSavedTheme()} onApply={updateTheme} onReset={resetTheme} onClose={() => setShowTheme(false)}
         />
       )}

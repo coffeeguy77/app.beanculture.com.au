@@ -7,7 +7,7 @@ const orders = require('./lib/orders');
 const customers = require('./lib/customers');
 const loyalty = require('./lib/loyalty');
 const hours = require('./lib/hours');
-const { getSettings } = require('./lib/settings');
+const { getSettings, activeSeasonal, seasonalForPicker } = require('./lib/settings');
 
 const app = express();
 app.use(express.json({ limit: '256kb' }));
@@ -34,6 +34,8 @@ app.get('/api/config', async (_req, res) => {
     announcement: settings.announcement,
     theme: settings.theme,
     themePresets: settings.themePresets,
+    seasonalThemes: seasonalForPicker(settings),
+    activeSeasonalTheme: activeSeasonal(settings),
     hero: settings.hero,
     hours: hoursStatus,
   });

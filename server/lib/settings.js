@@ -25,6 +25,18 @@ const DEFAULTS = {
     { name: 'Matcha', brand: '#4f7a52', accent: '#5a9e63', bg: '#eef5ec', ink: '#25301f' },
     { name: 'Midnight', brand: '#e0879b', accent: '#e0879b', bg: '#1c1720', ink: '#f4eef1' },
   ],
+  // Seasonal themes auto-activate between from/to (MM-DD) and are also selectable
+  // any time in the theme customiser. `effects` drives the festive overlays.
+  seasonalThemes: [
+    {
+      id: 'christmas',
+      name: '🎄 Christmas',
+      from: '12-01',
+      to: '12-30',
+      theme: { brand: '#c1121f', accent: '#1b7a3d', bg: '#fbf4ef', ink: '#2b2b26', surface: '#ffffff', line: '#ecd9cf' },
+      effects: { snow: true, lights: true, ornaments: true },
+    },
+  ],
   // Hero carousel. Each slide links to a category (by display name), an item id,
   // an external url, or nothing.
   hero: [
@@ -80,4 +92,31 @@ function getSettings() {
   return deepMerge(DEFAULTS, over);
 }
 
-module.exports = { getSettings, DEFAULTS };
+// Today's MM-DD in the cafe's timezone.
+function todayMMDD(tz) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: tz || process.env.SEASON_TZ || 'Australia/Sydney',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date());
+  const m = {};
+  for (const p of parts) m[p.type] = p.value;
+  return `${m.month}-${m.day}`;
+}
+
+// The seasonal theme active for a given MM-DD (or null). Handles year-wrap ranges.
+function activeSeasonal(settings, mmdd) {
+  const day = mmdd || todayMMDD();
+  for (const s of settings.seasonalThemes || []) {
+    const inRange = s.from <= s.to ? day >= s.from && day <= s.to : day >= s.from || day <= s.to;
+    if (inRange) return { id: s.id, name: s.name, ...s.theme, effects: s.effects || {} };
+  }
+  return null;
+}
+
+// Seasonal themes flattened for the picker (colors + effects on one object).
+function seasonalForPicker(settings) {
+  return (settings.seasonalThemes || []).map((s) => ({ id: s.id, name: s.name, ...s.theme, effects: s.effects || {} }));
+}
+
+module.exports = { getSettings, DEFAULTS, todayMMDD, activeSeasonal, seasonalForPicker };

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 
-export default function ThemePicker({ presets, baseTheme, current, onApply, onReset, onClose }) {
+export default function ThemePicker({ presets, seasonal, baseTheme, current, onApply, onReset, onClose }) {
   const start = current || baseTheme;
   const [brand, setBrand] = useState(start.brand || '#b5566e');
   const [accent, setAccent] = useState(start.accent || '#d1547a');
@@ -36,6 +36,33 @@ export default function ThemePicker({ presets, baseTheme, current, onApply, onRe
               </div>
             ))}
           </div>
+
+          {seasonal && seasonal.length > 0 && (
+            <div>
+              <div className="group-title" style={{ marginTop: 4 }}>Seasonal · festive</div>
+              <div className="swatches">
+                {seasonal.map((s) => (
+                  <div
+                    key={s.id}
+                    className="swatch"
+                    onClick={() =>
+                      onApply({
+                        brand: s.brand, accent: s.accent, bg: s.bg, ink: s.ink,
+                        surface: s.surface, line: s.line, effects: s.effects, id: s.id, name: s.name,
+                      })
+                    }
+                  >
+                    <div className="dots">
+                      <i style={{ background: s.bg, border: '1px solid #0001' }} />
+                      <i style={{ background: s.brand }} />
+                      <i style={{ background: s.accent }} />
+                    </div>
+                    {s.name}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="group">
             <div className="group-title">Customise</div>

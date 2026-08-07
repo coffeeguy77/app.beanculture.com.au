@@ -254,3 +254,27 @@ img { max-width: 100%; }
 .tick { width: 66px; height: 66px; border-radius: 50%; background: #2e7d51; color: #fff; font-size: 34px; display: grid; place-items: center; margin: 0 auto; }
 .empty { padding: 48px 16px; text-align: center; color: var(--muted); }
 .card { background: var(--surface); border-radius: var(--radius); padding: 20px; box-shadow: var(--shadow-sm); }
+
+/* ── Logo ── */
+.logo-wrap { color: var(--brand); display: flex; align-items: center; }
+
+/* ── Seasonal effects (decorative, non-interactive) ── */
+.fx { position: fixed; inset: 0; max-width: var(--app-w); left: 50%; transform: translateX(-50%); pointer-events: none; z-index: 55; overflow: hidden; }
+
+.fx-snow { position: absolute; inset: 0; }
+.fx-flake { position: absolute; top: -6vh; color: #fff; text-shadow: 0 0 6px rgba(255,255,255,0.9); animation-name: fx-fall; animation-timing-function: linear; animation-iteration-count: infinite; will-change: transform; }
+@keyframes fx-fall {
+  0%   { transform: translateY(-6vh) translateX(0) rotate(0deg); }
+  100% { transform: translateY(112vh) translateX(var(--drift, 20px)) rotate(360deg); }
+}
+
+.fx-lights { position: absolute; top: 0; left: 0; right: 0; height: 26px; display: flex; justify-content: space-around; align-items: flex-start; }
+.fx-wire { position: absolute; top: 6px; left: 0; right: 0; height: 2px; background: rgba(60,40,20,0.35); }
+.fx-bulb { width: 9px; height: 9px; margin-top: 7px; border-radius: 50%; background: var(--c); box-shadow: 0 0 8px 2px var(--c); animation: fx-glow 1.8s ease-in-out infinite; }
+@keyframes fx-glow { 0%,100% { opacity: 0.35; box-shadow: 0 0 4px 0 var(--c); } 50% { opacity: 1; box-shadow: 0 0 12px 3px var(--c); } }
+
+.fx-ornaments { position: absolute; top: 0; left: 0; right: 0; display: flex; justify-content: space-around; }
+.fx-orn { display: flex; flex-direction: column; align-items: center; transform-origin: top center; animation: fx-sway 3.5s ease-in-out infinite; }
+.fx-orn-string { width: 1px; background: rgba(60,40,20,0.4); }
+.fx-orn-ball { font-size: 15px; line-height: 1; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.25)); }
+@keyframes fx-sway { 0%,100% { transform: rotate(-6deg); } 50% { transform: rotate(6deg); } }
