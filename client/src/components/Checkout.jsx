@@ -23,7 +23,7 @@ function dateStr(d) {
 }
 const WEEKDAYS = [['Mon', 1], ['Tue', 2], ['Wed', 3], ['Thu', 4], ['Fri', 5], ['Sat', 6], ['Sun', 0]];
 
-export default function Checkout({ config, cart, currency, dineIn, setDineIn, table, setTable, tableLock, onUnlockTable, onScanTable, name, setName, user, canOrder, onPaid, onScheduled, onBack }) {
+export default function Checkout({ config, cart, currency, dineIn, setDineIn, table, setTable, tableLock, onUnlockTable, onScanTable, name, setName, user, canOrder, preWhen, preAt, onPaid, onScheduled, onBack }) {
   const [status, setStatus] = useState('init');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -45,9 +45,11 @@ export default function Checkout({ config, cart, currency, dineIn, setDineIn, ta
   }
 
   // ---- scheduling + saved cards ----
-  const [when, setWhen] = useState('asap'); // asap | schedule | repeat
-  const [schedDate, setSchedDate] = useState(dateStr(new Date(Date.now() + 86400000)));
-  const [schedTime, setSchedTime] = useState('08:00');
+  // Seed from the takeaway Now/Later choice made on the menu.
+  const takeawayLater = dineIn === false && preWhen === 'later';
+  const [when, setWhen] = useState(takeawayLater ? 'schedule' : 'asap'); // asap | schedule | repeat
+  const [schedDate, setSchedDate] = useState((takeawayLater && preAt?.date) || dateStr(new Date(Date.now() + 86400000)));
+  const [schedTime, setSchedTime] = useState((takeawayLater && preAt?.time) || '08:00');
   const [repeatType, setRepeatType] = useState('weekly'); // daily | weekly
   const [repeatDays, setRepeatDays] = useState([1, 2, 3, 4, 5]);
   const [repeatTime, setRepeatTime] = useState('08:00');

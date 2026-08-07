@@ -66,6 +66,9 @@ img { max-width: 100%; }
   background: var(--accent-soft); color: var(--brand); font-size: 14px; font-weight: 600;
   display: flex; gap: 8px; align-items: center;
 }
+.closed-banner.preorder-banner { justify-content: space-between; gap: 12px; }
+.closed-banner.preorder-banner span { flex: 1; }
+.closed-banner.preorder-banner .btn { padding: 9px 14px; font-size: 14px; white-space: nowrap; flex: none; }
 
 /* Hero slider */
 .hero { padding: 12px 16px 4px; }

@@ -70,6 +70,14 @@ export default function App() {
   const [tableLock, setTableLock] = useState(initialTable ? 2 : 0);
   const unlockTable = () => setTableLock((l) => Math.max(0, l - 1));
 
+  // Takeaway timing: now (default) or later (scheduled via the calendar).
+  const [preWhen, setPreWhen] = useState('now');
+  const _tmr = new Date(Date.now() + 86400000);
+  const [preAt, setPreAt] = useState({
+    date: `${_tmr.getFullYear()}-${String(_tmr.getMonth() + 1).padStart(2, '0')}-${String(_tmr.getDate()).padStart(2, '0')}`,
+    time: '08:00',
+  });
+
   // Handle a QR scanned in-app: the code holds a URL like .../?table=7 (or a
   // bare number). Pull out the table, switch to Dine in and lock it in.
   function applyScannedTable(raw) {
@@ -349,6 +357,7 @@ export default function App() {
       dineIn={dineIn} setDineIn={setDineIn} table={table} setTable={setTable}
       tableLock={tableLock} onUnlockTable={unlockTable} onScanTable={applyScannedTable}
       name={name} setName={setName} user={user} canOrder={canOrder}
+      preWhen={preWhen} preAt={preAt}
       onPaid={onPaid} onScheduled={onScheduledOrder} onBack={() => setView(wide ? 'home' : 'cart')}
     />
   );
@@ -381,7 +390,10 @@ export default function App() {
         </div>
       )}
       {canOrder && preorder && (
-        <div className="closed-banner"><span>Pre-order now — we’ll start it when we open.</span></div>
+        <div className="closed-banner preorder-banner">
+          <span>Pre-order now — we’ll start it when we open.</span>
+          <button className="btn" onClick={() => { const el = document.querySelector('.menu'); if (el) el.scrollIntoView({ behavior: 'smooth' }); }}>Pre-order now</button>
+        </div>
       )}
 
       {view === 'account' && (
@@ -412,7 +424,8 @@ export default function App() {
               }}
             />
             {!(wide && view === 'checkout') && (
-              <OrderTypeBar dineIn={dineIn} setDineIn={setDineIn} table={table} setTable={setTable} lock={tableLock} onUnlock={unlockTable} onScanned={applyScannedTable} />
+              <OrderTypeBar dineIn={dineIn} setDineIn={setDineIn} table={table} setTable={setTable} lock={tableLock} onUnlock={unlockTable} onScanned={applyScannedTable}
+                when={preWhen} setWhen={setPreWhen} at={preAt} setAt={setPreAt} hours={config.hours} />
             )}
             <div className="search">
               <input placeholder="Search the menu…" value={query} onChange={(e) => setQuery(e.target.value)} />
