@@ -342,6 +342,18 @@ export default function App() {
     );
   }
 
+  // On wide layouts the checkout lives in the cart sidebar (true one-page).
+  const checkoutEl = (
+    <Checkout
+      config={config} cart={cart} currency={currency}
+      dineIn={dineIn} setDineIn={setDineIn} table={table} setTable={setTable}
+      tableLock={tableLock} onUnlockTable={unlockTable} onScanTable={applyScannedTable}
+      name={name} setName={setName} user={user} canOrder={canOrder}
+      onPaid={onPaid} onScheduled={onScheduledOrder} onBack={() => setView(wide ? 'home' : 'cart')}
+    />
+  );
+  const showLayout = view === 'home' || (wide && view === 'checkout');
+
   return (
     <div className="app">
       {activeTheme?.effects && <SeasonalEffects effects={activeTheme.effects} />}
@@ -383,7 +395,7 @@ export default function App() {
         />
       )}
 
-      {view === 'home' && (
+      {showLayout && (
         <div className="layout">
           <div className="main-col">
             <HeroSlider
@@ -399,7 +411,9 @@ export default function App() {
                 else if (link.type === 'scroll') { const el = document.querySelector('.menu'); if (el) el.scrollIntoView({ behavior: 'smooth' }); }
               }}
             />
-            <OrderTypeBar dineIn={dineIn} setDineIn={setDineIn} table={table} setTable={setTable} lock={tableLock} onUnlock={unlockTable} onScanned={applyScannedTable} />
+            {!(wide && view === 'checkout') && (
+              <OrderTypeBar dineIn={dineIn} setDineIn={setDineIn} table={table} setTable={setTable} lock={tableLock} onUnlock={unlockTable} onScanned={applyScannedTable} />
+            )}
             <div className="search">
               <input placeholder="Search the menu…" value={query} onChange={(e) => setQuery(e.target.value)} />
             </div>
@@ -424,16 +438,20 @@ export default function App() {
             <InstallButton />
           </div>
           <aside className="cart-aside">
-            <CartPanel
-              cart={cart} currency={currency} onQty={updateQty}
-              dineIn={dineIn} table={table}
-              onCheckout={() => setView('checkout')}
-            />
+            {view === 'checkout' ? (
+              <div className="aside-checkout">{checkoutEl}</div>
+            ) : (
+              <CartPanel
+                cart={cart} currency={currency} onQty={updateQty}
+                dineIn={dineIn} table={table}
+                onCheckout={() => setView('checkout')}
+              />
+            )}
           </aside>
         </div>
       )}
 
-      {view === 'cart' && (
+      {!wide && view === 'cart' && (
         <CartView
           cart={cart} currency={currency} onQty={updateQty}
           dineIn={dineIn} table={table}
@@ -441,15 +459,7 @@ export default function App() {
         />
       )}
 
-      {view === 'checkout' && (
-        <Checkout
-          config={config} cart={cart} currency={currency}
-          dineIn={dineIn} setDineIn={setDineIn} table={table} setTable={setTable}
-          tableLock={tableLock} onUnlockTable={unlockTable} onScanTable={applyScannedTable}
-          name={name} setName={setName} user={user} canOrder={canOrder}
-          onPaid={onPaid} onScheduled={onScheduledOrder} onBack={() => setView(wide ? 'home' : 'cart')}
-        />
-      )}
+      {!wide && view === 'checkout' && checkoutEl}
 
       {activeItem && (
         <ItemModal item={activeItem} currency={currency} onClose={() => setActiveItem(null)} onAdd={addToCart} />

@@ -547,3 +547,13 @@ img { max-width: 100%; }
   .stat-tiles { grid-template-columns: repeat(3, 1fr); }
   .ins-two { grid-template-columns: 1fr 1fr; gap: 14px; }
 }
+
+/* Desktop one-page checkout: payment/scheduling inside the cart sidebar. */
+@media (min-width: 900px) {
+  .aside-checkout {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 18px;
+    box-shadow: var(--shadow-sm); max-height: calc(100vh - 96px); overflow-y: auto;
+  }
+  .aside-checkout .page { padding: 16px; max-width: none; margin: 0; }
+  .aside-checkout .page > h2 { font-size: 20px; }
+}
