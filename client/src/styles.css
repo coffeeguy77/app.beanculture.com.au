@@ -560,3 +560,12 @@ img { max-width: 100%; }
   .aside-checkout .page { padding: 16px; max-width: none; margin: 0; }
   .aside-checkout .page > h2 { font-size: 20px; }
 }
+
+/* Gift cards / balance modal */
+.gc-sheet { max-width: 460px; border-radius: 22px; }
+@media (min-width: 720px) { .backdrop:has(.gc-sheet) { align-items: center; } }
+.gc-balance { background: var(--brand-soft); color: var(--brand); border-radius: 14px; padding: 12px 14px; font-size: 14px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.gc-balance strong { font-size: 18px; }
+.gc-amounts { display: flex; flex-wrap: wrap; gap: 8px; }
+.gc-result { text-align: center; padding: 10px 0; }
+.gc-code { font-family: ui-monospace, Menlo, monospace; font-size: 20px; font-weight: 700; letter-spacing: 2px; background: var(--brand-soft); color: var(--ink); border-radius: 12px; padding: 14px; margin: 12px 0; word-break: break-all; }

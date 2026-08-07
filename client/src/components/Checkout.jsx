@@ -65,8 +65,9 @@ export default function Checkout({ config, cart, currency, dineIn, setDineIn, ta
   const [repeatTime, setRepeatTime] = useState('08:00');
   const [payTiming, setPayTiming] = useState('now'); // now | later (schedule only)
   const [savedCards, setSavedCards] = useState([]);
-  const [cardChoice, setCardChoice] = useState('new'); // saved card id | 'new'
+  const [cardChoice, setCardChoice] = useState('new'); // saved card id | 'new' | 'balance'
   const [saveNew, setSaveNew] = useState(false);
+  const [giftBalance, setGiftBalance] = useState(0);
 
   const paymentsRef = useRef(null);
   const cardRef = useRef(null);
@@ -93,6 +94,7 @@ export default function Checkout({ config, cart, currency, dineIn, setDineIn, ta
         setSavedCards(list);
         if (list.length) setCardChoice(list[0].id);
       }).catch(() => {});
+      api.giftBalance(user.customerId).then((b) => setGiftBalance(b.balance || 0)).catch(() => {});
     }
   }, [user]);
 
@@ -202,6 +204,13 @@ export default function Checkout({ config, cart, currency, dineIn, setDineIn, ta
       // ---- Pay now (ASAP or scheduled prepaid) ----
       const pickupAt = isSchedule ? pickupIso() : null;
       const order = await createOrder(pickupAt);
+
+      // Pay from prepaid balance (gift card).
+      if (cardChoice === 'balance') {
+        const pay = await api.pay({ orderId: order.orderId, totalMoney: order.totalMoney, customerId: user.customerId, payWith: 'balance' });
+        if (pay.status === 'COMPLETED' || pay.status === 'APPROVED') return onPaid(pay, order, { pickupAt });
+        throw new Error(`Payment ${pay.status}`);
+      }
 
       if (!order.totalMoney || order.totalMoney.amount === 0) {
         await api.pay({ orderId: order.orderId, totalMoney: order.totalMoney });
@@ -361,8 +370,14 @@ export default function Checkout({ config, cart, currency, dineIn, setDineIn, ta
       {/* Payment method */}
       <div className="group" style={{ marginTop: 16 }}>
         <div className="group-title">Payment</div>
-        {savedCards.length > 0 && (
+        {(savedCards.length > 0 || (!autocharge && giftBalance >= cartTotal && cartTotal > 0)) && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 10 }}>
+            {!autocharge && giftBalance >= cartTotal && cartTotal > 0 && (
+              <label className={`reward ${cardChoice === 'balance' ? 'picked' : ''}`} style={{ cursor: 'pointer' }}>
+                <span>Pay with balance · {formatMoney(giftBalance, currency)}</span>
+                <input type="radio" name="card" checked={cardChoice === 'balance'} onChange={() => setCardChoice('balance')} />
+              </label>
+            )}
             {savedCards.map((c) => (
               <label key={c.id} className={`reward ${cardChoice === c.id ? 'picked' : ''}`} style={{ cursor: 'pointer' }}>
                 <span>{c.brand} ···· {c.last4}</span>

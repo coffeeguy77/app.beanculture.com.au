@@ -23,6 +23,11 @@ export const api = {
   getScheduled: (customerId) => req(`/api/scheduled?customerId=${encodeURIComponent(customerId)}`),
   schedule: (payload) => req('/api/scheduled', { method: 'POST', body: JSON.stringify(payload) }),
   cancelScheduled: (id, customerId) => req(`/api/scheduled/${encodeURIComponent(id)}/cancel`, { method: 'POST', body: JSON.stringify({ customerId }) }),
+  // Gift cards / prepaid balance
+  giftBalance: (customerId) => req(`/api/giftcard/balance?customerId=${encodeURIComponent(customerId)}`),
+  giftTopUp: (payload) => req('/api/giftcard/topup', { method: 'POST', body: JSON.stringify(payload) }),
+  giftBuy: (payload) => req('/api/giftcard/buy', { method: 'POST', body: JSON.stringify(payload) }),
+  giftRedeem: (customerId, gan) => req('/api/giftcard/redeem', { method: 'POST', body: JSON.stringify({ customerId, gan }) }),
   // Analytics
   track: (events) => req('/api/track', { method: 'POST', body: JSON.stringify({ events }) }),
   adminAnalytics: (pass, days = 30) => req(`/api/admin/analytics?days=${days}&pass=${encodeURIComponent(pass || '')}`),

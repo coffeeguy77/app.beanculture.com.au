@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { api, formatMoney } from '../api.js';
+import GiftCards from './GiftCards.jsx';
 
-export default function Account({ user, currency, onSignIn, onSignOut, onReorder, onBack }) {
+export default function Account({ user, currency, config, onSignIn, onSignOut, onReorder, onBack }) {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [busy, setBusy] = useState(false);
@@ -10,6 +11,8 @@ export default function Account({ user, currency, onSignIn, onSignOut, onReorder
   const [history, setHistory] = useState(null);
   const [cards, setCards] = useState(null);
   const [scheduled, setScheduled] = useState(null);
+  const [balance, setBalance] = useState(null);
+  const [gift, setGift] = useState(null); // null | 'topup' | 'buy' | 'redeem'
 
   useEffect(() => {
     if (user?.phone) api.getLoyalty(user.phone).then(setLoyalty).catch(() => {});
@@ -17,6 +20,7 @@ export default function Account({ user, currency, onSignIn, onSignOut, onReorder
       api.getHistory(user.customerId).then((r) => setHistory(r.orders || [])).catch(() => setHistory([]));
       api.getCards(user.customerId).then((r) => setCards(r.cards || [])).catch(() => setCards([]));
       api.getScheduled(user.customerId).then((r) => setScheduled(r.orders || [])).catch(() => setScheduled([]));
+      api.giftBalance(user.customerId).then((b) => setBalance(b.balance || 0)).catch(() => setBalance(0));
     }
   }, [user]);
 
@@ -78,6 +82,25 @@ export default function Account({ user, currency, onSignIn, onSignOut, onReorder
             </div>
           )}
         </div>
+      )}
+
+      <div className="card" style={{ marginTop: 18 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div className="muted" style={{ fontSize: 13 }}>Balance</div>
+            <div style={{ fontSize: 26, fontWeight: 800, color: 'var(--brand)' }}>{balance == null ? '—' : formatMoney(balance, currency)}</div>
+          </div>
+          <button className="btn" onClick={() => setGift('topup')}>Top up</button>
+        </div>
+        <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
+          <button className="btn ghost" style={{ flex: 1, fontSize: 14 }} onClick={() => setGift('buy')}>Buy a gift card</button>
+          <button className="btn ghost" style={{ flex: 1, fontSize: 14 }} onClick={() => setGift('redeem')}>Add a code</button>
+        </div>
+      </div>
+
+      {gift && config && (
+        <GiftCards config={config} user={user} initialBalance={balance} initialMode={gift}
+          onClose={() => setGift(null)} onBalance={(b) => setBalance(b)} />
       )}
 
       {scheduled && scheduled.length > 0 && (

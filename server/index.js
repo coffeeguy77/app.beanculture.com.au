@@ -11,6 +11,7 @@ const { getSettings, activeSeasonal, seasonalForPicker } = require('./lib/settin
 const cloudinary = require('./lib/cloudinary');
 const db = require('./lib/db');
 const cards = require('./lib/cards');
+const giftcards = require('./lib/giftcards');
 const scheduler = require('./lib/scheduled');
 
 const PREORDER_TZ = process.env.PREORDER_TZ || process.env.SEASON_TZ || 'Australia/Sydney';
@@ -167,7 +168,7 @@ app.post('/api/orders', async (req, res) => {
 // ---- Pay (card token, or complete a $0 order for comp/full-loyalty) ----
 app.post('/api/pay', async (req, res) => {
   try {
-    const { sourceId, orderId, totalMoney, verificationToken, buyerEmail, customerId } =
+    const { sourceId, orderId, totalMoney, verificationToken, buyerEmail, customerId, payWith } =
       req.body || {};
     if (!orderId) return res.status(400).json({ error: 'Missing order id' });
 
@@ -176,6 +177,15 @@ app.post('/api/pay', async (req, res) => {
       const fresh = await orders.getOrder(orderId);
       await orders.payZeroOrder(orderId, fresh.version);
       return res.json({ status: 'COMPLETED', comped: true });
+    }
+
+    // Pay from the customer's prepaid gift-card balance.
+    if (payWith === 'balance') {
+      const gc = await giftcards.getBalance(customerId);
+      if (!gc || !gc.gan) return res.status(402).json({ error: 'No balance available' });
+      if (gc.balance < totalMoney.amount) return res.status(402).json({ error: 'Not enough balance — top up or pay by card.' });
+      const payment = await giftcards.payWithGiftCard({ gan: gc.gan, orderId, amountMoney: totalMoney, customerId });
+      return res.json({ status: payment.status, paymentId: payment.id, paidWithBalance: true });
     }
 
     if (!sourceId) return res.status(400).json({ error: 'Missing payment token' });
@@ -287,6 +297,47 @@ app.post('/api/scheduled/:id/cancel', async (req, res) => {
       try { await orders.cancelPayment(row.paymentId); } catch {}
     }
     res.json({ ok: !!row });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+// ---- Gift cards: prepaid balance, gifting, redeem ----
+app.get('/api/giftcard/balance', async (req, res) => {
+  try {
+    const { customerId } = req.query;
+    if (!customerId) return res.json({ balance: 0 });
+    const b = await giftcards.getBalance(customerId);
+    res.json(b || { balance: 0 });
+  } catch (e) {
+    res.json({ balance: 0, error: e.message });
+  }
+});
+app.post('/api/giftcard/topup', async (req, res) => {
+  try {
+    const { customerId, sourceId, amount, verificationToken } = req.body || {};
+    if (!sourceId) return res.status(400).json({ error: 'Missing payment token' });
+    const amountMoney = { amount: Math.max(100, Number(amount) || 0), currency: giftcards.CURRENCY };
+    res.json(await giftcards.topUp({ customerId, sourceId, amountMoney, verificationToken }));
+  } catch (e) {
+    res.status(402).json({ error: e.message });
+  }
+});
+app.post('/api/giftcard/buy', async (req, res) => {
+  try {
+    const { sourceId, amount, verificationToken, customerId } = req.body || {};
+    if (!sourceId) return res.status(400).json({ error: 'Missing payment token' });
+    const amountMoney = { amount: Math.max(500, Number(amount) || 0), currency: giftcards.CURRENCY };
+    res.json(await giftcards.buyGift({ sourceId, amountMoney, verificationToken, customerId }));
+  } catch (e) {
+    res.status(402).json({ error: e.message });
+  }
+});
+app.post('/api/giftcard/redeem', async (req, res) => {
+  try {
+    const { customerId, gan } = req.body || {};
+    if (!gan) return res.status(400).json({ error: 'Enter a gift card code' });
+    res.json(await giftcards.addToAccount({ customerId, gan }));
   } catch (e) {
     res.status(400).json({ error: e.message });
   }

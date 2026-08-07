@@ -406,6 +406,7 @@ export default function App() {
         <Account
           user={user}
           currency={currency}
+          config={config}
           onSignIn={onSignIn}
           onSignOut={onSignOut}
           onReorder={reorder}
