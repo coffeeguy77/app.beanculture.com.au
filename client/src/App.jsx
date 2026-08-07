@@ -151,6 +151,23 @@ export default function App() {
     window.scrollTo({ top: 0 });
   }
 
+  // Bring the menu list up to just under the sticky header + category bar,
+  // WITHOUT jumping all the way to the top (hero). Used when switching category
+  // from the bottom nav so you land on the category, category chips still in view.
+  function scrollToMenu() {
+    const run = () => {
+      const menuEl = document.querySelector('.menu');
+      if (!menuEl) return;
+      const bar = document.querySelector('.topbar');
+      const nav = document.querySelector('.catnav');
+      const offset = (bar?.offsetHeight || 64) + (nav?.offsetHeight || 48);
+      const absTop = menuEl.getBoundingClientRect().top + window.scrollY;
+      window.scrollTo({ top: Math.max(0, absTop - offset) });
+    };
+    // Run after the view/category has re-rendered.
+    requestAnimationFrame(() => requestAnimationFrame(run));
+  }
+
   const currency = config?.currency || menu?.currency || 'AUD';
   const layoutMode = config?.layoutMode || 'onepage';
   const xmas = activeTheme?.id === 'christmas';
@@ -457,7 +474,9 @@ export default function App() {
                 categories={menu.categories.map((c) => c.category)}
                 active={layoutMode === 'single' ? (activeGroup && activeGroup.length === 1 ? activeGroup[0] : null) : activeCat}
                 onPick={(cat) => {
-                  if (layoutMode === 'single') { setActiveGroup([cat]); window.scrollTo({ top: 0 }); }
+                  // Category chips are sticky, so just swap the list below — don't
+                  // yank the page to the top.
+                  if (layoutMode === 'single') setActiveGroup([cat]);
                   else setActiveCat(cat);
                 }}
               />
@@ -528,7 +547,7 @@ export default function App() {
                 className={`navitem ${activeSlot ? 'on' : ''}`}
                 onClick={() => {
                   setQuery('');
-                  if (layoutMode === 'single') { setActiveGroup(slot.cats); setView('home'); window.scrollTo({ top: 0 }); }
+                  if (layoutMode === 'single') { setActiveGroup(slot.cats); setView('home'); scrollToMenu(); }
                   else { setView('home'); setActiveCat(slot.cats[0]); }
                 }}
                 aria-label={slot.label}
