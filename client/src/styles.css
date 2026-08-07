@@ -79,6 +79,14 @@ img { max-width: 100%; }
   padding: 20px; display: flex; flex-direction: column; justify-content: flex-end;
   color: #fff; cursor: pointer; position: relative; overflow: hidden; box-shadow: var(--shadow-sm);
 }
+/* Image banners: show the whole graphic, never cropped. Height follows the image. */
+.hero-slide.has-img { padding: 0; min-height: 0; display: block; background: var(--surface); }
+.hero-img { width: 100%; height: auto; display: block; border-radius: 20px; }
+.hero-slide.has-img .hero-copy {
+  position: absolute; left: 0; right: 0; bottom: 0; padding: 20px;
+  display: flex; flex-direction: column; align-items: flex-start;
+  background: linear-gradient(to top, rgba(0,0,0,0.45), rgba(0,0,0,0));
+}
 .hero-slide h3 { margin: 0 0 4px; font-size: 24px; font-family: Georgia, serif; }
 .hero-slide p { margin: 0 0 12px; font-size: 14px; opacity: 0.95; }
 .hero-cta {

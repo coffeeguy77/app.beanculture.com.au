@@ -275,9 +275,19 @@ export default function Admin({ onExit }) {
         {!data.cloudinary && <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>Add Cloudinary keys in Railway to enable image upload; you can still paste a URL.</p>}
         {hero.map((sl, i) => (
           <div key={i} style={{ border: '1px solid var(--line)', borderRadius: 12, padding: 10, marginBottom: 10 }}>
-            <div style={{ height: 70, borderRadius: 8, marginBottom: 8, background: sl.bg, backgroundSize: 'cover', backgroundPosition: 'center', display: 'flex', alignItems: 'flex-end', padding: 8, color: sl.textColor || '#fff' }}>
-              <strong>{sl.title || '(no title)'}</strong>
-            </div>
+            {(() => {
+              const img = sl.image || (typeof sl.bg === 'string' && (sl.bg.match(/url\((['"]?)(.*?)\1\)/) || [])[2]) || '';
+              return img ? (
+                <div style={{ borderRadius: 8, marginBottom: 8, overflow: 'hidden', position: 'relative', background: '#f3f3f3' }}>
+                  <img src={img} alt="" style={{ width: '100%', height: 'auto', display: 'block' }} />
+                  {sl.title && <strong style={{ position: 'absolute', left: 8, bottom: 8, color: sl.textColor || '#fff', textShadow: '0 1px 3px rgba(0,0,0,.5)' }}>{sl.title}</strong>}
+                </div>
+              ) : (
+                <div style={{ height: 70, borderRadius: 8, marginBottom: 8, background: sl.bg, backgroundSize: 'cover', backgroundPosition: 'center', display: 'flex', alignItems: 'flex-end', padding: 8, color: sl.textColor || '#fff' }}>
+                  <strong>{sl.title || '(no title)'}</strong>
+                </div>
+              );
+            })()}
             <div style={{ ...row, justifyContent: 'flex-end', marginBottom: 6 }}>
               <button className="link" onClick={() => moveSlide(i, -1)}>↑</button>
               <button className="link" onClick={() => moveSlide(i, 1)}>↓</button>
@@ -300,7 +310,7 @@ export default function Admin({ onExit }) {
             <div style={row}>
               <label className="btn ghost" style={{ padding: '8px 12px', fontSize: 13, cursor: 'pointer' }}>
                 Upload image
-                <input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files[0]; if (f) uploadImage(f, (url) => updSlide(i, { bg: `url(${url}) center/cover`, image: url })); }} />
+                <input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files[0]; if (f) uploadImage(f, (url) => updSlide(i, { image: url, bg: `url(${url}) center/contain no-repeat` })); }} />
               </label>
               <input style={{ flex: 1, padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 10, fontSize: 11 }} value={sl.bg || ''} onChange={(e) => updSlide(i, { bg: e.target.value })} placeholder="background (gradient or url(...) center/cover)" />
             </div>
