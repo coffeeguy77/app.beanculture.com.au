@@ -259,7 +259,7 @@ img { max-width: 100%; }
 .logo-wrap { color: var(--brand); display: flex; align-items: center; }
 
 /* ── Seasonal effects (decorative, non-interactive) ── */
-.fx { position: fixed; inset: 0; max-width: var(--app-w); left: 50%; transform: translateX(-50%); pointer-events: none; z-index: 55; overflow: hidden; }
+.fx { position: fixed; inset: 0; width: 100vw; left: 0; pointer-events: none; z-index: 55; overflow: hidden; }
 
 .fx-snow { position: absolute; inset: 0; }
 .fx-flake { position: absolute; top: -6vh; color: #fff; text-shadow: 0 0 6px rgba(255,255,255,0.9); animation-name: fx-fall; animation-timing-function: linear; animation-iteration-count: infinite; will-change: transform; }

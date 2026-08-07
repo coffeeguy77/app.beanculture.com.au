@@ -5,7 +5,7 @@ import React, { useMemo } from 'react';
 export default function SeasonalEffects({ effects }) {
   const flakes = useMemo(() => {
     const chars = ['❄', '❅', '•', '✦'];
-    return Array.from({ length: 46 }, (_, i) => ({
+    return Array.from({ length: 64 }, (_, i) => ({
       id: i,
       left: Math.random() * 100,
       size: 6 + Math.random() * 12,

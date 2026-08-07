@@ -45,12 +45,7 @@ export default function ThemePicker({ presets, seasonal, baseTheme, current, onA
                   <div
                     key={s.id}
                     className="swatch"
-                    onClick={() =>
-                      onApply({
-                        brand: s.brand, accent: s.accent, bg: s.bg, ink: s.ink,
-                        surface: s.surface, line: s.line, effects: s.effects, id: s.id, name: s.name,
-                      })
-                    }
+                    onClick={() => onApply({ ...s })}
                   >
                     <div
                       style={{
