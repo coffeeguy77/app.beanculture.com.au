@@ -5,6 +5,8 @@ import IconPicker from './IconPicker.jsx';
 import { formatMoney } from '../api.js';
 
 const LINK_TYPES = ['scroll', 'category', 'account', 'url', 'none'];
+// Built-in festive themes ship with the app and can be turned Off but not deleted.
+const BUILTIN_SEASONAL = ['christmas', 'newyear', 'australiaday', 'lunarnewyear', 'valentines', 'stpatricks', 'easter', 'anzac', 'mothersday', 'floriade', 'fathersday', 'halloween'];
 
 function TopRow({ name, n, max }) {
   return (
@@ -63,6 +65,7 @@ export default function Admin({ onExit }) {
   const [syncMsg, setSyncMsg] = useState('');
   const [adminCat, setAdminCat] = useState([]);
   const [sqCats, setSqCats] = useState([]);
+  const [catsLocked, setCatsLocked] = useState(true);
   const [expanded, setExpanded] = useState({});
   const [tab, setTab] = useState('store');
   const [qrFrom, setQrFrom] = useState(1);
@@ -467,23 +470,50 @@ export default function Admin({ onExit }) {
             {tab === 'menu' && (
               <>
                 <div className="card" style={card}>
-                  <div className="group-title">Categories in the app</div>
-                  <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                    <div className="group-title" style={{ margin: 0 }}>Categories in the app</div>
+                    <button type="button" className={`chip ${catsLocked ? 'on' : ''}`} onClick={() => setCatsLocked((v) => !v)}
+                      style={{ fontSize: 12 }} title={catsLocked ? 'Locked — tap to make changes' : 'Unlocked — tap to lock'}>
+                      {catsLocked ? '🔒 Locked' : '🔓 Unlocked'}
+                    </button>
+                  </div>
+                  <p className="muted" style={{ fontSize: 12, marginTop: 6 }}>
                     Pick which of your Square categories appear in the app. New categories show up here after you
                     press Sync (Store tab). Leave all unticked to use your “APP” parent category automatically.
+                    {catsLocked ? ' Unlock to change what’s on or off.' : ''}
                   </p>
                   {sqCats.length === 0 && <p className="muted" style={{ fontSize: 12 }}>No Square categories loaded yet — create categories in Square, then Sync.</p>}
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                    {sqCats.map((c) => {
-                      const on = menuCategories.includes(c.id);
-                      return (
-                        <button key={c.id} type="button" className={`chip ${on ? 'on' : ''}`} onClick={() => toggleMenuCat(c.id)}
-                          title={c.isParent ? 'This is your APP master category' : ''}>
-                          {c.name}{c.isParent ? ' ★' : ''}
-                        </button>
-                      );
-                    })}
-                  </div>
+                  {(() => {
+                    // Show the currently-active categories first (highlighted) so
+                    // you can see at a glance what's on, then the rest.
+                    const on = sqCats.filter((c) => menuCategories.includes(c.id));
+                    const off = sqCats.filter((c) => !menuCategories.includes(c.id));
+                    const renderChip = (c, isOn) => (
+                      <button key={c.id} type="button" className={`chip ${isOn ? 'on' : ''}`}
+                        disabled={catsLocked}
+                        onClick={() => !catsLocked && toggleMenuCat(c.id)}
+                        style={catsLocked ? { opacity: isOn ? 0.85 : 0.5, cursor: 'not-allowed' } : undefined}
+                        title={c.isParent ? 'This is your APP master category' : (catsLocked ? 'Unlock to change' : '')}>
+                        {isOn ? '✓ ' : ''}{c.name}{c.isParent ? ' ★' : ''}
+                      </button>
+                    );
+                    return (
+                      <>
+                        {on.length > 0 && (
+                          <>
+                            <p className="muted" style={{ fontSize: 11, margin: '10px 0 6px', textTransform: 'uppercase', letterSpacing: 0.4 }}>Showing in the app</p>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>{on.map((c) => renderChip(c, true))}</div>
+                          </>
+                        )}
+                        {off.length > 0 && (
+                          <>
+                            <p className="muted" style={{ fontSize: 11, margin: '12px 0 6px', textTransform: 'uppercase', letterSpacing: 0.4 }}>{on.length > 0 ? 'Hidden — tap to add' : 'All categories'}</p>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>{off.map((c) => renderChip(c, false))}</div>
+                          </>
+                        )}
+                      </>
+                    );
+                  })()}
                   {menuCategories.length > 0 && <p className="muted" style={{ fontSize: 11, marginTop: 8 }}>{menuCategories.length} categor{menuCategories.length === 1 ? 'y' : 'ies'} selected · unticked categories are hidden from the app.</p>}
                 </div>
 
@@ -723,7 +753,9 @@ export default function Admin({ onExit }) {
                           <div style={{ ...row, justifyContent: 'space-between' }}>
                             <input value={t.name || ''} onChange={(e) => updSeasonal(i, { name: e.target.value })} style={{ flex: 1, minWidth: 0, fontWeight: 700, border: 'none', background: 'transparent', fontSize: 15 }} />
                             <label style={{ ...row, fontSize: 12 }} className="muted"><input type="checkbox" checked={t.enabled !== false} onChange={(e) => updSeasonal(i, { enabled: e.target.checked })} /> On</label>
-                            <button className="link" style={{ color: '#c0392b' }} onClick={() => rmSeasonal(i)}>✕</button>
+                            {BUILTIN_SEASONAL.includes(t.id)
+                              ? <span title="Built-in festive theme — turn it Off to hide it" style={{ width: 14 }} />
+                              : <button className="link" style={{ color: '#c0392b' }} onClick={() => rmSeasonal(i)}>✕</button>}
                           </div>
                           <div style={{ ...row, marginTop: 6, gap: 8 }}>
                             <label className="field" style={{ flex: 1 }}><span>From</span><input type="date" value={`2028-${t.from}`} onChange={(e) => updSeasonal(i, { from: e.target.value.slice(5) })} /></label>

@@ -456,7 +456,11 @@ app.use(express.static(clientDist));
 app.get('*', (_req, res) => res.sendFile(path.join(clientDist, 'index.html')));
 
 const PORT = process.env.PORT || 8080;
+// Start serving immediately so Railway's health check passes, then bring up the
+// database in the background (with retries). getSettings() falls back to the
+// built-in defaults until the DB is ready, so a slow/blipping DB never blocks
+// the storefront from loading.
+app.listen(PORT, () => console.log(`Bean Culture app on :${PORT} (Square env: ${sq.ENV})`));
 db.init().finally(() => {
   scheduler.start();
-  app.listen(PORT, () => console.log(`Bean Culture app on :${PORT} (Square env: ${sq.ENV})`));
 });

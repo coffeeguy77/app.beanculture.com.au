@@ -193,7 +193,28 @@ function getSettings() {
   }
   // Precedence: DEFAULTS < SETTINGS_JSON env < admin edits stored in the DB.
   const merged = deepMerge(DEFAULTS, env);
-  return deepMerge(merged, db.getOverrides());
+  const full = deepMerge(merged, db.getOverrides());
+  return reconcileSeasonal(full);
+}
+
+// Built-in festive themes must ALWAYS be present, even if an old saved settings
+// blob replaced the whole seasonalThemes array (arrays replace wholesale on
+// merge). We rebuild the list from the DEFAULTS by id: each built-in is patched
+// by any saved override with the same id (so enabled/dates/colours/banner edits
+// persist), and any saved theme whose id isn't a built-in is a custom event and
+// is appended. This keeps the 12 Canberra festive themes from ever disappearing.
+const BUILTIN_SEASONAL_IDS = new Set(DEFAULTS.seasonalThemes.map((t) => t.id));
+function reconcileSeasonal(settings) {
+  const saved = Array.isArray(settings.seasonalThemes) ? settings.seasonalThemes : [];
+  const savedById = new Map(saved.map((t) => [t.id, t]));
+  const out = DEFAULTS.seasonalThemes.map((def) => {
+    const ov = savedById.get(def.id);
+    return ov ? deepMerge(def, ov) : def;
+  });
+  for (const t of saved) {
+    if (t && t.id && !BUILTIN_SEASONAL_IDS.has(t.id)) out.push(t);
+  }
+  return { ...settings, seasonalThemes: out };
 }
 
 // Today's MM-DD in the cafe's timezone.

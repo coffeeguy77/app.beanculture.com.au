@@ -6,12 +6,15 @@ let pool = null;
 let cache = {};
 let ready = false;
 
-async function init() {
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function init(attempt = 1) {
   const url = process.env.DATABASE_URL;
   if (!url) {
     console.warn('[db] DATABASE_URL not set — admin settings will not persist, scheduling disabled.');
     return;
   }
+  const MAX_ATTEMPTS = 6;
   try {
     const { Pool } = require('pg');
     pool = new Pool({
@@ -65,7 +68,18 @@ async function init() {
     ready = true;
     console.log('[db] connected; settings loaded, scheduling enabled');
   } catch (e) {
-    console.error('[db] init failed:', e.message);
+    // A transient blip (common when the DB and web service redeploy together)
+    // shouldn't disable persistence for the whole deployment — retry a few times
+    // with backoff before giving up.
+    try { await pool?.end(); } catch {}
+    pool = null;
+    if (attempt < MAX_ATTEMPTS) {
+      const wait = Math.min(1000 * 2 ** (attempt - 1), 8000);
+      console.warn(`[db] init attempt ${attempt} failed (${e.message}); retrying in ${wait}ms`);
+      await sleep(wait);
+      return init(attempt + 1);
+    }
+    console.error('[db] init failed after retries:', e.message);
     pool = null;
   }
 }

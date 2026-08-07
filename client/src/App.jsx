@@ -161,10 +161,14 @@ export default function App() {
     if (wide && view === 'cart') setView('home');
   }, [wide, view]);
 
-  // Footer slots from config → only keep categories that exist in the live menu.
+  // Bottom-nav slots. Start from the footer builder groups (keeping only
+  // categories that exist in the live menu), then AUTO-ADD a button for any
+  // menu category that isn't already covered by a group. This guarantees every
+  // category you switch on in "Categories in the app" is reachable from the
+  // bottom nav — you don't have to also wire it into the footer builder.
   const footerSlots = useMemo(() => {
-    if (!config?.footer || !menu) return [];
-    return config.footer
+    if (!menu) return [];
+    const configured = (config?.footer || [])
       .map((slot) => ({
         ...slot,
         cats: (slot.categories || []).filter((cat) =>
@@ -172,6 +176,13 @@ export default function App() {
         ),
       }))
       .filter((slot) => slot.cats.length);
+    const covered = new Set();
+    configured.forEach((s) => s.cats.forEach((c) => covered.add(c.toLowerCase())));
+    const extras = menu.categories
+      .map((c) => c.category)
+      .filter((name) => !covered.has(name.toLowerCase()))
+      .map((name) => ({ label: name, icon: 'tag', cats: [name], categories: [name] }));
+    return [...configured, ...extras];
   }, [config, menu]);
   const canOrder = config?.hours?.canOrderNow !== false;
   const preorder = config?.hours?.preorder;
@@ -363,8 +374,12 @@ export default function App() {
   );
   const showLayout = view === 'home' || (wide && view === 'checkout');
 
-  // A festive/custom theme's banner is shown #1 in the hero rotation while active.
-  const seasonBanner = activeTheme?.banner;
+  // A festive/custom theme's banner is shown #1 in the hero rotation ONLY when
+  // the theme is auto-active for today's date (a scheduled event). A theme a
+  // customer picks by hand from the appearance menu changes colours only — it
+  // never injects the banner (so nobody sees "Merry Christmas" in April just
+  // because they tried the Christmas look).
+  const seasonBanner = config?.activeSeasonalTheme?.banner || null;
   const heroSlides = seasonBanner
     ? [{ id: 'season-banner', ...seasonBanner }, ...(config.hero || [])]
     : (config.hero || []);
