@@ -239,7 +239,7 @@ export default function App() {
     return (
       <div className="app">
         <div className="center-screen">
-          <div className="serif" style={{ fontSize: 30, color: 'var(--brand)' }}>Bean Culture</div>
+          <div style={{ color: 'var(--brand)', marginBottom: 4 }}><Logo height={46} /></div>
           <div className="spinner" />
         </div>
       </div>
