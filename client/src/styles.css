@@ -170,7 +170,13 @@ img { max-width: 100%; }
 }
 .navitem { background: none; border: none; display: flex; flex-direction: column; align-items: center; gap: 3px; color: var(--muted); font-size: 11px; cursor: pointer; padding: 4px 16px; }
 .navitem.on { color: var(--brand); }
-.navitem .ic { font-size: 20px; }
+.navitem .ic { font-size: 20px; display: grid; place-items: center; }
+
+/* Hot-category footer (6 shortcuts) */
+.catbar { justify-content: space-between; padding: 7px 6px calc(7px + env(safe-area-inset-bottom)); }
+.catbar .navitem { flex: 1 1 0; min-width: 0; padding: 2px 0; gap: 3px; color: var(--brand); }
+.catbar .navitem:active { transform: scale(0.94); }
+.catbar .navlabel { font-size: 9.5px; line-height: 1.1; text-align: center; color: var(--muted); white-space: nowrap; }
 
 /* Sheet / modal */
 .backdrop { position: fixed; inset: 0; background: rgba(40,20,28,0.5); z-index: 60; display: flex; align-items: flex-end; justify-content: center; }
@@ -257,7 +263,7 @@ img { max-width: 100%; }
 .card { background: var(--surface); border-radius: var(--radius); padding: 20px; box-shadow: var(--shadow-sm); }
 
 /* ── Logo ── */
-.logo-wrap { color: var(--brand); display: flex; align-items: center; }
+.logo-wrap { color: var(--brand); display: flex; align-items: center; background: none; border: none; padding: 0; cursor: pointer; }
 
 /* ── Seasonal effects (decorative, non-interactive) ── */
 .fx { position: fixed; inset: 0; width: 100vw; left: 0; pointer-events: none; z-index: 55; overflow: hidden; }

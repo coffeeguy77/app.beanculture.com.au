@@ -15,7 +15,17 @@ import Admin from './components/Admin.jsx';
 import Logo from './components/Logo.jsx';
 import SeasonalEffects from './components/SeasonalEffects.jsx';
 import SeasonalPerimeter from './components/SeasonalPerimeter.jsx';
-import { GingerbreadHouse, SantaUser } from './components/christmas/assets.jsx';
+import { AccountIcon, CupIcon, BurgerIcon, BagIcon, SmoothieIcon, CanIcon, BeanIcon } from './components/icons.jsx';
+
+// Footer "hot category" shortcuts → jump to that section of the menu.
+const HOT_CATEGORIES = [
+  { cat: 'COFFEE', label: 'Coffee', Icon: CupIcon },
+  { cat: 'ALL DAY MENU', label: 'All Day', Icon: BurgerIcon },
+  { cat: 'GRAB AND GO', label: 'Grab & Go', Icon: BagIcon },
+  { cat: 'SMOOTHIES', label: 'Smoothies', Icon: SmoothieIcon },
+  { cat: 'COLD DRINKS', label: 'Cold Drinks', Icon: CanIcon },
+  { cat: 'COFFEE BAGS', label: 'Coffee Bags', Icon: BeanIcon },
+];
 
 // Admin/dev preview: ?themePreview=christmas (or ?season=christmas) forces a
 // seasonal theme regardless of date; ?season=off forces the base theme.
@@ -216,11 +226,13 @@ export default function App() {
         <SeasonalPerimeter id={activeTheme.id} decor={activeTheme.decor} />
       )}
       <header className="topbar">
-        <div className="logo-wrap"><Logo height={33} /></div>
+        <button className="logo-wrap" onClick={() => { setView('home'); setActiveCat(null); }} aria-label="Home">
+          <Logo height={33} />
+        </button>
         <div className="icon-row">
-          <button className="iconbtn" title="Theme" onClick={() => setShowTheme(true)}>🎨</button>
-          <button className="iconbtn" title="Account" onClick={() => setView('account')}>
-            {user ? (user.name || '·')[0].toUpperCase() : '☰'}
+          <button className="iconbtn" title="Theme" aria-label="Theme" onClick={() => setShowTheme(true)}>🎨</button>
+          <button className="iconbtn" title="Account" aria-label={user ? 'Account' : 'Sign in'} onClick={() => setView('account')}>
+            <AccountIcon size={26} />
           </button>
         </div>
       </header>
@@ -314,14 +326,24 @@ export default function App() {
         </button>
       )}
 
-      {(view === 'home' || view === 'account') && (
-        <nav className="bottomnav">
-          <button className={`navitem ${view === 'home' ? 'on' : ''}`} onClick={() => setView('home')} aria-label="Menu">
-            <span className="ic">{xmas ? <GingerbreadHouse size={30} /> : '🏠'}</span>Menu
-          </button>
-          <button className={`navitem ${view === 'account' ? 'on' : ''}`} onClick={() => setView('account')} aria-label={user ? 'Account' : 'Sign in'}>
-            <span className="ic">{xmas ? <SantaUser size={30} /> : '👤'}</span>{user ? 'Account' : 'Sign in'}
-          </button>
+      {(view === 'home' || view === 'account' || view === 'cart') && (
+        <nav className="bottomnav catbar">
+          {HOT_CATEGORIES.filter((h) =>
+            menu.categories.some((c) => c.category.toLowerCase() === h.cat.toLowerCase())
+          ).map((h) => {
+            const Icon = h.Icon;
+            return (
+              <button
+                key={h.cat}
+                className="navitem"
+                onClick={() => { setView('home'); setActiveCat(h.cat); }}
+                aria-label={h.label}
+              >
+                <span className="ic"><Icon size={30} /></span>
+                <span className="navlabel">{h.label}</span>
+              </button>
+            );
+          })}
         </nav>
       )}
     </div>
