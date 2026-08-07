@@ -60,6 +60,19 @@ export function applyTheme(t) {
   root.style.setProperty('--line', d.line);
   root.style.setProperty('--brand-soft', rgbaFrom(d.brand, 0.1));
   root.style.setProperty('--accent-soft', rgbaFrom(d.accent, 0.12));
+  // Seasonal layer: set semantic season tokens and flip the data-season switch
+  // that activates seasonal.css across every component. Removing it restores the
+  // base/brand theme instantly (nothing is mutated permanently).
+  if (t && t.id && t.season) {
+    root.dataset.season = t.id;
+    const s = t.season;
+    for (const [k, v] of Object.entries(s)) {
+      root.style.setProperty(`--season-${k.replace(/[A-Z]/g, (m) => '-' + m.toLowerCase())}`, v);
+    }
+  } else {
+    delete root.dataset.season;
+  }
+
   const meta = document.querySelector('meta[name="theme-color"]');
   if (meta) meta.setAttribute('content', d.bg);
   return d;

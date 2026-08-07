@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { api, formatMoney } from './api.js';
 import { applyTheme } from './theme.js';
-import { getUser, setUser as saveUser, getSavedTheme, setSavedTheme } from './store.js';
+import { getUser, setUser as saveUser, getSavedTheme, setSavedTheme, getSeasonOptOut, setSeasonOptOut } from './store.js';
 import HeroSlider from './components/HeroSlider.jsx';
 import OrderTypeBar from './components/OrderTypeBar.jsx';
 import CategoryNav from './components/CategoryNav.jsx';
@@ -14,6 +14,15 @@ import ThemePicker from './components/ThemePicker.jsx';
 import Admin from './components/Admin.jsx';
 import Logo from './components/Logo.jsx';
 import SeasonalEffects from './components/SeasonalEffects.jsx';
+import SeasonalPerimeter from './components/SeasonalPerimeter.jsx';
+import { GingerbreadHouse, SantaUser } from './components/christmas/assets.jsx';
+
+// Admin/dev preview: ?themePreview=christmas (or ?season=christmas) forces a
+// seasonal theme regardless of date; ?season=off forces the base theme.
+function readPreview() {
+  const p = new URLSearchParams(window.location.search);
+  return p.get('themePreview') || p.get('season') || '';
+}
 
 function readTable() {
   const p = new URLSearchParams(window.location.search);
@@ -46,8 +55,7 @@ export default function App() {
     api.getConfig()
       .then((cfg) => {
         setConfig(cfg);
-        // Priority: the customer's saved choice → active seasonal theme → default.
-        const active = getSavedTheme() || cfg.activeSeasonalTheme || cfg.theme;
+        const active = resolveTheme(cfg);
         applyTheme(active);
         setActiveTheme(active);
       })
@@ -61,19 +69,41 @@ export default function App() {
   }, []);
 
   const currency = config?.currency || menu?.currency || 'AUD';
+  const xmas = activeTheme?.id === 'christmas';
   const canOrder = config?.hours?.canOrderNow !== false;
   const preorder = config?.hours?.preorder;
 
   const cartCount = cart.reduce((n, c) => n + c.quantity, 0);
   const cartTotal = cart.reduce((n, c) => n + c.unitPrice * c.quantity, 0);
 
+  // Theme priority: admin preview → auto seasonal (unless opted out) → saved → default.
+  // Seasonal is ephemeral and never overwrites the saved user theme.
+  function resolveTheme(cfg) {
+    const previewId = readPreview();
+    if (previewId === 'off') return cfg.theme;
+    if (previewId) {
+      const s = (cfg.seasonalThemes || []).find((x) => x.id === previewId);
+      if (s) return s;
+    }
+    const saved = getSavedTheme();
+    if (!getSeasonOptOut() && cfg.activeSeasonalTheme) return cfg.activeSeasonalTheme;
+    return saved || cfg.theme;
+  }
+
   function updateTheme(t) {
+    const seasonal = !!(t.id && t.season);
+    if (seasonal) {
+      setSeasonOptOut(false); // ephemeral pick — do not persist over the saved theme
+    } else {
+      setSavedTheme(t);
+      setSeasonOptOut(true); // a manual/custom choice opts out of the auto seasonal skin
+    }
     applyTheme(t);
-    setSavedTheme(t);
     setActiveTheme(t);
   }
   function resetTheme() {
     setSavedTheme(null);
+    setSeasonOptOut(false);
     const a = (config && (config.activeSeasonalTheme || config.theme)) || null;
     if (a) {
       applyTheme(a);
@@ -177,6 +207,9 @@ export default function App() {
   return (
     <div className="app">
       {activeTheme?.effects && <SeasonalEffects effects={activeTheme.effects} />}
+      {activeTheme?.id && activeTheme?.decor?.perimeter && (
+        <SeasonalPerimeter id={activeTheme.id} decor={activeTheme.decor} />
+      )}
       <header className="topbar">
         <div className="logo-wrap"><Logo height={26} /></div>
         <div className="icon-row">
@@ -278,11 +311,11 @@ export default function App() {
 
       {(view === 'home' || view === 'account') && (
         <nav className="bottomnav">
-          <button className={`navitem ${view === 'home' ? 'on' : ''}`} onClick={() => setView('home')}>
-            <span className="ic">🏠</span>Menu
+          <button className={`navitem ${view === 'home' ? 'on' : ''}`} onClick={() => setView('home')} aria-label="Menu">
+            <span className="ic">{xmas ? <GingerbreadHouse size={22} /> : '🏠'}</span>Menu
           </button>
-          <button className={`navitem ${view === 'account' ? 'on' : ''}`} onClick={() => setView('account')}>
-            <span className="ic">👤</span>{user ? 'Account' : 'Sign in'}
+          <button className={`navitem ${view === 'account' ? 'on' : ''}`} onClick={() => setView('account')} aria-label={user ? 'Account' : 'Sign in'}>
+            <span className="ic">{xmas ? <SantaUser size={22} /> : '👤'}</span>{user ? 'Account' : 'Sign in'}
           </button>
         </nav>
       )}

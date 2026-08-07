@@ -33,8 +33,33 @@ const DEFAULTS = {
       name: '🎄 Christmas',
       from: '12-01',
       to: '12-30',
-      theme: { brand: '#c1121f', accent: '#1b7a3d', bg: '#fbf4ef', ink: '#2b2b26', surface: '#ffffff', line: '#ecd9cf' },
-      effects: { snow: true, lights: true, ornaments: true },
+      // Base variables (fallback look before the seasonal stylesheet applies).
+      theme: {
+        bg: '#073B2A',
+        surface: '#0A4630',
+        ink: '#FFF5DF',
+        muted: '#E9D9B4',
+        brand: '#E9C46A',
+        accent: '#B71320',
+        accentInk: '#FFF5DF',
+        line: 'rgba(216,169,59,0.42)',
+      },
+      // Semantic seasonal tokens consumed by seasonal.css.
+      season: {
+        gold: '#D8A93B',
+        goldLight: '#F1D37B',
+        cream: '#FFF5DF',
+        cream2: '#F7E8C8',
+        red: '#B71320',
+        redDeep: '#961019',
+        green: '#0A4630',
+        greenDeep: '#052D21',
+        cardBg: '#B71320',
+        cardBorder: '#D8A93B',
+        textOnCream: '#33261D',
+      },
+      decor: { density: 'rich', perimeter: true, bells: true, snowBank: true },
+      effects: { snow: true },
     },
   ],
   // Hero carousel. Each slide links to a category (by display name), an item id,
@@ -109,14 +134,18 @@ function activeSeasonal(settings, mmdd) {
   const day = mmdd || todayMMDD();
   for (const s of settings.seasonalThemes || []) {
     const inRange = s.from <= s.to ? day >= s.from && day <= s.to : day >= s.from || day <= s.to;
-    if (inRange) return { id: s.id, name: s.name, ...s.theme, effects: s.effects || {} };
+    if (inRange) return flatten(s);
   }
   return null;
 }
 
-// Seasonal themes flattened for the picker (colors + effects on one object).
+function flatten(s) {
+  return { id: s.id, name: s.name, ...s.theme, season: s.season || null, decor: s.decor || {}, effects: s.effects || {} };
+}
+
+// Seasonal themes flattened for the picker and for admin preview.
 function seasonalForPicker(settings) {
-  return (settings.seasonalThemes || []).map((s) => ({ id: s.id, name: s.name, ...s.theme, effects: s.effects || {} }));
+  return (settings.seasonalThemes || []).map(flatten);
 }
 
 module.exports = { getSettings, DEFAULTS, todayMMDD, activeSeasonal, seasonalForPicker };

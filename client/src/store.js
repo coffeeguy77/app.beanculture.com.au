@@ -3,6 +3,7 @@
 
 const USER_KEY = 'bc_user';
 const THEME_KEY = 'bc_theme';
+const OPTOUT_KEY = 'bc_season_optout';
 
 export function getUser() {
   try {
@@ -29,5 +30,20 @@ export function setSavedTheme(t) {
   try {
     if (t) localStorage.setItem(THEME_KEY, JSON.stringify(t));
     else localStorage.removeItem(THEME_KEY);
+  } catch {}
+}
+
+// Whether the customer has opted out of the auto seasonal theme.
+export function getSeasonOptOut() {
+  try {
+    return localStorage.getItem(OPTOUT_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+export function setSeasonOptOut(v) {
+  try {
+    if (v) localStorage.setItem(OPTOUT_KEY, '1');
+    else localStorage.removeItem(OPTOUT_KEY);
   } catch {}
 }

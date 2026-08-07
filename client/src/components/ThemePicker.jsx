@@ -52,10 +52,20 @@ export default function ThemePicker({ presets, seasonal, baseTheme, current, onA
                       })
                     }
                   >
-                    <div className="dots">
-                      <i style={{ background: s.bg, border: '1px solid #0001' }} />
-                      <i style={{ background: s.brand }} />
-                      <i style={{ background: s.accent }} />
+                    <div
+                      style={{
+                        height: 46, borderRadius: 9, marginBottom: 8, overflow: 'hidden',
+                        display: 'grid', placeItems: 'center',
+                        background: `radial-gradient(circle at 50% 0%, rgba(24,120,78,0.5), transparent 60%), ${s.bg}`,
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: '72%', height: 22, borderRadius: 6,
+                          background: (s.season && s.season.cardBg) || s.accent,
+                          border: `1.5px solid ${(s.season && s.season.gold) || '#D8A93B'}`,
+                        }}
+                      />
                     </div>
                     {s.name}
                   </div>
