@@ -58,7 +58,7 @@ const DEFAULTS = {
         cardBorder: '#D8A93B',
         textOnCream: '#33261D',
       },
-      decor: { density: 'rich', perimeter: true, bells: true, snowBank: true },
+      decor: { density: 'rich', perimeter: false, bells: false, snowBank: false },
       effects: { snow: true },
     },
   ],

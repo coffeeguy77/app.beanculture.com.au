@@ -110,11 +110,6 @@
   background: var(--season-green-deep);
   border-top: 1px solid var(--season-gold);
 }
-[data-season='christmas'] .bottomnav::before {
-  content: ''; position: absolute; left: 0; right: 0; top: -7px; height: 9px;
-  background: radial-gradient(circle at 8px -2px, #fff 6px, transparent 7px) repeat-x;
-  background-size: 18px 12px; opacity: 0.92;
-}
 [data-season='christmas'] .navitem { color: var(--season-cream); }
 [data-season='christmas'] .navitem.on { color: var(--season-gold-light); }
 
