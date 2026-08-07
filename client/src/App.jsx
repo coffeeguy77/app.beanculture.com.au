@@ -92,12 +92,8 @@ export default function App() {
 
   function updateTheme(t) {
     const seasonal = !!(t.id && t.season);
-    if (seasonal) {
-      setSeasonOptOut(false); // ephemeral pick — do not persist over the saved theme
-    } else {
-      setSavedTheme(t);
-      setSeasonOptOut(true); // a manual/custom choice opts out of the auto seasonal skin
-    }
+    setSavedTheme(t); // a manual pick persists across refresh
+    setSeasonOptOut(!seasonal); // choosing a non-seasonal theme opts out of the auto seasonal skin
     applyTheme(t);
     setActiveTheme(t);
   }

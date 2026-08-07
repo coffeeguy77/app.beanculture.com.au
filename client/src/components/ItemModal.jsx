@@ -60,7 +60,7 @@ export default function ItemModal({ item, currency, onClose, onAdd }) {
         {item.image && <img className="sheet-img" src={item.image} alt="" />}
         <div className="sheet-body">
           <h2>{item.name}</h2>
-          {item.description && <p className="muted" style={{ margin: 0 }}>{item.description}</p>}
+          {item.description && <p className="muted itemdesc-full">{item.description}</p>}
 
           {item.variations.length > 1 && (
             <div className="group">

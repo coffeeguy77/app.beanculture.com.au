@@ -13,6 +13,26 @@ const MENU_CATEGORIES = (process.env.SQUARE_MENU_CATEGORIES || '')
   .map((s) => s.trim())
   .filter(Boolean);
 
+// Structure a run-on product description into labelled lines. Content is NOT
+// changed — we only insert line breaks before known coffee labels when Square
+// didn't already provide structure (so we never fight a well-formatted one).
+const DESC_LABELS = [
+  'Origin Composition', 'Origin', 'Process', 'Harvest', 'Cup Profile', 'Tasting Notes',
+  'Roast Profile', 'Suggested Brewing', 'Milk-based drinks', 'Milk-based', 'Body',
+  'Sweetness', 'Acidity', 'Finish', 'Development', 'Style', 'Target', 'Espresso', 'Filter',
+];
+function formatDescription(text) {
+  if (!text) return text;
+  let t = String(text).replace(/\r/g, '');
+  const newlines = (t.match(/\n/g) || []).length;
+  if (newlines >= 2) return t.trim(); // already structured by Square
+  for (const l of DESC_LABELS) {
+    const esc = l.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
+    t = t.replace(new RegExp('\\s+(' + esc + '):', 'g'), '\n$1:');
+  }
+  return t.replace(/\n{2,}/g, '\n').replace(/^\n+/, '').trim();
+}
+
 // Remove a leading "APP"/"APPS" token from a category name for display.
 function cleanName(name) {
   if (!name) return name;
@@ -190,7 +210,7 @@ async function getMenu() {
     const menuItem = {
       id: item.id,
       name: d.name || 'Item',
-      description: d.description_plaintext || d.description || '',
+      description: formatDescription(d.description_plaintext || d.description || ''),
       image,
       soldOut,
       variations,

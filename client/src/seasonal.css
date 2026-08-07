@@ -168,9 +168,10 @@
 /* ── Spinner / states ── */
 [data-season='christmas'] .spinner { border-color: rgba(255, 245, 223, 0.25); border-top-color: var(--season-gold); }
 
-/* ── Reduced motion: stop the snow animation, keep a few static flakes ── */
+[data-season='christmas'] .sheet-img { background: var(--season-green-deep); }
+
+/* ── Reduced motion: hide the falling snow entirely (no frozen flakes) ── */
 @media (prefers-reduced-motion: reduce) {
-  .fx-flake { animation: none !important; }
-  .fx-flake:nth-child(n + 10) { display: none; }
+  .fx-snow { display: none; }
   .fx-bulb, .fx-orn { animation: none !important; }
 }

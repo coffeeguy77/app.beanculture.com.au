@@ -7,7 +7,6 @@ import { Bell, Holly, Pine } from './christmas/assets.jsx';
 // never blocks controls.
 export default function SeasonalPerimeter({ id, decor }) {
   if (id !== 'christmas' || !decor?.perimeter) return null;
-  const rich = decor.density === 'rich';
 
   const wrap = {
     position: 'fixed', inset: 0, maxWidth: 'var(--app-w)', left: '50%',
@@ -33,16 +32,6 @@ export default function SeasonalPerimeter({ id, decor }) {
       <div style={{ position: 'absolute', top: 'calc(-2px + env(safe-area-inset-top))', right: '20%' }}>
         <div style={string} /><Bell size={30} />
       </div>
-
-      {rich && (
-        <>
-          {/* PAGE_LEFT / PAGE_RIGHT — sparse side sprigs (light) */}
-          <div style={{ position: 'absolute', top: '32%', left: -6, opacity: 0.9 }}><Pine w={54} h={26} /></div>
-          <div style={{ position: 'absolute', top: '58%', left: -2 }}><Holly size={24} /></div>
-          <div style={{ position: 'absolute', top: '40%', right: -6, opacity: 0.9 }}><Pine w={54} h={26} flip /></div>
-          <div style={{ position: 'absolute', top: '68%', right: -2, transform: 'scaleX(-1)' }}><Holly size={22} /></div>
-        </>
-      )}
     </div>
   );
 }
