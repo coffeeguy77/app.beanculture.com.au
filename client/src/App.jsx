@@ -16,7 +16,7 @@ import Admin from './components/Admin.jsx';
 import Logo from './components/Logo.jsx';
 import SeasonalEffects from './components/SeasonalEffects.jsx';
 import SeasonalPerimeter from './components/SeasonalPerimeter.jsx';
-import { AccountIcon, ThemeIcon, ICONS } from './components/icons.jsx';
+import { AccountIcon, ThemeIcon, SlotIcon } from './components/icons.jsx';
 
 // Admin/dev preview: ?themePreview=christmas (or ?season=christmas) forces a
 // seasonal theme regardless of date; ?season=off forces the base theme.
@@ -345,9 +345,11 @@ export default function App() {
               autoplay={config.heroAutoplay !== false}
               interval={config.heroInterval}
               onLink={(link) => {
-                if (!link) return;
+                if (!link || link.type === 'none') return;
                 if (link.type === 'category') setActiveCat(link.value);
                 else if (link.type === 'account') setView('account');
+                else if (link.type === 'url' && link.value) window.open(link.value, '_blank', 'noopener');
+                else if (link.type === 'scroll') { const el = document.querySelector('.menu'); if (el) el.scrollIntoView({ behavior: 'smooth' }); }
               }}
             />
             <OrderTypeBar dineIn={dineIn} setDineIn={setDineIn} table={table} setTable={setTable} lock={tableLock} onUnlock={unlockTable} onScanned={applyScannedTable} />
@@ -421,7 +423,6 @@ export default function App() {
       {(view === 'home' || view === 'account' || view === 'cart') && footerSlots.length > 0 && (
         <nav className="bottomnav catbar">
           {footerSlots.map((slot, i) => {
-            const Icon = ICONS[slot.icon] || ICONS.cup;
             const activeSlot =
               layoutMode === 'single' &&
               activeGroup &&
@@ -438,7 +439,7 @@ export default function App() {
                 }}
                 aria-label={slot.label}
               >
-                <span className="ic"><Icon size={30} /></span>
+                <span className="ic"><SlotIcon icon={slot.icon} iconSvg={slot.iconSvg} size={30} /></span>
                 {slot.label ? <span className="navlabel">{slot.label}</span> : null}
               </button>
             );

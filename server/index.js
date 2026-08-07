@@ -272,7 +272,7 @@ app.get('/api/admin/overview', async (req, res) => {
     hoursStatus = await hours.getStatus();
   } catch {}
   try {
-    menu = await catalog.getMenu();
+    menu = await catalog.getFullMenu(); // includes new/empty categories for the builder
   } catch {}
   res.json({
     settings,

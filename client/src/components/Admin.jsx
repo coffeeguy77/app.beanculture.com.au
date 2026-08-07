@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
-import { ICONS } from './icons.jsx';
+import { SlotIcon } from './icons.jsx';
+import IconPicker from './IconPicker.jsx';
 
-const ICON_NAMES = ['cup', 'mug', 'burger', 'bag', 'smoothie', 'can', 'bean', 'ice', 'shake', 'tea', 'drink'];
-const LINK_TYPES = ['scroll', 'category', 'account', 'none'];
+const LINK_TYPES = ['scroll', 'category', 'account', 'url', 'none'];
 
 // ---- Tab icons (stroke) ----
 const svg = (paths) => (p) => (
@@ -269,34 +269,26 @@ export default function Admin({ onExit }) {
                 <div className="card" style={card}>
                   <div className="group-title">Footer menu builder</div>
                   <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>Each button = an icon + one or more categories.</p>
-                  {footer.map((slot, i) => {
-                    const Icon = ICONS[slot.icon] || ICONS.cup;
-                    return (
-                      <div key={i} style={{ border: '1px solid var(--line)', borderRadius: 12, padding: 10, marginBottom: 10 }}>
-                        <div style={{ ...row, justifyContent: 'space-between' }}>
-                          <span style={{ color: 'var(--brand)', display: 'flex', alignItems: 'center', gap: 6 }}><Icon size={26} /></span>
-                          <div style={row}>
-                            <button className="link" onClick={() => moveSlot(i, -1)}>↑</button>
-                            <button className="link" onClick={() => moveSlot(i, 1)}>↓</button>
-                            <button className="link" style={{ color: '#c0392b' }} onClick={() => rmSlot(i)}>Remove</button>
-                          </div>
-                        </div>
-                        <div style={{ ...row, marginTop: 6 }}>
-                          <input value={slot.label || ''} onChange={(e) => updSlot(i, { label: e.target.value })} placeholder="Label"
-                            style={{ flex: 1, padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 10 }} />
-                          <select value={slot.icon} onChange={(e) => updSlot(i, { icon: e.target.value })} style={{ padding: '8px', borderRadius: 10, border: '1px solid var(--line)' }}>
-                            {ICON_NAMES.map((n) => <option key={n} value={n}>{n}</option>)}
-                          </select>
-                        </div>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
-                          {cats.map((c) => {
-                            const on = slot.categories.some((x) => x.toLowerCase() === c.toLowerCase());
-                            return <button key={c} onClick={() => toggleSlotCat(i, c)} className={`chip ${on ? 'on' : ''}`} style={{ fontSize: 11, padding: '5px 9px' }}>{c}</button>;
-                          })}
+                  {footer.map((slot, i) => (
+                    <div key={i} style={{ border: '1px solid var(--line)', borderRadius: 12, padding: 10, marginBottom: 10 }}>
+                      <div style={{ ...row, gap: 10 }}>
+                        <IconPicker value={{ icon: slot.icon, iconSvg: slot.iconSvg }} brand={s.theme?.brand} onChange={(v) => updSlot(i, v)} />
+                        <input value={slot.label || ''} onChange={(e) => updSlot(i, { label: e.target.value })} placeholder="Label"
+                          style={{ flex: 1, minWidth: 0, padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 10 }} />
+                        <div style={row}>
+                          <button className="link" onClick={() => moveSlot(i, -1)}>↑</button>
+                          <button className="link" onClick={() => moveSlot(i, 1)}>↓</button>
+                          <button className="link" style={{ color: '#c0392b' }} onClick={() => rmSlot(i)}>✕</button>
                         </div>
                       </div>
-                    );
-                  })}
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                        {cats.map((c) => {
+                          const on = slot.categories.some((x) => x.toLowerCase() === c.toLowerCase());
+                          return <button key={c} onClick={() => toggleSlotCat(i, c)} className={`chip ${on ? 'on' : ''}`} style={{ fontSize: 11, padding: '5px 9px' }}>{c}</button>;
+                        })}
+                      </div>
+                    </div>
+                  ))}
                   <button className="btn ghost full" onClick={addSlot}>+ Add footer button</button>
                 </div>
 

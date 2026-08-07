@@ -241,6 +241,18 @@ async function getMenu(opts = {}) {
 
   // Order categories: by the parent's child ordinal where possible, else name.
   let entries = [...byCategory.values()];
+
+  // Admin views include brand-new / empty child categories so they can be
+  // configured (offered, given a footer button) as soon as they exist in Square.
+  if (opts.includeEmpty && parentId) {
+    const present = new Set(entries.map((e) => e.name.toLowerCase()));
+    for (const [id, c] of categories) {
+      if (!childIds.has(id)) continue;
+      const nm = cleanName(c.name);
+      if (!present.has(nm.toLowerCase())) entries.push({ name: nm, order: 999, items: [] });
+    }
+  }
+
   if (parentId) {
     // Order children by their ordinal under the parent.
     const childOrder = new Map();
@@ -266,9 +278,10 @@ async function getMenu(opts = {}) {
   return { currency: CURRENCY, categories: menu };
 }
 
-// Full menu ignoring the admin selection — used by the admin item chooser.
+// Full menu ignoring the admin selection, including empty categories — used by
+// the admin item chooser and category lists so new categories show immediately.
 async function getFullMenu() {
-  return getMenu({ applySelection: false });
+  return getMenu({ applySelection: false, includeEmpty: true });
 }
 
 module.exports = { getMenu, getFullMenu, cleanName };
