@@ -139,6 +139,11 @@ async function getHistory(customerId, limit = 25) {
       variation: li.variation_name,
       quantity: li.quantity,
       total: li.total_money,
+      // For "reorder": enough to rebuild a cart entry.
+      variationId: li.catalog_object_id,
+      modifierIds: (li.modifiers || []).map((m) => m.catalog_object_id).filter(Boolean),
+      modifierNames: (li.modifiers || []).map((m) => m.name).filter(Boolean),
+      unitPrice: li.total_money && li.quantity ? Math.round(li.total_money.amount / Number(li.quantity)) : (li.base_price_money?.amount ?? null),
     })),
   }));
 }

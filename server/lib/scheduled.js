@@ -8,6 +8,7 @@
 const db = require('./db');
 const orders = require('./orders');
 const cards = require('./cards');
+const { getSettings } = require('./settings');
 
 const TZ = process.env.PREORDER_TZ || process.env.SEASON_TZ || 'Australia/Sydney';
 const LEAD_MIN = Number(process.env.PREORDER_LEAD_MIN || 15);
@@ -26,18 +27,29 @@ function zonedWallToUtc(y, m, d, hh, mm, tz) {
   return new Date(asUTC - (tzAsUTC - asUTC));
 }
 
+function isClosureDate(fullDate) {
+  let closures = [];
+  try { closures = getSettings().closures || []; } catch {}
+  const md = String(fullDate).slice(5);
+  return closures.some((c) => c && (c.date === fullDate || (c.annual && String(c.date).slice(5) === md)));
+}
+
 // Next occurrence (UTC Date) strictly after `after` for a recurrence rule.
+// Skips closure dates (annual leave / public holidays) so we never auto-charge
+// for a day we're not open.
 function nextOccurrence(rec, after, tz = TZ) {
   const [hh, mm] = String((rec && rec.time) || '08:00').split(':').map(Number);
   const weekly = rec && rec.type === 'weekly' && Array.isArray(rec.days) && rec.days.length;
   const days = weekly ? rec.days : [0, 1, 2, 3, 4, 5, 6];
-  for (let i = 0; i <= 21; i++) {
+  for (let i = 0; i <= 400; i++) {
     const probe = new Date(after.getTime() + i * 86400000);
     const dtf = new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'short', year: 'numeric', month: '2-digit', day: '2-digit' });
     const p = {};
     for (const part of dtf.formatToParts(probe)) p[part.type] = part.value;
     const wd = WDAYS.indexOf(p.weekday);
     if (!days.includes(wd)) continue;
+    const fullDate = `${p.year}-${p.month}-${p.day}`;
+    if (isClosureDate(fullDate)) continue;
     const cand = zonedWallToUtc(+p.year, +p.month, +p.day, hh, mm, tz);
     if (cand.getTime() > after.getTime()) return cand;
   }

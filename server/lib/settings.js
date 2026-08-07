@@ -6,6 +6,13 @@
 const DEFAULTS = {
   storeName: 'Bean Culture',
   announcement: '',
+  // Store contact + branding.
+  contact: { address: '', phone: '', mapsUrl: '' },
+  logoUrl: '',
+  faviconUrl: '',
+  // Closure dates (annual leave, public holidays). date = 'YYYY-MM-DD'.
+  // annual:true repeats every year on that month/day.
+  closures: [],
   // Default theme — light pastel pink.
   theme: {
     bg: '#fdf1f4',

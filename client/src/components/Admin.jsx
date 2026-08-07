@@ -2,8 +2,18 @@ import React, { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
 import { SlotIcon } from './icons.jsx';
 import IconPicker from './IconPicker.jsx';
+import { formatMoney } from '../api.js';
 
 const LINK_TYPES = ['scroll', 'category', 'account', 'url', 'none'];
+
+function TopRow({ name, n, max }) {
+  return (
+    <div className="top-row">
+      <div className="top-top"><span className="top-name">{name}</span><span className="muted">{n}</span></div>
+      <div className="top-track"><div className="top-fill" style={{ width: `${Math.round((n / (max || 1)) * 100)}%` }} /></div>
+    </div>
+  );
+}
 
 // ---- Tab icons (stroke) ----
 const svg = (paths) => (p) => (
@@ -29,9 +39,13 @@ const ThemeIcon2 = svg(<>
   <path d="M12 3a9 9 0 1 0 0 18c1 0 1.6-.9 1.2-1.8-.5-1 .2-2.2 1.4-2.2H16a5 5 0 0 0 5-5c0-4.4-4-8-9-8z" />
   <circle cx="7.5" cy="11" r="1" /><circle cx="10.5" cy="7.5" r="1" /><circle cx="15" cy="8" r="1" />
 </>);
+const InsightsIcon = svg(<>
+  <path d="M4 20V11" /><path d="M10 20V4" /><path d="M16 20v-6" /><path d="M3 20h18" />
+</>);
 
 const TABS = [
   { id: 'store', label: 'Store', Icon: StoreIcon },
+  { id: 'insights', label: 'Insights', Icon: InsightsIcon },
   { id: 'menu', label: 'Menu', Icon: MenuIcon },
   { id: 'banners', label: 'Banners', Icon: BannerIcon },
   { id: 'tables', label: 'Tables', Icon: QrIcon },
@@ -57,7 +71,19 @@ export default function Admin({ onExit }) {
   const [qrFg, setQrFg] = useState('#2b2126');
   const [qrBg, setQrBg] = useState('#ffffff');
   const [qrSize, setQrSize] = useState(190);
+  const [analytics, setAnalytics] = useState(null);
+  const [aDays, setADays] = useState(30);
+  const [newClosure, setNewClosure] = useState({ date: '', annual: false, label: '' });
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
+
+  // Load analytics when the Insights tab is opened / period changes.
+  useEffect(() => {
+    if (tab !== 'insights') return;
+    setAnalytics(null);
+    fetch(`/api/admin/analytics?days=${aDays}&pass=${encodeURIComponent(pass)}`)
+      .then((r) => r.json()).then((d) => setAnalytics(d.analytics || { empty: true })).catch(() => setAnalytics({ error: true }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, aDays]);
 
   async function generateQR() {
     setQrBusy(true);
@@ -111,6 +137,16 @@ export default function Admin({ onExit }) {
   // ---- generic setters ----
   const set = (patch) => setS((cur) => ({ ...cur, ...patch }));
   const setTheme = (k, v) => setS((cur) => ({ ...cur, theme: { ...cur.theme, [k]: v } }));
+  const setContact = (k, v) => setS((cur) => ({ ...cur, contact: { ...(cur.contact || {}), [k]: v } }));
+
+  // ---- closures ----
+  const closures = s?.closures || [];
+  const addClosure = () => {
+    if (!newClosure.date) return;
+    set({ closures: [...closures, { ...newClosure }].sort((a, b) => String(a.date).localeCompare(String(b.date))) });
+    setNewClosure({ date: '', annual: false, label: '' });
+  };
+  const rmClosure = (i) => set({ closures: closures.filter((_, j) => j !== i) });
 
   // ---- footer builder ----
   const footer = s?.footer || [];
@@ -165,13 +201,13 @@ export default function Admin({ onExit }) {
   const rmSlide = (i) => setHero(hero.filter((_, j) => j !== i));
   const moveSlide = (i, d) => { const j = i + d; if (j < 0 || j >= hero.length) return; const a = [...hero]; [a[i], a[j]] = [a[j], a[i]]; setHero(a); };
 
-  function uploadImage(file, cb) {
+  function uploadImage(file, cb, folder = 'banners') {
     const reader = new FileReader();
     reader.onload = async () => {
       try {
         const r = await fetch(`/api/admin/upload?pass=${encodeURIComponent(pass)}`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ dataUri: reader.result, folder: 'banners' }),
+          body: JSON.stringify({ dataUri: reader.result, folder }),
         });
         const d = await r.json();
         if (!r.ok) throw new Error(d.error || 'Upload failed');
@@ -254,6 +290,135 @@ export default function Admin({ onExit }) {
                   <label className="field" style={{ marginTop: 10 }}><span>Announcement bar (blank = hidden)</span>
                     <input value={s.announcement || ''} onChange={(e) => set({ announcement: e.target.value })} placeholder="e.g. Public holiday hours today" /></label>
                 </div>
+
+                <div className="card" style={card}>
+                  <div className="group-title">Contact &amp; location</div>
+                  <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>Shown on the storefront with tap-to-call and directions (both tracked in Insights).</p>
+                  <label className="field"><span>Address</span><input value={s.contact?.address || ''} onChange={(e) => setContact('address', e.target.value)} placeholder="123 Main St, Suburb NSW" /></label>
+                  <label className="field" style={{ marginTop: 10 }}><span>Phone</span><input value={s.contact?.phone || ''} onChange={(e) => setContact('phone', e.target.value)} placeholder="+61 2 1234 5678" /></label>
+                  <label className="field" style={{ marginTop: 10 }}><span>Map link (optional — built from the address if blank)</span><input value={s.contact?.mapsUrl || ''} onChange={(e) => setContact('mapsUrl', e.target.value)} placeholder="https://maps.google.com/…" /></label>
+                </div>
+
+                <div className="card" style={card}>
+                  <div className="group-title">Branding</div>
+                  {!data.cloudinary && <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>Add Cloudinary keys in Railway to upload images.</p>}
+                  <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
+                    <div>
+                      <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>Logo (header)</div>
+                      <div style={{ ...row }}>
+                        {s.logoUrl ? <img src={s.logoUrl} alt="" style={{ height: 34, background: '#f6eef1', borderRadius: 6 }} /> : <span className="muted" style={{ fontSize: 12 }}>Default</span>}
+                        <label className="btn ghost" style={{ padding: '8px 12px', fontSize: 13, cursor: 'pointer' }}>Upload<input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files[0]; if (f) uploadImage(f, (url) => set({ logoUrl: url }), 'logo'); }} /></label>
+                        {s.logoUrl && <button className="link" style={{ color: '#c0392b' }} onClick={() => set({ logoUrl: '' })}>Reset</button>}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>Favicon (browser tab)</div>
+                      <div style={{ ...row }}>
+                        {s.faviconUrl ? <img src={s.faviconUrl} alt="" style={{ height: 28, width: 28, borderRadius: 6 }} /> : <span className="muted" style={{ fontSize: 12 }}>Default</span>}
+                        <label className="btn ghost" style={{ padding: '8px 12px', fontSize: 13, cursor: 'pointer' }}>Upload<input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files[0]; if (f) uploadImage(f, (url) => set({ faviconUrl: url }), 'favicon'); }} /></label>
+                        {s.faviconUrl && <button className="link" style={{ color: '#c0392b' }} onClick={() => set({ faviconUrl: '' })}>Reset</button>}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="card" style={card}>
+                  <div className="group-title">Closed dates</div>
+                  <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>Annual leave, public holidays. Closed days can’t be booked for pre-orders. Tick “every year” for dates that recur (e.g. Christmas).</p>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                    <label className="field" style={{ flex: '1 1 130px' }}><span>Date</span><input type="date" value={newClosure.date} onChange={(e) => setNewClosure((c) => ({ ...c, date: e.target.value }))} /></label>
+                    <label className="field" style={{ flex: '2 1 150px' }}><span>Label</span><input value={newClosure.label} onChange={(e) => setNewClosure((c) => ({ ...c, label: e.target.value }))} placeholder="e.g. Christmas Day" /></label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, paddingBottom: 12, whiteSpace: 'nowrap' }}><input type="checkbox" checked={newClosure.annual} onChange={(e) => setNewClosure((c) => ({ ...c, annual: e.target.checked }))} /> Every year</label>
+                    <button className="btn" onClick={addClosure}>Add</button>
+                  </div>
+                  {closures.length > 0 && (
+                    <div style={{ marginTop: 8 }}>
+                      {closures.map((c, i) => (
+                        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderTop: '1px solid var(--line)' }}>
+                          <span>{c.date}{c.annual ? ' · every year' : ''}{c.label ? ` · ${c.label}` : ''}</span>
+                          <button className="link" style={{ color: '#c0392b' }} onClick={() => rmClosure(i)}>Remove</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+
+            {/* ───────── INSIGHTS ───────── */}
+            {tab === 'insights' && (
+              <>
+                <div style={{ display: 'flex', gap: 8, marginBottom: 12, alignItems: 'center' }}>
+                  <span className="muted" style={{ fontSize: 13 }}>Last</span>
+                  {[7, 30, 90].map((d) => <button key={d} className={`chip ${aDays === d ? 'on' : ''}`} onClick={() => setADays(d)}>{d} days</button>)}
+                </div>
+                {!analytics && <div className="card" style={{ ...card, textAlign: 'center' }}><div className="spinner" /></div>}
+                {analytics && (analytics.error || analytics.empty) && <div className="card" style={card}><p className="muted" style={{ margin: 0 }}>No analytics yet — data appears as customers use the app.</p></div>}
+                {analytics && !analytics.error && !analytics.empty && (() => {
+                  const t = analytics.totals || {};
+                  const conv = t.visitors ? Math.round((t.purchases / t.visitors) * 100) : 0;
+                  const tiles = [
+                    { label: 'Visitors', v: t.visitors },
+                    { label: 'Product views', v: t.productViews },
+                    { label: 'Orders', v: t.purchases },
+                    { label: 'Conversion', v: `${conv}%` },
+                    { label: 'Revenue', v: formatMoney(t.revenue, 'AUD') },
+                    { label: 'Contact taps', v: t.contactClicks },
+                  ];
+                  const funnel = [
+                    { label: 'Visitors', v: t.visitors },
+                    { label: 'Viewed a product', v: t.productViews },
+                    { label: 'Added to cart', v: t.addCart },
+                    { label: 'Reached checkout', v: t.checkouts },
+                    { label: 'Ordered', v: t.purchases },
+                  ];
+                  const daily = analytics.daily || [];
+                  const maxDaily = Math.max(1, ...daily.map((d) => Math.max(d.views, d.purchases)));
+                  return (
+                    <>
+                      <div className="stat-tiles">
+                        {tiles.map((x) => <div key={x.label} className="stat-tile"><div className="stat-v">{x.v}</div><div className="stat-l">{x.label}</div></div>)}
+                      </div>
+                      <div className="card" style={card}>
+                        <div className="group-title">Daily visits &amp; orders</div>
+                        <div className="chart-bars">
+                          {daily.length === 0 && <span className="muted" style={{ fontSize: 12 }}>No data yet.</span>}
+                          {daily.slice(-30).map((d, i) => (
+                            <div key={i} className="chart-col" title={`${d.day}: ${d.views} visits, ${d.purchases} orders`}>
+                              <div className="bar bar-views" style={{ height: `${(d.views / maxDaily) * 100}%` }} />
+                              <div className="bar bar-buys" style={{ height: `${(d.purchases / maxDaily) * 100}%` }} />
+                            </div>
+                          ))}
+                        </div>
+                        <div className="chart-legend"><span><i className="sw sw-views" /> Visits</span><span><i className="sw sw-buys" /> Orders</span></div>
+                      </div>
+                      <div className="card" style={card}>
+                        <div className="group-title">Checkout funnel</div>
+                        {funnel.map((f) => {
+                          const pct = t.visitors ? Math.round((f.v / t.visitors) * 100) : 0;
+                          return (
+                            <div key={f.label} className="funnel-row">
+                              <div className="funnel-top"><span>{f.label}</span><span className="muted">{f.v} · {pct}%</span></div>
+                              <div className="funnel-track"><div className="funnel-fill" style={{ width: `${pct}%` }} /></div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <div className="ins-two">
+                        <div className="card" style={card}>
+                          <div className="group-title">Most viewed</div>
+                          {(analytics.topViewed || []).length === 0 && <p className="muted" style={{ fontSize: 12 }}>No data yet.</p>}
+                          {(analytics.topViewed || []).map((p) => <TopRow key={p.name} name={p.name} n={p.n} max={analytics.topViewed[0]?.n || 1} />)}
+                        </div>
+                        <div className="card" style={card}>
+                          <div className="group-title">Most purchased</div>
+                          {(analytics.topPurchased || []).length === 0 && <p className="muted" style={{ fontSize: 12 }}>No data yet.</p>}
+                          {(analytics.topPurchased || []).map((p) => <TopRow key={p.name} name={p.name} n={p.n} max={analytics.topPurchased[0]?.n || 1} />)}
+                        </div>
+                      </div>
+                    </>
+                  );
+                })()}
               </>
             )}
 

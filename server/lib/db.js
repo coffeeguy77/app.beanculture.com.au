@@ -45,6 +45,19 @@ async function init() {
       )
     `);
     await pool.query('CREATE INDEX IF NOT EXISTS scheduled_due ON scheduled_orders (status, next_run)');
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS analytics_events (
+        id bigserial primary key,
+        type text not null,
+        ref text,
+        session text,
+        qty integer default 1,
+        amount integer default 0,
+        ts timestamptz default now()
+      )
+    `);
+    await pool.query('CREATE INDEX IF NOT EXISTS analytics_ts ON analytics_events (ts)');
+    await pool.query('CREATE INDEX IF NOT EXISTS analytics_type ON analytics_events (type)');
     const r = await pool.query("SELECT data FROM app_settings WHERE id = 'main'");
     cache = (r.rows[0] && r.rows[0].data) || {};
     ready = true;
@@ -158,8 +171,62 @@ async function updateScheduled(id, patch) {
   await pool.query(`UPDATE scheduled_orders SET ${sets.join(', ')} WHERE id = $${i}`, vals);
 }
 
+// ---- Analytics ----
+async function track(events) {
+  if (!pool || !Array.isArray(events) || !events.length) return;
+  const rows = events.slice(0, 50);
+  const vals = [];
+  const ph = rows.map((e, i) => {
+    const b = i * 5;
+    vals.push(String(e.type || 'view').slice(0, 40), (e.ref || null) && String(e.ref).slice(0, 120),
+      (e.session || null) && String(e.session).slice(0, 64), Number(e.qty) || 1, Number(e.amount) || 0);
+    return `($${b + 1},$${b + 2},$${b + 3},$${b + 4},$${b + 5})`;
+  });
+  await pool.query(`INSERT INTO analytics_events (type, ref, session, qty, amount) VALUES ${ph.join(',')}`, vals);
+}
+
+async function getAnalytics(days = 30) {
+  if (!pool) return null;
+  const since = `now() - interval '${Math.max(1, Math.min(365, days))} days'`;
+  const q = (sql) => pool.query(sql.replace('$SINCE', since));
+  const [tot, daily, topView, topBuy, contact] = await Promise.all([
+    q(`SELECT
+        count(*) FILTER (WHERE type='view') AS views,
+        count(DISTINCT session) FILTER (WHERE type='view') AS visitors,
+        count(*) FILTER (WHERE type='product_view') AS product_views,
+        count(*) FILTER (WHERE type='add_cart') AS add_cart,
+        count(*) FILTER (WHERE type='checkout') AS checkouts,
+        count(*) FILTER (WHERE type='purchase') AS purchases,
+        coalesce(sum(amount) FILTER (WHERE type='purchase'),0) AS revenue,
+        count(*) FILTER (WHERE type LIKE 'contact_%') AS contact_clicks
+       FROM analytics_events WHERE ts >= $SINCE`),
+    q(`SELECT to_char(date_trunc('day', ts), 'YYYY-MM-DD') AS day,
+        count(*) FILTER (WHERE type='view') AS views,
+        count(*) FILTER (WHERE type='purchase') AS purchases
+       FROM analytics_events WHERE ts >= $SINCE GROUP BY 1 ORDER BY 1`),
+    q(`SELECT ref, count(*) AS n FROM analytics_events WHERE type='product_view' AND ts >= $SINCE AND ref IS NOT NULL GROUP BY ref ORDER BY n DESC LIMIT 8`),
+    q(`SELECT ref, sum(qty) AS n FROM analytics_events WHERE type='purchase_item' AND ts >= $SINCE AND ref IS NOT NULL GROUP BY ref ORDER BY n DESC LIMIT 8`),
+    q(`SELECT type, count(*) AS n FROM analytics_events WHERE type LIKE 'contact_%' AND ts >= $SINCE GROUP BY type`),
+  ]);
+  const t = tot.rows[0] || {};
+  const num = (x) => Number(x || 0);
+  return {
+    days,
+    totals: {
+      views: num(t.views), visitors: num(t.visitors), productViews: num(t.product_views),
+      addCart: num(t.add_cart), checkouts: num(t.checkouts), purchases: num(t.purchases),
+      revenue: num(t.revenue), contactClicks: num(t.contact_clicks),
+    },
+    daily: daily.rows.map((r) => ({ day: r.day, views: num(r.views), purchases: num(r.purchases) })),
+    topViewed: topView.rows.map((r) => ({ name: r.ref, n: num(r.n) })),
+    topPurchased: topBuy.rows.map((r) => ({ name: r.ref, n: num(r.n) })),
+    contact: contact.rows.map((r) => ({ type: r.type, n: num(r.n) })),
+  };
+}
+
 module.exports = {
   init, getOverrides, saveOverrides,
   insertScheduled, listScheduledByCustomer, cancelScheduled, claimDue, updateScheduled,
+  track, getAnalytics,
   get enabled() { return !!pool; },
 };

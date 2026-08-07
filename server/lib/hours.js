@@ -3,6 +3,7 @@
 // mode (accept orders while closed, flagged as scheduled).
 
 const { squareFetch, LOCATION_ID } = require('./squareClient');
+const { getSettings } = require('./settings');
 
 const PREORDER_ENABLED = (process.env.PREORDER_ENABLED || 'false').toLowerCase() === 'true';
 const ORDERING_DISABLED = (process.env.ORDERING_DISABLED || 'false').toLowerCase() === 'true';
@@ -70,10 +71,33 @@ async function getStatus() {
   return withRuntime(data);
 }
 
+// Today's date in a timezone as { full: 'YYYY-MM-DD', md: 'MM-DD' }.
+function todayDate(timeZone) {
+  const p = {};
+  for (const part of new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date())) p[part.type] = part.value;
+  return { full: `${p.year}-${p.month}-${p.day}`, md: `${p.month}-${p.day}` };
+}
+
 function withRuntime(base) {
   const { dow, minutes } = localNow(base.timezone);
   const todayKey = DAYS[dow];
   const todays = base.weekly[todayKey] || [];
+
+  // Weekdays (0=Sun) that have any business hours.
+  const openDays = [];
+  for (let i = 0; i < 7; i++) {
+    if (!base.hasHours || (base.weekly[DAYS[i]] || []).some((w) => w.startMin != null)) openDays.push(i);
+  }
+
+  // Closure dates (annual leave, public holidays) from settings.
+  let closures = [];
+  try { closures = getSettings().closures || []; } catch {}
+  const td = todayDate(base.timezone);
+  const isClosureDate = (fullDate) => {
+    const md = String(fullDate).slice(5);
+    return closures.some((c) => c && (c.date === fullDate || (c.annual && String(c.date).slice(5) === md)));
+  };
+  const closedToday = isClosureDate(td.full);
 
   let open = false;
   let closesAt = null;
@@ -88,6 +112,7 @@ function withRuntime(base) {
   }
   // If no hours are configured in Square, treat as open.
   if (!base.hasHours) open = true;
+  if (closedToday) open = false;
 
   const orderingDisabled = ORDERING_DISABLED;
   const canOrderNow = orderingDisabled ? false : open || PREORDER_ENABLED;
@@ -117,6 +142,9 @@ function withRuntime(base) {
     timezone: base.timezone,
     weekly: base.weekly,
     hasHours: base.hasHours,
+    openDays,
+    closedToday,
+    closures,
   };
 }
 

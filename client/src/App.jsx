@@ -17,6 +17,9 @@ import Logo from './components/Logo.jsx';
 import SeasonalEffects from './components/SeasonalEffects.jsx';
 import SeasonalPerimeter from './components/SeasonalPerimeter.jsx';
 import { AccountIcon, ThemeIcon, SlotIcon } from './components/icons.jsx';
+import StoreContact from './components/StoreContact.jsx';
+import InstallButton from './components/InstallButton.jsx';
+import { track, trackItems } from './analytics.js';
 
 // Admin/dev preview: ?themePreview=christmas (or ?season=christmas) forces a
 // seasonal theme regardless of date; ?season=off forces the base theme.
@@ -104,6 +107,42 @@ export default function App() {
     if (window.location.pathname.replace(/\/$/, '') === '/admin') setView('admin');
   }, []);
 
+  // Analytics: one visit event per load; apply a custom favicon if configured.
+  useEffect(() => {
+    if (!config) return;
+    track('view');
+    if (config.faviconUrl) {
+      let link = document.querySelector('link[rel="icon"]');
+      if (!link) { link = document.createElement('link'); link.rel = 'icon'; document.head.appendChild(link); }
+      link.href = config.faviconUrl;
+    }
+  }, [config]);
+
+  // Track entering checkout (funnel step) once per entry.
+  const prevView = React.useRef('home');
+  useEffect(() => {
+    if (view === 'checkout' && prevView.current !== 'checkout') track('checkout');
+    prevView.current = view;
+  }, [view]);
+
+  // Reorder a past order: reload its items; force a fresh Dine in / Takeaway
+  // choice (their table may have changed since).
+  function reorder(order) {
+    const entries = (order.items || []).filter((it) => it.variationId).map((it) => ({
+      key: `${it.variationId}:${(it.modifierIds || []).join(',')}:re`,
+      variationId: it.variationId, itemName: it.name, variationName: it.variation || '',
+      modifierIds: it.modifierIds || [], modifierNames: it.modifierNames || [],
+      unitPrice: it.unitPrice || 0, quantity: Number(it.quantity) || 1, note: '',
+    }));
+    if (!entries.length) return;
+    setCart(entries);
+    setDineIn(null); setTable(''); setTableLock(0);
+    setView('home');
+    setActiveCat(null);
+    track('reorder');
+    window.scrollTo({ top: 0 });
+  }
+
   const currency = config?.currency || menu?.currency || 'AUD';
   const layoutMode = config?.layoutMode || 'onepage';
   const xmas = activeTheme?.id === 'christmas';
@@ -188,7 +227,12 @@ export default function App() {
         return prev.map((c) => (c.key === entry.key ? { ...c, quantity: c.quantity + entry.quantity } : c));
       return [...prev, entry];
     });
+    track('add_cart', { ref: entry.itemName, qty: entry.quantity });
     setActiveItem(null);
+  }
+  function trackPurchase(order) {
+    trackItems('purchase_item', cart.map((c) => ({ name: c.itemName, qty: c.quantity, amount: c.unitPrice * c.quantity })));
+    track('purchase', { amount: order?.totalMoney?.amount || cartTotal });
   }
   function updateQty(key, delta) {
     setCart((prev) =>
@@ -196,11 +240,13 @@ export default function App() {
     );
   }
   function onPaid(payment, order, meta) {
+    trackPurchase(order);
     setCompleted({ payment, order, meta: meta || {} });
     setCart([]);
     setView('done');
   }
   function onScheduledOrder(scheduled, meta) {
+    trackPurchase(null);
     setCompleted({ scheduled, meta: meta || {} });
     setCart([]);
     setView('done');
@@ -304,7 +350,7 @@ export default function App() {
       )}
       <header className="topbar">
         <button className="logo-wrap" onClick={() => { setView('home'); setActiveCat(null); }} aria-label="Home">
-          <Logo height={33} />
+          {config.logoUrl ? <img src={config.logoUrl} alt={config.storeName || 'Home'} style={{ height: 36, width: 'auto', display: 'block' }} /> : <Logo height={33} />}
         </button>
         <div className="icon-row">
           <button className="iconbtn" title="Theme" aria-label="Theme" onClick={() => setShowTheme(true)}><ThemeIcon size={22} /></button>
@@ -332,6 +378,7 @@ export default function App() {
           currency={currency}
           onSignIn={onSignIn}
           onSignOut={onSignOut}
+          onReorder={reorder}
           onBack={() => setView('home')}
         />
       )}
@@ -369,10 +416,12 @@ export default function App() {
             <MenuList
               categories={filteredMenu}
               currency={currency}
-              onPick={setActiveItem}
+              onPick={(item) => { setActiveItem(item); track('product_view', { ref: item.name }); }}
               scrollTo={activeCat}
               onScrolled={() => setActiveCat(null)}
             />
+            <StoreContact contact={config.contact} onTrack={track} />
+            <InstallButton />
           </div>
           <aside className="cart-aside">
             <CartPanel

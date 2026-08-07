@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { api, formatMoney } from '../api.js';
 
-export default function Account({ user, currency, onSignIn, onSignOut, onBack }) {
+export default function Account({ user, currency, onSignIn, onSignOut, onReorder, onBack }) {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [busy, setBusy] = useState(false);
@@ -127,6 +127,9 @@ export default function Account({ user, currency, onSignIn, onSignOut, onBack })
           <div className="muted" style={{ fontSize: 13 }}>
             {o.items.map((li) => `${li.quantity}× ${li.name}${li.variation ? ` (${li.variation})` : ''}`).join(', ')}
           </div>
+          {onReorder && o.items.some((li) => li.variationId) && (
+            <button className="btn ghost" style={{ marginTop: 10, padding: '8px 14px', fontSize: 14 }} onClick={() => onReorder(o)}>Order this again</button>
+          )}
         </div>
       ))}
 

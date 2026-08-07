@@ -14,14 +14,15 @@ export default function OrderTypeBar({ dineIn, setDineIn, table, setTable, lock,
   return (
     <section className="ordertype">
       <div className="segmented">
-        <button className={dineIn ? 'seg active' : 'seg'} onClick={() => setDineIn(true)} type="button">
+        <button className={dineIn === true ? 'seg active' : 'seg'} onClick={() => setDineIn(true)} type="button">
           Dine in
         </button>
-        <button className={!dineIn ? 'seg active' : 'seg'} onClick={() => setDineIn(false)} type="button">
+        <button className={dineIn === false ? 'seg active' : 'seg'} onClick={() => setDineIn(false)} type="button">
           Takeaway
         </button>
       </div>
-      {dineIn && (
+      {dineIn === null && <p className="muted" style={{ fontSize: 12, margin: 0 }}>Choose dine in or takeaway to continue.</p>}
+      {dineIn === true && (
         <TableEntry lock={lock} table={table} setTable={setTable} onUnlock={onUnlock} onScanned={onScanned} />
       )}
     </section>

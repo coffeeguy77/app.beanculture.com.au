@@ -509,3 +509,41 @@ img { max-width: 100%; }
 /* Footer buttons wrap to new rows when there are many. */
 .catbar { flex-wrap: wrap; row-gap: 2px; }
 .catbar .navitem { flex: 1 0 18%; }
+
+/* ── Storefront contact + install ── */
+.store-contact { padding: 8px 16px 4px; }
+.contact-line { display: flex; align-items: center; gap: 10px; color: var(--ink); text-decoration: none; padding: 10px 12px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); font-size: 14px; }
+.contact-ic { color: var(--brand); display: inline-flex; }
+.contact-actions { display: flex; gap: 10px; margin-top: 10px; }
+.contact-actions .btn { flex: 1; text-align: center; text-decoration: none; }
+.install-cta { padding: 12px 16px 4px; }
+
+/* ── Insights dashboard ── */
+.stat-tiles { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 14px; }
+.stat-tile { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px; box-shadow: var(--shadow-sm); }
+.stat-v { font-size: 24px; font-weight: 800; color: var(--brand); }
+.stat-l { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.chart-bars { display: flex; align-items: flex-end; gap: 3px; height: 120px; padding-top: 8px; }
+.chart-col { flex: 1; display: flex; align-items: flex-end; justify-content: center; gap: 1px; height: 100%; }
+.chart-col .bar { width: 45%; border-radius: 3px 3px 0 0; min-height: 2px; }
+.bar-views { background: var(--brand-soft); }
+.bar-buys { background: var(--brand); }
+.chart-legend { display: flex; gap: 16px; margin-top: 8px; font-size: 12px; color: var(--muted); }
+.chart-legend .sw { width: 10px; height: 10px; border-radius: 3px; display: inline-block; margin-right: 4px; vertical-align: middle; }
+.sw-views { background: var(--brand-soft); }
+.sw-buys { background: var(--brand); }
+.funnel-row { margin-bottom: 10px; }
+.funnel-top { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 4px; }
+.funnel-track { height: 10px; background: var(--brand-soft); border-radius: 6px; overflow: hidden; }
+.funnel-fill { height: 100%; background: var(--accent); border-radius: 6px; }
+.ins-two { display: grid; grid-template-columns: 1fr; gap: 0; }
+.top-row { margin-bottom: 8px; }
+.top-top { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 3px; }
+.top-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 78%; }
+.top-track { height: 8px; background: var(--brand-soft); border-radius: 5px; overflow: hidden; }
+.top-fill { height: 100%; background: var(--brand); border-radius: 5px; }
+
+@media (min-width: 720px) {
+  .stat-tiles { grid-template-columns: repeat(3, 1fr); }
+  .ins-two { grid-template-columns: 1fr 1fr; gap: 14px; }
+}

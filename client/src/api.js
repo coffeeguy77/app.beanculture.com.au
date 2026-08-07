@@ -23,6 +23,10 @@ export const api = {
   getScheduled: (customerId) => req(`/api/scheduled?customerId=${encodeURIComponent(customerId)}`),
   schedule: (payload) => req('/api/scheduled', { method: 'POST', body: JSON.stringify(payload) }),
   cancelScheduled: (id, customerId) => req(`/api/scheduled/${encodeURIComponent(id)}/cancel`, { method: 'POST', body: JSON.stringify({ customerId }) }),
+  // Analytics
+  track: (events) => req('/api/track', { method: 'POST', body: JSON.stringify({ events }) }),
+  adminAnalytics: (pass, days = 30) => req(`/api/admin/analytics?days=${days}&pass=${encodeURIComponent(pass || '')}`),
+  adminUpload: (pass, dataUri, folder) => req(`/api/admin/upload?pass=${encodeURIComponent(pass || '')}`, { method: 'POST', body: JSON.stringify({ dataUri, folder }) }),
 };
 
 export function formatMoney(amount, currency = 'AUD') {

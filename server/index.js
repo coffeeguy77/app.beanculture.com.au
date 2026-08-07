@@ -44,6 +44,9 @@ app.get('/api/config', async (_req, res) => {
     currency: sq.CURRENCY,
     storeName: settings.storeName,
     announcement: settings.announcement,
+    contact: settings.contact,
+    logoUrl: settings.logoUrl,
+    faviconUrl: settings.faviconUrl,
     theme: settings.theme,
     themePresets: settings.themePresets,
     seasonalThemes: seasonalForPicker(settings),
@@ -256,6 +259,26 @@ app.post('/api/scheduled/:id/cancel', async (req, res) => {
     res.json({ ok });
   } catch (e) {
     res.status(400).json({ error: e.message });
+  }
+});
+
+// ---- Analytics: ingest events (best-effort, never blocks the UI) ----
+app.post('/api/track', async (req, res) => {
+  try {
+    const events = (req.body && req.body.events) || [];
+    await db.track(events);
+    res.json({ ok: true });
+  } catch (e) {
+    res.json({ ok: false });
+  }
+});
+app.get('/api/admin/analytics', async (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const days = Number(req.query.days) || 30;
+    res.json({ analytics: await db.getAnalytics(days), dbEnabled: db.enabled });
+  } catch (e) {
+    res.status(502).json({ error: e.message });
   }
 });
 

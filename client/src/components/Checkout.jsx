@@ -34,6 +34,15 @@ export default function Checkout({ config, cart, currency, dineIn, setDineIn, ta
 
   const bigPill = tableLock >= 2 && dineIn && table;
   const sched = config.scheduling || {};
+  const openDays = config.hours?.openDays || null; // null = open every day
+  const closures = config.hours?.closures || [];
+  function closedReason(ds) {
+    if (!ds) return null;
+    if (openDays) { const wd = new Date(`${ds}T12:00:00`).getDay(); if (!openDays.includes(wd)) return 'closed that day'; }
+    const md = ds.slice(5);
+    if (closures.some((c) => c && (c.date === ds || (c.annual && String(c.date).slice(5) === md)))) return 'closed (holiday)';
+    return null;
+  }
 
   // ---- scheduling + saved cards ----
   const [when, setWhen] = useState('asap'); // asap | schedule | repeat
@@ -101,6 +110,8 @@ export default function Checkout({ config, cart, currency, dineIn, setDineIn, ta
 
   function pickupIso() {
     if (!isSchedule) return null;
+    const reason = closedReason(schedDate);
+    if (reason) throw new Error(`Sorry, we’re ${reason}. Please pick another date.`);
     const d = new Date(`${schedDate}T${schedTime}`);
     if (isNaN(d.getTime())) throw new Error('Please choose a valid pickup date and time.');
     if (d.getTime() < Date.now() + 5 * 60000) throw new Error('Choose a pickup time at least a few minutes from now.');
@@ -109,6 +120,7 @@ export default function Checkout({ config, cart, currency, dineIn, setDineIn, ta
 
   function validate() {
     if (!name.trim()) { setError('Please enter your name.'); return false; }
+    if (dineIn === null) { setError('Please choose Dine in or Takeaway.'); return false; }
     if (dineIn && !table.trim()) { setError('Please enter your table number.'); return false; }
     if (!canOrder && when === 'asap') { setError('Ordering is currently closed — schedule a time instead.'); return false; }
     if ((isSchedule || isRepeat) && !user?.customerId) { setError('Please sign in (via Account) to schedule an order.'); return false; }
@@ -160,9 +172,10 @@ export default function Checkout({ config, cart, currency, dineIn, setDineIn, ta
       if (autocharge) {
         const pickupAt = isSchedule ? pickupIso() : null;
         const cardId = await resolveCardId();
-        const recurrence = isRepeat
-          ? { type: repeatType, time: repeatTime, days: repeatType === 'weekly' ? repeatDays : undefined }
-          : { type: 'none' };
+        let recurrence;
+        if (!isRepeat) recurrence = { type: 'none' };
+        else if (repeatType === 'daily') recurrence = openDays ? { type: 'weekly', time: repeatTime, days: openDays } : { type: 'daily', time: repeatTime };
+        else recurrence = { type: 'weekly', time: repeatTime, days: repeatDays.filter((n) => !openDays || openDays.includes(n)) };
         const label = isRepeat
           ? `${repeatType === 'daily' ? 'Daily' : 'Weekly'} · ${repeatTime}`
           : `Pickup ${schedDate} ${schedTime}`;
@@ -232,8 +245,8 @@ export default function Checkout({ config, cart, currency, dineIn, setDineIn, ta
         <div style={{ marginBottom: 12 }}><TableLockPill table={table} onUnlock={onUnlockTable} /></div>
       ) : (
         <div className="segmented" style={{ marginBottom: 12 }}>
-          <button className={dineIn ? 'seg active' : 'seg'} onClick={() => setDineIn(true)} type="button">Dine in</button>
-          <button className={!dineIn ? 'seg active' : 'seg'} onClick={() => setDineIn(false)} type="button">Takeaway</button>
+          <button className={dineIn === true ? 'seg active' : 'seg'} onClick={() => setDineIn(true)} type="button">Dine in</button>
+          <button className={dineIn === false ? 'seg active' : 'seg'} onClick={() => setDineIn(false)} type="button">Takeaway</button>
         </div>
       )}
 
@@ -242,7 +255,7 @@ export default function Checkout({ config, cart, currency, dineIn, setDineIn, ta
           <span className="req">Your name</span>
           <input placeholder="e.g. Shaun" value={name} onChange={(e) => setName(e.target.value)} />
         </label>
-        {dineIn && !bigPill && (
+        {dineIn === true && !bigPill && (
           <TableEntry lock={tableLock} table={table} setTable={setTable} onUnlock={onUnlockTable} onScanned={onScanTable} />
         )}
       </div>
@@ -280,12 +293,15 @@ export default function Checkout({ config, cart, currency, dineIn, setDineIn, ta
             {repeatType === 'weekly' && (
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                 {WEEKDAYS.map(([lbl, n]) => {
-                  const on = repeatDays.includes(n);
-                  return <button key={n} type="button" className={`chip ${on ? 'on' : ''}`} style={{ fontSize: 12 }}
-                    onClick={() => setRepeatDays((d) => on ? d.filter((x) => x !== n) : [...d, n])}>{lbl}</button>;
+                  const closed = openDays && !openDays.includes(n);
+                  const on = repeatDays.includes(n) && !closed;
+                  return <button key={n} type="button" disabled={closed} title={closed ? 'Closed this day' : ''}
+                    className={`chip ${on ? 'on' : ''}`} style={{ fontSize: 12, opacity: closed ? 0.4 : 1 }}
+                    onClick={() => !closed && setRepeatDays((d) => d.includes(n) ? d.filter((x) => x !== n) : [...d, n])}>{lbl}</button>;
                 })}
               </div>
             )}
+            {openDays && <p className="muted" style={{ fontSize: 11, margin: 0 }}>Only days you’re open can be selected.</p>}
             <label className="field"><span>Time each day</span>
               <input type="time" value={repeatTime} onChange={(e) => setRepeatTime(e.target.value)} /></label>
             <p className="muted" style={{ fontSize: 12, margin: 0 }}>We’ll auto-charge your saved card and send the order to the kitchen each time.</p>
