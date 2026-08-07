@@ -5,6 +5,7 @@
 // - Syncs live (short cache) so menu/stock changes in Square reflect fast.
 
 const { squareFetch, LOCATION_ID, CURRENCY, moneyToNumber } = require('./squareClient');
+const { getSettings } = require('./settings');
 
 const PARENT_CATEGORY = (process.env.SQUARE_PARENT_CATEGORY || 'APPs').trim();
 // Fallback allowlist if no parent category is found (comma-separated names).
@@ -67,7 +68,13 @@ function variationSoldOut(variation) {
   return false;
 }
 
-async function getMenu() {
+async function getMenu(opts = {}) {
+  const applySelection = opts.applySelection !== false;
+  // Admin item/category selection (which items are offered in the app).
+  const selection = applySelection ? getSettings().menuSelection || {} : {};
+  const selLower = {};
+  for (const k of Object.keys(selection)) selLower[k.toLowerCase()] = selection[k];
+
   const objects = await listAllCatalog('ITEM,CATEGORY,MODIFIER_LIST,IMAGE');
 
   const categories = new Map(); // id -> { name, parentId }
@@ -186,6 +193,15 @@ async function getMenu() {
 
     const rawCatName = (catId && categories.get(catId)?.name) || 'Menu';
     const catName = cleanName(rawCatName);
+
+    // Honor the admin's item/category selection.
+    if (applySelection) {
+      const sel = selLower[catName.toLowerCase()];
+      if (sel) {
+        if (sel.enabled === false) continue;
+        if (Array.isArray(sel.items) && !sel.items.includes(item.id)) continue;
+      }
+    }
     const catOrdinal = catId
       ? (item.item_data.categories || []).find((c) => c.id === catId)?.ordinal ?? 0
       : 0;
@@ -245,4 +261,9 @@ async function getMenu() {
   return { currency: CURRENCY, categories: menu };
 }
 
-module.exports = { getMenu, cleanName };
+// Full menu ignoring the admin selection — used by the admin item chooser.
+async function getFullMenu() {
+  return getMenu({ applySelection: false });
+}
+
+module.exports = { getMenu, getFullMenu, cleanName };

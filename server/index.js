@@ -219,6 +219,22 @@ app.post('/api/admin/settings', async (req, res) => {
   }
 });
 
+// ---- Admin: full catalog (all items per category) for the item chooser ----
+app.get('/api/admin/catalog', async (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const full = await catalog.getFullMenu();
+    res.json({
+      categories: full.categories.map((c) => ({
+        category: c.category,
+        items: c.items.map((i) => ({ id: i.id, name: i.name })),
+      })),
+    });
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+
 // ---- Admin: force a menu re-sync (clears the cache immediately) ----
 app.post('/api/admin/sync', (req, res) => {
   if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });

@@ -13,6 +13,8 @@ export default function Admin({ onExit }) {
   const [saving, setSaving] = useState(false);
   const [savedMsg, setSavedMsg] = useState('');
   const [syncMsg, setSyncMsg] = useState('');
+  const [adminCat, setAdminCat] = useState([]);
+  const [expanded, setExpanded] = useState({});
 
   async function load(p) {
     setError('');
@@ -23,6 +25,11 @@ export default function Admin({ onExit }) {
       setData(d);
       setS(JSON.parse(JSON.stringify(d.settings)));
       setNeedPass(false);
+      // Full catalog (every item per category) for the item chooser.
+      try {
+        const cr = await fetch(`/api/admin/catalog?pass=${encodeURIComponent(p || '')}`);
+        if (cr.ok) { const cd = await cr.json(); setAdminCat(cd.categories || []); }
+      } catch {}
     } catch (e) { setError(e.message); }
   }
   useEffect(() => { load(''); }, []);
@@ -47,6 +54,37 @@ export default function Admin({ onExit }) {
     const slot = footer[i];
     const has = slot.categories.some((c) => c.toLowerCase() === cat.toLowerCase());
     updSlot(i, { categories: has ? slot.categories.filter((c) => c.toLowerCase() !== cat.toLowerCase()) : [...slot.categories, cat] });
+  };
+
+  // ---- menu items offered (category / item chooser) ----
+  // menuSelection shape: { [categoryName]: { enabled: bool, items: null|[ids] } }
+  // items === null  => whole category offered. Absent key => offered (default on).
+  const ms = s?.menuSelection || {};
+  const setMS = (cat, patch) =>
+    setS((cur) => {
+      const prev = (cur.menuSelection || {})[cat] || { enabled: true, items: null };
+      return { ...cur, menuSelection: { ...(cur.menuSelection || {}), [cat]: { ...prev, ...patch } } };
+    });
+  const catEnabled = (cat) => (ms[cat]?.enabled ?? true);
+  const itemOffered = (cat, id) => {
+    const sel = ms[cat];
+    if (!sel || sel.items == null) return true; // whole category
+    return sel.items.includes(id);
+  };
+  const setCatEnabled = (cat, on) => setMS(cat, { enabled: on });
+  const setAllItems = (cat, allIds, on) => setMS(cat, { enabled: true, items: on ? null : [] });
+  const toggleItem = (cat, id, allIds) => {
+    const sel = ms[cat];
+    let cur = sel && sel.items != null ? [...sel.items] : [...allIds]; // materialise "all"
+    cur = cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id];
+    // If everything is selected again, normalise back to null ("whole category").
+    const items = allIds.length && cur.length === allIds.length ? null : cur;
+    setMS(cat, { enabled: true, items });
+  };
+  const offeredCount = (cat, allIds) => {
+    const sel = ms[cat];
+    if (!sel || sel.items == null) return allIds.length;
+    return sel.items.filter((id) => allIds.includes(id)).length;
   };
 
   // ---- hero / banners ----
@@ -174,6 +212,55 @@ export default function Admin({ onExit }) {
           );
         })}
         <button className="btn ghost full" onClick={addSlot}>+ Add footer button</button>
+      </div>
+
+      {/* Menu items offered — category / item chooser */}
+      <div className="card" style={card}>
+        <div className="group-title">Menu items offered</div>
+        <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>
+          Tick a category to offer it in the app. Expand to offer the whole category or only certain items —
+          smarter for app ordering &amp; delivery.
+        </p>
+        {adminCat.length === 0 && <p className="muted" style={{ fontSize: 12 }}>Loading catalog…</p>}
+        {adminCat.map((c) => {
+          const allIds = c.items.map((i) => i.id);
+          const on = catEnabled(c.category);
+          const isOpen = !!expanded[c.category];
+          const nOffered = offeredCount(c.category, allIds);
+          const partial = on && ms[c.category]?.items != null;
+          return (
+            <div key={c.category} style={{ border: '1px solid var(--line)', borderRadius: 12, padding: 10, marginBottom: 10, opacity: on ? 1 : 0.55 }}>
+              <div style={{ ...row, justifyContent: 'space-between' }}>
+                <label style={{ ...row, cursor: 'pointer', flex: 1 }}>
+                  <input type="checkbox" checked={on} onChange={(e) => setCatEnabled(c.category, e.target.checked)} />
+                  <span style={{ fontWeight: 700 }}>{c.category}</span>
+                  <span className="muted" style={{ fontSize: 12 }}>
+                    {partial ? `${nOffered}/${c.items.length} items` : `all ${c.items.length}`}
+                  </span>
+                </label>
+                <button className="link" onClick={() => setExpanded((x) => ({ ...x, [c.category]: !isOpen }))}>
+                  {isOpen ? '▲' : '▼'}
+                </button>
+              </div>
+              {isOpen && (
+                <div style={{ marginTop: 8, borderTop: '1px solid var(--line)', paddingTop: 8 }}>
+                  <div style={{ ...row, gap: 8, marginBottom: 8 }}>
+                    <button className="link" onClick={() => setAllItems(c.category, allIds, true)}>Offer all</button>
+                    <span className="muted">·</span>
+                    <button className="link" onClick={() => setAllItems(c.category, allIds, false)}>Offer none</button>
+                  </div>
+                  {c.items.map((it) => (
+                    <label key={it.id} style={{ ...row, cursor: 'pointer', padding: '4px 0' }}>
+                      <input type="checkbox" checked={itemOffered(c.category, it.id)} disabled={!on}
+                        onChange={() => toggleItem(c.category, it.id, allIds)} />
+                      <span style={{ fontSize: 14 }}>{it.name}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
 
       {/* Banners */}
