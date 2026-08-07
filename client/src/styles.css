@@ -79,11 +79,12 @@ img { max-width: 100%; }
   padding: 20px; display: flex; flex-direction: column; justify-content: flex-end;
   color: #fff; cursor: pointer; position: relative; overflow: hidden; box-shadow: var(--shadow-sm);
 }
-/* All banners share one fixed-size box (the track's aspect-ratio). Images fit
-   fully inside it (never cropped); banners built to the box shape fill it. */
+/* All banners share one fixed-size box (the track's aspect-ratio, default 3:2).
+   The image fills the box 100% (cover); build banners to the box shape so
+   nothing is cropped. */
 .hero-track { align-items: stretch; }
-.hero-slide.has-img { padding: 0; display: block; background: var(--brand-soft); }
-.hero-img { width: 100%; height: 100%; display: block; object-fit: contain; border-radius: 20px; }
+.hero-slide.has-img { padding: 0; display: block; background: var(--brand-soft); border: none; }
+.hero-img { width: 100%; height: 100%; display: block; object-fit: cover; border-radius: 20px; }
 .hero-slide.has-img .hero-copy {
   position: absolute; left: 0; right: 0; bottom: 0; padding: 20px;
   display: flex; flex-direction: column; align-items: flex-start;

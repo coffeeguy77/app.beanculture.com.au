@@ -35,11 +35,18 @@
 [data-season='christmas'] .closed-banner { background: rgba(0, 0, 0, 0.28); color: var(--season-gold-light); }
 
 /* ── Hero ── */
-[data-season='christmas'] .hero-slide {
+/* Text slides get the festive red gradient + gold frame. */
+[data-season='christmas'] .hero-slide:not(.has-img) {
   background:
     radial-gradient(90% 120% at 90% 0%, rgba(216, 169, 59, 0.22), transparent 55%),
     linear-gradient(135deg, var(--season-red) 0%, var(--season-red-deep) 100%) !important;
   border: 2px solid var(--season-gold);
+  color: var(--season-cream);
+}
+/* Image banners fill the box 100% — no red/gold frame bleeding around them. */
+[data-season='christmas'] .hero-slide.has-img {
+  background: transparent !important;
+  border: none;
   box-shadow: 0 12px 34px rgba(0, 0, 0, 0.4);
   color: var(--season-cream);
 }
