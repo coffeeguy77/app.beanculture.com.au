@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { api, formatMoney } from '../api.js';
+import WalletButtons from './WalletButtons.jsx';
 
 function loadSquareSdk(environment) {
   const src = environment === 'sandbox'
@@ -27,6 +28,7 @@ export default function GiftCards({ config, user, initialBalance, initialMode, o
   const [gan, setGan] = useState('');
   const [copied, setCopied] = useState(false);
   const [ready, setReady] = useState(false);
+  const [paymentsObj, setPaymentsObj] = useState(null);
   const paymentsRef = useRef(null);
   const cardRef = useRef(null);
   const currency = config.currency || 'AUD';
@@ -45,6 +47,7 @@ export default function GiftCards({ config, user, initialBalance, initialMode, o
         if (!config.applicationId || !config.locationId) throw new Error('Payments not configured.');
         const payments = Square.payments(config.applicationId, config.locationId);
         paymentsRef.current = payments;
+        if (!cancelled) setPaymentsObj(payments);
         const card = await payments.card();
         await card.attach('#gc-card');
         cardRef.current = card;
@@ -93,6 +96,26 @@ export default function GiftCards({ config, user, initialBalance, initialMode, o
       setBalance(nb.balance); onBalance && onBalance(nb.balance);
       setResult({ kind: 'added', balance: nb.balance });
     } catch (e) { setError(e.message); } finally { setBusy(false); }
+  }
+
+  // A wallet (Apple Pay / Google Pay) produced a token — fund the top-up or the
+  // gift purchase with it directly (no card entry, no buyer verification).
+  async function onWalletToken(token) {
+    if (mode === 'topup') {
+      if (!user?.customerId) throw new Error('Please sign in first.');
+      const b = await api.giftTopUp({ customerId: user.customerId, sourceId: token, amount });
+      setBalance(b.balance); onBalance && onBalance(b.balance);
+      setResult({ kind: 'topup', balance: b.balance });
+    } else if (mode === 'buy') {
+      const g = await api.giftBuy({ sourceId: token, amount, customerId: user?.customerId });
+      setResult({ kind: 'gift', gan: g.gan, balance: g.balance });
+    }
+  }
+  function walletCanStart() {
+    if (amount < 100) { setError('Choose an amount of at least ' + formatMoney(100, currency) + '.'); return false; }
+    if (mode === 'topup' && !user?.customerId) { setError('Please sign in first.'); return false; }
+    setError('');
+    return true;
   }
 
   const needsCard = mode !== 'redeem';
@@ -149,6 +172,16 @@ export default function GiftCards({ config, user, initialBalance, initialMode, o
                   </div>
                   <label className="field" style={{ marginTop: 8 }}><span>Amount</span>
                     <input inputMode="numeric" value={(amount / 100).toString()} onChange={(e) => setAmount(Math.round((parseFloat(e.target.value) || 0) * 100))} /></label>
+                  <WalletButtons
+                    payments={paymentsObj}
+                    amount={amount}
+                    currency={currency}
+                    country="AU"
+                    label={mode === 'buy' ? 'Bean Culture gift card' : 'Bean Culture top-up'}
+                    canStart={walletCanStart}
+                    onToken={onWalletToken}
+                    onError={setError}
+                  />
                   <div className="group-title" style={{ marginTop: 14 }}>Pay with card</div>
                   <div id="gc-card" className="card-box" />
                   {error && <p className="error-text">{error}</p>}

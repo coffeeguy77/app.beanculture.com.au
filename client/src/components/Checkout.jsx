@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { api, formatMoney } from '../api.js';
 import { TableLockPill, TableEntry } from './TableControls.jsx';
+import WalletButtons from './WalletButtons.jsx';
 
 function loadSquareSdk(environment) {
   const src = environment === 'sandbox'
@@ -29,7 +30,7 @@ export default function Checkout({ config, cart, currency, dineIn, setDineIn, ta
   const [error, setError] = useState('');
   const [coupon, setCoupon] = useState('');
   const [note, setNote] = useState('');
-  const [wallets, setWallets] = useState({ googlePay: false, applePay: false });
+  const [paymentsObj, setPaymentsObj] = useState(null);
   const [loyalty, setLoyalty] = useState(null);
   const [tierId, setTierId] = useState(null);
 
@@ -71,8 +72,6 @@ export default function Checkout({ config, cart, currency, dineIn, setDineIn, ta
 
   const paymentsRef = useRef(null);
   const cardRef = useRef(null);
-  const gpRef = useRef(null);
-  const apRef = useRef(null);
 
   const cartTotal = cart.reduce((n, c) => n + c.unitPrice * c.quantity, 0);
   const cartPayload = cart.map((c) => ({ variationId: c.variationId, quantity: c.quantity, modifierIds: c.modifierIds, note: c.note }));
@@ -107,14 +106,10 @@ export default function Checkout({ config, cart, currency, dineIn, setDineIn, ta
         if (!config.applicationId || !config.locationId) throw new Error('Payment not configured.');
         const payments = Square.payments(config.applicationId, config.locationId);
         paymentsRef.current = payments;
+        if (!cancelled) setPaymentsObj(payments);
         const card = await payments.card();
         await card.attach('#card-container');
         cardRef.current = card;
-        try {
-          const req = payments.paymentRequest({ countryCode: 'AU', currencyCode: currency, total: { amount: (cartTotal / 100).toFixed(2), label: 'Total' } });
-          try { const gp = await payments.googlePay(req); await gp.attach('#gp-btn'); gpRef.current = gp; if (!cancelled) setWallets((w) => ({ ...w, googlePay: true })); } catch {}
-          try { const ap = await payments.applePay(req); apRef.current = ap; if (!cancelled) setWallets((w) => ({ ...w, applePay: true })); } catch {}
-        } catch {}
         if (!cancelled) setStatus('ready');
       } catch (e) { if (!cancelled) { setError(e.message); setStatus('error'); } }
     }
@@ -240,17 +235,19 @@ export default function Checkout({ config, cart, currency, dineIn, setDineIn, ta
     } finally { setBusy(false); }
   }
 
-  async function payWithWallet(ref) {
-    if (!validate()) return;
+  // A wallet (Apple Pay / Google Pay / Afterpay) already produced a token — no
+  // buyer verification needed; the wallet carries its own authentication.
+  async function onWalletToken(token) {
     setBusy(true); setError('');
     try {
-      const result = await ref.current.tokenize();
-      if (result.status !== 'OK') throw new Error('Payment not completed.');
       const order = await createOrder(null);
-      const pay = await api.pay({ sourceId: result.token, orderId: order.orderId, totalMoney: order.totalMoney, customerId: user?.customerId });
+      const pay = await api.pay({ sourceId: token, orderId: order.orderId, totalMoney: order.totalMoney, customerId: user?.customerId });
       if (pay.status === 'COMPLETED' || pay.status === 'APPROVED') onPaid(pay, order, {});
       else throw new Error(`Payment ${pay.status}`);
-    } catch (e) { setError(e.message); } finally { setBusy(false); }
+    } catch (e) {
+      const declined = /insufficient|declin|cvv|card|402|fund/i.test(e.message || '');
+      setError(declined ? 'That payment was declined — your order is still here. Try another method.' : e.message);
+    } finally { setBusy(false); }
   }
 
   const minDate = dateStr(new Date());
@@ -405,11 +402,19 @@ export default function Checkout({ config, cart, currency, dineIn, setDineIn, ta
 
       {status !== 'error' && (
         <>
-          {!hideWallets && wallets.applePay && (
-            <button className="wallet-btn apple" disabled={busy} onClick={() => payWithWallet(apRef)} type="button"> Pay</button>
+          {!hideWallets && (
+            <WalletButtons
+              payments={paymentsObj}
+              amount={cartTotal}
+              currency={currency}
+              country="AU"
+              label="Bean Culture"
+              afterpay
+              canStart={validate}
+              onToken={onWalletToken}
+              onError={setError}
+            />
           )}
-          <div id="gp-btn" className="wallet-slot" style={{ display: !hideWallets && wallets.googlePay ? 'block' : 'none' }} onClick={() => !busy && payWithWallet(gpRef)} />
-          {!hideWallets && (wallets.applePay || wallets.googlePay) && <div className="or">or pay by card</div>}
 
           {/* Card entry — hidden when paying with a saved card */}
           <div id="card-container" className="card-box" style={{ display: usingNewCard && !hasCoupon ? 'block' : 'none', marginTop: 8 }} />

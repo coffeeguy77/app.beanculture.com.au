@@ -452,6 +452,16 @@ app.post('/api/admin/upload', async (req, res) => {
 
 // ---- Serve the built client (single service) ----
 const clientDist = path.join(__dirname, '..', 'client', 'dist');
+// Apple Pay domain verification. Register the site's domain in the Square
+// Developer Dashboard (Apple Pay tab), then paste the association file contents
+// into the APPLE_PAY_DOMAIN_ASSOCIATION env var. Served here as plain text so
+// Apple Pay can verify the domain — no code redeploy needed to update it.
+app.get('/.well-known/apple-developer-merchantid-domain-association', (_req, res) => {
+  const body = process.env.APPLE_PAY_DOMAIN_ASSOCIATION;
+  if (!body) return res.status(404).send('Apple Pay domain association not configured.');
+  res.type('text/plain').send(body);
+});
+
 app.use(express.static(clientDist));
 app.get('*', (_req, res) => res.sendFile(path.join(clientDist, 'index.html')));
 
