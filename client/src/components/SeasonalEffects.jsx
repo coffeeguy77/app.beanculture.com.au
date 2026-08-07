@@ -3,9 +3,14 @@ import React, { useMemo } from 'react';
 // Festive overlays driven by the active theme's `effects` flags.
 // Purely decorative and pointer-events:none so it never blocks the UI.
 export default function SeasonalEffects({ effects }) {
+  const e = effects || {};
+  const fallOn = e.snow || e.hearts || e.petals || e.confetti;
+  const chars = e.hearts ? ['❤', '💗', '💕', '♥']
+    : e.petals ? ['🌸', '🌺', '❀', '✿', '🌼']
+    : e.confetti ? ['✦', '●', '◆', '★', '▲']
+    : ['❄', '❅', '•', '✦'];
   const flakes = useMemo(() => {
-    const chars = ['❄', '❅', '•', '✦'];
-    return Array.from({ length: 64 }, (_, i) => ({
+    return Array.from({ length: 60 }, (_, i) => ({
       id: i,
       left: Math.random() * 100,
       size: 6 + Math.random() * 12,
@@ -15,7 +20,8 @@ export default function SeasonalEffects({ effects }) {
       char: chars[Math.floor(Math.random() * chars.length)],
       op: 0.4 + Math.random() * 0.6,
     }));
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [e.snow, e.hearts, e.petals, e.confetti]);
 
   const bulbs = useMemo(() => {
     const colors = ['#ff3b30', '#34c759', '#ffd60a', '#ff9f0a', '#ffffff'];
@@ -36,7 +42,7 @@ export default function SeasonalEffects({ effects }) {
     }));
   }, []);
 
-  if (!effects || (!effects.snow && !effects.lights && !effects.ornaments)) return null;
+  if (!fallOn && !e.lights && !e.ornaments) return null;
 
   return (
     <div className="fx" aria-hidden="true">
@@ -64,7 +70,7 @@ export default function SeasonalEffects({ effects }) {
         </div>
       )}
 
-      {effects.snow && (
+      {fallOn && (
         <div className="fx-snow">
           {flakes.map((f) => (
             <span

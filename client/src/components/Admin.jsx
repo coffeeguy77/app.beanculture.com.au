@@ -165,6 +165,19 @@ export default function Admin({ onExit }) {
   const menuCategories = s?.menuCategories || [];
   const toggleMenuCat = (id) => set({ menuCategories: menuCategories.includes(id) ? menuCategories.filter((x) => x !== id) : [...menuCategories, id] });
 
+  // ---- seasonal / festive theme scheduler ----
+  const seasonalThemes = s?.seasonalThemes || [];
+  const setSeasonal = (arr) => set({ seasonalThemes: arr });
+  const updSeasonal = (i, patch) => setSeasonal(seasonalThemes.map((t, j) => (j === i ? { ...t, ...patch } : t)));
+  const updSeasonalTheme = (i, k, v) => setSeasonal(seasonalThemes.map((t, j) => (j === i ? { ...t, theme: { ...(t.theme || {}), [k]: v } } : t)));
+  const updSeasonalBanner = (i, patch) => setSeasonal(seasonalThemes.map((t, j) => (j === i ? { ...t, banner: { ...(t.banner || {}), ...patch } } : t)));
+  const rmSeasonal = (i) => setSeasonal(seasonalThemes.filter((_, j) => j !== i));
+  const addSeasonal = () => setSeasonal([...seasonalThemes, {
+    id: 'custom' + Math.random().toString(36).slice(2, 7), name: '✨ Custom event', from: '01-01', to: '01-01', enabled: true,
+    theme: { bg: '#fdf1f4', surface: '#ffffff', ink: '#3b2b30', muted: '#9c8890', brand: '#b5566e', accent: '#d1547a', accentInk: '#ffffff', line: '#f2dfe6' },
+    effects: {}, banner: { title: '', subtitle: '', cta: 'Order now', bg: 'linear-gradient(135deg,#f7c9d6,#d1547a)', textColor: '#ffffff', link: { type: 'scroll', value: 'menu' } },
+  }]);
+
   // ---- footer builder ----
   const footer = s?.footer || [];
   const setFooter = (arr) => set({ footer: arr });
@@ -684,16 +697,67 @@ export default function Admin({ onExit }) {
 
             {/* ───────── THEME ───────── */}
             {tab === 'theme' && (
-              <div className="card" style={card}>
-                <div className="group-title">Default theme</div>
-                <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>The store’s base colours (guests can still pick their own theme).</p>
-                {['brand', 'accent', 'bg', 'ink'].map((k) => (
-                  <div key={k} style={{ ...row, justifyContent: 'space-between', padding: '8px 0', borderTop: '1px solid var(--line)' }}>
-                    <span style={{ textTransform: 'capitalize' }}>{k === 'bg' ? 'Background' : k === 'ink' ? 'Text' : k}</span>
-                    <input type="color" value={(s.theme && s.theme[k]) || '#000000'} onChange={(e) => setTheme(k, e.target.value)} style={{ width: 44, height: 32, border: 'none', background: 'none' }} />
+              <>
+                <div className="card" style={card}>
+                  <div className="group-title">Default theme</div>
+                  <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>The store’s base colours (guests can still pick their own theme).</p>
+                  {['brand', 'accent', 'bg', 'ink'].map((k) => (
+                    <div key={k} style={{ ...row, justifyContent: 'space-between', padding: '8px 0', borderTop: '1px solid var(--line)' }}>
+                      <span style={{ textTransform: 'capitalize' }}>{k === 'bg' ? 'Background' : k === 'ink' ? 'Text' : k}</span>
+                      <input type="color" value={(s.theme && s.theme[k]) || '#000000'} onChange={(e) => setTheme(k, e.target.value)} style={{ width: 44, height: 32, border: 'none', background: 'none' }} />
+                    </div>
+                  ))}
+                </div>
+
+                <div className="card" style={card}>
+                  <div className="group-title">Festive &amp; seasonal themes</div>
+                  <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>
+                    Auto-activate on their dates (a single day or a range). Guests can override. Each shows its banner
+                    #1 in the hero while active. Adjust variable holidays (Easter, Lunar New Year, Mother’s/Father’s Day) each year.
+                  </p>
+                  <div className="admin-bannergrid">
+                    {seasonalThemes.map((t, i) => {
+                      const img = t.banner?.image || (typeof t.banner?.bg === 'string' && (t.banner.bg.match(/url\((['"]?)(.*?)\1\)/) || [])[2]) || '';
+                      return (
+                        <div key={i} style={{ border: '1px solid var(--line)', borderRadius: 12, padding: 10, opacity: t.enabled === false ? 0.6 : 1 }}>
+                          <div style={{ ...row, justifyContent: 'space-between' }}>
+                            <input value={t.name || ''} onChange={(e) => updSeasonal(i, { name: e.target.value })} style={{ flex: 1, minWidth: 0, fontWeight: 700, border: 'none', background: 'transparent', fontSize: 15 }} />
+                            <label style={{ ...row, fontSize: 12 }} className="muted"><input type="checkbox" checked={t.enabled !== false} onChange={(e) => updSeasonal(i, { enabled: e.target.checked })} /> On</label>
+                            <button className="link" style={{ color: '#c0392b' }} onClick={() => rmSeasonal(i)}>✕</button>
+                          </div>
+                          <div style={{ ...row, marginTop: 6, gap: 8 }}>
+                            <label className="field" style={{ flex: 1 }}><span>From</span><input type="date" value={`2028-${t.from}`} onChange={(e) => updSeasonal(i, { from: e.target.value.slice(5) })} /></label>
+                            <label className="field" style={{ flex: 1 }}><span>To</span><input type="date" value={`2028-${t.to}`} onChange={(e) => updSeasonal(i, { to: e.target.value.slice(5) })} /></label>
+                          </div>
+                          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 8, alignItems: 'center' }}>
+                            {['brand', 'accent', 'bg', 'ink'].map((k) => (
+                              <label key={k} style={{ ...row, fontSize: 11 }} className="muted"><span style={{ textTransform: 'capitalize' }}>{k}</span>
+                                <input type="color" value={(t.theme && t.theme[k]) || '#000000'} onChange={(e) => updSeasonalTheme(i, k, e.target.value)} style={{ width: 30, height: 24, border: 'none', background: 'none' }} /></label>
+                            ))}
+                          </div>
+                          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 8, fontSize: 12 }} className="muted">
+                            {['snow', 'hearts', 'petals', 'confetti'].map((fx) => (
+                              <label key={fx} style={{ ...row }}><input type="checkbox" checked={!!(t.effects && t.effects[fx])} onChange={(e) => updSeasonal(i, { effects: { ...(t.effects || {}), [fx]: e.target.checked } })} /> {fx}</label>
+                            ))}
+                          </div>
+                          <div style={{ marginTop: 10, borderTop: '1px solid var(--line)', paddingTop: 8 }}>
+                            <div className="muted" style={{ fontSize: 11, marginBottom: 4 }}>Banner (shown #1 while active)</div>
+                            {img && <img src={img} alt="" style={{ width: '100%', borderRadius: 8, marginBottom: 6 }} />}
+                            <input value={t.banner?.title || ''} onChange={(e) => updSeasonalBanner(i, { title: e.target.value })} placeholder="Banner title" style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 10, marginBottom: 6 }} />
+                            <input value={t.banner?.subtitle || ''} onChange={(e) => updSeasonalBanner(i, { subtitle: e.target.value })} placeholder="Subtitle" style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 10, marginBottom: 6 }} />
+                            <div style={{ ...row, gap: 8 }}>
+                              <input value={t.banner?.cta || ''} onChange={(e) => updSeasonalBanner(i, { cta: e.target.value })} placeholder="Button text" style={{ flex: 1, minWidth: 0, padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 10 }} />
+                              <label className="btn ghost" style={{ padding: '8px 12px', fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap' }}>Image
+                                <input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files[0]; if (f) uploadImage(f, (url) => updSeasonalBanner(i, { image: url, bg: `url(${url}) center/contain no-repeat` }), 'themes'); }} /></label>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
-                ))}
-              </div>
+                  <button className="btn ghost full" style={{ marginTop: 10 }} onClick={addSeasonal}>+ Add custom event theme</button>
+                </div>
+              </>
             )}
           </div>
         </div>

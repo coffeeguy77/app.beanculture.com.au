@@ -363,6 +363,12 @@ export default function App() {
   );
   const showLayout = view === 'home' || (wide && view === 'checkout');
 
+  // A festive/custom theme's banner is shown #1 in the hero rotation while active.
+  const seasonBanner = activeTheme?.banner;
+  const heroSlides = seasonBanner
+    ? [{ id: 'season-banner', ...seasonBanner }, ...(config.hero || [])]
+    : (config.hero || []);
+
   return (
     <div className="app">
       {activeTheme?.effects && <SeasonalEffects effects={activeTheme.effects} />}
@@ -411,7 +417,7 @@ export default function App() {
         <div className="layout">
           <div className="main-col">
             <HeroSlider
-              hero={config.hero || []}
+              hero={heroSlides}
               ratio={config.heroRatio}
               autoplay={config.heroAutoplay !== false}
               interval={config.heroInterval}
