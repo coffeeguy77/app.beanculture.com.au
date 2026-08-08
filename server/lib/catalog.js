@@ -303,6 +303,19 @@ async function getMenu(opts = {}) {
 
   const finalEntries = opts.includeEmpty ? entries : entries.filter((e) => e.items.length > 0);
 
+  // Apply the owner's custom category order (settings.menuOrder = display names).
+  // Listed categories come first in that order; anything not listed keeps its
+  // existing (Square catalog) order after them. Array.sort is stable, so ties
+  // (both unlisted) preserve their relative position.
+  const orderNames = (getSettings().menuOrder || []).map((n) => String(n).toLowerCase());
+  if (orderNames.length) {
+    const rank = (e) => {
+      const i = orderNames.indexOf(String(e.name).toLowerCase());
+      return i === -1 ? Number.MAX_SAFE_INTEGER : i;
+    };
+    finalEntries.sort((a, b) => rank(a) - rank(b));
+  }
+
   console.log(
     `[menu] ${restrictToChildren ? childIds.size + ' shown categories' : 'no restriction (all)'} | ${finalEntries.length} shown: ${finalEntries.map((e) => `${e.name}(${e.items.length})`).join(', ')}`
   );

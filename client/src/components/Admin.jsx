@@ -322,6 +322,26 @@ export default function Admin({ onExit }) {
     return sel.items.filter((id) => allIds.includes(id)).length;
   };
 
+  // ---- category display order (storefront) ----
+  // Categories are shown in the saved order (s.menuOrder = display names); any
+  // category not yet in that list falls to the end in its catalog order.
+  const menuOrder = s?.menuOrder || [];
+  const orderRank = (name) => {
+    const i = menuOrder.findIndex((n) => String(n).toLowerCase() === String(name).toLowerCase());
+    return i === -1 ? Number.MAX_SAFE_INTEGER : i;
+  };
+  const orderedCat = [...adminCat].sort((a, b) => orderRank(a.category) - orderRank(b.category));
+  const moveCat = (name, dir) => setS((cur) => {
+    // Authoritative order = the categories as currently shown; swap two of them.
+    const base = orderedCat.map((c) => c.category);
+    const i = base.findIndex((n) => n.toLowerCase() === String(name).toLowerCase());
+    const j = i + dir;
+    if (i < 0 || j < 0 || j >= base.length) return cur;
+    const arr = [...base];
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+    return { ...cur, menuOrder: arr };
+  });
+
   // ---- coupons ----
   const couponList = s?.coupons || [];
   const setCoupons = (arr) => set({ coupons: arr });
@@ -846,11 +866,11 @@ export default function Admin({ onExit }) {
                 <div className="card" style={card}>
                   <div className="group-title">Menu items offered</div>
                   <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>
-                    Tick a category to offer it in the app. Expand to offer the whole category or only certain items —
-                    smarter for app ordering &amp; delivery.
+                    Tick a category to offer it in the app. Use ↑/↓ to set the order categories appear on the storefront.
+                    Expand to offer the whole category or only certain items — smarter for app ordering &amp; delivery.
                   </p>
                   {adminCat.length === 0 && <p className="muted" style={{ fontSize: 12 }}>Loading catalog…</p>}
-                  {adminCat.map((c) => {
+                  {orderedCat.map((c, idx) => {
                     const allIds = c.items.map((i) => i.id);
                     const on = catEnabled(c.category);
                     const isOpen = !!expanded[c.category];
@@ -871,6 +891,12 @@ export default function Admin({ onExit }) {
                               onChange={(e) => setMS(c.category, { showImages: e.target.checked })} />
                             <span>Images</span>
                           </label>
+                          <button className="link" title="Move up" disabled={idx === 0}
+                            style={{ opacity: idx === 0 ? 0.3 : 1 }}
+                            onClick={() => moveCat(c.category, -1)}>↑</button>
+                          <button className="link" title="Move down" disabled={idx === orderedCat.length - 1}
+                            style={{ opacity: idx === orderedCat.length - 1 ? 0.3 : 1 }}
+                            onClick={() => moveCat(c.category, 1)}>↓</button>
                           <button className="link" onClick={() => setExpanded((x) => ({ ...x, [c.category]: !isOpen }))}>
                             {isOpen ? '▲' : '▼'}
                           </button>

@@ -50,6 +50,11 @@ const DEFAULTS = {
   // Which Square categories appear in the app (category IDs). Empty = use the
   // "APP" parent category's children automatically (legacy behaviour).
   menuCategories: [],
+  // Custom order for the menu category sections on the storefront, as an array
+  // of display names (e.g. ['Coffee','All Day Menu',…]). Set from the admin
+  // "Menu items offered" ↑/↓ controls. Categories not listed keep their Square
+  // order after the listed ones. Empty = Square's catalog order (legacy).
+  menuOrder: [],
   // Default theme — light pastel pink.
   theme: {
     bg: '#fdf1f4',
