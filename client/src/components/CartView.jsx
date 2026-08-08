@@ -1,7 +1,7 @@
 import React from 'react';
 import { formatMoney } from '../api.js';
 
-export default function CartView({ cart, currency, onQty, dineIn, table, onCheckout, onBack }) {
+export default function CartView({ cart, currency, onQty, onRemove, onClear, dineIn, table, onCheckout, onBack }) {
   const total = cart.reduce((n, c) => n + c.unitPrice * c.quantity, 0);
   if (cart.length === 0) {
     return (
@@ -14,7 +14,10 @@ export default function CartView({ cart, currency, onQty, dineIn, table, onCheck
   return (
     <main className="page">
       <button className="link" onClick={onBack}>← Menu</button>
-      <h2>Your order</h2>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+        <h2>Your order</h2>
+        {onClear && <button className="link cart-clear" onClick={onClear}>Clear</button>}
+      </div>
       <span className="context-pill">{dineIn ? `Dine in · Table ${table || '—'}` : 'Takeaway'}</span>
       <ul className="cart-list">
         {cart.map((c) => (
@@ -31,6 +34,7 @@ export default function CartView({ cart, currency, onQty, dineIn, table, onCheck
                 <button onClick={() => onQty(c.key, 1)}>+</button>
               </div>
               <div style={{ fontWeight: 700 }}>{formatMoney(c.unitPrice * c.quantity, currency)}</div>
+              {onRemove && <button className="cart-remove" onClick={() => onRemove(c.key)} aria-label={`Remove ${c.itemName}`}>✕</button>}
             </div>
           </li>
         ))}

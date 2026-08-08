@@ -4,6 +4,29 @@
 const USER_KEY = 'bc_user';
 const THEME_KEY = 'bc_theme';
 const OPTOUT_KEY = 'bc_season_optout';
+const CART_KEY = 'bc_cart';
+const CART_TTL = 12 * 60 * 60 * 1000; // keep a saved order for 12 hours
+
+// Persist the in-progress order (cart + who/where) so a refresh never loses it.
+export function getStoredOrder() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(CART_KEY) || 'null');
+    if (!raw || !Array.isArray(raw.cart) || raw.cart.length === 0) return null;
+    if (raw.ts && Date.now() - raw.ts > CART_TTL) { localStorage.removeItem(CART_KEY); return null; }
+    return raw;
+  } catch {
+    return null;
+  }
+}
+export function setStoredOrder(data) {
+  try {
+    if (data && Array.isArray(data.cart) && data.cart.length) {
+      localStorage.setItem(CART_KEY, JSON.stringify({ ...data, ts: Date.now() }));
+    } else {
+      localStorage.removeItem(CART_KEY);
+    }
+  } catch {}
+}
 
 export function getUser() {
   try {

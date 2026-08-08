@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { api, formatMoney } from './api.js';
 import { applyTheme } from './theme.js';
-import { getUser, setUser as saveUser, getSavedTheme, setSavedTheme, getSeasonOptOut, setSeasonOptOut } from './store.js';
+import { getUser, setUser as saveUser, getSavedTheme, setSavedTheme, getSeasonOptOut, setSeasonOptOut, getStoredOrder, setStoredOrder } from './store.js';
 import HeroSlider from './components/HeroSlider.jsx';
 import OrderTypeBar from './components/OrderTypeBar.jsx';
 import CategoryNav from './components/CategoryNav.jsx';
@@ -64,8 +64,11 @@ export default function App() {
   const [activeTheme, setActiveTheme] = useState(null);
 
   const initialTable = readTable();
-  const [dineIn, setDineIn] = useState(!!initialTable);
-  const [table, setTable] = useState(initialTable);
+  // A previously-saved order (survives a browser refresh). A fresh QR scan
+  // (initialTable) always wins over the saved dine-in/table.
+  const stored = getStoredOrder();
+  const [dineIn, setDineIn] = useState(initialTable ? true : (stored ? stored.dineIn : false));
+  const [table, setTable] = useState(initialTable || stored?.table || '');
   // Table lock level: 2 = scanned (solid pill), 1 = solid chip (not editable),
   // 0 = manual entry. Each ✕ steps down one level.
   const [tableLock, setTableLock] = useState(initialTable ? 2 : 0);
@@ -89,8 +92,8 @@ export default function App() {
     t = String(t || '').trim();
     if (t) { setTable(t); setDineIn(true); setTableLock(2); }
   }
-  const [name, setName] = useState(user?.name || '');
-  const [cart, setCart] = useState([]);
+  const [name, setName] = useState(user?.name || stored?.name || '');
+  const [cart, setCart] = useState(() => stored?.cart || []);
   const [query, setQuery] = useState('');
   const [activeCat, setActiveCat] = useState(null);
   const [activeGroup, setActiveGroup] = useState(null); // category names shown in 'single' layout
@@ -276,6 +279,17 @@ export default function App() {
       prev.map((c) => (c.key === key ? { ...c, quantity: c.quantity + delta } : c)).filter((c) => c.quantity > 0)
     );
   }
+  function removeItem(key) {
+    setCart((prev) => prev.filter((c) => c.key !== key));
+  }
+  function clearCart() {
+    setCart([]);
+    if (!wide) setView('home');
+  }
+  // Persist the in-progress order so a browser refresh never loses it.
+  useEffect(() => {
+    setStoredOrder({ cart, dineIn, table, name });
+  }, [cart, dineIn, table, name]);
   function onPaid(payment, order, meta) {
     trackPurchase(order);
     setCompleted({ payment, order, meta: meta || {} });
@@ -503,6 +517,7 @@ export default function App() {
             ) : (
               <CartPanel
                 cart={cart} currency={currency} onQty={updateQty}
+                onRemove={removeItem} onClear={clearCart}
                 dineIn={dineIn} table={table}
                 onCheckout={() => setView('checkout')}
               />
@@ -514,6 +529,7 @@ export default function App() {
       {!wide && view === 'cart' && (
         <CartView
           cart={cart} currency={currency} onQty={updateQty}
+          onRemove={removeItem} onClear={clearCart}
           dineIn={dineIn} table={table}
           onCheckout={() => setView('checkout')} onBack={() => setView('home')}
         />

@@ -293,6 +293,15 @@ img { max-width: 100%; }
 .totals .row.discount { color: var(--brand); font-weight: 600; }
 
 .card-box { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px; min-height: 54px; }
+/* Cart remove (✕) + clear */
+.cart-remove {
+  border: none; background: none; color: var(--muted); cursor: pointer;
+  font-size: 15px; line-height: 1; padding: 4px; margin-left: 2px; border-radius: 8px;
+}
+.cart-remove:hover { color: #c0392b; background: color-mix(in srgb, #c0392b 10%, transparent); }
+.cart-clear { color: var(--muted); font-size: 13px; padding: 2px 4px; }
+.cart-clear:hover { color: #c0392b; }
+
 /* Checkout order summary (keeps items visible while paying) */
 .co-order { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
 .co-line { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }

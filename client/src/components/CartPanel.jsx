@@ -3,14 +3,17 @@ import { formatMoney } from '../api.js';
 
 // Persistent cart shown as a sidebar on desktop / landscape-tablet layouts.
 // Mirrors CartView's content but stays visible beside the menu.
-export default function CartPanel({ cart, currency, onQty, dineIn, table, onCheckout }) {
+export default function CartPanel({ cart, currency, onQty, onRemove, onClear, dineIn, table, onCheckout }) {
   const total = cart.reduce((n, c) => n + c.unitPrice * c.quantity, 0);
   const count = cart.reduce((n, c) => n + c.quantity, 0);
 
   return (
     <div className="cart-panel">
       <div className="cart-panel-head">
-        <h2>Your order</h2>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+          <h2>Your order</h2>
+          {cart.length > 0 && onClear && <button className="link cart-clear" onClick={onClear}>Clear</button>}
+        </div>
         <span className="context-pill">{dineIn ? `Dine in · Table ${table || '—'}` : 'Takeaway'}</span>
       </div>
 
@@ -36,6 +39,7 @@ export default function CartPanel({ cart, currency, onQty, dineIn, table, onChec
                     <button onClick={() => onQty(c.key, 1)} aria-label="Increase">+</button>
                   </div>
                   <div style={{ fontWeight: 700 }}>{formatMoney(c.unitPrice * c.quantity, currency)}</div>
+                  {onRemove && <button className="cart-remove" onClick={() => onRemove(c.key)} aria-label={`Remove ${c.itemName}`}>✕</button>}
                 </div>
               </li>
             ))}
