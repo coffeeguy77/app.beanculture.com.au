@@ -712,6 +712,12 @@ export default function Admin({ onExit }) {
                             {cats.map((c) => <option key={c} value={c}>{c}</option>)}
                           </select>
                         )}
+                        {sl.link?.type === 'url' && (
+                          <input type="url" inputMode="url" value={sl.link?.value || ''}
+                            onChange={(e) => updSlide(i, { link: { ...sl.link, value: e.target.value } })}
+                            placeholder="https://…  (opens in a new tab)"
+                            style={{ flex: 1, padding: '8px 10px', borderRadius: 10, border: '1px solid var(--line)' }} />
+                        )}
                       </div>
                       <div style={row}>
                         <label className="btn ghost" style={{ padding: '8px 12px', fontSize: 13, cursor: 'pointer' }}>

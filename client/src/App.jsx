@@ -491,7 +491,10 @@ export default function App() {
                 if (!link || link.type === 'none') return;
                 if (link.type === 'category') setActiveCat(link.value);
                 else if (link.type === 'account') setView('account');
-                else if (link.type === 'url' && link.value) window.open(link.value, '_blank', 'noopener');
+                else if (link.type === 'url' && link.value) {
+                  const u = /^https?:\/\//i.test(link.value) ? link.value : `https://${link.value}`;
+                  window.open(u, '_blank', 'noopener,noreferrer');
+                }
                 else if (link.type === 'scroll') { const el = document.querySelector('.menu'); if (el) el.scrollIntoView({ behavior: 'smooth' }); }
               }}
             />
