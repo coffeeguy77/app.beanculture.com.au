@@ -150,9 +150,7 @@ export default function StorePage({ config, onTrack, onBack }) {
               </div>
             </section>
           )}
-        </div>
 
-        <div className="store-col">
           {reviewUrl && (
             <section className="store-card review-card">
               <span className="review-star"><StarIcon size={26} /></span>
@@ -160,7 +158,9 @@ export default function StorePage({ config, onTrack, onBack }) {
               <a className="btn store-btn" href={reviewUrl} target="_blank" rel="noreferrer" onClick={() => onTrack && onTrack('review_click')}>Leave a Google review</a>
             </section>
           )}
+        </div>
 
+        <div className="store-col">
           <section className="store-card">
             <div className="store-card-head">Get in touch</div>
             <p className="muted store-sub">Questions, catering, or something we missed — straight to management. We’ll reply.</p>

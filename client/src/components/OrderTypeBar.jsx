@@ -4,7 +4,6 @@ import ScheduleWhen from './ScheduleWhen.jsx';
 
 export default function OrderTypeBar({ dineIn, setDineIn, table, setTable, lock, onUnlock, onScanned, when, setWhen, at, setAt, hours, onReserve }) {
   const storeOpen = hours?.open !== false;
-  const nextLabel = hours?.nextOpen?.label;
   // Stage 2 — scanned: prominent solid pill only, no toggle.
   if (lock >= 2 && dineIn && table) {
     return (
@@ -17,8 +16,10 @@ export default function OrderTypeBar({ dineIn, setDineIn, table, setTable, lock,
   return (
     <section className="ordertype">
       <div className={`segmented ${onReserve ? 'three' : ''}`}>
-        <button className={dineIn === true ? 'seg active' : 'seg'} onClick={() => setDineIn(true)} type="button">
-          Dine in
+        <button className={dineIn === true ? 'seg active' : 'seg'} disabled={!storeOpen}
+          onClick={() => storeOpen && setDineIn(true)} type="button"
+          style={!storeOpen ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}>
+          {storeOpen ? 'Dine in' : 'Dine in · Closed'}
         </button>
         <button className={dineIn === false ? 'seg active' : 'seg'} onClick={() => setDineIn(false)} type="button">
           Takeaway
@@ -35,11 +36,6 @@ export default function OrderTypeBar({ dineIn, setDineIn, table, setTable, lock,
         const effWhen = storeOpen ? when : 'later';
         return (
           <>
-            {!storeOpen && (
-              <p className="muted" style={{ fontSize: 12.5, margin: '2px 0 0' }}>
-                We’re closed{nextLabel ? ` — we reopen ${nextLabel}` : ''}. Order ahead for later:
-              </p>
-            )}
             <div className="segmented">
               <button className={effWhen === 'now' ? 'seg active' : 'seg'} disabled={!storeOpen}
                 onClick={() => storeOpen && setWhen('now')} type="button"
