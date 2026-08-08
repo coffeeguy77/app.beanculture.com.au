@@ -10,7 +10,8 @@ function fromPrice(item) {
   return prices.length ? Math.min(...prices) : null;
 }
 
-export default function MenuList({ categories, currency, onPick, scrollTo, onScrolled }) {
+export default function MenuList({ categories, currency, onPick, scrollTo, onScrolled, kitchenClosedCats }) {
+  const kShut = new Set((kitchenClosedCats || []).map((c) => (c || '').toLowerCase()));
   useEffect(() => {
     if (scrollTo) {
       const el = document.getElementById(slug(scrollTo));
@@ -27,21 +28,23 @@ export default function MenuList({ categories, currency, onPick, scrollTo, onScr
     <main className="menu">
       {categories.map((cat) => {
         const showImages = cat.showImages !== false;
+        const kitchenShut = kShut.has((cat.category || '').toLowerCase());
         return (
         <section key={cat.category}>
-          <h2 className="cat-title" id={slug(cat.category)}>{cat.category}</h2>
+          <h2 className="cat-title" id={slug(cat.category)}>{cat.category}{kitchenShut && <span className="cat-shut"> · kitchen closed</span>}</h2>
           <div className={`items ${showImages ? '' : 'noimg'}`}>
             {cat.items.map((item) => {
               const from = fromPrice(item);
               const multi = item.variations.length > 1;
+              const unavailable = item.soldOut || kitchenShut;
               return (
                 <button
                   key={item.id}
-                  className={`item ${item.soldOut ? 'sold' : ''}`}
-                  onClick={() => !item.soldOut && onPick(item)}
+                  className={`item ${unavailable ? 'sold' : ''}`}
+                  onClick={() => !unavailable && onPick(item)}
                   type="button"
                 >
-                  {item.soldOut && <span className="sold-tag">Sold out</span>}
+                  {item.soldOut ? <span className="sold-tag">Sold out</span> : kitchenShut && <span className="sold-tag">Kitchen closed</span>}
                   {showImages && (item.image ? (
                     <img className="item-img" src={imgUrl(item.image, 240)} alt="" loading="lazy" decoding="async" />
                   ) : (
@@ -52,7 +55,7 @@ export default function MenuList({ categories, currency, onPick, scrollTo, onScr
                     {item.description && <div className="item-desc">{item.description}</div>}
                     <div className="item-price">{multi ? 'from ' : ''}{formatMoney(from, currency)}</div>
                   </div>
-                  {!item.soldOut && <span className="plus">+</span>}
+                  {!unavailable && <span className="plus">+</span>}
                 </button>
               );
             })}

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
 import { SlotIcon } from './icons.jsx';
 import IconPicker from './IconPicker.jsx';
+import HoursEditor from './HoursEditor.jsx';
 import { formatMoney, api } from '../api.js';
 
 const LINK_TYPES = ['scroll', 'category', 'account', 'url', 'none'];
@@ -399,6 +400,50 @@ export default function Admin({ onExit }) {
                       <button className="link" style={{ padding: 0, fontSize: 13 }} onClick={() => toggleHandled(m)}>{m.handled ? 'Mark unread' : 'Mark done'}</button>
                     </div>
                   ))}
+                </div>
+
+                <div className="card" style={card}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+                    <div className="group-title" style={{ margin: 0 }}>Opening hours</div>
+                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13 }} className="muted">
+                      <input type="checkbox" checked={!!s.useAppHours} onChange={(e) => set({ useAppHours: e.target.checked })} /> Set my own hours (override Square)
+                    </label>
+                  </div>
+                  <p className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+                    {s.useAppHours ? 'These hours decide when the app is open and when customers can order “now”.' : 'Currently using your Square location hours. Tick above to set hours here instead.'}
+                  </p>
+                  {s.useAppHours && <HoursEditor value={s.storeHours} onChange={(v) => set({ storeHours: v })} />}
+                </div>
+
+                <div className="card" style={card}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+                    <div className="group-title" style={{ margin: 0 }}>Kitchen hours</div>
+                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13 }} className="muted">
+                      <input type="checkbox" checked={!!s.kitchenHoursOn} onChange={(e) => set({ kitchenHoursOn: e.target.checked })} /> Kitchen has its own hours
+                    </label>
+                  </div>
+                  <p className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+                    Made-to-order categories are only available while the kitchen is open. Everything else (pre-made / fridge items) stays available whenever the store is open. Leave off to keep the kitchen open whenever the store is.
+                  </p>
+                  {s.kitchenHoursOn && (
+                    <>
+                      <HoursEditor value={s.kitchenHours} onChange={(v) => set({ kitchenHours: v })} />
+                      <div className="group-title" style={{ marginTop: 14, fontSize: 13 }}>Made-to-order categories</div>
+                      <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>Tick the categories the kitchen makes on demand. These go unavailable when the kitchen closes.</p>
+                      {cats.length === 0 && <p className="muted" style={{ fontSize: 12 }}>No categories loaded yet.</p>}
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                        {cats.map((c) => {
+                          const on = (s.kitchenCategories || []).includes(c);
+                          return (
+                            <button key={c} type="button" className={`chip ${on ? 'on' : ''}`}
+                              onClick={() => set({ kitchenCategories: on ? (s.kitchenCategories || []).filter((x) => x !== c) : [...(s.kitchenCategories || []), c] })}>
+                              {on ? '✓ ' : ''}{c}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </>
+                  )}
                 </div>
 
                 <div className="card" style={card}>

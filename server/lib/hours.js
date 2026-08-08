@@ -10,6 +10,42 @@ const ORDERING_DISABLED = (process.env.ORDERING_DISABLED || 'false').toLowerCase
 
 const DAYS = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
 const DAY_INDEX = { SUN: 0, MON: 1, TUE: 2, WED: 3, THU: 4, FRI: 5, SAT: 6 };
+const FULL_DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+// Turn an admin hours object ({ MON:[{open,close}], … }) into the internal weekly
+// shape ({ MON:[{start,end,startMin,endMin}] }). Returns null if nothing usable.
+function editableToWeekly(h) {
+  if (!h || typeof h !== 'object' || !Object.keys(h).length) return null;
+  const weekly = {};
+  const hhmmss = (t) => (t && t.length === 5 ? `${t}:00` : t);
+  for (const d of DAYS) {
+    const arr = Array.isArray(h[d]) ? h[d] : [];
+    weekly[d] = arr
+      .filter((p) => p && p.open && p.close)
+      .map((p) => ({ start: hhmmss(p.open), end: hhmmss(p.close), startMin: toMinutes(p.open), endMin: toMinutes(p.close) }));
+  }
+  return weekly;
+}
+
+// hh:mm[:ss] → "7am" / "1:30pm"
+function fmt12(t) {
+  if (!t) return '';
+  const [h, m] = t.split(':');
+  let hh = parseInt(h, 10);
+  const ap = hh >= 12 ? 'pm' : 'am';
+  hh = hh % 12; if (hh === 0) hh = 12;
+  return (m && m !== '00') ? `${hh}:${m}${ap}` : `${hh}${ap}`;
+}
+
+function isOpenAt(weekly, dow, minutes) {
+  const list = weekly[DAYS[dow]] || [];
+  for (const w of list) {
+    if (w.startMin == null || w.endMin == null) continue;
+    let end = w.endMin; if (end <= w.startMin) end += 24 * 60; // past midnight
+    if (minutes >= w.startMin && minutes < end) return w;
+  }
+  return null;
+}
 
 let cache = { data: null, at: 0 };
 
@@ -78,52 +114,67 @@ function todayDate(timeZone) {
   return { full: `${p.year}-${p.month}-${p.day}`, md: `${p.month}-${p.day}` };
 }
 
-function withRuntime(base) {
-  const { dow, minutes } = localNow(base.timezone);
-  const todayKey = DAYS[dow];
-  const todays = base.weekly[todayKey] || [];
+// Add n days to a 'YYYY-MM-DD' string (UTC-safe for date-only math).
+function addDays(fullDate, n) {
+  const d = new Date(`${fullDate}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
 
-  // Weekdays (0=Sun) that have any business hours.
+function withRuntime(base, nowOverride) {
+  const s = (() => { try { return getSettings(); } catch { return {}; } })();
+
+  // Store hours: admin-defined (override) when turned on, else Square's.
+  const appWeekly = s.useAppHours ? editableToWeekly(s.storeHours) : null;
+  const weekly = appWeekly || base.weekly;
+  const hasHours = appWeekly ? true : base.hasHours;
+  // Kitchen hours: its own schedule when enabled, else same as the store.
+  const kitchenWeekly = s.kitchenHoursOn ? (editableToWeekly(s.kitchenHours) || weekly) : weekly;
+
+  const { dow, minutes } = nowOverride || localNow(base.timezone);
+
   const openDays = [];
   for (let i = 0; i < 7; i++) {
-    if (!base.hasHours || (base.weekly[DAYS[i]] || []).some((w) => w.startMin != null)) openDays.push(i);
+    if (!hasHours || (weekly[DAYS[i]] || []).some((w) => w.startMin != null)) openDays.push(i);
   }
 
-  // Closure dates (annual leave, public holidays) from settings.
   let closures = [];
-  try { closures = getSettings().closures || []; } catch {}
-  const td = todayDate(base.timezone);
+  try { closures = s.closures || []; } catch {}
+  const td = nowOverride ? { full: nowOverride.todayFull, md: nowOverride.todayFull.slice(5) } : todayDate(base.timezone);
   const closedToday = isClosedDate(closures, td.full);
 
-  let open = false;
-  let closesAt = null;
-  for (const w of todays) {
-    if (w.startMin == null || w.endMin == null) continue;
-    let end = w.endMin;
-    if (end <= w.startMin) end += 24 * 60; // past midnight
-    if (minutes >= w.startMin && minutes < end) {
-      open = true;
-      closesAt = w.end;
-    }
+  const openPeriod = isOpenAt(weekly, dow, minutes);
+  let open = !!openPeriod;
+  let closesAt = openPeriod ? openPeriod.end : null;
+  if (!hasHours) { open = true; closesAt = null; }
+  if (closedToday) { open = false; closesAt = null; }
+
+  // Kitchen status (only meaningful while the store is open).
+  const kitchenPeriod = isOpenAt(kitchenWeekly, dow, minutes);
+  let kitchenOpen = open && !!kitchenPeriod;
+  if (open && !s.kitchenHoursOn) kitchenOpen = true; // kitchen follows the store
+  let kitchenClosesInMin = null;
+  if (kitchenOpen && kitchenPeriod && kitchenPeriod.endMin != null) {
+    let end = kitchenPeriod.endMin; if (end <= kitchenPeriod.startMin) end += 24 * 60;
+    kitchenClosesInMin = end - minutes;
   }
-  // If no hours are configured in Square, treat as open.
-  if (!base.hasHours) open = true;
-  if (closedToday) open = false;
 
   const orderingDisabled = ORDERING_DISABLED;
   const canOrderNow = orderingDisabled ? false : open || PREORDER_ENABLED;
   const preorder = !open && PREORDER_ENABLED && !orderingDisabled;
 
-  // Find the next opening time for a friendly message.
+  // Next opening time (skipping closure dates), with a friendly label.
   let nextOpen = null;
-  for (let i = 0; i < 8 && !open; i++) {
+  for (let i = 0; i < 9 && !open; i++) {
     const d = (dow + i) % 7;
-    const list = base.weekly[DAYS[d]] || [];
-    const upcoming = list
+    const date = addDays(td.full, i);
+    if (isClosedDate(closures, date)) continue;
+    const upcoming = (weekly[DAYS[d]] || [])
       .filter((w) => w.startMin != null && (i > 0 || w.startMin > minutes))
       .sort((a, b) => a.startMin - b.startMin)[0];
     if (upcoming) {
-      nextOpen = { day: DAYS[d], time: upcoming.start };
+      const rel = i === 0 ? 'today' : i === 1 ? 'tomorrow' : FULL_DAYS[d];
+      nextOpen = { day: DAYS[d], time: upcoming.start, date, label: `${rel} at ${fmt12(upcoming.start)}` };
       break;
     }
   }
@@ -135,13 +186,19 @@ function withRuntime(base) {
     orderingDisabled,
     closesAt,
     nextOpen,
+    kitchen: {
+      open: kitchenOpen,
+      closesInMin: kitchenClosesInMin,
+      categories: Array.isArray(s.kitchenCategories) ? s.kitchenCategories : [],
+      hasHours: !!s.kitchenHoursOn,
+    },
     timezone: base.timezone,
-    weekly: base.weekly,
-    hasHours: base.hasHours,
+    weekly,
+    hasHours,
     openDays,
     closedToday,
     closures,
   };
 }
 
-module.exports = { getStatus };
+module.exports = { getStatus, withRuntime, editableToWeekly, _fmt12: fmt12 };

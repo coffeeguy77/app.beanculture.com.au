@@ -207,6 +207,12 @@ export default function App() {
   }, [config, menu]);
   const canOrder = config?.hours?.canOrderNow !== false;
   const preorder = config?.hours?.preorder;
+  const storeOpen = config?.hours?.open !== false;
+  const kitchen = config?.hours?.kitchen || null;
+  // Made-to-order categories are only unavailable when the store is OPEN but the
+  // kitchen has shut (fridge items stay available). When the whole store is
+  // closed, everything is pre-orderable for later, so nothing is disabled here.
+  const kitchenClosedCats = (storeOpen && kitchen && kitchen.open === false) ? (kitchen.categories || []) : [];
 
   const cartCount = cart.reduce((n, c) => n + c.quantity, 0);
   const cartTotal = cart.reduce((n, c) => n + c.unitPrice * c.quantity, 0);
@@ -290,6 +296,11 @@ export default function App() {
   useEffect(() => {
     setStoredOrder({ cart, dineIn, table, name });
   }, [cart, dineIn, table, name]);
+
+  // When the store is closed, takeaway "now" isn't possible — default to "later".
+  useEffect(() => {
+    if (config?.hours?.open === false && preWhen === 'now') setPreWhen('later');
+  }, [config, preWhen]);
 
   // Warm up the Square payments SDK as soon as there's something in the cart, so
   // the card form + wallet buttons are ready the instant checkout opens (instead
@@ -449,19 +460,37 @@ export default function App() {
       </header>
 
       {config.announcement ? <div className="announce">{config.announcement}</div> : null}
-      {!canOrder && (
-        <div className="closed-banner">
-          <span>
-            We’re closed right now{config.hours?.nextOpen ? ` · opens ${config.hours.nextOpen.day} ${config.hours.nextOpen.time?.slice(0,5)}` : ''}.
-          </span>
-        </div>
-      )}
-      {canOrder && preorder && (
-        <div className="closed-banner preorder-banner">
-          <span>Pre-order now — we’ll start it when we open.</span>
-          <button className="btn" onClick={() => { const el = document.querySelector('.menu'); if (el) el.scrollIntoView({ behavior: 'smooth' }); }}>Pre-order now</button>
-        </div>
-      )}
+      {(() => {
+        const h = config.hours || {};
+        const label = h.nextOpen?.label;
+        const scrollMenu = () => { const el = document.querySelector('.menu'); if (el) el.scrollIntoView({ behavior: 'smooth' }); };
+        if (!storeOpen) {
+          if (preorder) {
+            return (
+              <div className="closed-banner preorder-banner">
+                <span>We’re closed{label ? ` — we reopen ${label}` : ''}. Pre-order now — we’ll start it when we open.</span>
+                <button className="btn" onClick={() => { setDineIn(false); setPreWhen('later'); scrollMenu(); }}>Pre-order now</button>
+              </div>
+            );
+          }
+          return (
+            <div className="closed-banner">
+              <span>We’re closed right now{label ? ` — we reopen ${label}` : ''}.</span>
+            </div>
+          );
+        }
+        // Store open: nudge if the kitchen is about to close.
+        const k = h.kitchen?.closesInMin;
+        if (k != null && k > 0 && k <= 60) {
+          return (
+            <div className="closed-banner kitchen-soon">
+              <span>🔥 Kitchen closes in {k} min{k === 1 ? '' : 's'} — order now!</span>
+              <button className="btn" onClick={scrollMenu}>Order now</button>
+            </div>
+          );
+        }
+        return null;
+      })()}
 
       {view === 'account' && (
         <Account
@@ -523,6 +552,7 @@ export default function App() {
               onPick={(item) => { setActiveItem(item); track('product_view', { ref: item.name }); }}
               scrollTo={activeCat}
               onScrolled={() => setActiveCat(null)}
+              kitchenClosedCats={kitchenClosedCats}
             />
             <StoreContact contact={config.contact} onTrack={track} />
             <InstallButton />

@@ -15,6 +15,34 @@ const DEFAULTS = {
   bio: '',
   googleReviewUrl: '',
   supportMessage: '',
+  // Opening hours. When useAppHours is on, storeHours (below) is authoritative
+  // and overrides Square's business hours. Shape: { MON:[{open:'07:00',close:'15:00'}], … };
+  // a day with an empty array is closed. Kitchen hours are separate: when
+  // kitchenHoursOn is on, the kitchen (made-to-order categories) uses its own
+  // hours; otherwise the kitchen is open whenever the store is. kitchenCategories
+  // are made on demand and become unavailable when the kitchen is closed (other
+  // categories are pre-made and stay available while the store is open).
+  useAppHours: false,
+  storeHours: {
+    MON: [{ open: '07:00', close: '15:00' }],
+    TUE: [{ open: '07:00', close: '15:00' }],
+    WED: [{ open: '07:00', close: '15:00' }],
+    THU: [{ open: '07:00', close: '15:00' }],
+    FRI: [{ open: '07:00', close: '15:00' }],
+    SAT: [{ open: '08:00', close: '13:00' }],
+    SUN: [],
+  },
+  kitchenHoursOn: false,
+  kitchenHours: {
+    MON: [{ open: '07:00', close: '14:00' }],
+    TUE: [{ open: '07:00', close: '14:00' }],
+    WED: [{ open: '07:00', close: '14:00' }],
+    THU: [{ open: '07:00', close: '14:00' }],
+    FRI: [{ open: '07:00', close: '14:00' }],
+    SAT: [{ open: '08:00', close: '12:30' }],
+    SUN: [],
+  },
+  kitchenCategories: [],
   // Closure dates (annual leave, public holidays). Each entry is either a single
   // day { date:'YYYY-MM-DD' } or a range { from:'YYYY-MM-DD', to:'YYYY-MM-DD' }.
   // annual:true repeats every year on the same month/day(s).

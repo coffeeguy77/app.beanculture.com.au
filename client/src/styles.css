@@ -69,6 +69,10 @@ img { max-width: 100%; }
 .closed-banner.preorder-banner { justify-content: space-between; gap: 12px; }
 .closed-banner.preorder-banner span { flex: 1; }
 .closed-banner.preorder-banner .btn { padding: 9px 14px; font-size: 14px; white-space: nowrap; flex: none; }
+.closed-banner.kitchen-soon { justify-content: space-between; gap: 12px; background: #fff3e0; color: #b5560a; }
+.closed-banner.kitchen-soon span { flex: 1; }
+.closed-banner.kitchen-soon .btn { padding: 9px 14px; font-size: 14px; white-space: nowrap; flex: none; background: #b5560a; }
+.cat-shut { font-size: 12px; font-weight: 600; color: var(--muted); font-family: system-ui, sans-serif; }
 
 /* Hero slider */
 .hero { padding: 12px 16px 4px; }
