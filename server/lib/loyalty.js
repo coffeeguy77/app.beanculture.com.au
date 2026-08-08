@@ -111,7 +111,7 @@ async function listLoyaltyUsers() {
   for (let i = 0; i < ids.length; i += 100) {
     const chunk = ids.slice(i, i + 100);
     try {
-      const data = await squareFetch('/v2/customers/bulk-retrieve-customers', {
+      const data = await squareFetch('/v2/customers/bulk-retrieve', {
         method: 'POST', body: { customer_ids: chunk },
       });
       for (const [id, r] of Object.entries(data.responses || {})) if (r.customer) custMap.set(id, r.customer);
@@ -120,8 +120,8 @@ async function listLoyaltyUsers() {
 
   const users = accounts.map((a) => {
     const c = custMap.get(a.customer_id) || {};
-    const name = [c.given_name, c.family_name].filter(Boolean).join(' ').trim();
-    const phone = c.phone_number || (a.mappings || []).map((m) => m.phone_number).filter(Boolean)[0] || '';
+    const name = [c.given_name, c.family_name].filter(Boolean).join(' ').trim() || (c.company_name || '').trim() || (c.nickname || '').trim();
+    const phone = c.phone_number || a.mapping?.phone_number || '';
     return {
       id: a.id,
       customerId: a.customer_id || null,
