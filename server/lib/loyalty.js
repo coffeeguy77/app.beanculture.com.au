@@ -91,8 +91,38 @@ async function deleteReward(rewardId) {
   }
 }
 
+// Count reward redemptions per loyalty account. Redemptions are sparse, so we
+// fetch only REDEEM_REWARD events (cheap), unlike point-accumulation events which
+// are far too many to page through for every member. Best-effort + capped.
+async function redemptionCounts() {
+  const counts = new Map(); // accountId -> { count, last }
+  let cursor;
+  let pages = 0;
+  try {
+    do {
+      const data = await squareFetch('/v2/loyalty/events/search', {
+        method: 'POST',
+        body: { query: { filter: { type_filter: { types: ['REDEEM_REWARD'] } } }, limit: 30, ...(cursor ? { cursor } : {}) },
+      });
+      const evs = data.events || data.loyalty_events || [];
+      for (const e of evs) {
+        const id = e.loyalty_account_id;
+        if (!id) continue;
+        const c = counts.get(id) || { count: 0, last: null };
+        c.count++;
+        if (!c.last || (e.created_at && e.created_at > c.last)) c.last = e.created_at;
+        counts.set(id, c);
+      }
+      cursor = data.cursor;
+      pages++;
+    } while (cursor && pages < 300);
+  } catch { /* best-effort — the list still works without redemption counts */ }
+  return counts;
+}
+
 // Every customer enrolled in the Square loyalty program, joined with their
-// Square customer record (name / phone / email / join date) — for the admin
+// Square customer record (name / phone / email / join date) plus loyalty stats
+// (points, lifetime earned, points redeemed, reward redemptions) — for the admin
 // "Users" view. Read-only.
 async function listLoyaltyUsers() {
   const accounts = [];
@@ -118,18 +148,26 @@ async function listLoyaltyUsers() {
     } catch { /* keep going — a failed chunk just means thinner detail */ }
   }
 
+  const redeem = await redemptionCounts();
+
   const users = accounts.map((a) => {
     const c = custMap.get(a.customer_id) || {};
     const name = [c.given_name, c.family_name].filter(Boolean).join(' ').trim() || (c.company_name || '').trim() || (c.nickname || '').trim();
     const phone = c.phone_number || a.mapping?.phone_number || '';
+    const balance = a.balance || 0;
+    const lifetime = a.lifetime_points || 0;
+    const rc = redeem.get(a.id) || { count: 0, last: null };
     return {
       id: a.id,
       customerId: a.customer_id || null,
       name,
       phone,
       email: c.email_address || '',
-      points: a.balance || 0,
-      lifetimePoints: a.lifetime_points || 0,
+      points: balance,
+      lifetimePoints: lifetime,
+      redeemedPoints: Math.max(0, lifetime - balance),
+      redemptions: rc.count,
+      lastRedeemedAt: rc.last,
       enrolledAt: a.enrolled_at || c.created_at || null,
     };
   });

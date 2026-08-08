@@ -76,6 +76,8 @@ export default function Admin({ onExit }) {
   const [users, setUsers] = useState(null);          // loyalty customers (Users tab)
   const [usersBusy, setUsersBusy] = useState(false);
   const [userQuery, setUserQuery] = useState('');
+  const [userSort, setUserSort] = useState('recent'); // recent | oldest | points | earned | redeemed
+  const [userFilter, setUserFilter] = useState('all'); // all | active | redeemers | new
   const [notifyStatus, setNotifyStatus] = useState(null); // { sms, email }
   const [push, setPush] = useState({ channel: 'sms', subject: '', message: '', link: '' });
   const [pushBusy, setPushBusy] = useState(false);
@@ -1008,15 +1010,53 @@ export default function Admin({ onExit }) {
                 {users === null && !usersBusy && <p className="muted" style={{ fontSize: 13 }}>Tap Load to fetch your loyalty members.</p>}
                 {users && users.length === 0 && <p className="muted" style={{ fontSize: 13 }}>No loyalty members yet.</p>}
                 {users && users.length > 0 && (() => {
-                  const q = userQuery.trim().toLowerCase();
-                  const rows = q ? users.filter((u) => `${u.name} ${u.phone} ${u.email}`.toLowerCase().includes(q)) : users;
                   const fmtJoined = (iso) => iso ? new Date(iso).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
+                  const now = Date.now();
+                  const q = userQuery.trim().toLowerCase();
+                  // filter
+                  let rows = users.filter((u) => {
+                    if (q && !`${u.name} ${u.phone} ${u.email}`.toLowerCase().includes(q)) return false;
+                    if (userFilter === 'active' && !(u.points > 0)) return false;
+                    if (userFilter === 'redeemers' && !(u.redemptions > 0)) return false;
+                    if (userFilter === 'new' && !(u.enrolledAt && (now - new Date(u.enrolledAt).getTime()) <= 30 * 86400000)) return false;
+                    return true;
+                  });
+                  // sort
+                  const ts = (x) => x ? new Date(x).getTime() : 0;
+                  rows = rows.slice().sort((a, b) => {
+                    switch (userSort) {
+                      case 'oldest': return ts(a.enrolledAt) - ts(b.enrolledAt);
+                      case 'points': return (b.points || 0) - (a.points || 0);
+                      case 'earned': return (b.lifetimePoints || 0) - (a.lifetimePoints || 0);
+                      case 'redeemed': return (b.redemptions || 0) - (a.redemptions || 0) || (b.redeemedPoints || 0) - (a.redeemedPoints || 0);
+                      default: return ts(b.enrolledAt) - ts(a.enrolledAt); // recent
+                    }
+                  });
+                  const totalRedeemers = users.filter((u) => u.redemptions > 0).length;
+                  const totalActive = users.filter((u) => u.points > 0).length;
+                  const SEL = { padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 10, fontSize: 13 };
+                  const chip = (key, label) => (
+                    <button type="button" className={`chip ${userFilter === key ? 'on' : ''}`} onClick={() => setUserFilter(key)}>{label}</button>
+                  );
                   return (
                     <>
-                      <div style={{ ...row, justifyContent: 'space-between', margin: '4px 0 10px', flexWrap: 'wrap' }}>
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', margin: '4px 0 8px' }}>
                         <input value={userQuery} onChange={(e) => setUserQuery(e.target.value)} placeholder="Search name / phone / email"
                           style={{ flex: 1, minWidth: 180, padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 10 }} />
-                        <span className="muted" style={{ fontSize: 13, fontWeight: 700 }}>{rows.length} member{rows.length === 1 ? '' : 's'}</span>
+                        <select value={userSort} onChange={(e) => setUserSort(e.target.value)} style={SEL} title="Sort">
+                          <option value="recent">Newest joined</option>
+                          <option value="oldest">Oldest joined</option>
+                          <option value="points">Most points</option>
+                          <option value="earned">Most earned (lifetime)</option>
+                          <option value="redeemed">Most redemptions</option>
+                        </select>
+                      </div>
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
+                        {chip('all', `All ${users.length}`)}
+                        {chip('active', `Has points ${totalActive}`)}
+                        {chip('redeemers', `Redeemed ${totalRedeemers}`)}
+                        {chip('new', 'Joined ≤30 days')}
+                        <span className="muted" style={{ fontSize: 13, fontWeight: 700, marginLeft: 'auto' }}>{rows.length} shown</span>
                       </div>
                       <div className="admin-users">
                         {rows.map((u) => (
@@ -1027,10 +1067,14 @@ export default function Admin({ onExit }) {
                             </div>
                             <div className="user-meta">
                               <span className="user-pts">{u.points} pts</span>
-                              <span className="muted" style={{ fontSize: 12 }}>Joined {fmtJoined(u.enrolledAt)}</span>
+                              <span className="muted" style={{ fontSize: 11.5 }}>
+                                {u.lifetimePoints} earned{u.redemptions > 0 ? ` · ${u.redemptions} redeemed` : ''}
+                              </span>
+                              <span className="muted" style={{ fontSize: 11.5 }}>Joined {fmtJoined(u.enrolledAt)}</span>
                             </div>
                           </div>
                         ))}
+                        {rows.length === 0 && <p className="muted" style={{ fontSize: 13 }}>No members match.</p>}
                       </div>
                     </>
                   );
