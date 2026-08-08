@@ -25,6 +25,18 @@ export function ThemeIcon({ size = 22 }) {
   );
 }
 
+// Storefront (Store / About page)
+export function StoreIcon({ size = 22 }) {
+  return (
+    <svg {...base(size)}>
+      <path d="M4 9.5 5.2 4.5h13.6L20 9.5" />
+      <path d="M4 9.5c0 1.5 1.1 2.5 2.4 2.5S8.8 11 8.8 9.5c0 1.5 1.1 2.5 2.4 2.5s2.4-1 2.4-2.5c0 1.5 1.1 2.5 2.4 2.5s2.4-1 2.4-2.5" />
+      <path d="M5.2 12v7.5h13.6V12" />
+      <path d="M10 19.5V15h4v4.5" />
+    </svg>
+  );
+}
+
 // Coffee mug (item image fallback)
 export function MugIcon({ size = 30 }) {
   return (

@@ -16,7 +16,8 @@ import Admin from './components/Admin.jsx';
 import Logo from './components/Logo.jsx';
 import SeasonalEffects from './components/SeasonalEffects.jsx';
 import SeasonalPerimeter from './components/SeasonalPerimeter.jsx';
-import { AccountIcon, ThemeIcon, SlotIcon } from './components/icons.jsx';
+import { AccountIcon, ThemeIcon, StoreIcon, SlotIcon } from './components/icons.jsx';
+import StorePage from './components/StorePage.jsx';
 import StoreContact from './components/StoreContact.jsx';
 import InstallButton from './components/InstallButton.jsx';
 import { track, trackItems } from './analytics.js';
@@ -412,6 +413,7 @@ export default function App() {
           {config.logoUrl ? <img src={config.logoUrl} alt={config.storeName || 'Home'} style={{ height: 36, width: 'auto', display: 'block' }} /> : <Logo height={33} />}
         </button>
         <div className="icon-row">
+          <button className="iconbtn" title="About / contact" aria-label="Store info" onClick={() => setView('store')}><StoreIcon size={22} /></button>
           <button className="iconbtn" title="Theme" aria-label="Theme" onClick={() => setShowTheme(true)}><ThemeIcon size={22} /></button>
           <button className="iconbtn" title="Account" aria-label={user ? 'Account' : 'Sign in'} onClick={() => setView('account')}>
             <AccountIcon size={26} />
@@ -444,6 +446,10 @@ export default function App() {
           onReorder={reorder}
           onBack={() => setView('home')}
         />
+      )}
+
+      {view === 'store' && (
+        <StorePage config={config} onTrack={track} onBack={() => setView('home')} />
       )}
 
       {showLayout && (

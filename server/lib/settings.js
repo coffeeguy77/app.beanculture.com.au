@@ -10,6 +10,11 @@ const DEFAULTS = {
   contact: { address: '', phone: '', mapsUrl: '' },
   logoUrl: '',
   faviconUrl: '',
+  // Store page content (About / Find us page reached from the header).
+  storePhoto: '',
+  bio: '',
+  googleReviewUrl: '',
+  supportMessage: '',
   // Closure dates (annual leave, public holidays). Each entry is either a single
   // day { date:'YYYY-MM-DD' } or a range { from:'YYYY-MM-DD', to:'YYYY-MM-DD' }.
   // annual:true repeats every year on the same month/day(s).

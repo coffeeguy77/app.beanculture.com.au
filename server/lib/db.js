@@ -63,6 +63,18 @@ async function init(attempt = 1) {
     `);
     await pool.query('CREATE INDEX IF NOT EXISTS analytics_ts ON analytics_events (ts)');
     await pool.query('CREATE INDEX IF NOT EXISTS analytics_type ON analytics_events (type)');
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS messages (
+        id bigserial primary key,
+        type text not null default 'enquiry',
+        name text,
+        contact text,
+        body text not null,
+        handled boolean default false,
+        created_at timestamptz default now()
+      )
+    `);
+    await pool.query('CREATE INDEX IF NOT EXISTS messages_ts ON messages (created_at)');
     const r = await pool.query("SELECT data FROM app_settings WHERE id = 'main'");
     cache = (r.rows[0] && r.rows[0].data) || {};
     ready = true;
@@ -241,9 +253,29 @@ async function getAnalytics(days = 30) {
   };
 }
 
+// ---- Customer messages (enquiry / feedback / catering) ----
+async function insertMessage({ type, name, contact, body }) {
+  if (!pool) throw new Error('Messaging is not available right now.');
+  const r = await pool.query(
+    "INSERT INTO messages (type, name, contact, body) VALUES ($1,$2,$3,$4) RETURNING id, created_at",
+    [String(type || 'enquiry').slice(0, 20), (name || '').slice(0, 120), (contact || '').slice(0, 200), String(body || '').slice(0, 4000)]
+  );
+  return r.rows[0];
+}
+async function listMessages(limit = 100) {
+  if (!pool) return [];
+  const r = await pool.query('SELECT id, type, name, contact, body, handled, created_at FROM messages ORDER BY created_at DESC LIMIT $1', [Math.min(limit, 300)]);
+  return r.rows.map((m) => ({ id: String(m.id), type: m.type, name: m.name, contact: m.contact, body: m.body, handled: m.handled, createdAt: m.created_at }));
+}
+async function markMessageHandled(id, handled = true) {
+  if (!pool) return;
+  await pool.query('UPDATE messages SET handled = $2 WHERE id = $1', [id, !!handled]);
+}
+
 module.exports = {
   init, getOverrides, saveOverrides,
   insertScheduled, listScheduledByCustomer, cancelScheduled, claimDue, updateScheduled,
   track, getAnalytics,
+  insertMessage, listMessages, markMessageHandled,
   get enabled() { return !!pool; },
 };

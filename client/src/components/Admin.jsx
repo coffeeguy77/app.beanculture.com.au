@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
 import { SlotIcon } from './icons.jsx';
 import IconPicker from './IconPicker.jsx';
-import { formatMoney } from '../api.js';
+import { formatMoney, api } from '../api.js';
 
 const LINK_TYPES = ['scroll', 'category', 'account', 'url', 'none'];
 // Built-in festive themes ship with the app and can be turned Off but not deleted.
@@ -77,6 +77,7 @@ export default function Admin({ onExit }) {
   const [qrSize, setQrSize] = useState(190);
   const [analytics, setAnalytics] = useState(null);
   const [aDays, setADays] = useState(30);
+  const [msgs, setMsgs] = useState(null);
   const [newClosure, setNewClosure] = useState({ date: '', annual: false, label: '' });
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
 
@@ -139,6 +140,16 @@ export default function Admin({ onExit }) {
     } catch (e) { setError(e.message); }
   }
   useEffect(() => { load(''); }, []);
+
+  async function loadMessages() {
+    try { const d = await api.adminMessages(pass); setMsgs(d.messages || []); }
+    catch (e) { alert('Could not load messages: ' + e.message); }
+  }
+  async function toggleHandled(m) {
+    const next = !m.handled;
+    setMsgs((xs) => (xs || []).map((x) => (x.id === m.id ? { ...x, handled: next } : x)));
+    try { await api.markMessage(pass, m.id, next); } catch {}
+  }
 
   const cats = (data?.categories || []).map((c) => c.name);
 
@@ -353,6 +364,41 @@ export default function Admin({ onExit }) {
                       </div>
                     </div>
                   </div>
+                </div>
+
+                <div className="card" style={card}>
+                  <div className="group-title">Store page</div>
+                  <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>The About / contact page customers reach from the store button in the header. Opening hours and address/phone come from Square + Contact above.</p>
+                  <div style={{ ...row, marginBottom: 10 }}>
+                    <div className="muted" style={{ fontSize: 12, minWidth: 92 }}>Store photo</div>
+                    {s.storePhoto ? <img src={s.storePhoto} alt="" style={{ height: 44, borderRadius: 8 }} /> : <span className="muted" style={{ fontSize: 12 }}>None</span>}
+                    <label className="btn ghost" style={{ padding: '8px 12px', fontSize: 13, cursor: 'pointer' }}>Upload<input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files[0]; if (f) uploadImage(f, (url) => set({ storePhoto: url }), 'store'); }} /></label>
+                    {s.storePhoto && <button className="link" style={{ color: '#c0392b' }} onClick={() => set({ storePhoto: '' })}>Remove</button>}
+                  </div>
+                  <label className="field"><span>Bio / about</span><textarea rows={3} value={s.bio || ''} onChange={(e) => set({ bio: e.target.value })} placeholder="A short story about your café…" /></label>
+                  <label className="field" style={{ marginTop: 10 }}><span>Google review link</span><input value={s.googleReviewUrl || ''} onChange={(e) => set({ googleReviewUrl: e.target.value })} placeholder="https://g.page/r/…/review" /></label>
+                  <label className="field" style={{ marginTop: 10 }}><span>“Support us” message (optional)</span><textarea rows={2} value={s.supportMessage || ''} onChange={(e) => set({ supportMessage: e.target.value })} placeholder="Leave blank for a friendly default." /></label>
+                </div>
+
+                <div className="card" style={card}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div className="group-title" style={{ margin: 0 }}>Customer messages</div>
+                    <button type="button" className="btn ghost" style={{ padding: '6px 12px', fontSize: 13 }} onClick={loadMessages}>{msgs === null ? 'Load' : 'Refresh'}</button>
+                  </div>
+                  <p className="muted" style={{ fontSize: 12, marginTop: 4 }}>Enquiries, feedback and catering requests sent from the store page.</p>
+                  {msgs === null && <p className="muted" style={{ fontSize: 12 }}>Tap Load to see messages.</p>}
+                  {msgs && msgs.length === 0 && <p className="muted" style={{ fontSize: 12 }}>No messages yet.</p>}
+                  {msgs && msgs.map((m) => (
+                    <div key={m.id} className="history-item" style={{ opacity: m.handled ? 0.55 : 1 }}>
+                      <div className="history-top">
+                        <span><span className="pill" style={{ textTransform: 'capitalize' }}>{m.type}</span> {m.name || 'Anonymous'}</span>
+                        <span className="muted" style={{ fontSize: 12 }}>{new Date(m.createdAt).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })}</span>
+                      </div>
+                      {m.contact && <div className="muted" style={{ fontSize: 12, margin: '2px 0' }}>{m.contact}</div>}
+                      <div style={{ fontSize: 14, whiteSpace: 'pre-line' }}>{m.body}</div>
+                      <button className="link" style={{ padding: 0, fontSize: 13 }} onClick={() => toggleHandled(m)}>{m.handled ? 'Mark unread' : 'Mark done'}</button>
+                    </div>
+                  ))}
                 </div>
 
                 <div className="card" style={card}>

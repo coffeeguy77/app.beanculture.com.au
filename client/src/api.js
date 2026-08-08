@@ -28,6 +28,10 @@ export const api = {
   giftTopUp: (payload) => req('/api/giftcard/topup', { method: 'POST', body: JSON.stringify(payload) }),
   giftBuy: (payload) => req('/api/giftcard/buy', { method: 'POST', body: JSON.stringify(payload) }),
   giftRedeem: (customerId, gan) => req('/api/giftcard/redeem', { method: 'POST', body: JSON.stringify({ customerId, gan }) }),
+  // Customer messages (enquiry / feedback / catering)
+  sendMessage: (payload) => req('/api/message', { method: 'POST', body: JSON.stringify(payload) }),
+  adminMessages: (pass) => req(`/api/admin/messages?pass=${encodeURIComponent(pass || '')}`),
+  markMessage: (pass, id, handled) => req(`/api/admin/messages/handled?pass=${encodeURIComponent(pass || '')}`, { method: 'POST', body: JSON.stringify({ id, handled }) }),
   // Analytics
   track: (events) => req('/api/track', { method: 'POST', body: JSON.stringify({ events }) }),
   adminAnalytics: (pass, days = 30) => req(`/api/admin/analytics?days=${days}&pass=${encodeURIComponent(pass || '')}`),

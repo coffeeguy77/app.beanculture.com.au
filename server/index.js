@@ -48,6 +48,10 @@ app.get('/api/config', async (_req, res) => {
     contact: settings.contact,
     logoUrl: settings.logoUrl,
     faviconUrl: settings.faviconUrl,
+    storePhoto: settings.storePhoto,
+    bio: settings.bio,
+    googleReviewUrl: settings.googleReviewUrl,
+    supportMessage: settings.supportMessage,
     theme: settings.theme,
     themePresets: settings.themePresets,
     seasonalThemes: seasonalForPicker(settings),
@@ -364,6 +368,37 @@ app.get('/api/admin/analytics', async (req, res) => {
 });
 
 app.get('/api/health', (_req, res) => res.json({ ok: true, env: sq.ENV }));
+
+// ---- Customer messages: enquiry / feedback / catering ----
+app.post('/api/message', async (req, res) => {
+  try {
+    const { type, name, contact, body } = req.body || {};
+    if (!body || !String(body).trim()) return res.status(400).json({ error: 'Please add a message.' });
+    const allowed = ['enquiry', 'feedback', 'catering'];
+    const t = allowed.includes(type) ? type : 'enquiry';
+    const saved = await db.insertMessage({ type: t, name, contact, body });
+    res.json({ ok: true, id: saved?.id ? String(saved.id) : null });
+  } catch (e) {
+    res.status(503).json({ error: e.message });
+  }
+});
+app.get('/api/admin/messages', async (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    res.json({ messages: await db.listMessages(200), dbEnabled: db.enabled });
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+app.post('/api/admin/messages/handled', async (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    await db.markMessageHandled(req.body?.id, req.body?.handled !== false);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
 
 // ---- Admin: export current settings + status (gated by a passcode) ----
 app.get('/api/admin/overview', async (req, res) => {
