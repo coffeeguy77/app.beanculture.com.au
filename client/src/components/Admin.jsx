@@ -261,6 +261,9 @@ export default function Admin({ onExit }) {
 
   // ---- seasonal / festive theme scheduler ----
   const seasonalThemes = s?.seasonalThemes || [];
+  // Festive dates are stored as recurring month-day (e.g. "12-01"); the date
+  // input needs a full year just to render, so we pin it to the current year.
+  const seasonYear = new Date().getFullYear();
   const setSeasonal = (arr) => set({ seasonalThemes: arr });
   const updSeasonal = (i, patch) => setSeasonal(seasonalThemes.map((t, j) => (j === i ? { ...t, ...patch } : t)));
   const updSeasonalTheme = (i, k, v) => setSeasonal(seasonalThemes.map((t, j) => (j === i ? { ...t, theme: { ...(t.theme || {}), [k]: v } } : t)));
@@ -1214,8 +1217,8 @@ export default function Admin({ onExit }) {
                               : <button className="link" style={{ color: '#c0392b' }} onClick={() => rmSeasonal(i)}>✕</button>}
                           </div>
                           <div style={{ ...row, marginTop: 6, gap: 8 }}>
-                            <label className="field" style={{ flex: 1 }}><span>From</span><input type="date" value={`2028-${t.from}`} onChange={(e) => updSeasonal(i, { from: e.target.value.slice(5) })} /></label>
-                            <label className="field" style={{ flex: 1 }}><span>To</span><input type="date" value={`2028-${t.to}`} onChange={(e) => updSeasonal(i, { to: e.target.value.slice(5) })} /></label>
+                            <label className="field" style={{ flex: 1 }}><span>From</span><input type="date" value={`${seasonYear}-${t.from}`} onChange={(e) => e.target.value && updSeasonal(i, { from: e.target.value.slice(5) })} /></label>
+                            <label className="field" style={{ flex: 1 }}><span>To</span><input type="date" value={`${seasonYear}-${t.to}`} onChange={(e) => e.target.value && updSeasonal(i, { to: e.target.value.slice(5) })} /></label>
                           </div>
                           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 8, alignItems: 'center' }}>
                             {['brand', 'accent', 'bg', 'ink'].map((k) => (
