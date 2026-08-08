@@ -41,6 +41,8 @@ export default function ReservationForm({ config, user, onBack, onTrack }) {
   useEffect(() => { loadCaptcha(); }, []);
 
   const weekly = config.hours?.weekly || null;
+  const storeOpen = config.hours ? config.hours.open : null; // server-computed, honours closures
+  const nextLabel = config.hours?.nextOpen?.label;
   const todayIdx = (new Date().getDay() + 6) % 7;
   const hoursRows = useMemo(() => {
     if (!weekly) return [];
@@ -98,7 +100,15 @@ export default function ReservationForm({ config, user, onBack, onTrack }) {
           </ul>
           {hoursRows.length > 0 && (
             <div className="reserve-hours">
-              <div className="reserve-hours-head">Opening hours</div>
+              <div className="reserve-hours-head">
+                <span>Opening hours</span>
+                {typeof storeOpen === 'boolean' && (
+                  <span className={`hours-status ${storeOpen ? 'open' : 'closed'}`}>{storeOpen ? 'Open now' : 'Closed'}</span>
+                )}
+              </div>
+              {storeOpen === false && nextLabel && (
+                <p className="reserve-hours-note muted">Reopens {nextLabel}.</p>
+              )}
               {hoursRows.map((r) => (
                 <div key={r.label} className={`reserve-hours-row ${r.today ? 'today' : ''}`}>
                   <span>{r.label}{r.today && <em>Today</em>}</span>

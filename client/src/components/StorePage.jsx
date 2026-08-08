@@ -106,62 +106,61 @@ export default function StorePage({ config, onTrack, onBack }) {
           <img src={imgUrl(config.storePhoto, 1200)} alt={config.storeName || 'Our café'} loading="eager" decoding="async" />
         </div>
       )}
-      {config.bio && <p className="store-bio">{config.bio}</p>}
+      <div className={`store-top ${config.bio ? '' : 'no-bio'}`}>
+        {config.bio && <p className="store-bio">{config.bio}</p>}
+        {(address || tel) && (
+          <section className="store-card store-find">
+            <div className="store-card-head"><PinIcon /> Find us</div>
+            {address && <p className="store-address">{address}</p>}
+            <div className="store-actions">
+              {tel && (
+                <a className="pill-btn" href={`tel:${tel}`} onClick={() => onTrack && onTrack('contact_phone')} aria-label="Call us">
+                  <PhoneIcon size={18} /><span>Call</span>
+                </a>
+              )}
+              {dirUrl && (
+                <a className="pill-btn" href={dirUrl} target="_blank" rel="noreferrer" onClick={() => onTrack && onTrack('contact_dir')} aria-label="Get directions">
+                  <NavIcon size={18} /><span>Directions</span>
+                </a>
+              )}
+            </div>
+          </section>
+        )}
+      </div>
 
       <div className="store-grid">
         <div className="store-col">
-          {(address || tel) && (
-            <section className="store-card">
-              <div className="store-card-head"><PinIcon /> Find us</div>
-              {address && <p className="store-address">{address}</p>}
-              <div className="store-actions">
-                {tel && (
-                  <a className="pill-btn" href={`tel:${tel}`} onClick={() => onTrack && onTrack('contact_phone')} aria-label="Call us">
-                    <PhoneIcon size={18} /><span>Call</span>
-                  </a>
-                )}
-                {dirUrl && (
-                  <a className="pill-btn" href={dirUrl} target="_blank" rel="noreferrer" onClick={() => onTrack && onTrack('contact_dir')} aria-label="Get directions">
-                    <NavIcon size={18} /><span>Directions</span>
-                  </a>
-                )}
-              </div>
-            </section>
-          )}
-
-          {hoursRows.length > 0 && (
-            <section className="store-card">
-              <div className="store-card-head">
-                <ClockIcon /> Opening hours
-                {typeof storeOpen === 'boolean' && (
-                  <span className={`hours-status ${storeOpen ? 'open' : 'closed'}`}>{storeOpen ? 'Open now' : 'Closed'}</span>
-                )}
-              </div>
-              {storeOpen === false && nextLabel && (
-                <p className="muted" style={{ fontSize: 13, margin: '-4px 0 12px' }}>Reopens {nextLabel}.</p>
+        {hoursRows.length > 0 && (
+          <section className="store-card">
+            <div className="store-card-head">
+              <ClockIcon /> Opening hours
+              {typeof storeOpen === 'boolean' && (
+                <span className={`hours-status ${storeOpen ? 'open' : 'closed'}`}>{storeOpen ? 'Open now' : 'Closed'}</span>
               )}
-              <div className="hours-table">
-                {hoursRows.map((r) => (
-                  <div key={r.label} className={`hours-row ${r.today ? 'today' : ''}`}>
-                    <span className="hours-day">{r.label}{r.today && <em>Today</em>}</span>
-                    <span className={r.closed ? 'hours-closed' : ''}>{r.text}</span>
-                  </div>
-                ))}
-              </div>
-            </section>
-          )}
-
-          {reviewUrl && (
-            <section className="store-card review-card">
-              <span className="review-star"><StarIcon size={26} /></span>
-              <p>{supportMsg}</p>
-              <a className="btn store-btn" href={reviewUrl} target="_blank" rel="noreferrer" onClick={() => onTrack && onTrack('review_click')}>Leave a Google review</a>
-            </section>
-          )}
+            </div>
+            {storeOpen === false && nextLabel && (
+              <p className="muted" style={{ fontSize: 13, margin: '-4px 0 12px' }}>Reopens {nextLabel}.</p>
+            )}
+            <div className="hours-table">
+              {hoursRows.map((r) => (
+                <div key={r.label} className={`hours-row ${r.today ? 'today' : ''}`}>
+                  <span className="hours-day">{r.label}{r.today && <em>Today</em>}</span>
+                  <span className={r.closed ? 'hours-closed' : ''}>{r.text}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+        {reviewUrl && (
+          <section className="store-card review-card">
+            <span className="review-star"><StarIcon size={26} /></span>
+            <p>{supportMsg}</p>
+            <a className="btn store-btn" href={reviewUrl} target="_blank" rel="noreferrer" onClick={() => onTrack && onTrack('review_click')}>Leave a Google review</a>
+          </section>
+        )}
         </div>
 
-        <div className="store-col">
-          <section className="store-card">
+        <section className="store-card">
             <div className="store-card-head">Get in touch</div>
             <p className="muted store-sub">Questions, catering, or something we missed — straight to management. We’ll reply.</p>
             {sent ? (
@@ -191,8 +190,7 @@ export default function StorePage({ config, onTrack, onBack }) {
                 </div>
               </>
             )}
-          </section>
-        </div>
+        </section>
       </div>
     </main>
   );

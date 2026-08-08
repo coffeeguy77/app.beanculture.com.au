@@ -83,9 +83,11 @@ export default function ScheduleWhen({ hours, date, time, onDate, onTime, maxDay
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [today, maxDays, openDays, closures, weekly]);
 
-  // Only honour the incoming date if it is genuinely bookable; otherwise snap to
-  // the first available day (guards against a seeded closed day, e.g. a Sunday).
-  const selDs = (date && bookableDs(date)) ? date : firstDs;
+  // Only honour the incoming date if it is bookable AND still has selectable
+  // slots today; otherwise snap to the first available day. Guards against a
+  // seeded closed day (e.g. Sunday) and against today once we've already closed
+  // (e.g. a 9pm Saturday jumps to Monday 7am, not tonight).
+  const selDs = (date && bookableDs(date) && slotsFor(date).length) ? date : firstDs;
   useEffect(() => { if (selDs && selDs !== date) onDate(selDs); /* eslint-disable-next-line */ }, [selDs]);
 
   const times = useMemo(() => slotsFor(selDs), [selDs, weekly]); // eslint-disable-line
