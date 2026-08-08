@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { api, formatMoney } from '../api.js';
 import { TableLockPill, TableEntry } from './TableControls.jsx';
 import WalletButtons from './WalletButtons.jsx';
+import ScheduleWhen from './ScheduleWhen.jsx';
 
 function loadSquareSdk(environment) {
   const src = environment === 'sandbox'
@@ -295,12 +296,8 @@ export default function Checkout({ config, cart, currency, onQty, dineIn, setDin
 
         {isSchedule && (
           <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <div style={{ display: 'flex', gap: 10 }}>
-              <label className="field" style={{ flex: 1 }}><span>Date</span>
-                <input type="date" min={minDate} max={maxDate} value={schedDate} onChange={(e) => setSchedDate(e.target.value)} /></label>
-              <label className="field" style={{ flex: 1 }}><span>Time</span>
-                <input type="time" value={schedTime} onChange={(e) => setSchedTime(e.target.value)} /></label>
-            </div>
+            <ScheduleWhen hours={config.hours} date={schedDate} time={schedTime}
+              onDate={setSchedDate} onTime={setSchedTime} maxDays={maxAhead} />
             <div className="segmented">
               <button className={payTiming === 'now' ? 'seg active' : 'seg'} onClick={() => setPayTiming('now')} type="button">Pay now</button>
               <button className={payTiming === 'later' ? 'seg active' : 'seg'} onClick={() => setPayTiming('later')} type="button">Auto-charge at pickup</button>
