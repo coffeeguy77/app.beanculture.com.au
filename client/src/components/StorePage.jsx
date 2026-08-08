@@ -103,7 +103,7 @@ export default function StorePage({ config, onTrack, onBack }) {
 
       {config.storePhoto && (
         <div className="store-hero">
-          <img src={imgUrl(config.storePhoto, 1200)} alt={config.storeName || 'Our café'} loading="eager" decoding="async" />
+          <img src={imgUrl(config.storePhoto, 1600)} alt={config.storeName || 'Our café'} loading="eager" decoding="async" />
         </div>
       )}
       <div className={`store-top ${config.bio ? '' : 'no-bio'}`}>

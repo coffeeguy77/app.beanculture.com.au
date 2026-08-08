@@ -265,34 +265,39 @@ async function getMenu(opts = {}) {
   let outIds = restrictToChildren ? [...childIds] : [...byCatId.keys()];
   outIds.sort((a, b) => (orderIndex.get(a) ?? 1e9) - (orderIndex.get(b) ?? 1e9));
 
-  // Assemble, merging any Square categories that share a cleaned display name.
+  // Assemble, merging Square categories that share a display name CASE-
+  // INSENSITIVELY (so "TEA" and "Tea", "COLD DRINKS" and "Cold drinks" become one
+  // category, not two). The display name prefers the variant the owner actually
+  // selected; items from all variants are combined and de-duplicated.
   const entries = [];
-  const byName = new Map();
+  const byKey = new Map(); // lowercased clean name -> entry
   for (const catId of outIds) {
     const rawName = categories.get(catId)?.name || 'Menu';
     const catName = cleanName(rawName);
-    let list = (byCatId.get(catId) || [])
+    const key = catName.toLowerCase();
+    const list = (byCatId.get(catId) || [])
       .slice()
       .sort((a, b) => (a.ordinal - b.ordinal) || a.item.name.localeCompare(b.item.name))
       .map((x) => x.item);
+    const directlySelected = sel.has(String(catId).toLowerCase()) || sel.has((rawName || '').toLowerCase()) || sel.has(key);
 
-    // Admin per-category / per-item selection, keyed by display name.
-    if (applySelection) {
-      const s2 = selLower[catName.toLowerCase()];
-      if (s2) {
-        if (s2.enabled === false) list = [];
-        else if (Array.isArray(s2.items)) list = list.filter((it) => s2.items.includes(it.id));
-      }
-    }
+    let e = byKey.get(key);
+    if (!e) { e = { name: catName, items: [], picked: false }; byKey.set(key, e); entries.push(e); }
+    if (directlySelected && !e.picked) { e.name = catName; e.picked = true; } // show the chosen variant's casing
+    const seen = new Set(e.items.map((i) => i.id));
+    for (const it of list) if (!seen.has(it.id)) { e.items.push(it); seen.add(it.id); }
+  }
 
-    if (byName.has(catName)) {
-      const e = byName.get(catName);
-      const seen = new Set(e.items.map((i) => i.id));
-      for (const it of list) if (!seen.has(it.id)) { e.items.push(it); seen.add(it.id); }
-    } else {
-      const e = { name: catName, items: list };
-      byName.set(catName, e);
-      entries.push(e);
+  // Admin per-category / per-item selection, applied once to the merged entry.
+  // A category the owner explicitly put in "Categories in the app" (e.picked)
+  // stays visible even if an old "Menu items offered" toggle left it disabled —
+  // that selection is the newer, clearer intent. Per-item filtering still applies.
+  if (applySelection) {
+    for (const e of entries) {
+      const s2 = selLower[e.name.toLowerCase()];
+      if (!s2) continue;
+      if (s2.enabled === false && !e.picked) { e.items = []; continue; }
+      if (Array.isArray(s2.items)) e.items = e.items.filter((it) => s2.items.includes(it.id));
     }
   }
 

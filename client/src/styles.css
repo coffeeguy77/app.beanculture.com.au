@@ -462,13 +462,13 @@ img { max-width: 100%; }
 /* Tablet portrait / large phones landscape */
 @media (min-width: 680px) {
   .store-page { max-width: 900px; margin: 0 auto; }
-  .store-hero { aspect-ratio: 21/9; max-height: 360px; }
+  .store-hero { aspect-ratio: 21/9; max-height: none; width: 100%; }
 }
 
 /* Desktop + landscape tablet: two balanced columns, full width, no wasted space */
 @media (min-width: 900px) {
   .store-page { max-width: 1440px; padding: 16px 20px 56px; }
-  .store-hero { aspect-ratio: 21/8; max-height: 420px; }
+  .store-hero { aspect-ratio: 16/5; max-height: none; width: 100%; }
   .store-top { flex-direction: row; align-items: flex-start; gap: 22px; margin-bottom: 20px; }
   .store-top .store-bio { flex: 1.4 1 0; min-width: 0; font-size: 17px; }
   .store-top .store-find { flex: 1 1 0; min-width: 0; }

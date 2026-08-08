@@ -439,7 +439,7 @@ export default function App() {
       )}
       <header className="topbar">
         <button className="logo-wrap" onClick={() => { setView('home'); setActiveCat(null); }} aria-label="Home">
-          {config.logoUrl ? <img src={imgUrl(config.logoUrl, 200)} alt={config.storeName || 'Home'} style={{ height: 36, width: 'auto', display: 'block' }} fetchpriority="high" /> : <Logo height={33} />}
+          {config.logoUrl ? <img src={imgUrl(config.logoUrl, 400)} alt={config.storeName || 'Home'} style={{ height: 72, width: 'auto', display: 'block' }} fetchpriority="high" /> : <Logo height={66} />}
         </button>
         <div className="icon-row">
           <button className="iconbtn" title="About / contact" aria-label="Store info" onClick={() => setView('store')}><StoreIcon size={22} /></button>
