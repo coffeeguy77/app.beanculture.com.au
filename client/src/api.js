@@ -36,6 +36,9 @@ export const api = {
   getCoupon: (code) => req(`/api/coupon?code=${encodeURIComponent(code || '')}`),
   // Admin: customers enrolled via Square loyalty
   adminCustomers: (pass) => req(`/api/admin/customers?pass=${encodeURIComponent(pass || '')}`),
+  // Admin: broadcast (SMS/email) to loyalty members
+  adminNotifyStatus: (pass) => req(`/api/admin/notify-status?pass=${encodeURIComponent(pass || '')}`),
+  adminBroadcast: (pass, payload) => req(`/api/admin/broadcast?pass=${encodeURIComponent(pass || '')}`, { method: 'POST', body: JSON.stringify(payload) }),
   // Customer messages (enquiry / feedback / catering) + spam capture
   getCaptcha: () => req('/api/captcha'),
   sendMessage: (payload) => req('/api/message', { method: 'POST', body: JSON.stringify(payload) }),

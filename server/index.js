@@ -567,6 +567,39 @@ app.get('/api/admin/customers', async (req, res) => {
   }
 });
 
+// ---- Admin: which broadcast channels are configured ----
+app.get('/api/admin/notify-status', (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  res.json({ sms: !!notify.smsConfigured, email: !!notify.emailConfigured });
+});
+
+// ---- Admin: broadcast a message (SMS or email) to loyalty members ----
+app.post('/api/admin/broadcast', async (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const { channel, subject, message, link } = req.body || {};
+    if (!message || !String(message).trim()) return res.status(400).json({ error: 'Message is required.' });
+    if (channel === 'sms' && !notify.smsConfigured) return res.status(400).json({ error: 'SMS isn’t configured yet — add the Twilio env vars in Railway.' });
+    if (channel === 'email' && !notify.emailConfigured) return res.status(400).json({ error: 'Email isn’t configured yet — add the Resend env vars in Railway.' });
+    if (channel !== 'sms' && channel !== 'email') return res.status(400).json({ error: 'Pick a channel.' });
+
+    const users = await loyalty.listLoyaltyUsers();
+    const text = String(message).trim() + (link ? `\n\n${String(link).trim()}` : '');
+    let sent = 0, skipped = 0, failed = 0;
+    for (const u of users) {
+      const to = channel === 'sms' ? u.phone : u.email;
+      if (!to) { skipped++; continue; }
+      const ok = channel === 'sms'
+        ? await notify.sendSMS(to, text)
+        : await notify.sendEmail(to, subject || 'Bean Culture', text);
+      if (ok) sent++; else failed++;
+    }
+    res.json({ sent, skipped, failed, total: users.length });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
 // ---- Admin: force a menu re-sync (clears the cache immediately) ----
 app.post('/api/admin/sync', (req, res) => {
   if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });

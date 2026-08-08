@@ -53,6 +53,7 @@ const TABS = [
   { id: 'banners', label: 'Banners', Icon: BannerIcon },
   { id: 'users', label: 'Users', Icon: InsightsIcon },
   { id: 'coupons', label: 'Coupons', Icon: BannerIcon },
+  { id: 'push', label: 'Push', Icon: BannerIcon },
   { id: 'tables', label: 'Tables', Icon: QrIcon },
   { id: 'theme', label: 'Theme', Icon: ThemeIcon2 },
 ];
@@ -75,6 +76,10 @@ export default function Admin({ onExit }) {
   const [users, setUsers] = useState(null);          // loyalty customers (Users tab)
   const [usersBusy, setUsersBusy] = useState(false);
   const [userQuery, setUserQuery] = useState('');
+  const [notifyStatus, setNotifyStatus] = useState(null); // { sms, email }
+  const [push, setPush] = useState({ channel: 'sms', subject: '', message: '', link: '' });
+  const [pushBusy, setPushBusy] = useState(false);
+  const [pushResult, setPushResult] = useState(null);
   const [tab, setTab] = useState('store');
   const [qrFrom, setQrFrom] = useState(1);
   const [qrTo, setQrTo] = useState(12);
@@ -150,6 +155,13 @@ export default function Admin({ onExit }) {
     } catch (e) { setError(e.message); }
   }
   useEffect(() => { load(''); }, []);
+  useEffect(() => {
+    if (tab === 'push') {
+      if (notifyStatus === null) api.adminNotifyStatus(pass).then(setNotifyStatus).catch(() => setNotifyStatus({ sms: false, email: false }));
+      if (users === null && !usersBusy) loadUsers();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
 
   async function loadMessages() {
     try { const d = await api.adminMessages(pass); setMsgs(d.messages || []); }
@@ -169,6 +181,15 @@ export default function Admin({ onExit }) {
     try { const d = await api.adminCustomers(pass); setUsers(d.users || []); }
     catch (e) { alert('Could not load users: ' + e.message); }
     finally { setUsersBusy(false); }
+  }
+  async function sendBroadcast() {
+    if (!push.message.trim()) { alert('Write a message first.'); return; }
+    const audience = users ? users.length : null;
+    if (!window.confirm(`Send this ${push.channel === 'sms' ? 'SMS' : 'email'} to your loyalty members${audience != null ? ` (${audience})` : ''}? This sends for real and can’t be undone.`)) return;
+    setPushBusy(true); setPushResult(null);
+    try { setPushResult(await api.adminBroadcast(pass, push)); }
+    catch (e) { alert('Send failed: ' + e.message); }
+    finally { setPushBusy(false); }
   }
   async function setResvStatus(r, status) {
     setResv((xs) => (xs || []).map((x) => (x.id === r.id ? { ...x, status } : x)));
@@ -988,6 +1009,55 @@ export default function Admin({ onExit }) {
                   </div>
                 ))}
                 <button className="btn ghost full" style={{ marginTop: 4 }} onClick={addCoupon}>+ Add coupon</button>
+              </div>
+            )}
+
+            {/* ───────── PUSH (broadcast SMS / email) ───────── */}
+            {tab === 'push' && (
+              <div className="card" style={card}>
+                <div className="group-title">Push · message your customers</div>
+                <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>
+                  Send a message to everyone in your Square loyalty program. This web app can’t push to phone lock-screens (that needs a native app), so messages go out by SMS or email. Only message customers who’ve opted in.
+                </p>
+
+                {notifyStatus && !notifyStatus.sms && !notifyStatus.email && (
+                  <p className="error-text" style={{ fontSize: 13 }}>No channels are set up yet. Add Twilio (SMS) and/or Resend (email) env vars in Railway to enable this.</p>
+                )}
+
+                <div className="segmented" style={{ maxWidth: 320, marginBottom: 12 }}>
+                  <button type="button" className={push.channel === 'sms' ? 'seg active' : 'seg'} disabled={notifyStatus && !notifyStatus.sms}
+                    onClick={() => setPush((p) => ({ ...p, channel: 'sms' }))} style={notifyStatus && !notifyStatus.sms ? { opacity: 0.5 } : undefined}>
+                    SMS{notifyStatus && !notifyStatus.sms ? ' (off)' : ''}
+                  </button>
+                  <button type="button" className={push.channel === 'email' ? 'seg active' : 'seg'} disabled={notifyStatus && !notifyStatus.email}
+                    onClick={() => setPush((p) => ({ ...p, channel: 'email' }))} style={notifyStatus && !notifyStatus.email ? { opacity: 0.5 } : undefined}>
+                    Email{notifyStatus && !notifyStatus.email ? ' (off)' : ''}
+                  </button>
+                </div>
+
+                {push.channel === 'email' && (
+                  <label className="field" style={{ marginBottom: 10 }}><span>Subject</span>
+                    <input value={push.subject} onChange={(e) => setPush((p) => ({ ...p, subject: e.target.value }))} placeholder="e.g. This weekend at Bean Culture" /></label>
+                )}
+                <label className="field" style={{ marginBottom: 10 }}><span>Message</span>
+                  <textarea rows={4} value={push.message} onChange={(e) => setPush((p) => ({ ...p, message: e.target.value }))}
+                    placeholder={push.channel === 'sms' ? 'Keep it short — SMS is billed per message.' : 'Your message…'} /></label>
+                <label className="field" style={{ marginBottom: 12 }}><span>Link (optional)</span>
+                  <input inputMode="url" value={push.link} onChange={(e) => setPush((p) => ({ ...p, link: e.target.value }))} placeholder="https://app.beanculture.com.au" /></label>
+
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+                  <span className="muted" style={{ fontSize: 12.5 }}>
+                    {users === null ? 'Counting audience…' : `To ${users.length} loyalty member${users.length === 1 ? '' : 's'}${push.channel === 'sms' ? ` · ${users.filter((u) => u.phone).length} with a phone` : ` · ${users.filter((u) => u.email).length} with an email`}`}
+                  </span>
+                  <button className="btn" disabled={pushBusy || !push.message.trim() || (notifyStatus && !notifyStatus[push.channel])}
+                    onClick={sendBroadcast}>{pushBusy ? 'Sending…' : `Send ${push.channel === 'sms' ? 'SMS' : 'email'}`}</button>
+                </div>
+
+                {pushResult && (
+                  <p className="muted" style={{ fontSize: 13, marginTop: 12 }}>
+                    ✓ Sent to <strong>{pushResult.sent}</strong>{pushResult.skipped ? ` · ${pushResult.skipped} skipped (no ${push.channel === 'sms' ? 'phone' : 'email'})` : ''}{pushResult.failed ? ` · ${pushResult.failed} failed` : ''}.
+                  </p>
+                )}
               </div>
             )}
 
