@@ -10,6 +10,7 @@ const loyalty = require('./lib/loyalty');
 const hours = require('./lib/hours');
 const { getSettings, activeSeasonal, seasonalForPicker } = require('./lib/settings');
 const cloudinary = require('./lib/cloudinary');
+const squareImages = require('./lib/squareImages');
 const db = require('./lib/db');
 const cards = require('./lib/cards');
 const giftcards = require('./lib/giftcards');
@@ -551,6 +552,20 @@ app.post('/api/admin/sync', (req, res) => {
   if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
   menuCache = { data: null, at: 0 };
   res.json({ ok: true });
+});
+
+// ---- Admin: upload a real photo to a Square catalog item (replaces AI image) ----
+app.post('/api/admin/catalog/image', async (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const { objectId, dataUri, caption, primary } = req.body || {};
+    if (!objectId || !dataUri) return res.status(400).json({ error: 'objectId and image are required.' });
+    const out = await squareImages.uploadItemImage({ objectId, dataUri, caption, primary: primary !== false });
+    menuCache = { data: null, at: 0 }; // show the new image immediately
+    res.json(out);
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
 });
 
 // ---- Admin: upload an image (banner/icon) to Cloudinary ----

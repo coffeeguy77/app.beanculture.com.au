@@ -68,6 +68,8 @@ export default function Admin({ onExit }) {
   const [sqCats, setSqCats] = useState([]);
   const [catsLocked, setCatsLocked] = useState(true);
   const [expanded, setExpanded] = useState({});
+  const [imgBusy, setImgBusy] = useState(null);      // item id currently uploading
+  const [imgOverride, setImgOverride] = useState({}); // item id -> freshly uploaded url
   const [tab, setTab] = useState('store');
   const [qrFrom, setQrFrom] = useState(1);
   const [qrTo, setQrTo] = useState(12);
@@ -300,6 +302,27 @@ export default function Admin({ onExit }) {
         if (!r.ok) throw new Error(d.error || 'Upload failed');
         cb(d.url);
       } catch (e) { alert('Upload failed: ' + e.message); }
+    };
+    reader.readAsDataURL(file);
+  }
+
+  // Push a real photo straight into the Square catalog item as its primary image
+  // (overrides the AI image everywhere Square is used).
+  function uploadSquareImage(file, objectId) {
+    if (!file) return;
+    const reader = new FileReader();
+    setImgBusy(objectId);
+    reader.onload = async () => {
+      try {
+        const r = await fetch(`/api/admin/catalog/image?pass=${encodeURIComponent(pass)}`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ objectId, dataUri: reader.result, primary: true }),
+        });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error || 'Upload failed');
+        setImgOverride((m) => ({ ...m, [objectId]: d.url }));
+      } catch (e) { alert('Photo upload failed: ' + e.message); }
+      finally { setImgBusy(null); }
     };
     reader.readAsDataURL(file);
   }
@@ -748,13 +771,27 @@ export default function Admin({ onExit }) {
                               <button className="link" onClick={() => setAllItems(c.category, allIds, false)}>Offer none</button>
                             </div>
                             <div className="admin-itemgrid">
-                              {c.items.map((it) => (
-                                <label key={it.id} style={{ ...row, cursor: 'pointer', padding: '4px 0' }}>
-                                  <input type="checkbox" checked={itemOffered(c.category, it.id)} disabled={!on}
-                                    onChange={() => toggleItem(c.category, it.id, allIds)} />
-                                  <span style={{ fontSize: 14 }}>{it.name}</span>
-                                </label>
-                              ))}
+                              {c.items.map((it) => {
+                                const img = imgOverride[it.id] || it.image;
+                                return (
+                                  <div key={it.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', flex: 1, minWidth: 0 }}>
+                                      <input type="checkbox" checked={itemOffered(c.category, it.id)} disabled={!on}
+                                        onChange={() => toggleItem(c.category, it.id, allIds)} />
+                                      {img
+                                        ? <img src={img} alt="" style={{ width: 34, height: 34, borderRadius: 8, objectFit: 'cover', flex: 'none' }} />
+                                        : <span style={{ width: 34, height: 34, borderRadius: 8, background: 'var(--brand-soft)', flex: 'none', display: 'grid', placeItems: 'center', fontSize: 15 }}>🍽️</span>}
+                                      <span style={{ fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.name}</span>
+                                    </label>
+                                    <label className="btn ghost" title="Upload a real photo to this Square item"
+                                      style={{ padding: '5px 10px', fontSize: 12, cursor: imgBusy === it.id ? 'default' : 'pointer', flex: 'none', opacity: imgBusy === it.id ? 0.6 : 1 }}>
+                                      {imgBusy === it.id ? 'Uploading…' : (img ? 'Replace' : 'Photo')}
+                                      <input type="file" accept="image/*" style={{ display: 'none' }} disabled={imgBusy === it.id}
+                                        onChange={(e) => { const f = e.target.files[0]; if (f) uploadSquareImage(f, it.id); e.target.value = ''; }} />
+                                    </label>
+                                  </div>
+                                );
+                              })}
                             </div>
                           </div>
                         )}
