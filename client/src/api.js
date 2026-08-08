@@ -32,6 +32,10 @@ export const api = {
   reserve: (payload) => req('/api/reserve', { method: 'POST', body: JSON.stringify(payload) }),
   adminReservations: (pass) => req(`/api/admin/reservations?pass=${encodeURIComponent(pass || '')}`),
   setReservationStatus: (pass, id, status) => req(`/api/admin/reservations/status?pass=${encodeURIComponent(pass || '')}`, { method: 'POST', body: JSON.stringify({ id, status }) }),
+  // Coupons (validate a code at checkout)
+  getCoupon: (code) => req(`/api/coupon?code=${encodeURIComponent(code || '')}`),
+  // Admin: customers enrolled via Square loyalty
+  adminCustomers: (pass) => req(`/api/admin/customers?pass=${encodeURIComponent(pass || '')}`),
   // Customer messages (enquiry / feedback / catering) + spam capture
   getCaptcha: () => req('/api/captcha'),
   sendMessage: (payload) => req('/api/message', { method: 'POST', body: JSON.stringify(payload) }),

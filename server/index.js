@@ -11,6 +11,7 @@ const hours = require('./lib/hours');
 const { getSettings, activeSeasonal, seasonalForPicker } = require('./lib/settings');
 const cloudinary = require('./lib/cloudinary');
 const squareImages = require('./lib/squareImages');
+const coupons = require('./lib/coupons');
 const db = require('./lib/db');
 const cards = require('./lib/cards');
 const giftcards = require('./lib/giftcards');
@@ -544,6 +545,25 @@ app.get('/api/admin/square-categories', async (req, res) => {
     res.json({ categories: await catalog.getAllCategories() });
   } catch (e) {
     res.status(502).json({ error: e.message });
+  }
+});
+
+// ---- Validate a coupon code (for the checkout to show the discount) ----
+app.get('/api/coupon', (req, res) => {
+  try {
+    const c = coupons.find(req.query.code || '');
+    if (!c) return res.json({ valid: false });
+    res.json({ valid: true, code: String(c.code).toUpperCase(), type: c.type || 'percent', value: Number(c.value) || 0, comp: (c.type || 'percent') === 'comp', label: coupons.label(c) });
+  } catch (e) { res.json({ valid: false }); }
+});
+
+// ---- Admin: customers enrolled via Square loyalty ----
+app.get('/api/admin/customers', async (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    res.json({ users: await loyalty.listLoyaltyUsers() });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
   }
 });
 

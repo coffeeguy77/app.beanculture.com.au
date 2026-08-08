@@ -51,6 +51,8 @@ const TABS = [
   { id: 'insights', label: 'Insights', Icon: InsightsIcon },
   { id: 'menu', label: 'Menu', Icon: MenuIcon },
   { id: 'banners', label: 'Banners', Icon: BannerIcon },
+  { id: 'users', label: 'Users', Icon: InsightsIcon },
+  { id: 'coupons', label: 'Coupons', Icon: BannerIcon },
   { id: 'tables', label: 'Tables', Icon: QrIcon },
   { id: 'theme', label: 'Theme', Icon: ThemeIcon2 },
 ];
@@ -70,6 +72,9 @@ export default function Admin({ onExit }) {
   const [expanded, setExpanded] = useState({});
   const [imgBusy, setImgBusy] = useState(null);      // item id currently uploading
   const [imgOverride, setImgOverride] = useState({}); // item id -> freshly uploaded url
+  const [users, setUsers] = useState(null);          // loyalty customers (Users tab)
+  const [usersBusy, setUsersBusy] = useState(false);
+  const [userQuery, setUserQuery] = useState('');
   const [tab, setTab] = useState('store');
   const [qrFrom, setQrFrom] = useState(1);
   const [qrTo, setQrTo] = useState(12);
@@ -158,6 +163,12 @@ export default function Admin({ onExit }) {
   async function loadReservations() {
     try { const d = await api.adminReservations(pass); setResv(d.reservations || []); setResvChannels({ sms: d.sms, email: d.email }); }
     catch (e) { alert('Could not load reservations: ' + e.message); }
+  }
+  async function loadUsers() {
+    setUsersBusy(true);
+    try { const d = await api.adminCustomers(pass); setUsers(d.users || []); }
+    catch (e) { alert('Could not load users: ' + e.message); }
+    finally { setUsersBusy(false); }
   }
   async function setResvStatus(r, status) {
     setResv((xs) => (xs || []).map((x) => (x.id === r.id ? { ...x, status } : x)));
@@ -281,6 +292,13 @@ export default function Admin({ onExit }) {
     if (!sel || sel.items == null) return allIds.length;
     return sel.items.filter((id) => allIds.includes(id)).length;
   };
+
+  // ---- coupons ----
+  const couponList = s?.coupons || [];
+  const setCoupons = (arr) => set({ coupons: arr });
+  const addCoupon = () => setCoupons([...couponList, { code: '', type: 'percent', value: 10, expiry: '', active: true }]);
+  const updCoupon = (i, patch) => setCoupons(couponList.map((c, j) => (j === i ? { ...c, ...patch } : c)));
+  const rmCoupon = (i) => setCoupons(couponList.filter((_, j) => j !== i));
 
   // ---- hero / banners ----
   const hero = s?.hero || [];
@@ -884,6 +902,92 @@ export default function Admin({ onExit }) {
                   ))}
                 </div>
                 <button className="btn ghost full" style={{ marginTop: 10 }} onClick={addSlide}>+ Add banner</button>
+              </div>
+            )}
+
+            {/* ───────── USERS (loyalty customers) ───────── */}
+            {tab === 'users' && (
+              <div className="card" style={card}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+                  <div className="group-title" style={{ margin: 0 }}>Users · loyalty members</div>
+                  <button type="button" className="btn ghost" style={{ padding: '6px 12px', fontSize: 13 }} disabled={usersBusy} onClick={loadUsers}>{usersBusy ? 'Loading…' : (users === null ? 'Load' : 'Refresh')}</button>
+                </div>
+                <p className="muted" style={{ fontSize: 12, marginTop: 6 }}>Everyone enrolled in your Square loyalty program — name, contact, points and when they joined. Pulled live from Square.</p>
+                {users === null && !usersBusy && <p className="muted" style={{ fontSize: 13 }}>Tap Load to fetch your loyalty members.</p>}
+                {users && users.length === 0 && <p className="muted" style={{ fontSize: 13 }}>No loyalty members yet.</p>}
+                {users && users.length > 0 && (() => {
+                  const q = userQuery.trim().toLowerCase();
+                  const rows = q ? users.filter((u) => `${u.name} ${u.phone} ${u.email}`.toLowerCase().includes(q)) : users;
+                  const fmtJoined = (iso) => iso ? new Date(iso).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
+                  return (
+                    <>
+                      <div style={{ ...row, justifyContent: 'space-between', margin: '4px 0 10px', flexWrap: 'wrap' }}>
+                        <input value={userQuery} onChange={(e) => setUserQuery(e.target.value)} placeholder="Search name / phone / email"
+                          style={{ flex: 1, minWidth: 180, padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 10 }} />
+                        <span className="muted" style={{ fontSize: 13, fontWeight: 700 }}>{rows.length} member{rows.length === 1 ? '' : 's'}</span>
+                      </div>
+                      <div className="admin-users">
+                        {rows.map((u) => (
+                          <div key={u.id} className="user-row">
+                            <div className="user-main">
+                              <div className="user-name">{u.name || 'Guest'}</div>
+                              <div className="muted" style={{ fontSize: 12.5 }}>{[u.phone, u.email].filter(Boolean).join(' · ') || '—'}</div>
+                            </div>
+                            <div className="user-meta">
+                              <span className="user-pts">{u.points} pts</span>
+                              <span className="muted" style={{ fontSize: 12 }}>Joined {fmtJoined(u.enrolledAt)}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  );
+                })()}
+              </div>
+            )}
+
+            {/* ───────── COUPONS ───────── */}
+            {tab === 'coupons' && (
+              <div className="card" style={card}>
+                <div className="group-title">Coupons</div>
+                <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>Create codes customers type at checkout. The discount is applied to the Square order, so they only pay the reduced total. Remember to press <strong>Save changes</strong>.</p>
+                {couponList.length === 0 && <p className="muted" style={{ fontSize: 13 }}>No coupons yet — add one below.</p>}
+                {couponList.map((c, i) => (
+                  <div key={i} style={{ border: '1px solid var(--line)', borderRadius: 12, padding: 12, marginBottom: 10 }}>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                      <input value={c.code || ''} onChange={(e) => updCoupon(i, { code: e.target.value.toUpperCase().replace(/\s+/g, '') })} placeholder="CODE"
+                        style={{ flex: '1 1 120px', minWidth: 0, padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 10, fontWeight: 700, letterSpacing: 0.5 }} />
+                      <select value={c.type || 'percent'} onChange={(e) => updCoupon(i, { type: e.target.value })}
+                        style={{ padding: 8, borderRadius: 10, border: '1px solid var(--line)' }}>
+                        <option value="percent">% off</option>
+                        <option value="amount">$ off</option>
+                        <option value="comp">Free (100%)</option>
+                      </select>
+                      {c.type !== 'comp' && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                          {c.type === 'amount' && <span className="muted">$</span>}
+                          <input inputMode="decimal" value={c.value ?? ''} onChange={(e) => updCoupon(i, { value: parseFloat(e.target.value) || 0 })}
+                            style={{ width: 70, padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 10 }} />
+                          {c.type === 'percent' && <span className="muted">%</span>}
+                        </div>
+                      )}
+                      <button className="link" style={{ color: '#c0392b' }} onClick={() => rmCoupon(i)}>Remove</button>
+                    </div>
+                    <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center', marginTop: 8 }}>
+                      <label style={{ ...row, fontSize: 13 }} className="muted">
+                        <span>Expires</span>
+                        <input type="date" value={c.expiry || ''} onChange={(e) => updCoupon(i, { expiry: e.target.value })}
+                          style={{ padding: '6px 8px', border: '1px solid var(--line)', borderRadius: 10 }} />
+                        {c.expiry && <button className="link" style={{ fontSize: 12, padding: 2 }} onClick={() => updCoupon(i, { expiry: '' })}>clear</button>}
+                      </label>
+                      <label style={{ ...row, cursor: 'pointer', fontSize: 13 }}>
+                        <input type="checkbox" checked={c.active !== false} onChange={(e) => updCoupon(i, { active: e.target.checked })} />
+                        <span>{c.active !== false ? 'Active' : 'Off'}</span>
+                      </label>
+                    </div>
+                  </div>
+                ))}
+                <button className="btn ghost full" style={{ marginTop: 4 }} onClick={addCoupon}>+ Add coupon</button>
               </div>
             )}
 

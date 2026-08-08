@@ -2,6 +2,7 @@
 // and per-customer history. Stamps order.customer_id so history works.
 
 const { squareFetch, LOCATION_ID, idem, CURRENCY } = require('./squareClient');
+const coupons = require('./coupons');
 
 const DINEIN_FULFILLMENT = (process.env.SQUARE_DINEIN_FULFILLMENT || 'PICKUP').toUpperCase();
 const COMP_COUPON_CODE = (process.env.COMP_COUPON_CODE || '').trim();
@@ -74,6 +75,11 @@ async function createOrder({ cart, dineIn, table, name, coupon, customerId, pick
     order.discounts = [
       { uid: 'comp', name: `Test comp (${COMP_COUPON_CODE})`, percentage: '100', scope: 'ORDER' },
     ];
+  } else if (coupon) {
+    // App-managed coupon → order-level discount (Square recomputes the total).
+    const c = coupons.find(coupon);
+    const d = c && coupons.discountFor(c);
+    if (d) order.discounts = [d];
   }
 
   const data = await squareFetch('/v2/orders', {

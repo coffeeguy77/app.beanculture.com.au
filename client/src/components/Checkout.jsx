@@ -79,6 +79,29 @@ export default function Checkout({ config, cart, currency, onQty, dineIn, setDin
   const hasCoupon = coupon.trim().length > 0;
   const usingReward = !!tierId;
 
+  // Validate the entered coupon against the app's codes so we can show the real
+  // discount and take payment for the reduced total (not assume it's a freebie).
+  const [couponInfo, setCouponInfo] = useState(null); // {valid,type,value,comp,label} | null
+  useEffect(() => {
+    const code = coupon.trim();
+    if (!code) { setCouponInfo(null); return; }
+    let live = true;
+    const t = setTimeout(() => {
+      api.getCoupon(code)
+        .then((d) => { if (live) setCouponInfo(d && d.valid ? d : { valid: false }); })
+        .catch(() => { if (live) setCouponInfo(null); });
+    }, 350);
+    return () => { live = false; clearTimeout(t); };
+  }, [coupon]);
+  const couponValid = !!couponInfo?.valid;
+  const discountedTotal = couponValid
+    ? (couponInfo.comp ? 0
+      : couponInfo.type === 'amount' ? Math.max(0, cartTotal - Math.round((couponInfo.value || 0) * 100))
+      : Math.max(0, Math.round(cartTotal * (1 - (couponInfo.value || 0) / 100))))
+    : cartTotal;
+  const couponFree = couponValid && discountedTotal === 0;
+  const payTotal = couponValid ? discountedTotal : cartTotal;
+
   const isSchedule = when === 'schedule';
   const isRepeat = when === 'repeat';
   const autocharge = isRepeat || (isSchedule && payTiming === 'later');
@@ -259,7 +282,7 @@ export default function Checkout({ config, cart, currency, onQty, dineIn, setDin
   const scheduleAllowed = true; // pay-now scheduling always ok; auto-charge needs sched.enabled (checked on submit)
   const ctaLabel = autocharge
     ? (isRepeat ? 'Set up repeating order' : 'Schedule order')
-    : (hasCoupon ? 'Place order' : `Pay ${formatMoney(cartTotal, currency)}`);
+    : (couponFree ? 'Place order' : `Pay ${formatMoney(payTotal, currency)}`);
 
   return (
     <main className="page">
@@ -415,9 +438,18 @@ export default function Checkout({ config, cart, currency, onQty, dineIn, setDin
       )}
 
       <div className="totals">
-        <div className="row grand"><span>Total</span><span>{formatMoney(cartTotal, currency)}</span></div>
-        {(usingReward || hasCoupon) && <div className="row discount"><span>Discount applied at payment</span><span>—</span></div>}
-        {autocharge && <div className="row"><span>{isRepeat ? 'Charged each time' : 'Charged at pickup'}</span><span>{formatMoney(cartTotal, currency)}</span></div>}
+        {couponValid ? (
+          <>
+            <div className="row"><span>Subtotal</span><span>{formatMoney(cartTotal, currency)}</span></div>
+            <div className="row discount"><span>Coupon {couponInfo.code || coupon.trim().toUpperCase()} · {couponInfo.label}</span><span>−{formatMoney(cartTotal - discountedTotal, currency)}</span></div>
+            <div className="row grand"><span>Total</span><span>{formatMoney(payTotal, currency)}</span></div>
+          </>
+        ) : (
+          <div className="row grand"><span>Total</span><span>{formatMoney(cartTotal, currency)}</span></div>
+        )}
+        {hasCoupon && !couponValid && couponInfo && <div className="row discount"><span>Coupon not recognised</span><span>—</span></div>}
+        {usingReward && <div className="row discount"><span>Reward applied at payment</span><span>—</span></div>}
+        {autocharge && <div className="row"><span>{isRepeat ? 'Charged each time' : 'Charged at pickup'}</span><span>{formatMoney(payTotal, currency)}</span></div>}
       </div>
 
       {status === 'error' && (
@@ -442,7 +474,7 @@ export default function Checkout({ config, cart, currency, onQty, dineIn, setDin
           )}
 
           {/* Card entry — hidden when paying with a saved card */}
-          <div id="card-container" className="card-box" style={{ display: usingNewCard && !hasCoupon ? 'block' : 'none', marginTop: 8 }} />
+          <div id="card-container" className="card-box" style={{ display: usingNewCard && !couponFree ? 'block' : 'none', marginTop: 8 }} />
           {usingNewCard && user?.customerId && !autocharge && (
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, fontSize: 14, cursor: 'pointer' }}>
               <input type="checkbox" checked={saveNew} onChange={(e) => setSaveNew(e.target.checked)} />

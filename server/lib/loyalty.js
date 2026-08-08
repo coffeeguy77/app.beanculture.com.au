@@ -91,4 +91,50 @@ async function deleteReward(rewardId) {
   }
 }
 
-module.exports = { getProgram, getAccountByPhone, getCustomerLoyalty, createReward, deleteReward };
+// Every customer enrolled in the Square loyalty program, joined with their
+// Square customer record (name / phone / email / join date) — for the admin
+// "Users" view. Read-only.
+async function listLoyaltyUsers() {
+  const accounts = [];
+  let cursor;
+  do {
+    const data = await squareFetch('/v2/loyalty/accounts/search', {
+      method: 'POST',
+      body: { query: {}, limit: 200, ...(cursor ? { cursor } : {}) },
+    });
+    for (const a of data.loyalty_accounts || []) accounts.push(a);
+    cursor = data.cursor;
+  } while (cursor && accounts.length < 5000);
+
+  const ids = [...new Set(accounts.map((a) => a.customer_id).filter(Boolean))];
+  const custMap = new Map();
+  for (let i = 0; i < ids.length; i += 100) {
+    const chunk = ids.slice(i, i + 100);
+    try {
+      const data = await squareFetch('/v2/customers/bulk-retrieve-customers', {
+        method: 'POST', body: { customer_ids: chunk },
+      });
+      for (const [id, r] of Object.entries(data.responses || {})) if (r.customer) custMap.set(id, r.customer);
+    } catch { /* keep going — a failed chunk just means thinner detail */ }
+  }
+
+  const users = accounts.map((a) => {
+    const c = custMap.get(a.customer_id) || {};
+    const name = [c.given_name, c.family_name].filter(Boolean).join(' ').trim();
+    const phone = c.phone_number || (a.mappings || []).map((m) => m.phone_number).filter(Boolean)[0] || '';
+    return {
+      id: a.id,
+      customerId: a.customer_id || null,
+      name,
+      phone,
+      email: c.email_address || '',
+      points: a.balance || 0,
+      lifetimePoints: a.lifetime_points || 0,
+      enrolledAt: a.enrolled_at || c.created_at || null,
+    };
+  });
+  users.sort((a, b) => new Date(b.enrolledAt || 0) - new Date(a.enrolledAt || 0));
+  return users;
+}
+
+module.exports = { getProgram, getAccountByPhone, getCustomerLoyalty, createReward, deleteReward, listLoyaltyUsers };
