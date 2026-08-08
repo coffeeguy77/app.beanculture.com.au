@@ -8,6 +8,17 @@ const FORM_TABS = [
   { key: 'catering', label: 'Catering' },
 ];
 
+// Stroke icons (consistent line style, no filled/illustrated glyphs).
+const Ico = ({ children, size = 20 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">{children}</svg>
+);
+const PinIcon = (p) => <Ico {...p}><path d="M12 21s-6.5-5.6-6.5-10A6.5 6.5 0 0 1 18.5 11c0 4.4-6.5 10-6.5 10Z" /><circle cx="12" cy="11" r="2.3" /></Ico>;
+const PhoneIcon = (p) => <Ico {...p}><path d="M6.5 4h3l1.5 4-2 1.5a12 12 0 0 0 5 5l1.5-2 4 1.5v3a2 2 0 0 1-2 2A16 16 0 0 1 4.5 6a2 2 0 0 1 2-2Z" /></Ico>;
+const NavIcon = (p) => <Ico {...p}><path d="M3 11l18-8-8 18-2-8-8-2Z" /></Ico>;
+const ClockIcon = (p) => <Ico {...p}><circle cx="12" cy="12" r="8.5" /><path d="M12 7.5V12l3 2" /></Ico>;
+const StarIcon = (p) => <Ico {...p}><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 17l-5.2 2.7 1-5.8L3.5 9.7l5.9-.9L12 3.5Z" /></Ico>;
+const SendIcon = (p) => <Ico {...p}><path d="M21 3 10.5 13.5M21 3l-6.5 18-4-8-8-4L21 3Z" /></Ico>;
+
 function fmtTime(t) {
   if (!t) return '';
   const [h, m] = t.split(':');
@@ -30,18 +41,15 @@ export default function StorePage({ config, onTrack, onBack }) {
     if (!weekly) return [];
     return DAY_LABELS.map(([label, key], i) => {
       const periods = (weekly[key] || []).filter((p) => p.start);
-      const text = periods.length
-        ? periods.map((p) => `${fmtTime(p.start)} – ${fmtTime(p.end)}`).join(', ')
-        : 'Closed';
-      return { label, text, today: i === todayIdx };
+      const text = periods.length ? periods.map((p) => `${fmtTime(p.start)} – ${fmtTime(p.end)}`).join(', ') : 'Closed';
+      return { label, text, today: i === todayIdx, closed: !periods.length };
     });
   }, [weekly, todayIdx]);
 
   const reviewUrl = config.googleReviewUrl || '';
   const supportMsg = config.supportMessage
-    || 'Love your coffee? A quick Google review helps our little café more than you know — thank you for supporting local. ☕';
+    || 'Love your coffee? A quick Google review helps our little café more than you know — thank you for supporting local.';
 
-  // ---- Contact form ----
   const [tab, setTab] = useState('enquiry');
   const [name, setName] = useState('');
   const [cField, setCField] = useState('');
@@ -68,84 +76,89 @@ export default function StorePage({ config, onTrack, onBack }) {
       : 'How can we help?';
 
   return (
-    <main className="page store-page">
-      <button className="link" onClick={onBack}>← Menu</button>
+    <main className="store-page">
+      <button className="link store-back" onClick={onBack}>← Menu</button>
 
       {config.storePhoto && (
         <div className="store-hero">
           <img src={config.storePhoto} alt={config.storeName || 'Our café'} />
         </div>
       )}
+      {config.bio && <p className="store-bio">{config.bio}</p>}
 
-      <h2 style={{ marginBottom: 4 }}>{config.storeName || 'Bean Culture'}</h2>
-      {config.bio && <p className="muted" style={{ marginTop: 0, whiteSpace: 'pre-line' }}>{config.bio}</p>}
-
-      {/* Quick actions */}
-      <div className="store-actions">
-        {tel && <a className="btn ghost" href={`tel:${tel}`} onClick={() => onTrack && onTrack('contact_phone')}>Call</a>}
-        {dirUrl && <a className="btn ghost" href={dirUrl} target="_blank" rel="noreferrer" onClick={() => onTrack && onTrack('contact_dir')}>Directions</a>}
-        {mapsUrl && <a className="btn ghost" href={mapsUrl} target="_blank" rel="noreferrer" onClick={() => onTrack && onTrack('contact_map')}>Map</a>}
-      </div>
-
-      {address && (
-        <div className="store-card">
-          <div className="group-title">Find us</div>
-          <p style={{ margin: 0 }}>{address}</p>
-        </div>
-      )}
-
-      {hoursRows.length > 0 && (
-        <div className="store-card">
-          <div className="group-title">Opening hours</div>
-          <div className="hours-table">
-            {hoursRows.map((r) => (
-              <div key={r.label} className={`hours-row ${r.today ? 'today' : ''}`}>
-                <span>{r.label}{r.today ? ' · today' : ''}</span>
-                <span>{r.text}</span>
+      <div className="store-grid">
+        <div className="store-col">
+          {(address || tel) && (
+            <section className="store-card">
+              <div className="store-card-head"><PinIcon /> Find us</div>
+              {address && <p className="store-address">{address}</p>}
+              <div className="store-actions">
+                {tel && (
+                  <a className="pill-btn" href={`tel:${tel}`} onClick={() => onTrack && onTrack('contact_phone')} aria-label="Call us">
+                    <PhoneIcon size={18} /><span>Call</span>
+                  </a>
+                )}
+                {dirUrl && (
+                  <a className="pill-btn" href={dirUrl} target="_blank" rel="noreferrer" onClick={() => onTrack && onTrack('contact_dir')} aria-label="Get directions">
+                    <NavIcon size={18} /><span>Directions</span>
+                  </a>
+                )}
               </div>
-            ))}
-          </div>
-        </div>
-      )}
+            </section>
+          )}
 
-      {/* Support / Google review */}
-      {reviewUrl && (
-        <div className="store-card support-card">
-          <div style={{ fontSize: 22 }}>🌟</div>
-          <p style={{ margin: '6px 0 12px' }}>{supportMsg}</p>
-          <a className="btn full" href={reviewUrl} target="_blank" rel="noreferrer" onClick={() => onTrack && onTrack('review_click')}>Leave a Google review</a>
+          {hoursRows.length > 0 && (
+            <section className="store-card">
+              <div className="store-card-head"><ClockIcon /> Opening hours</div>
+              <div className="hours-table">
+                {hoursRows.map((r) => (
+                  <div key={r.label} className={`hours-row ${r.today ? 'today' : ''}`}>
+                    <span className="hours-day">{r.label}{r.today && <em>Today</em>}</span>
+                    <span className={r.closed ? 'hours-closed' : ''}>{r.text}</span>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
         </div>
-      )}
 
-      {/* Contact / feedback / catering */}
-      <div className="store-card">
-        <div className="group-title">Get in touch</div>
-        <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>
-          Questions, catering, or something we missed — send it straight to management. We’ll get back to you.
-        </p>
-        {sent ? (
-          <div className="gc-result" style={{ padding: '8px 0' }}>
-            <div className="tick" style={{ width: 48, height: 48, fontSize: 24 }}>✓</div>
-            <h3 className="serif" style={{ margin: '8px 0 4px' }}>Thanks — message sent</h3>
-            <p className="muted" style={{ fontSize: 13 }}>We’ve passed it to the team.</p>
-            <button className="btn ghost" style={{ marginTop: 8 }} onClick={() => setSent(false)}>Send another</button>
-          </div>
-        ) : (
-          <>
-            <div className="segmented three" style={{ marginBottom: 10 }}>
-              {FORM_TABS.map((t) => (
-                <button key={t.key} type="button" className={tab === t.key ? 'seg active' : 'seg'} onClick={() => setTab(t.key)}>{t.label}</button>
-              ))}
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <label className="field"><span>Your name</span><input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name" /></label>
-              <label className="field"><span>Email or phone</span><input value={cField} onChange={(e) => setCField(e.target.value)} placeholder="So we can reply" /></label>
-              <label className="field"><span>Message</span><textarea rows={4} value={body} onChange={(e) => setBody(e.target.value)} placeholder={placeholder} /></label>
-              {error && <p className="error-text">{error}</p>}
-              <button className="btn full" disabled={busy} onClick={submit}>{busy ? 'Sending…' : 'Send message'}</button>
-            </div>
-          </>
-        )}
+        <div className="store-col">
+          {reviewUrl && (
+            <section className="store-card review-card">
+              <span className="review-star"><StarIcon size={26} /></span>
+              <p>{supportMsg}</p>
+              <a className="btn store-btn" href={reviewUrl} target="_blank" rel="noreferrer" onClick={() => onTrack && onTrack('review_click')}>Leave a Google review</a>
+            </section>
+          )}
+
+          <section className="store-card">
+            <div className="store-card-head">Get in touch</div>
+            <p className="muted store-sub">Questions, catering, or something we missed — straight to management. We’ll reply.</p>
+            {sent ? (
+              <div className="store-sent">
+                <span className="tick">✓</span>
+                <h3 className="serif">Message sent</h3>
+                <p className="muted">Thanks — we’ve passed it to the team.</p>
+                <button className="pill-btn" onClick={() => setSent(false)}>Send another</button>
+              </div>
+            ) : (
+              <>
+                <div className="segmented three store-tabs">
+                  {FORM_TABS.map((t) => (
+                    <button key={t.key} type="button" className={tab === t.key ? 'seg active' : 'seg'} onClick={() => setTab(t.key)}>{t.label}</button>
+                  ))}
+                </div>
+                <div className="store-form">
+                  <label className="field"><span>Your name</span><input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name" /></label>
+                  <label className="field"><span>Email or phone</span><input value={cField} onChange={(e) => setCField(e.target.value)} placeholder="So we can reply" /></label>
+                  <label className="field"><span>Message</span><textarea rows={4} value={body} onChange={(e) => setBody(e.target.value)} placeholder={placeholder} /></label>
+                  {error && <p className="error-text">{error}</p>}
+                  <button className="btn store-btn" disabled={busy} onClick={submit}><SendIcon size={18} /> {busy ? 'Sending…' : 'Send message'}</button>
+                </div>
+              </>
+            )}
+          </section>
+        </div>
       </div>
     </main>
   );
