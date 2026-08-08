@@ -528,7 +528,7 @@ img { max-width: 100%; }
   .cart-panel {
     background: var(--surface); border: 1px solid var(--line); border-radius: 18px;
     box-shadow: var(--shadow-sm); display: flex; flex-direction: column;
-    max-height: calc(100vh - 100px); overflow: hidden;
+    max-height: calc(100dvh - 96px); overflow: hidden;
   }
   .cart-panel-head { padding: 16px 16px 10px; border-bottom: 1px solid var(--line); }
   .cart-panel-head h2 { margin: 0 0 8px; font-family: Georgia, serif; font-size: 20px; }
@@ -669,7 +669,10 @@ img { max-width: 100%; }
 @media (min-width: 900px) {
   .aside-checkout {
     background: var(--surface); border: 1px solid var(--line); border-radius: 18px;
-    box-shadow: var(--shadow-sm); max-height: calc(100vh - 96px); overflow-y: auto;
+    box-shadow: var(--shadow-sm);
+    /* dvh (not vh) so the box respects the iOS Safari toolbar and never clips the
+       total / pay button; content scrolls inside when it's taller than the view. */
+    max-height: calc(100dvh - 92px); overflow-y: auto; -webkit-overflow-scrolling: touch;
   }
   .aside-checkout .page { padding: 16px; max-width: none; margin: 0; }
   .aside-checkout .page > h2 { font-size: 20px; }
