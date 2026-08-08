@@ -1238,6 +1238,34 @@ export default function Admin({ onExit }) {
                               <label className="btn ghost" style={{ padding: '8px 12px', fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap' }}>Image
                                 <input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files[0]; if (f) uploadImage(f, (url) => updSeasonalBanner(i, { image: url, bg: `url(${url}) center/contain no-repeat` }), 'themes'); }} /></label>
                             </div>
+                            {/* Destination — same options as the hero banners */}
+                            <div style={{ ...row, gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
+                              <span className="muted" style={{ fontSize: 12 }}>Tapping goes to</span>
+                              <select value={t.banner?.link?.type || 'scroll'} onChange={(e) => updSeasonalBanner(i, { link: { ...(t.banner?.link || {}), type: e.target.value } })} style={{ padding: 8, borderRadius: 10, border: '1px solid var(--line)' }}>
+                                {LINK_TYPES.map((lt) => <option key={lt} value={lt}>{lt}</option>)}
+                              </select>
+                              {t.banner?.link?.type === 'category' && (
+                                <select value={t.banner?.link?.value || ''} onChange={(e) => updSeasonalBanner(i, { link: { ...(t.banner?.link || {}), value: e.target.value } })} style={{ flex: 1, minWidth: 120, padding: 8, borderRadius: 10, border: '1px solid var(--line)' }}>
+                                  <option value="">— category —</option>
+                                  {cats.map((c) => <option key={c} value={c}>{c}</option>)}
+                                </select>
+                              )}
+                              {t.banner?.link?.type === 'item' && (
+                                <select value={t.banner?.link?.value || ''}
+                                  onChange={(e) => { const opt = e.target.selectedOptions[0]; updSeasonalBanner(i, { link: { ...(t.banner?.link || {}), value: e.target.value, label: opt ? opt.text : '' } }); }}
+                                  style={{ flex: 1, minWidth: 120, padding: 8, borderRadius: 10, border: '1px solid var(--line)' }}>
+                                  <option value="">{adminCat.length ? '— pick a product —' : 'Loading products…'}</option>
+                                  {adminCat.map((c) => (
+                                    <optgroup key={c.category} label={c.category}>
+                                      {c.items.map((it) => <option key={it.id} value={it.id}>{it.name}</option>)}
+                                    </optgroup>
+                                  ))}
+                                </select>
+                              )}
+                              {t.banner?.link?.type === 'url' && (
+                                <input type="url" inputMode="url" value={t.banner?.link?.value || ''} onChange={(e) => updSeasonalBanner(i, { link: { ...(t.banner?.link || {}), value: e.target.value } })} placeholder="https://…" style={{ flex: 1, minWidth: 120, padding: '8px 10px', borderRadius: 10, border: '1px solid var(--line)' }} />
+                              )}
+                            </div>
                           </div>
                         </div>
                       );
