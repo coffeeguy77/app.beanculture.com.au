@@ -19,7 +19,6 @@ import SeasonalPerimeter from './components/SeasonalPerimeter.jsx';
 import { AccountIcon, ThemeIcon, StoreIcon, SlotIcon } from './components/icons.jsx';
 import StorePage from './components/StorePage.jsx';
 import ReservationForm from './components/ReservationForm.jsx';
-import StoreContact from './components/StoreContact.jsx';
 import InstallButton from './components/InstallButton.jsx';
 import { track, trackItems } from './analytics.js';
 
@@ -551,7 +550,6 @@ export default function App() {
               onScrolled={() => setActiveCat(null)}
               kitchenClosedCats={kitchenClosedCats}
             />
-            <StoreContact contact={config.contact} onTrack={track} />
             <InstallButton />
           </div>
           <aside className={`cart-aside${view === 'checkout' ? ' is-checkout' : ''}`}>
