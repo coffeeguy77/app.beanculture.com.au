@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { imgUrl as optimizeImg } from '../api.js';
 
 export default function HeroSlider({ hero, onLink, ratio, autoplay = true, interval = 5 }) {
   const trackRef = useRef(null);
@@ -54,20 +55,22 @@ export default function HeroSlider({ hero, onLink, ratio, autoplay = true, inter
         onMouseEnter={() => setPaused(true)}
         onMouseLeave={() => setPaused(false)}
       >
-        {hero.map((s) => {
-          const imgUrl =
+        {hero.map((s, i) => {
+          const raw =
             s.image ||
             (typeof s.bg === 'string' && (s.bg.match(/url\((['"]?)(.*?)\1\)/) || [])[2]) ||
             '';
+          const src = optimizeImg(raw, 1400);
+          const eager = i === 0; // the first banner is the LCP — load it eagerly
           const hasCopy = s.title || s.subtitle || s.cta;
           return (
             <div
               key={s.id}
-              className={`hero-slide ${imgUrl ? 'has-img' : ''}`}
-              style={imgUrl ? { color: s.textColor || '#fff' } : { background: s.bg, color: s.textColor || '#fff' }}
+              className={`hero-slide ${raw ? 'has-img' : ''}`}
+              style={raw ? { color: s.textColor || '#fff' } : { background: s.bg, color: s.textColor || '#fff' }}
               onClick={() => onLink(s.link)}
             >
-              {imgUrl && <img className="hero-img" src={imgUrl} alt={s.title || ''} loading="lazy" />}
+              {raw && <img className="hero-img" src={src} alt={s.title || ''} loading={eager ? 'eager' : 'lazy'} fetchpriority={eager ? 'high' : 'auto'} decoding="async" />}
               {hasCopy && (
                 <div className="hero-copy">
                   {s.title && <h3>{s.title}</h3>}

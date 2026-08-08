@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { api } from '../api.js';
+import { api, imgUrl } from '../api.js';
 
 const DAY_LABELS = [['Mon', 'MON'], ['Tue', 'TUE'], ['Wed', 'WED'], ['Thu', 'THU'], ['Fri', 'FRI'], ['Sat', 'SAT'], ['Sun', 'SUN']];
 const FORM_TABS = [
@@ -81,7 +81,7 @@ export default function StorePage({ config, onTrack, onBack }) {
 
       {config.storePhoto && (
         <div className="store-hero">
-          <img src={config.storePhoto} alt={config.storeName || 'Our café'} />
+          <img src={imgUrl(config.storePhoto, 1200)} alt={config.storeName || 'Our café'} loading="eager" decoding="async" />
         </div>
       )}
       {config.bio && <p className="store-bio">{config.bio}</p>}

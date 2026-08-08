@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { formatMoney } from '../api.js';
+import { formatMoney, imgUrl } from '../api.js';
 
 function makeKey(item, variationId, modifierIds, note) {
   return [item.id, variationId, [...modifierIds].sort().join(','), note].join('|');
@@ -57,7 +57,7 @@ export default function ItemModal({ item, currency, onClose, onAdd }) {
     <div className="backdrop" onClick={onClose}>
       <div className="sheet" onClick={(e) => e.stopPropagation()}>
         <button className="sheet-close" onClick={onClose}>×</button>
-        {item.image && <img className="sheet-img" src={item.image} alt="" />}
+        {item.image && <img className="sheet-img" src={imgUrl(item.image, 720)} alt="" decoding="async" />}
         <div className="sheet-body">
           <h2>{item.name}</h2>
           {item.description && <p className="muted itemdesc-full">{item.description}</p>}

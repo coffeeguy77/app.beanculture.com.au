@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { api, formatMoney } from './api.js';
+import { api, formatMoney, imgUrl } from './api.js';
 import { applyTheme } from './theme.js';
 import { getUser, setUser as saveUser, getSavedTheme, setSavedTheme, getSeasonOptOut, setSeasonOptOut, getStoredOrder, setStoredOrder } from './store.js';
 import HeroSlider from './components/HeroSlider.jsx';
@@ -290,6 +290,19 @@ export default function App() {
   useEffect(() => {
     setStoredOrder({ cart, dineIn, table, name });
   }, [cart, dineIn, table, name]);
+
+  // Warm up the Square payments SDK as soon as there's something in the cart, so
+  // the card form + wallet buttons are ready the instant checkout opens (instead
+  // of downloading the SDK only once you get there).
+  useEffect(() => {
+    if (!config || cart.length === 0 || window.Square || document.getElementById('sq-sdk')) return;
+    const src = config.environment === 'sandbox'
+      ? 'https://sandbox.web.squarecdn.com/v1/square.js'
+      : 'https://web.squarecdn.com/v1/square.js';
+    const s = document.createElement('script');
+    s.id = 'sq-sdk'; s.src = src; s.async = true;
+    document.head.appendChild(s);
+  }, [config, cart.length]);
   function onPaid(payment, order, meta) {
     trackPurchase(order);
     setCompleted({ payment, order, meta: meta || {} });
@@ -424,7 +437,7 @@ export default function App() {
       )}
       <header className="topbar">
         <button className="logo-wrap" onClick={() => { setView('home'); setActiveCat(null); }} aria-label="Home">
-          {config.logoUrl ? <img src={config.logoUrl} alt={config.storeName || 'Home'} style={{ height: 36, width: 'auto', display: 'block' }} /> : <Logo height={33} />}
+          {config.logoUrl ? <img src={imgUrl(config.logoUrl, 200)} alt={config.storeName || 'Home'} style={{ height: 36, width: 'auto', display: 'block' }} fetchpriority="high" /> : <Logo height={33} />}
         </button>
         <div className="icon-row">
           <button className="iconbtn" title="About / contact" aria-label="Store info" onClick={() => setView('store')}><StoreIcon size={22} /></button>

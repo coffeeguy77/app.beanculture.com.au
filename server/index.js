@@ -497,8 +497,24 @@ app.get('/.well-known/apple-developer-merchantid-domain-association', (_req, res
   res.type('text/plain').send(body);
 });
 
-app.use(express.static(clientDist));
-app.get('*', (_req, res) => res.sendFile(path.join(clientDist, 'index.html')));
+// Cache policy: Vite fingerprints /assets/* filenames, so they can be cached
+// forever (a new deploy = new filenames). index.html + the service worker must
+// stay fresh so new deploys are picked up immediately; icons/images cache a day.
+app.use(express.static(clientDist, {
+  setHeaders: (res, filePath) => {
+    if (/[\\/]assets[\\/].+\.(js|css|woff2?)$/.test(filePath)) {
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    } else if (/(index\.html|sw\.js|service-worker\.js|manifest\.webmanifest)$/.test(filePath)) {
+      res.setHeader('Cache-Control', 'no-cache');
+    } else {
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+    }
+  },
+}));
+app.get('*', (_req, res) => {
+  res.setHeader('Cache-Control', 'no-cache');
+  res.sendFile(path.join(clientDist, 'index.html'));
+});
 
 const PORT = process.env.PORT || 8080;
 // Start serving immediately so Railway's health check passes, then bring up the

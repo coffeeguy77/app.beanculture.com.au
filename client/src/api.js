@@ -38,6 +38,17 @@ export const api = {
   adminUpload: (pass, dataUri, folder) => req(`/api/admin/upload?pass=${encodeURIComponent(pass || '')}`, { method: 'POST', body: JSON.stringify({ dataUri, folder }) }),
 };
 
+// Serve Cloudinary images auto-format (WebP/AVIF), auto-quality and sized to the
+// display width instead of full resolution — big speedup for banners/photos.
+// Non-Cloudinary URLs (e.g. Square catalog images) are returned unchanged.
+export function imgUrl(url, width) {
+  if (!url || typeof url !== 'string') return url;
+  if (!url.includes('res.cloudinary.com') || !url.includes('/upload/')) return url;
+  if (/\/upload\/[^/]*(f_auto|q_auto)/.test(url)) return url; // already transformed
+  const t = `f_auto,q_auto${width ? `,w_${width},c_limit` : ''},dpr_auto`;
+  return url.replace('/upload/', `/upload/${t}/`);
+}
+
 export function formatMoney(amount, currency = 'AUD') {
   if (amount == null) return '';
   return new Intl.NumberFormat('en-AU', { style: 'currency', currency }).format(amount / 100);

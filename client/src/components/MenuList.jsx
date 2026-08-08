@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { formatMoney } from '../api.js';
+import { formatMoney, imgUrl } from '../api.js';
 import { MugIcon } from './icons.jsx';
 
 function slug(s) {
@@ -43,7 +43,7 @@ export default function MenuList({ categories, currency, onPick, scrollTo, onScr
                 >
                   {item.soldOut && <span className="sold-tag">Sold out</span>}
                   {showImages && (item.image ? (
-                    <img className="item-img" src={item.image} alt="" loading="lazy" />
+                    <img className="item-img" src={imgUrl(item.image, 240)} alt="" loading="lazy" decoding="async" />
                   ) : (
                     <span className="item-noimg"><MugIcon size={30} /></span>
                   ))}

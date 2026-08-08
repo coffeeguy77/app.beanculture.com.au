@@ -42,8 +42,9 @@ export default function WalletButtons({ payments, amount, currency = 'AUD', coun
   useEffect(() => {
     let cancelled = false;
     let gp, ap, afp;
-    // Small debounce so typing a custom amount doesn't thrash the wallet objects.
-    const timer = setTimeout(build, 350);
+    // Tiny debounce so typing a custom amount doesn't thrash the wallet objects,
+    // but small enough that the buttons appear promptly at checkout.
+    const timer = setTimeout(build, 120);
 
     async function build() {
       if (!payments || !amount || amount < 1) { if (!cancelled) setAvail({ apple: false, google: false, afterpay: false }); return; }
