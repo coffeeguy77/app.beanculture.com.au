@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { api, formatMoney } from '../api.js';
 import WalletButtons from './WalletButtons.jsx';
 
@@ -31,6 +31,7 @@ export default function GiftCards({ config, user, initialBalance, initialMode, o
   const [paymentsObj, setPaymentsObj] = useState(null);
   const paymentsRef = useRef(null);
   const cardRef = useRef(null);
+  const cardElRef = useRef(null);
   const currency = config.currency || 'AUD';
 
   useEffect(() => {
@@ -38,24 +39,42 @@ export default function GiftCards({ config, user, initialBalance, initialMode, o
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
+  // Attach Square's card field once BOTH the SDK is ready AND the card container
+  // is mounted — in either order. Attaching to the live element (not a
+  // '#gc-card' selector) avoids the "element not found" race when the SDK
+  // resolves before React has painted the field.
+  const attachCard = useCallback(async () => {
+    if (cardRef.current || !paymentsRef.current || !cardElRef.current) return;
+    try {
+      const card = await paymentsRef.current.card();
+      if (!cardElRef.current) { try { card.destroy(); } catch {} return; }
+      await card.attach(cardElRef.current);
+      cardRef.current = card;
+      setReady(true);
+    } catch (e) { setError(e.message); }
+  }, []);
+
+  // Stable callback ref: fires when the card box mounts (→ attach) or unmounts
+  // (→ tear down, so it re-attaches cleanly if the user returns to a card mode).
+  const setCardEl = useCallback((el) => {
+    cardElRef.current = el;
+    if (el) { attachCard(); }
+    else { try { cardRef.current?.destroy(); } catch {} cardRef.current = null; setReady(false); }
+  }, [attachCard]);
+
   useEffect(() => {
     let cancelled = false;
-    async function init() {
+    (async () => {
       try {
         const Square = await loadSquareSdk(config.environment);
         if (cancelled) return;
         if (!config.applicationId || !config.locationId) throw new Error('Payments not configured.');
-        const payments = Square.payments(config.applicationId, config.locationId);
-        paymentsRef.current = payments;
-        if (!cancelled) setPaymentsObj(payments);
-        const card = await payments.card();
-        await card.attach('#gc-card');
-        cardRef.current = card;
-        if (!cancelled) setReady(true);
+        paymentsRef.current = Square.payments(config.applicationId, config.locationId);
+        if (!cancelled) { setPaymentsObj(paymentsRef.current); attachCard(); }
       } catch (e) { if (!cancelled) setError(e.message); }
-    }
-    init();
-    return () => { cancelled = true; try { cardRef.current?.destroy(); } catch {} };
+    })();
+    return () => { cancelled = true; try { cardRef.current?.destroy(); } catch {} cardRef.current = null; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function tokenize(amt) {
@@ -183,7 +202,7 @@ export default function GiftCards({ config, user, initialBalance, initialMode, o
                     onError={setError}
                   />
                   <div className="group-title" style={{ marginTop: 14 }}>Pay with card</div>
-                  <div id="gc-card" className="card-box" />
+                  <div id="gc-card" ref={setCardEl} className="card-box" />
                   {error && <p className="error-text">{error}</p>}
                   <button className="btn full" style={{ marginTop: 12 }} disabled={busy || !ready || amount < 100} onClick={mode === 'buy' ? doBuy : doTopUp}>
                     {busy ? 'Processing…' : mode === 'buy' ? `Buy gift · ${formatMoney(amount, currency)}` : `Top up · ${formatMoney(amount, currency)}`}
