@@ -382,7 +382,7 @@ export default function App() {
   // On wide layouts the checkout lives in the cart sidebar (true one-page).
   const checkoutEl = (
     <Checkout
-      config={config} cart={cart} currency={currency}
+      config={config} cart={cart} currency={currency} onQty={updateQty}
       dineIn={dineIn} setDineIn={setDineIn} table={table} setTable={setTable}
       tableLock={tableLock} onUnlockTable={unlockTable} onScanTable={applyScannedTable}
       name={name} setName={setName} user={user} canOrder={canOrder}

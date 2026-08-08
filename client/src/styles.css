@@ -293,6 +293,15 @@ img { max-width: 100%; }
 .totals .row.discount { color: var(--brand); font-weight: 600; }
 
 .card-box { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px; min-height: 54px; }
+/* Checkout order summary (keeps items visible while paying) */
+.co-order { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.co-line { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.co-line:last-child { border-bottom: none; }
+.co-line-main { min-width: 0; }
+.co-line-name { font-weight: 600; font-size: 14.5px; }
+.co-line-sub { color: var(--muted); font-size: 12.5px; margin-top: 2px; }
+.co-line-right { display: flex; align-items: center; gap: 10px; flex: none; }
+
 .or { text-align: center; color: var(--muted); font-size: 13px; margin: 8px 0; }
 .error-text { color: #c0392b; font-size: 14px; }
 .secure-note { text-align: center; color: var(--muted); font-size: 12px; margin-top: 12px; }

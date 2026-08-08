@@ -24,7 +24,7 @@ function dateStr(d) {
 }
 const WEEKDAYS = [['Mon', 1], ['Tue', 2], ['Wed', 3], ['Thu', 4], ['Fri', 5], ['Sat', 6], ['Sun', 0]];
 
-export default function Checkout({ config, cart, currency, dineIn, setDineIn, table, setTable, tableLock, onUnlockTable, onScanTable, name, setName, user, canOrder, preWhen, preAt, onPaid, onScheduled, onBack }) {
+export default function Checkout({ config, cart, currency, onQty, dineIn, setDineIn, table, setTable, tableLock, onUnlockTable, onScanTable, name, setName, user, canOrder, preWhen, preAt, onPaid, onScheduled, onBack }) {
   const [status, setStatus] = useState('init');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -388,6 +388,34 @@ export default function Checkout({ config, cart, currency, dineIn, setDineIn, ta
           </div>
         )}
       </div>
+
+      {/* Order summary — stays on screen so you always see what you're buying. */}
+      {cart.length > 0 && (
+        <div className="group" style={{ marginTop: 16 }}>
+          <div className="group-title">Your order</div>
+          <ul className="co-order">
+            {cart.map((c) => (
+              <li key={c.key} className="co-line">
+                <div className="co-line-main">
+                  <div className="co-line-name">{c.itemName}{c.variationName ? ` · ${c.variationName}` : ''}</div>
+                  {c.modifierNames?.length > 0 && <div className="co-line-sub">{c.modifierNames.join(', ')}</div>}
+                  {c.note && <div className="co-line-sub">“{c.note}”</div>}
+                </div>
+                <div className="co-line-right">
+                  {onQty ? (
+                    <div className="stepper sm">
+                      <button type="button" onClick={() => onQty(c.key, -1)} aria-label="Decrease">−</button>
+                      <span>{c.quantity}</span>
+                      <button type="button" onClick={() => onQty(c.key, 1)} aria-label="Increase">+</button>
+                    </div>
+                  ) : <span className="muted">{c.quantity}×</span>}
+                  <div style={{ fontWeight: 700, minWidth: 56, textAlign: 'right' }}>{formatMoney(c.unitPrice * c.quantity, currency)}</div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <div className="totals">
         <div className="row grand"><span>Total</span><span>{formatMoney(cartTotal, currency)}</span></div>
