@@ -114,24 +114,26 @@ async function getMenu(opts = {}) {
   // (settings.menuCategories), use those directly. Otherwise fall back to the
   // children of a master "APP" parent category.
   const included = (getSettings().menuCategories || []).map(String);
+  const sel = new Set(included);
+  // Start from the "APP" parent's children (the everyday menu)...
   let parentId = null;
   const childIds = new Set();
-  if (included.length) {
-    const sel = new Set(included);
+  for (const [id, c] of categories) {
+    if (norm(c.name) === norm(PARENT_CATEGORY)) { parentId = id; break; }
+  }
+  if (parentId) {
     for (const [id, c] of categories) {
-      if (sel.has(id) || sel.has(c.name)) childIds.add(id);
-    }
-  } else {
-    for (const [id, c] of categories) {
-      if (norm(c.name) === norm(PARENT_CATEGORY)) { parentId = id; break; }
-    }
-    if (parentId) {
-      for (const [id, c] of categories) {
-        if (c.parentId === parentId) childIds.add(id);
-      }
+      if (c.parentId === parentId) childIds.add(id);
     }
   }
-  const restrictToChildren = included.length > 0 || !!parentId;
+  // ...then ADD any categories switched on in "Categories in the app" (matched by
+  // id or name). Additive: turning one on never hides the rest of the menu.
+  if (sel.size) {
+    for (const [id, c] of categories) {
+      if (sel.has(id) || sel.has(c.name) || sel.has(cleanName(c.name))) childIds.add(id);
+    }
+  }
+  const restrictToChildren = childIds.size > 0 || !!parentId;
 
 
   function resolveCategoryId(itemData) {

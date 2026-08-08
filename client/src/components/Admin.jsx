@@ -478,43 +478,51 @@ export default function Admin({ onExit }) {
                     </button>
                   </div>
                   <p className="muted" style={{ fontSize: 12, marginTop: 6 }}>
-                    Pick which of your Square categories appear in the app. New categories show up here after you
-                    press Sync (Store tab). Leave all unticked to use your “APP” parent category automatically.
-                    {catsLocked ? ' Unlock to change what’s on or off.' : ''}
+                    Your everyday menu shows automatically. Use this to <strong>add</strong> extra Square categories on
+                    top — new ones appear here after you press Sync (Store tab). To hide or trim a category, use “Menu
+                    items offered” below.{catsLocked ? ' Unlock to make changes.' : ''}
                   </p>
                   {sqCats.length === 0 && <p className="muted" style={{ fontSize: 12 }}>No Square categories loaded yet — create categories in Square, then Sync.</p>}
                   {(() => {
-                    // Show the currently-active categories first (highlighted) so
-                    // you can see at a glance what's on, then the rest.
-                    const on = sqCats.filter((c) => menuCategories.includes(c.id));
-                    const off = sqCats.filter((c) => !menuCategories.includes(c.id));
-                    const renderChip = (c, isOn) => (
-                      <button key={c.id} type="button" className={`chip ${isOn ? 'on' : ''}`}
-                        disabled={catsLocked}
-                        onClick={() => !catsLocked && toggleMenuCat(c.id)}
-                        style={catsLocked ? { opacity: isOn ? 0.85 : 0.5, cursor: 'not-allowed' } : undefined}
-                        title={c.isParent ? 'This is your APP master category' : (catsLocked ? 'Unlock to change' : '')}>
-                        {isOn ? '✓ ' : ''}{c.name}{c.isParent ? ' ★' : ''}
+                    // "Active" = the categories actually appearing in the live menu
+                    // right now (from the catalog), plus any extra the owner has
+                    // switched on. Everything else is addable. Already-active
+                    // categories are removed from the "add" list.
+                    const activeNames = new Set((cats || []).map((c) => (c || '').toLowerCase()));
+                    const pickable = sqCats.filter((c) => !c.isParent);
+                    const isLive = (c) => activeNames.has((c.name || '').toLowerCase());
+                    const showing = pickable.filter((c) => isLive(c) || menuCategories.includes(c.id));
+                    const addable = pickable.filter((c) => !isLive(c) && !menuCategories.includes(c.id));
+                    const chip = (c, { active, removable }) => (
+                      <button key={c.id} type="button" className={`chip ${active ? 'on' : ''}`}
+                        disabled={catsLocked || (active && !removable)}
+                        onClick={() => { if (catsLocked) return; toggleMenuCat(c.id); }}
+                        style={(active && !removable) ? { cursor: 'default' } : (catsLocked ? { opacity: active ? 0.85 : 0.5, cursor: 'not-allowed' } : undefined)}
+                        title={active ? (removable ? 'Tap to remove' : 'From your Square menu') : (catsLocked ? 'Unlock to add' : 'Tap to add')}>
+                        {active ? '✓ ' : '+ '}{c.name}{removable ? '  ✕' : ''}
                       </button>
                     );
                     return (
                       <>
-                        {on.length > 0 && (
+                        {showing.length > 0 && (
                           <>
                             <p className="muted" style={{ fontSize: 11, margin: '10px 0 6px', textTransform: 'uppercase', letterSpacing: 0.4 }}>Showing in the app</p>
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>{on.map((c) => renderChip(c, true))}</div>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                              {showing.map((c) => chip(c, { active: true, removable: menuCategories.includes(c.id) }))}
+                            </div>
                           </>
                         )}
-                        {off.length > 0 && (
+                        {addable.length > 0 && (
                           <>
-                            <p className="muted" style={{ fontSize: 11, margin: '12px 0 6px', textTransform: 'uppercase', letterSpacing: 0.4 }}>{on.length > 0 ? 'Hidden — tap to add' : 'All categories'}</p>
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>{off.map((c) => renderChip(c, false))}</div>
+                            <p className="muted" style={{ fontSize: 11, margin: '14px 0 6px', textTransform: 'uppercase', letterSpacing: 0.4 }}>Add a category</p>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                              {addable.map((c) => chip(c, { active: false, removable: false }))}
+                            </div>
                           </>
                         )}
                       </>
                     );
                   })()}
-                  {menuCategories.length > 0 && <p className="muted" style={{ fontSize: 11, marginTop: 8 }}>{menuCategories.length} categor{menuCategories.length === 1 ? 'y' : 'ies'} selected · unticked categories are hidden from the app.</p>}
                 </div>
 
                 <div className="card" style={card}>
