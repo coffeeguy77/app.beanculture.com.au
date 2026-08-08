@@ -497,7 +497,7 @@ export default function App() {
             <StoreContact contact={config.contact} onTrack={track} />
             <InstallButton />
           </div>
-          <aside className="cart-aside">
+          <aside className={`cart-aside${view === 'checkout' ? ' is-checkout' : ''}`}>
             {view === 'checkout' ? (
               <div className="aside-checkout">{checkoutEl}</div>
             ) : (

@@ -670,10 +670,11 @@ img { max-width: 100%; }
   .aside-checkout {
     background: var(--surface); border: 1px solid var(--line); border-radius: 18px;
     box-shadow: var(--shadow-sm);
-    /* dvh (not vh) so the box respects the iOS Safari toolbar and never clips the
-       total / pay button; content scrolls inside when it's taller than the view. */
-    max-height: calc(100dvh - 92px); overflow-y: auto; -webkit-overflow-scrolling: touch;
   }
+  /* During checkout the panel can be taller than the screen, so DON'T pin it or
+     cap its height — let it flow down the page and scroll with the page, so the
+     whole checkout (payment options + pay button) is always reachable. */
+  .cart-aside.is-checkout { position: static; align-self: stretch; }
   .aside-checkout .page { padding: 16px; max-width: none; margin: 0; }
   .aside-checkout .page > h2 { font-size: 20px; }
 }
