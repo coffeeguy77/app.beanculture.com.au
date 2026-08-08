@@ -875,6 +875,7 @@ img { max-width: 100%; }
 .chart-col .bar { width: 45%; border-radius: 3px 3px 0 0; min-height: 2px; }
 .bar-views { background: var(--brand-soft); }
 .bar-buys { background: var(--brand); }
+.bar-signup { background: var(--accent); }
 .chart-legend { display: flex; gap: 16px; margin-top: 8px; font-size: 12px; color: var(--muted); }
 .chart-legend .sw { width: 10px; height: 10px; border-radius: 3px; display: inline-block; margin-right: 4px; vertical-align: middle; }
 .sw-views { background: var(--brand-soft); }

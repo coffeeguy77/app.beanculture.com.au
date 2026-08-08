@@ -89,6 +89,7 @@ export default function Admin({ onExit }) {
   const [qrBg, setQrBg] = useState('#ffffff');
   const [qrSize, setQrSize] = useState(190);
   const [analytics, setAnalytics] = useState(null);
+  const [dashboard, setDashboard] = useState(null); // real sales + signups
   const [aDays, setADays] = useState(30);
   const [msgs, setMsgs] = useState(null);
   const [resv, setResv] = useState(null);
@@ -102,6 +103,8 @@ export default function Admin({ onExit }) {
     setAnalytics(null);
     fetch(`/api/admin/analytics?days=${aDays}&pass=${encodeURIComponent(pass)}`)
       .then((r) => r.json()).then((d) => setAnalytics(d.analytics || { empty: true })).catch(() => setAnalytics({ error: true }));
+    setDashboard(null);
+    api.adminDashboard(pass, aDays).then(setDashboard).catch(() => setDashboard({ error: true }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, aDays]);
 
@@ -621,6 +624,71 @@ export default function Admin({ onExit }) {
                   <span className="muted" style={{ fontSize: 13 }}>Last</span>
                   {[7, 30, 90].map((d) => <button key={d} className={`chip ${aDays === d ? 'on' : ''}`} onClick={() => setADays(d)}>{d} days</button>)}
                 </div>
+
+                {/* ── Real sales + signups (from Square) ── */}
+                {!dashboard && <div className="card" style={{ ...card, textAlign: 'center' }}><div className="spinner" /></div>}
+                {dashboard && !dashboard.error && (() => {
+                  const sl = dashboard.sales || {};
+                  const su = dashboard.signups || {};
+                  const salesOk = sl && !sl.error;
+                  const signupsOk = su && !su.error;
+                  const cur = sl.currency || 'AUD';
+                  const sDaily = (salesOk && sl.daily) || [];
+                  const maxRev = Math.max(1, ...sDaily.map((d) => d.revenue));
+                  const gDaily = (signupsOk && su.daily) || [];
+                  const maxSign = Math.max(1, ...gDaily.map((d) => d.n));
+                  const tiles = [
+                    salesOk && { label: 'Revenue', v: formatMoney(sl.revenue, cur) },
+                    salesOk && { label: 'Orders', v: sl.orders },
+                    salesOk && { label: 'Avg order', v: formatMoney(sl.avgOrder, cur) },
+                    signupsOk && { label: 'New signups', v: su.newInRange },
+                    signupsOk && { label: 'Members', v: su.totalMembers },
+                  ].filter(Boolean);
+                  return (
+                    <>
+                      <div className="group-title" style={{ marginBottom: 8 }}>Sales &amp; signups <span className="muted" style={{ fontWeight: 400, fontSize: 12 }}>· live from Square</span></div>
+                      {(!salesOk || !signupsOk) && (
+                        <p className="muted" style={{ fontSize: 12, margin: '0 0 8px' }}>
+                          {!salesOk && 'Sales couldn’t load — your Square token needs the Orders (read) permission. '}
+                          {!signupsOk && 'Signups need the Square loyalty program enabled.'}
+                        </p>
+                      )}
+                      {tiles.length > 0 && (
+                        <div className="stat-tiles">
+                          {tiles.map((x) => <div key={x.label} className="stat-tile"><div className="stat-v">{x.v}</div><div className="stat-l">{x.label}</div></div>)}
+                        </div>
+                      )}
+                      {salesOk && (
+                        <div className="card" style={card}>
+                          <div className="group-title">Daily revenue</div>
+                          <div className="chart-bars">
+                            {sDaily.length === 0 && <span className="muted" style={{ fontSize: 12 }}>No completed sales in this period.</span>}
+                            {sDaily.slice(-30).map((d, i) => (
+                              <div key={i} className="chart-col" title={`${d.day}: ${formatMoney(d.revenue, cur)} · ${d.orders} order${d.orders === 1 ? '' : 's'}`}>
+                                <div className="bar bar-buys" style={{ height: `${(d.revenue / maxRev) * 100}%` }} />
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {signupsOk && (
+                        <div className="card" style={card}>
+                          <div className="group-title">New loyalty signups</div>
+                          <div className="chart-bars">
+                            {gDaily.length === 0 && <span className="muted" style={{ fontSize: 12 }}>No new signups in this period.</span>}
+                            {gDaily.slice(-30).map((d, i) => (
+                              <div key={i} className="chart-col" title={`${d.day}: ${d.n} signup${d.n === 1 ? '' : 's'}`}>
+                                <div className="bar bar-signup" style={{ height: `${(d.n / maxSign) * 100}%` }} />
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      <div className="group-title" style={{ margin: '18px 0 8px' }}>App engagement</div>
+                    </>
+                  );
+                })()}
+
                 {!analytics && <div className="card" style={{ ...card, textAlign: 'center' }}><div className="spinner" /></div>}
                 {analytics && (analytics.error || analytics.empty) && <div className="card" style={card}><p className="muted" style={{ margin: 0 }}>No analytics yet — data appears as customers use the app.</p></div>}
                 {analytics && !analytics.error && !analytics.empty && (() => {

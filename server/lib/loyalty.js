@@ -137,4 +137,33 @@ async function listLoyaltyUsers() {
   return users;
 }
 
-module.exports = { getProgram, getAccountByPhone, getCustomerLoyalty, createReward, deleteReward, listLoyaltyUsers };
+// Signup trend for the dashboard: how many customers enrolled in loyalty per day
+// over the window, plus the total member count. Only needs enrolled_at, so it
+// skips the customer bulk-retrieve that listLoyaltyUsers does.
+async function signupStats(days = 30) {
+  const accounts = [];
+  let cursor;
+  do {
+    const data = await squareFetch('/v2/loyalty/accounts/search', {
+      method: 'POST',
+      body: { query: {}, limit: 200, ...(cursor ? { cursor } : {}) },
+    });
+    for (const a of data.loyalty_accounts || []) accounts.push(a);
+    cursor = data.cursor;
+  } while (cursor && accounts.length < 10000);
+
+  const since = Date.now() - days * 86400000;
+  const dayMap = new Map();
+  let inRange = 0;
+  for (const a of accounts) {
+    if (!a.enrolled_at) continue;
+    if (new Date(a.enrolled_at).getTime() < since) continue;
+    inRange++;
+    const day = new Date(a.enrolled_at).toISOString().slice(0, 10);
+    dayMap.set(day, (dayMap.get(day) || 0) + 1);
+  }
+  const daily = [...dayMap.entries()].map(([day, n]) => ({ day, n })).sort((a, b) => a.day.localeCompare(b.day));
+  return { totalMembers: accounts.length, newInRange: inRange, daily };
+}
+
+module.exports = { getProgram, getAccountByPhone, getCustomerLoyalty, createReward, deleteReward, listLoyaltyUsers, signupStats };

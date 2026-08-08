@@ -12,6 +12,7 @@ const { getSettings, activeSeasonal, seasonalForPicker } = require('./lib/settin
 const cloudinary = require('./lib/cloudinary');
 const squareImages = require('./lib/squareImages');
 const coupons = require('./lib/coupons');
+const sales = require('./lib/sales');
 const db = require('./lib/db');
 const cards = require('./lib/cards');
 const giftcards = require('./lib/giftcards');
@@ -370,6 +371,17 @@ app.get('/api/admin/analytics', async (req, res) => {
   } catch (e) {
     res.status(502).json({ error: e.message });
   }
+});
+
+// ---- Admin: real sales + loyalty signups for the dashboard ----
+app.get('/api/admin/dashboard', async (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  const days = Math.max(1, Math.min(365, Number(req.query.days) || 30));
+  const [salesR, signupsR] = await Promise.all([
+    sales.salesSummary(days).catch((e) => ({ error: e.message })),
+    loyalty.signupStats(days).catch((e) => ({ error: e.message })),
+  ]);
+  res.json({ sales: salesR, signups: signupsR });
 });
 
 app.get('/api/health', (_req, res) => res.json({ ok: true, env: sq.ENV }));
