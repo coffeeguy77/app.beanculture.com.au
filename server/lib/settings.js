@@ -227,7 +227,7 @@ function getSettings() {
   // Precedence: DEFAULTS < SETTINGS_JSON env < admin edits stored in the DB.
   const merged = deepMerge(DEFAULTS, env);
   const full = deepMerge(merged, db.getOverrides());
-  return reconcileSeasonal(full);
+  return reconcileClosures(reconcileSeasonal(full));
 }
 
 // Built-in festive themes must ALWAYS be present, even if an old saved settings
@@ -312,6 +312,60 @@ function closureMatches(closure, fullDate) {
   if (closure.date) return closure.date === fullDate || (closure.annual && String(closure.date).slice(5) === md);
   return false;
 }
+
+// Canberra (ACT) public holidays for 2026 & 2027, per the official ACT Government
+// gazette (act.gov.au). Weekend holidays include their gazetted additional day.
+// These are kept as built-in closed dates so the café is always closed on them;
+// remove any from this list to trade on that day.
+const ACT_PUBLIC_HOLIDAYS = [
+  // 2026
+  { date: '2026-01-01', label: "New Year's Day" },
+  { date: '2026-01-26', label: 'Australia Day' },
+  { date: '2026-03-09', label: 'Canberra Day' },
+  { date: '2026-04-03', label: 'Good Friday' },
+  { date: '2026-04-04', label: 'Easter Saturday' },
+  { date: '2026-04-05', label: 'Easter Sunday' },
+  { date: '2026-04-06', label: 'Easter Monday' },
+  { date: '2026-04-25', label: 'Anzac Day' },
+  { date: '2026-04-27', label: 'Anzac Day (additional)' },
+  { date: '2026-06-01', label: 'Reconciliation Day' },
+  { date: '2026-06-08', label: "King's Birthday" },
+  { date: '2026-10-05', label: 'Labour Day' },
+  { date: '2026-12-25', label: 'Christmas Day' },
+  { date: '2026-12-26', label: 'Boxing Day' },
+  { date: '2026-12-28', label: 'Boxing Day (additional)' },
+  // 2027
+  { date: '2027-01-01', label: "New Year's Day" },
+  { date: '2027-01-26', label: 'Australia Day' },
+  { date: '2027-03-08', label: 'Canberra Day' },
+  { date: '2027-03-26', label: 'Good Friday' },
+  { date: '2027-03-27', label: 'Easter Saturday' },
+  { date: '2027-03-28', label: 'Easter Sunday' },
+  { date: '2027-03-29', label: 'Easter Monday' },
+  { date: '2027-04-26', label: 'Anzac Day' },
+  { date: '2027-05-31', label: 'Reconciliation Day' },
+  { date: '2027-06-14', label: "King's Birthday" },
+  { date: '2027-10-04', label: 'Labour Day' },
+  { date: '2027-12-25', label: 'Christmas Day' },
+  { date: '2027-12-27', label: 'Christmas Day (additional)' },
+  { date: '2027-12-26', label: 'Boxing Day' },
+  { date: '2027-12-28', label: 'Boxing Day (additional)' },
+];
+
+// Ensure the ACT public holidays are present in the closures list. Skips any
+// date already covered by an existing closure (e.g. the Christmas shutdown
+// range) so the admin list stays clean, and never duplicates a date.
+function reconcileClosures(settings) {
+  const existing = Array.isArray(settings.closures) ? settings.closures : [];
+  const merged = [...existing];
+  for (const h of ACT_PUBLIC_HOLIDAYS) {
+    if (existing.some((c) => closureMatches(c, h.date))) continue; // already closed
+    if (merged.some((c) => c.date === h.date)) continue;           // no duplicates
+    merged.push({ date: h.date, label: h.label });
+  }
+  return { ...settings, closures: merged };
+}
+
 function isClosedDate(closures, fullDate) {
   return (closures || []).some((c) => closureMatches(c, fullDate));
 }
