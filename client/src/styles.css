@@ -467,7 +467,7 @@ img { max-width: 100%; }
 
 /* Desktop + landscape tablet: two balanced columns, full width, no wasted space */
 @media (min-width: 900px) {
-  .store-page { max-width: 1120px; padding: 16px 20px 56px; }
+  .store-page { max-width: 1440px; padding: 16px 20px 56px; }
   .store-hero { aspect-ratio: 21/8; max-height: 420px; }
   .store-top { flex-direction: row; align-items: flex-start; gap: 22px; margin-bottom: 20px; }
   .store-top .store-bio { flex: 1.4 1 0; min-width: 0; font-size: 17px; }
@@ -531,7 +531,7 @@ img { max-width: 100%; }
 
 /* Desktop + landscape: intro panel beside the form, balanced full width */
 @media (min-width: 900px) {
-  .reserve-page { max-width: 1040px; padding: 16px 20px 56px; }
+  .reserve-page { max-width: 1440px; padding: 16px 20px 56px; }
   .reserve-grid { display: grid; grid-template-columns: 0.85fr 1.15fr; gap: 32px; align-items: start; }
   .reserve-intro { position: sticky; top: 16px; }
   .reserve-title { font-size: 30px; }
@@ -632,7 +632,7 @@ img { max-width: 100%; }
 
 /* Portrait tablet: sidebar + orders (widen the app just for this view) */
 @media (min-width: 700px) {
-  .app:has(.account-page) { max-width: 940px; }
+  .app:has(.account-page) { max-width: 1440px; }
   .acct-grid { display: grid; grid-template-columns: 260px 1fr; gap: 20px; align-items: start; }
 }
 /* Desktop: roomier sidebar, 2-up order grid */
@@ -738,7 +738,7 @@ img { max-width: 100%; }
 
 /* Desktop + landscape tablet: two-column app with a persistent cart sidebar. */
 @media (min-width: 900px) {
-  .app { max-width: 1180px; padding-bottom: 28px; }
+  .app { max-width: 1440px; padding-bottom: 28px; }
 
   .layout {
     display: grid;

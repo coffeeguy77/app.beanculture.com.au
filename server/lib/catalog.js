@@ -124,6 +124,15 @@ async function getMenu(opts = {}) {
     for (const [id, c] of categories) {
       if (sel.has(String(id).toLowerCase()) || sel.has((c.name || '').toLowerCase()) || sel.has(cleanName(c.name || '').toLowerCase())) childIds.add(id);
     }
+    // Square often has duplicate categories with the same name (e.g. two
+    // "Specials", or "Cold drinks" vs "COLD DRINKS"). Picking one should surface
+    // items from ALL categories that share its display name, so nothing hides in
+    // an unselected twin.
+    const selectedNames = new Set();
+    for (const id of childIds) { const c = categories.get(id); if (c) selectedNames.add(cleanName(c.name || '').toLowerCase()); }
+    for (const [id, c] of categories) {
+      if (selectedNames.has(cleanName(c.name || '').toLowerCase())) childIds.add(id);
+    }
   } else {
     // Nothing chosen yet → fall back to the "APP" parent's children.
     for (const [id, c] of categories) {
@@ -190,9 +199,12 @@ async function getMenu(opts = {}) {
     const d = item.item_data || {};
     if (d.is_archived) continue;
 
-    // Online visibility: hide the truly-hidden ones.
+    // Visibility: `ecom_visibility` governs Square's *online store*, not this
+    // ordering app — so items that are simply UNINDEXED (not published online,
+    // the default for many POS items) should still appear here. Only skip ones
+    // the owner has explicitly HIDDEN.
     const vis = (d.ecom_visibility || 'VISIBLE').toUpperCase();
-    if (vis === 'HIDDEN' || vis === 'UNINDEXED') continue;
+    if (vis === 'HIDDEN') continue;
     const itemUnavailable = vis === 'UNAVAILABLE';
 
     const present =
