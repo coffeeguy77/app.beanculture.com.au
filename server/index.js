@@ -513,6 +513,7 @@ app.post('/api/admin/settings', async (req, res) => {
     const { settings } = req.body || {};
     if (!settings || typeof settings !== 'object') return res.status(400).json({ error: 'Missing settings' });
     await db.saveOverrides(settings);
+    menuCache = { data: null, at: 0 }; // category/item changes go live immediately
     res.json({ ok: true });
   } catch (e) {
     res.status(400).json({ error: e.message });

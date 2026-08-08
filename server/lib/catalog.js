@@ -138,17 +138,19 @@ async function getMenu(opts = {}) {
   const restrictToChildren = childIds.size > 0 || !!parentId;
 
 
-  function resolveCategoryId(itemData) {
-    if (Array.isArray(itemData.categories) && itemData.categories.length) {
-      const sorted = [...itemData.categories].sort((a, b) => (a.ordinal || 0) - (b.ordinal || 0));
-      // Prefer a category that is a child of our parent, if the item has several.
-      const child = sorted.find((c) => childIds.has(c.id));
-      if (child) return child.id;
-      if (sorted[0]?.id) return sorted[0].id;
+  // Every category id an item belongs to, with the item's ordinal within each.
+  // Square lets an item live in MANY categories (the modern `categories` array),
+  // so we keep them all — the item then shows under each of its categories,
+  // exactly like it does on the POS. (`reporting_category` / legacy `category_id`
+  // are folded in as fallbacks for items that predate the multi-category model.)
+  function itemCategoryMap(itemData) {
+    const m = new Map();
+    if (Array.isArray(itemData.categories)) {
+      for (const c of itemData.categories) if (c && c.id && !m.has(c.id)) m.set(c.id, c.ordinal || 0);
     }
-    if (itemData.reporting_category?.id) return itemData.reporting_category.id;
-    if (itemData.category_id) return itemData.category_id;
-    return null;
+    if (itemData.reporting_category?.id && !m.has(itemData.reporting_category.id)) m.set(itemData.reporting_category.id, 0);
+    if (itemData.category_id && !m.has(itemData.category_id)) m.set(itemData.category_id, 0);
+    return m;
   }
 
   function buildModifiers(itemData) {
@@ -179,7 +181,10 @@ async function getMenu(opts = {}) {
     return out;
   }
 
-  const byCategory = new Map(); // display name -> { name, order, items[] }
+  // Collect items per category id. Each item is placed under EVERY category it
+  // belongs to (that we're showing) — this is the fix for items like "Taro" that
+  // sit in several Square categories but previously only surfaced in one.
+  const byCatId = new Map(); // catId -> [{ item, ordinal }]
 
   for (const item of items) {
     const d = item.item_data || {};
@@ -194,30 +199,18 @@ async function getMenu(opts = {}) {
       item.present_at_all_locations || (item.present_at_location_ids || []).includes(LOCATION_ID);
     if (!present) continue;
 
-    const catId = resolveCategoryId(d);
-
-    // Only show items in the selected / child categories.
+    // Which of the item's categories are actually shown in the app?
+    const memberIds = itemCategoryMap(d);
+    let targetIds = [...memberIds.keys()];
     if (restrictToChildren) {
-      if (!catId || !childIds.has(catId)) continue;
-    } else if (MENU_CATEGORIES.length && catId) {
-      const cname = categories.get(catId)?.name;
-      if (!cname || !MENU_CATEGORIES.some((w) => w.toLowerCase() === cname.toLowerCase())) continue;
+      targetIds = targetIds.filter((id) => childIds.has(id));
+    } else if (MENU_CATEGORIES.length) {
+      targetIds = targetIds.filter((id) => {
+        const nm = categories.get(id)?.name;
+        return nm && MENU_CATEGORIES.some((w) => w.toLowerCase() === nm.toLowerCase());
+      });
     }
-
-    const rawCatName = (catId && categories.get(catId)?.name) || 'Menu';
-    const catName = cleanName(rawCatName);
-
-    // Honor the admin's item/category selection.
-    if (applySelection) {
-      const sel = selLower[catName.toLowerCase()];
-      if (sel) {
-        if (sel.enabled === false) continue;
-        if (Array.isArray(sel.items) && !sel.items.includes(item.id)) continue;
-      }
-    }
-    const catOrdinal = catId
-      ? (item.item_data.categories || []).find((c) => c.id === catId)?.ordinal ?? 0
-      : 0;
+    if (!targetIds.length) continue;
 
     const imageId = (d.image_ids || [])[0];
     const image = imageId ? images.get(imageId) : null;
@@ -246,46 +239,60 @@ async function getMenu(opts = {}) {
       modifierGroups: buildModifiers(d),
     };
 
-    if (!byCategory.has(catName)) {
-      byCategory.set(catName, { name: catName, order: catOrdinal, items: [] });
-    }
-    byCategory.get(catName).items.push(menuItem);
-  }
-
-  // Order categories: by the parent's child ordinal where possible, else name.
-  let entries = [...byCategory.values()];
-
-  // Admin views include brand-new / empty child categories so they can be
-  // configured (offered, given a footer button) as soon as they exist in Square.
-  if (opts.includeEmpty && childIds.size) {
-    const present = new Set(entries.map((e) => e.name.toLowerCase()));
-    for (const [id, c] of categories) {
-      if (!childIds.has(id)) continue;
-      const nm = cleanName(c.name);
-      if (!present.has(nm.toLowerCase())) entries.push({ name: nm, order: 999, items: [] });
+    for (const catId of targetIds) {
+      if (!byCatId.has(catId)) byCatId.set(catId, []);
+      byCatId.get(catId).push({ item: menuItem, ordinal: memberIds.get(catId) || 0 });
     }
   }
 
-  if (childIds.size) {
-    // Order children by their ordinal under the parent.
-    const childOrder = new Map();
-    let i = 0;
-    for (const [id, c] of categories) {
-      if (childIds.has(id)) childOrder.set(cleanName(c.name), i++);
+  // Output categories in Square's catalog order. When restricting we output every
+  // shown category (so brand-new / empty ones are configurable); otherwise only
+  // the categories that actually gathered items.
+  const orderIndex = new Map();
+  { let i = 0; for (const id of categories.keys()) orderIndex.set(id, i++); }
+  let outIds = restrictToChildren ? [...childIds] : [...byCatId.keys()];
+  outIds.sort((a, b) => (orderIndex.get(a) ?? 1e9) - (orderIndex.get(b) ?? 1e9));
+
+  // Assemble, merging any Square categories that share a cleaned display name.
+  const entries = [];
+  const byName = new Map();
+  for (const catId of outIds) {
+    const rawName = categories.get(catId)?.name || 'Menu';
+    const catName = cleanName(rawName);
+    let list = (byCatId.get(catId) || [])
+      .slice()
+      .sort((a, b) => (a.ordinal - b.ordinal) || a.item.name.localeCompare(b.item.name))
+      .map((x) => x.item);
+
+    // Admin per-category / per-item selection, keyed by display name.
+    if (applySelection) {
+      const s2 = selLower[catName.toLowerCase()];
+      if (s2) {
+        if (s2.enabled === false) list = [];
+        else if (Array.isArray(s2.items)) list = list.filter((it) => s2.items.includes(it.id));
+      }
     }
-    entries.sort(
-      (a, b) => (childOrder.get(a.name) ?? 999) - (childOrder.get(b.name) ?? 999)
-    );
+
+    if (byName.has(catName)) {
+      const e = byName.get(catName);
+      const seen = new Set(e.items.map((i) => i.id));
+      for (const it of list) if (!seen.has(it.id)) { e.items.push(it); seen.add(it.id); }
+    } else {
+      const e = { name: catName, items: list };
+      byName.set(catName, e);
+      entries.push(e);
+    }
   }
+
+  const finalEntries = opts.includeEmpty ? entries : entries.filter((e) => e.items.length > 0);
 
   console.log(
-    `[menu] parent="${PARENT_CATEGORY}"${parentId ? ' found' : ' NOT found'} | ${childIds.size} child categories | showing ${entries.length}: ${entries.map((e) => `${e.name}(${e.items.length})`).join(', ')}`
+    `[menu] ${restrictToChildren ? childIds.size + ' shown categories' : 'no restriction (all)'} | ${finalEntries.length} shown: ${finalEntries.map((e) => `${e.name}(${e.items.length})`).join(', ')}`
   );
 
-  const menu = entries.map((e) => {
-    // Per-category image visibility (admin toggle). Default: show images.
-    const sel = selLower[e.name.toLowerCase()];
-    const showImages = !sel || sel.showImages !== false;
+  const menu = finalEntries.map((e) => {
+    const s2 = selLower[e.name.toLowerCase()];
+    const showImages = !s2 || s2.showImages !== false;
     return { category: e.name, items: e.items, showImages };
   });
   return { currency: CURRENCY, categories: menu };

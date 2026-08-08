@@ -187,33 +187,39 @@ export default function Admin({ onExit }) {
   const rmClosure = (i) => set({ closures: closures.filter((_, j) => j !== i) });
 
   // ---- which Square categories appear in the app ----
-  // ---- Categories in the app (name-based, fully dynamic) ----
-  // The picker works with category NAMES so every category — including the
-  // uppercase Square ones — is toggleable. When nothing is saved yet we seed the
-  // selection with the categories that are live right now, so the current menu is
-  // preserved and each one can be turned off with a tap.
+  // ---- Categories in the app (ID-based, robust) ----
+  // Every category is identified by its stable Square id, so uppercase / mixed
+  // case duplicates (e.g. "COLD DRINKS" vs "Cold drinks") never collide, and
+  // toggling one category can never drop the others. menuCategories is stored as
+  // a list of ids; older saved values (names) are matched and migrated on save.
   const catKey = (n) => (n || '').trim().toLowerCase();
-  const allCatNames = (() => {
-    const out = []; const seen = new Set();
-    const add = (n) => { const k = catKey(n); if (!n || seen.has(k)) return; seen.add(k); out.push(n); };
-    (cats || []).forEach(add);                                  // live categories first (proper case)
-    (sqCats || []).filter((c) => !c.isParent).forEach((c) => add(c.name)); // then any other Square categories
-    return out;
+  const allCats = (() => {
+    const list = (sqCats || []).filter((c) => !c.isParent); // [{id, name, rawName, isParent}]
+    return list.slice().sort((a, b) => (a.name || '').localeCompare(b.name || ''));
   })();
-  const selectedCatKeys = (() => {
+  // Match a saved entry (id or name) to a category. Exact id → exact name →
+  // case-insensitive, so case-only duplicates ("COLD DRINKS" vs "Cold drinks")
+  // migrate to the right one instead of colliding.
+  const findCat = (e) =>
+    allCats.find((c) => c.id === e) ||
+    allCats.find((c) => c.rawName === e || c.name === e) ||
+    allCats.find((c) => catKey(c.rawName) === catKey(e) || catKey(c.name) === catKey(e));
+  const selectedCatIds = (() => {
     const raw = s?.menuCategories || [];
-    if (raw.length === 0) return new Set((cats || []).map(catKey)); // seed with live categories
-    const set = new Set();
-    for (const e of raw) { const byId = (sqCats || []).find((c) => c.id === e); set.add(catKey(byId ? byId.name : e)); }
-    return set;
+    if (raw.length === 0) {
+      // Not curated yet → seed with whatever is live on the app right now.
+      const live = new Set((cats || []).map(catKey));
+      return new Set(allCats.filter((c) => live.has(catKey(c.name)) || live.has(catKey(c.rawName))).map((c) => c.id));
+    }
+    const ids = new Set();
+    for (const e of raw) { const hit = findCat(e); if (hit) ids.add(hit.id); }
+    return ids;
   })();
-  const isCatSelected = (name) => selectedCatKeys.has(catKey(name));
-  const toggleCatName = (name) => {
-    const selectedNow = allCatNames.filter(isCatSelected);
-    const next = isCatSelected(name)
-      ? selectedNow.filter((n) => catKey(n) !== catKey(name))
-      : [...selectedNow, name];
-    set({ menuCategories: next }); // always store the full explicit list, as names
+  const isCatSelected = (c) => selectedCatIds.has(c.id);
+  const toggleCat = (c) => {
+    const ids = new Set(selectedCatIds);      // start from the FULL current set…
+    if (ids.has(c.id)) ids.delete(c.id); else ids.add(c.id); // …flip just this one…
+    set({ menuCategories: [...ids] });         // …and store ids (never drops the rest)
   };
 
   // ---- seasonal / festive theme scheduler ----
@@ -313,6 +319,7 @@ export default function Admin({ onExit }) {
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || 'Save failed');
+      await load(pass); // re-pull categories + catalog so counts/lists refresh without a page reload
       setSavedMsg('Saved — live now.');
     } catch (e) { setSavedMsg('Save failed: ' + e.message); }
     finally { setSaving(false); setTimeout(() => setSavedMsg(''), 5000); }
@@ -637,17 +644,17 @@ export default function Admin({ onExit }) {
                     Tap any category to show or hide it in the app — including your uppercase Square ones. Changes apply
                     to the customer menu when you press <strong>Save changes</strong>.{catsLocked ? ' Unlock to make changes.' : ''}
                   </p>
-                  {allCatNames.length === 0 && <p className="muted" style={{ fontSize: 12 }}>No Square categories loaded yet — create categories in Square, then Sync.</p>}
+                  {allCats.length === 0 && <p className="muted" style={{ fontSize: 12 }}>No Square categories loaded yet — create categories in Square, then Sync.</p>}
                   {(() => {
-                    const showing = allCatNames.filter(isCatSelected);
-                    const addable = allCatNames.filter((n) => !isCatSelected(n));
-                    const chip = (name, active) => (
-                      <button key={name} type="button" className={`chip ${active ? 'on' : ''}`}
+                    const showing = allCats.filter(isCatSelected);
+                    const addable = allCats.filter((c) => !isCatSelected(c));
+                    const chip = (c, active) => (
+                      <button key={c.id} type="button" className={`chip ${active ? 'on' : ''}`}
                         disabled={catsLocked}
-                        onClick={() => { if (!catsLocked) toggleCatName(name); }}
+                        onClick={() => { if (!catsLocked) toggleCat(c); }}
                         style={catsLocked ? { opacity: active ? 0.85 : 0.5, cursor: 'not-allowed' } : undefined}
                         title={catsLocked ? 'Unlock to change' : (active ? 'Tap to hide' : 'Tap to show')}>
-                        {active ? '✓ ' : '+ '}{name}{active ? '  ✕' : ''}
+                        {active ? '✓ ' : '+ '}{c.name}{active ? '  ✕' : ''}
                       </button>
                     );
                     return (
@@ -655,13 +662,13 @@ export default function Admin({ onExit }) {
                         {showing.length > 0 && (
                           <>
                             <p className="muted" style={{ fontSize: 11, margin: '10px 0 6px', textTransform: 'uppercase', letterSpacing: 0.4 }}>Showing in the app · tap to hide</p>
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>{showing.map((n) => chip(n, true))}</div>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>{showing.map((c) => chip(c, true))}</div>
                           </>
                         )}
                         {addable.length > 0 && (
                           <>
                             <p className="muted" style={{ fontSize: 11, margin: '14px 0 6px', textTransform: 'uppercase', letterSpacing: 0.4 }}>Hidden · tap to show</p>
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>{addable.map((n) => chip(n, false))}</div>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>{addable.map((c) => chip(c, false))}</div>
                           </>
                         )}
                       </>
