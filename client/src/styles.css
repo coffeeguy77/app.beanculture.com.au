@@ -35,6 +35,8 @@ img { max-width: 100%; }
   padding-bottom: 118px;
   overflow-x: hidden;
 }
+/* Views without the fixed bottom nav don't need room reserved for it. */
+.app.app-flush { padding-bottom: 28px; }
 
 .serif { font-family: Georgia, 'Times New Roman', serif; }
 .muted { color: var(--muted); }
@@ -381,6 +383,11 @@ img { max-width: 100%; }
 }
 .hours-row.today { font-weight: 800; color: var(--brand); }
 .hours-closed { color: var(--muted); }
+.hours-status { margin-left: auto; font-size: 12px; font-weight: 800; padding: 3px 10px; border-radius: 999px; letter-spacing: .2px; }
+.hours-status.open { background: #e6f6ec; color: #1c7a41; }
+.hours-status.closed { background: #fdecec; color: #c0392b; }
+/* Honeypot: visually hidden but still in the DOM for bots to fill. */
+.hp-field { position: absolute; left: -9999px; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 
 /* Google review card */
 .review-card { text-align: center; }

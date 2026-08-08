@@ -441,7 +441,7 @@ export default function App() {
     : (config.hero || []);
 
   return (
-    <div className="app">
+    <div className={`app${(view === 'store' || (!wide && view === 'checkout')) ? ' app-flush' : ''}`}>
       {activeTheme?.effects && <SeasonalEffects effects={activeTheme.effects} />}
       {activeTheme?.id && activeTheme?.decor?.perimeter && (
         <SeasonalPerimeter id={activeTheme.id} decor={activeTheme.decor} />

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { api, imgUrl } from '../api.js';
 
 const DAY_LABELS = [['Mon', 'MON'], ['Tue', 'TUE'], ['Wed', 'WED'], ['Thu', 'THU'], ['Fri', 'FRI'], ['Sat', 'SAT'], ['Sun', 'SUN']];
@@ -32,7 +32,17 @@ export default function StorePage({ config, onTrack, onBack }) {
   const contact = config.contact || {};
   const address = contact.address || '';
   const mapsUrl = contact.mapsUrl || (address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}` : '');
-  const dirUrl = address ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(address)}` : mapsUrl;
+  // Google geocodes a bare "U5, …" as just "U5", so build the directions query
+  // from the business name + the address with any leading unit/shop number
+  // stripped — that resolves cleanly to the café.
+  const cleanAddr = (address || '')
+    .replace(/^\s*(u|unit|shop|suite|ste|lvl|level)\s*\.?\s*\d+[a-z]?[,/\s-]+/i, '')
+    .replace(/^\s*\d+[a-z]?\s*\/\s*/, '')
+    .trim();
+  const geoQuery = [config.storeName, cleanAddr || address].filter(Boolean).join(', ');
+  const dirUrl = geoQuery ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(geoQuery)}` : mapsUrl;
+  const storeOpen = config.hours ? config.hours.open : null;
+  const nextLabel = config.hours?.nextOpen?.label;
   const tel = (contact.phone || '').replace(/[^\d+]/g, '');
   const weekly = config.hours?.weekly || null;
   const todayIdx = (new Date().getDay() + 6) % 7; // Mon=0 … Sun=6
@@ -57,16 +67,28 @@ export default function StorePage({ config, onTrack, onBack }) {
   const [busy, setBusy] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState('');
+  // Spam capture: a small maths question (server-signed) + a hidden honeypot.
+  const [captcha, setCaptcha] = useState(null); // { token, question }
+  const [answer, setAnswer] = useState('');
+  const [company, setCompany] = useState(''); // honeypot — must stay empty
+
+  function loadCaptcha() {
+    api.getCaptcha().then(setCaptcha).catch(() => setCaptcha(null));
+  }
+  useEffect(() => { loadCaptcha(); }, []);
 
   async function submit() {
     if (!body.trim()) { setError('Please add a message.'); return; }
+    if (!answer.trim()) { setError('Please answer the quick maths question.'); return; }
     setBusy(true); setError('');
     try {
-      await api.sendMessage({ type: tab, name, contact: cField, body });
-      setSent(true); setBody(''); setName(''); setCField('');
+      await api.sendMessage({ type: tab, name, contact: cField, body, captchaToken: captcha?.token, captchaAnswer: answer, company });
+      setSent(true); setBody(''); setName(''); setCField(''); setAnswer('');
       onTrack && onTrack('message_' + tab);
-    } catch (e) { setError(e.message || 'Could not send — please try again.'); }
-    finally { setBusy(false); }
+    } catch (e) {
+      setError(e.message || 'Could not send — please try again.');
+      loadCaptcha(); setAnswer(''); // refresh the challenge on any failure
+    } finally { setBusy(false); }
   }
 
   const placeholder = tab === 'catering'
@@ -109,7 +131,15 @@ export default function StorePage({ config, onTrack, onBack }) {
 
           {hoursRows.length > 0 && (
             <section className="store-card">
-              <div className="store-card-head"><ClockIcon /> Opening hours</div>
+              <div className="store-card-head">
+                <ClockIcon /> Opening hours
+                {typeof storeOpen === 'boolean' && (
+                  <span className={`hours-status ${storeOpen ? 'open' : 'closed'}`}>{storeOpen ? 'Open now' : 'Closed'}</span>
+                )}
+              </div>
+              {storeOpen === false && nextLabel && (
+                <p className="muted" style={{ fontSize: 13, margin: '-4px 0 12px' }}>Reopens {nextLabel}.</p>
+              )}
               <div className="hours-table">
                 {hoursRows.map((r) => (
                   <div key={r.label} className={`hours-row ${r.today ? 'today' : ''}`}>
@@ -152,6 +182,10 @@ export default function StorePage({ config, onTrack, onBack }) {
                   <label className="field"><span>Your name</span><input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name" /></label>
                   <label className="field"><span>Email or phone</span><input value={cField} onChange={(e) => setCField(e.target.value)} placeholder="So we can reply" /></label>
                   <label className="field"><span>Message</span><textarea rows={4} value={body} onChange={(e) => setBody(e.target.value)} placeholder={placeholder} /></label>
+                  {/* Honeypot — hidden from people, tempting to bots. */}
+                  <input className="hp-field" tabIndex={-1} autoComplete="off" aria-hidden="true" value={company} onChange={(e) => setCompany(e.target.value)} placeholder="Company" />
+                  <label className="field"><span>Quick check: what is {captcha ? captcha.question : '…'}?</span>
+                    <input inputMode="numeric" value={answer} onChange={(e) => setAnswer(e.target.value)} placeholder="Answer" /></label>
                   {error && <p className="error-text">{error}</p>}
                   <button className="btn store-btn" disabled={busy} onClick={submit}><SendIcon size={18} /> {busy ? 'Sending…' : 'Send message'}</button>
                 </div>

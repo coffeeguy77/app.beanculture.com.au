@@ -1,4 +1,5 @@
 const path = require('path');
+const crypto = require('crypto');
 const express = require('express');
 
 const sq = require('./lib/squareClient');
@@ -369,10 +370,41 @@ app.get('/api/admin/analytics', async (req, res) => {
 
 app.get('/api/health', (_req, res) => res.json({ ok: true, env: sq.ENV }));
 
+// ---- Lightweight, stateless spam capture (honeypot + a small maths question) ----
+const CAPTCHA_SECRET = process.env.CAPTCHA_SECRET || crypto.randomBytes(24).toString('hex');
+function signCaptcha(a, b, exp) {
+  const payload = `${a}.${b}.${exp}`;
+  const sig = crypto.createHmac('sha256', CAPTCHA_SECRET).update(payload).digest('base64url');
+  return `${Buffer.from(payload).toString('base64url')}.${sig}`;
+}
+function verifyCaptcha(token, answer) {
+  try {
+    const [p, sig] = String(token || '').split('.');
+    if (!p || !sig) return false;
+    const payload = Buffer.from(p, 'base64url').toString();
+    const expect = crypto.createHmac('sha256', CAPTCHA_SECRET).update(payload).digest('base64url');
+    if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expect))) return false;
+    const [a, b, exp] = payload.split('.').map(Number);
+    if (Date.now() > exp) return false;
+    return Number(answer) === a + b;
+  } catch { return false; }
+}
+app.get('/api/captcha', (_req, res) => {
+  const a = 1 + Math.floor(Math.random() * 8);
+  const b = 1 + Math.floor(Math.random() * 8);
+  const exp = Date.now() + 10 * 60 * 1000;
+  res.json({ token: signCaptcha(a, b, exp), question: `${a} + ${b}` });
+});
+
 // ---- Customer messages: enquiry / feedback / catering ----
 app.post('/api/message', async (req, res) => {
   try {
-    const { type, name, contact, body } = req.body || {};
+    const { type, name, contact, body, captchaToken, captchaAnswer, company } = req.body || {};
+    // Honeypot: real people never fill the hidden "company" field. Pretend success.
+    if (company) return res.json({ ok: true });
+    if (!verifyCaptcha(captchaToken, captchaAnswer)) {
+      return res.status(400).json({ error: 'Please answer the quick maths question.', captchaFailed: true });
+    }
     if (!body || !String(body).trim()) return res.status(400).json({ error: 'Please add a message.' });
     const allowed = ['enquiry', 'feedback', 'catering'];
     const t = allowed.includes(type) ? type : 'enquiry';
