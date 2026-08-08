@@ -514,6 +514,17 @@ export default function App() {
               onLink={(link) => {
                 if (!link || link.type === 'none') return;
                 if (link.type === 'category') setActiveCat(link.value);
+                else if (link.type === 'item' && link.value) {
+                  // Open the product directly (e.g. a "steak sandwich" banner → its
+                  // item card), scanning every category for the matching id.
+                  let found = null;
+                  for (const c of (menu.categories || [])) {
+                    const it = (c.items || []).find((x) => x.id === link.value);
+                    if (it) { found = it; break; }
+                  }
+                  if (found) setActiveItem(found);
+                  else { const el = document.querySelector('.menu'); if (el) el.scrollIntoView({ behavior: 'smooth' }); }
+                }
                 else if (link.type === 'account') setView('account');
                 else if (link.type === 'url' && link.value) {
                   const u = /^https?:\/\//i.test(link.value) ? link.value : `https://${link.value}`;

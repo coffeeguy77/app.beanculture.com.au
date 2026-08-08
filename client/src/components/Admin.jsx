@@ -5,7 +5,7 @@ import IconPicker from './IconPicker.jsx';
 import HoursEditor from './HoursEditor.jsx';
 import { formatMoney, api } from '../api.js';
 
-const LINK_TYPES = ['scroll', 'category', 'account', 'url', 'none'];
+const LINK_TYPES = ['scroll', 'category', 'item', 'account', 'url', 'none'];
 // Built-in festive themes ship with the app and can be turned Off but not deleted.
 const BUILTIN_SEASONAL = ['christmas', 'newyear', 'australiaday', 'lunarnewyear', 'valentines', 'stpatricks', 'easter', 'anzac', 'mothersday', 'floriade', 'fathersday', 'halloween'];
 
@@ -808,6 +808,18 @@ export default function Admin({ onExit }) {
                           <select value={sl.link?.value || ''} onChange={(e) => updSlide(i, { link: { ...sl.link, value: e.target.value } })} style={{ flex: 1, padding: 8, borderRadius: 10, border: '1px solid var(--line)' }}>
                             <option value="">— category —</option>
                             {cats.map((c) => <option key={c} value={c}>{c}</option>)}
+                          </select>
+                        )}
+                        {sl.link?.type === 'item' && (
+                          <select value={sl.link?.value || ''}
+                            onChange={(e) => { const opt = e.target.selectedOptions[0]; updSlide(i, { link: { ...sl.link, value: e.target.value, label: opt ? opt.text : '' } }); }}
+                            style={{ flex: 1, padding: 8, borderRadius: 10, border: '1px solid var(--line)' }}>
+                            <option value="">{adminCat.length ? '— pick a product —' : 'Loading products…'}</option>
+                            {adminCat.map((c) => (
+                              <optgroup key={c.category} label={c.category}>
+                                {c.items.map((it) => <option key={it.id} value={it.id}>{it.name}</option>)}
+                              </optgroup>
+                            ))}
                           </select>
                         )}
                         {sl.link?.type === 'url' && (
