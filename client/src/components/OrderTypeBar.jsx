@@ -2,7 +2,7 @@ import React from 'react';
 import { TableLockPill, TableEntry } from './TableControls.jsx';
 import ScheduleWhen from './ScheduleWhen.jsx';
 
-export default function OrderTypeBar({ dineIn, setDineIn, table, setTable, lock, onUnlock, onScanned, when, setWhen, at, setAt, hours }) {
+export default function OrderTypeBar({ dineIn, setDineIn, table, setTable, lock, onUnlock, onScanned, when, setWhen, at, setAt, hours, onReserve }) {
   const storeOpen = hours?.open !== false;
   const nextLabel = hours?.nextOpen?.label;
   // Stage 2 — scanned: prominent solid pill only, no toggle.
@@ -16,13 +16,16 @@ export default function OrderTypeBar({ dineIn, setDineIn, table, setTable, lock,
 
   return (
     <section className="ordertype">
-      <div className="segmented">
+      <div className={`segmented ${onReserve ? 'three' : ''}`}>
         <button className={dineIn === true ? 'seg active' : 'seg'} onClick={() => setDineIn(true)} type="button">
           Dine in
         </button>
         <button className={dineIn === false ? 'seg active' : 'seg'} onClick={() => setDineIn(false)} type="button">
           Takeaway
         </button>
+        {onReserve && (
+          <button className="seg" onClick={onReserve} type="button">Reserve a table</button>
+        )}
       </div>
       {dineIn === null && <p className="muted" style={{ fontSize: 12, margin: 0 }}>Choose dine in or takeaway to continue.</p>}
       {dineIn === true && (

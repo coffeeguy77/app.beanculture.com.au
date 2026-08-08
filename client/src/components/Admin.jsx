@@ -79,6 +79,8 @@ export default function Admin({ onExit }) {
   const [analytics, setAnalytics] = useState(null);
   const [aDays, setADays] = useState(30);
   const [msgs, setMsgs] = useState(null);
+  const [resv, setResv] = useState(null);
+  const [resvChannels, setResvChannels] = useState({});
   const [newClosure, setNewClosure] = useState({ date: '', annual: false, label: '' });
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
 
@@ -150,6 +152,14 @@ export default function Admin({ onExit }) {
     const next = !m.handled;
     setMsgs((xs) => (xs || []).map((x) => (x.id === m.id ? { ...x, handled: next } : x)));
     try { await api.markMessage(pass, m.id, next); } catch {}
+  }
+  async function loadReservations() {
+    try { const d = await api.adminReservations(pass); setResv(d.reservations || []); setResvChannels({ sms: d.sms, email: d.email }); }
+    catch (e) { alert('Could not load reservations: ' + e.message); }
+  }
+  async function setResvStatus(r, status) {
+    setResv((xs) => (xs || []).map((x) => (x.id === r.id ? { ...x, status } : x)));
+    try { await api.setReservationStatus(pass, r.id, status); } catch {}
   }
 
   const cats = (data?.categories || []).map((c) => c.name);
@@ -424,6 +434,35 @@ export default function Admin({ onExit }) {
                       {m.contact && <div className="muted" style={{ fontSize: 12, margin: '2px 0' }}>{m.contact}</div>}
                       <div style={{ fontSize: 14, whiteSpace: 'pre-line' }}>{m.body}</div>
                       <button className="link" style={{ padding: 0, fontSize: 13 }} onClick={() => toggleHandled(m)}>{m.handled ? 'Mark unread' : 'Mark done'}</button>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="card" style={card}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div className="group-title" style={{ margin: 0 }}>Reservations</div>
+                    <button type="button" className="btn ghost" style={{ padding: '6px 12px', fontSize: 13 }} onClick={loadReservations}>{resv === null ? 'Load' : 'Refresh'}</button>
+                  </div>
+                  <p className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+                    Table bookings from the app. Alerts: {resvChannels.sms ? 'SMS on' : 'SMS off'} · {resvChannels.email ? 'email on' : 'email off'}. Each booking also creates a $0 Square order so it prints + shows in Square.
+                  </p>
+                  {resv === null && <p className="muted" style={{ fontSize: 12 }}>Tap Load to see reservations.</p>}
+                  {resv && resv.length === 0 && <p className="muted" style={{ fontSize: 12 }}>No reservations yet.</p>}
+                  {resv && resv.map((r) => (
+                    <div key={r.id} className="history-item" style={{ opacity: r.status === 'cancelled' ? 0.5 : 1 }}>
+                      <div className="history-top">
+                        <span><strong>{r.party} {r.party === 1 ? 'guest' : 'guests'}</strong> · {r.name || '—'}</span>
+                        <span className={`pill`} style={{ textTransform: 'capitalize', background: r.status === 'confirmed' ? '#e6f6ec' : r.status === 'seated' ? '#eef' : r.status === 'cancelled' ? '#fdecec' : '#f4eef1' }}>{r.status}</span>
+                      </div>
+                      <div className="muted" style={{ fontSize: 13, margin: '3px 0' }}>
+                        {r.reserveAt ? new Date(r.reserveAt).toLocaleString('en-AU', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : '—'} · {r.phone || ''}{r.email ? ` · ${r.email}` : ''}
+                      </div>
+                      {r.notes && <div style={{ fontSize: 13 }}>{r.notes}</div>}
+                      <div style={{ display: 'flex', gap: 12, marginTop: 4 }}>
+                        {['confirmed', 'seated', 'cancelled'].filter((st) => st !== r.status).map((st) => (
+                          <button key={st} className="link" style={{ padding: 0, fontSize: 13, textTransform: 'capitalize', color: st === 'cancelled' ? '#c0392b' : undefined }} onClick={() => setResvStatus(r, st)}>Mark {st}</button>
+                        ))}
+                      </div>
                     </div>
                   ))}
                 </div>

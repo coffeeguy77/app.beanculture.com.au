@@ -75,6 +75,21 @@ async function init(attempt = 1) {
       )
     `);
     await pool.query('CREATE INDEX IF NOT EXISTS messages_ts ON messages (created_at)');
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS reservations (
+        id bigserial primary key,
+        name text,
+        phone text,
+        email text,
+        party integer default 2,
+        reserve_at timestamptz,
+        notes text,
+        status text default 'pending',
+        square_order_id text,
+        created_at timestamptz default now()
+      )
+    `);
+    await pool.query('CREATE INDEX IF NOT EXISTS reservations_at ON reservations (reserve_at)');
     const r = await pool.query("SELECT data FROM app_settings WHERE id = 'main'");
     cache = (r.rows[0] && r.rows[0].data) || {};
     ready = true;
@@ -272,10 +287,33 @@ async function markMessageHandled(id, handled = true) {
   await pool.query('UPDATE messages SET handled = $2 WHERE id = $1', [id, !!handled]);
 }
 
+// ---- Table reservations ----
+async function insertReservation({ name, phone, email, party, reserveAt, notes, squareOrderId }) {
+  if (!pool) throw new Error('Reservations are not available right now.');
+  const r = await pool.query(
+    `INSERT INTO reservations (name, phone, email, party, reserve_at, notes, square_order_id)
+     VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id, created_at`,
+    [(name || '').slice(0, 120), (phone || '').slice(0, 40), (email || '').slice(0, 160),
+      Math.max(1, Math.min(50, parseInt(party, 10) || 2)), reserveAt || null, String(notes || '').slice(0, 1000), squareOrderId || null]
+  );
+  return r.rows[0];
+}
+async function listReservations(limit = 200) {
+  if (!pool) return [];
+  const r = await pool.query('SELECT id, name, phone, email, party, reserve_at, notes, status, created_at FROM reservations ORDER BY reserve_at DESC NULLS LAST LIMIT $1', [Math.min(limit, 500)]);
+  return r.rows.map((x) => ({ id: String(x.id), name: x.name, phone: x.phone, email: x.email, party: x.party, reserveAt: x.reserve_at, notes: x.notes, status: x.status, createdAt: x.created_at }));
+}
+async function setReservationStatus(id, status) {
+  if (!pool) return;
+  const allowed = ['pending', 'confirmed', 'seated', 'cancelled'];
+  await pool.query('UPDATE reservations SET status = $2 WHERE id = $1', [id, allowed.includes(status) ? status : 'pending']);
+}
+
 module.exports = {
   init, getOverrides, saveOverrides,
   insertScheduled, listScheduledByCustomer, cancelScheduled, claimDue, updateScheduled,
   track, getAnalytics,
   insertMessage, listMessages, markMessageHandled,
+  insertReservation, listReservations, setReservationStatus,
   get enabled() { return !!pool; },
 };

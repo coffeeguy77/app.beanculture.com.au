@@ -1,7 +1,7 @@
 // Orders: create (dine-in/table + takeaway forced onto ticket_name), pay,
 // and per-customer history. Stamps order.customer_id so history works.
 
-const { squareFetch, LOCATION_ID, idem } = require('./squareClient');
+const { squareFetch, LOCATION_ID, idem, CURRENCY } = require('./squareClient');
 
 const DINEIN_FULFILLMENT = (process.env.SQUARE_DINEIN_FULFILLMENT || 'PICKUP').toUpperCase();
 const COMP_COUPON_CODE = (process.env.COMP_COUPON_CODE || '').trim();
@@ -179,4 +179,29 @@ async function getHistory(customerId, limit = 25) {
   }));
 }
 
-module.exports = { createOrder, getOrder, createPayment, authorizePayment, completePayment, cancelPayment, payZeroOrder, getHistory };
+// A $0 "Table reservation" order so the booking lands in Square + auto-prints on
+// the store's receipt/kitchen printer (no restaurant subscription needed).
+async function createReservationOrder({ name, phone, partySize, at, notes }) {
+  const when = at ? new Date(at) : null;
+  const scheduled = when && when.getTime() > Date.now();
+  const detail = [`Table reservation`, `${partySize || '?'} guest(s)`, name && `Name: ${name}`, phone && `Ph: ${phone}`, notes && `Notes: ${notes}`]
+    .filter(Boolean).join(' · ').slice(0, 500);
+  const pickup_details = {
+    recipient: { display_name: name || 'Reservation' },
+    note: detail,
+    schedule_type: scheduled ? 'SCHEDULED' : 'ASAP',
+  };
+  if (scheduled) pickup_details.pickup_at = when.toISOString();
+  const order = {
+    location_id: LOCATION_ID,
+    ticket_name: `RESERVATION · ${(name || 'Guest')} (${partySize || '?'})`.slice(0, 60),
+    line_items: [{ name: 'Table reservation', quantity: '1', base_price_money: { amount: 0, currency: CURRENCY }, note: detail }],
+    fulfillments: [{ type: 'PICKUP', state: 'PROPOSED', pickup_details }],
+    note: detail,
+    source: { name: 'Bean Culture App' },
+  };
+  const data = await squareFetch('/v2/orders', { method: 'POST', body: { order, idempotency_key: idem() } });
+  return data.order;
+}
+
+module.exports = { createOrder, getOrder, createPayment, authorizePayment, completePayment, cancelPayment, payZeroOrder, getHistory, createReservationOrder };

@@ -14,6 +14,7 @@ const db = require('./lib/db');
 const cards = require('./lib/cards');
 const giftcards = require('./lib/giftcards');
 const scheduler = require('./lib/scheduled');
+const notify = require('./lib/notify');
 
 const PREORDER_TZ = process.env.PREORDER_TZ || process.env.SEASON_TZ || 'Australia/Sydney';
 const PREORDER_MAX_DAYS = Number(process.env.PREORDER_MAX_DAYS || 14);
@@ -71,6 +72,7 @@ app.get('/api/config', async (_req, res) => {
       timezone: PREORDER_TZ,
       maxDaysAhead: PREORDER_MAX_DAYS,
     },
+    reservations: db.enabled,       // table booking needs the database
   });
 });
 
@@ -426,6 +428,51 @@ app.post('/api/admin/messages/handled', async (req, res) => {
   if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
   try {
     await db.markMessageHandled(req.body?.id, req.body?.handled !== false);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+
+// ---- Table reservations ----
+app.post('/api/reserve', async (req, res) => {
+  try {
+    const { name, phone, email, party, at, notes, captchaToken, captchaAnswer, company } = req.body || {};
+    if (company) return res.json({ ok: true }); // honeypot
+    if (!verifyCaptcha(captchaToken, captchaAnswer)) return res.status(400).json({ error: 'Please answer the quick maths question.', captchaFailed: true });
+    if (!name || !String(name).trim()) return res.status(400).json({ error: 'Please add your name.' });
+    if (!phone || !String(phone).trim()) return res.status(400).json({ error: 'Please add a contact number.' });
+    if (!at) return res.status(400).json({ error: 'Please choose a date and time.' });
+
+    // Best-effort Square order (so it prints + shows in Square). Never blocks the booking.
+    let squareOrderId = null;
+    try {
+      const o = await orders.createReservationOrder({ name, phone, partySize: party, at, notes });
+      squareOrderId = o?.id || null;
+    } catch (e) { console.error('[reserve] Square order failed:', e.message); }
+
+    const saved = await db.insertReservation({ name, phone, email, party, reserveAt: at, notes, squareOrderId });
+
+    // Fire notifications in the background (don't make the customer wait).
+    notify.reservationNotify({ name, phone, email, party, reserveAt: at, notes }).catch(() => {});
+
+    res.json({ ok: true, id: saved?.id ? String(saved.id) : null });
+  } catch (e) {
+    res.status(503).json({ error: e.message });
+  }
+});
+app.get('/api/admin/reservations', async (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    res.json({ reservations: await db.listReservations(200), dbEnabled: db.enabled, sms: notify.smsConfigured, email: notify.emailConfigured });
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+app.post('/api/admin/reservations/status', async (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    await db.setReservationStatus(req.body?.id, req.body?.status);
     res.json({ ok: true });
   } catch (e) {
     res.status(502).json({ error: e.message });

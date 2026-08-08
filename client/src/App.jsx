@@ -18,6 +18,7 @@ import SeasonalEffects from './components/SeasonalEffects.jsx';
 import SeasonalPerimeter from './components/SeasonalPerimeter.jsx';
 import { AccountIcon, ThemeIcon, StoreIcon, SlotIcon } from './components/icons.jsx';
 import StorePage from './components/StorePage.jsx';
+import ReservationForm from './components/ReservationForm.jsx';
 import StoreContact from './components/StoreContact.jsx';
 import InstallButton from './components/InstallButton.jsx';
 import { track, trackItems } from './analytics.js';
@@ -432,7 +433,7 @@ export default function App() {
     : (config.hero || []);
 
   return (
-    <div className={`app${(view === 'store' || (!wide && view === 'checkout')) ? ' app-flush' : ''}`}>
+    <div className={`app${(view === 'store' || view === 'reserve' || (!wide && view === 'checkout')) ? ' app-flush' : ''}`}>
       {activeTheme?.effects && <SeasonalEffects effects={activeTheme.effects} />}
       {activeTheme?.id && activeTheme?.decor?.perimeter && (
         <SeasonalPerimeter id={activeTheme.id} decor={activeTheme.decor} />
@@ -499,6 +500,10 @@ export default function App() {
         <StorePage config={config} onTrack={track} onBack={() => setView('home')} />
       )}
 
+      {view === 'reserve' && (
+        <ReservationForm config={config} user={user} onTrack={track} onBack={() => setView('home')} />
+      )}
+
       {showLayout && (
         <div className="layout">
           <div className="main-col">
@@ -520,7 +525,8 @@ export default function App() {
             />
             {!(wide && view === 'checkout') && (
               <OrderTypeBar dineIn={dineIn} setDineIn={setDineIn} table={table} setTable={setTable} lock={tableLock} onUnlock={unlockTable} onScanned={applyScannedTable}
-                when={preWhen} setWhen={setPreWhen} at={preAt} setAt={setPreAt} hours={config.hours} />
+                when={preWhen} setWhen={setPreWhen} at={preAt} setAt={setPreAt} hours={config.hours}
+                onReserve={config.reservations ? () => setView('reserve') : null} />
             )}
             <div className="search">
               <input placeholder="Search the menu…" value={query} onChange={(e) => setQuery(e.target.value)} />
