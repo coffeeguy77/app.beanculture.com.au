@@ -182,14 +182,12 @@ export default function App() {
     if (wide && view === 'cart') setView('home');
   }, [wide, view]);
 
-  // Bottom-nav slots. Start from the footer builder groups (keeping only
-  // categories that exist in the live menu), then AUTO-ADD a button for any
-  // menu category that isn't already covered by a group. This guarantees every
-  // category you switch on in "Categories in the app" is reachable from the
-  // bottom nav — you don't have to also wire it into the footer builder.
+  // Bottom-nav slots come ONLY from the footer builder groups you set up (kept to
+  // categories that exist in the live menu). Categories not in a group are still
+  // reachable from the top category chips — we don't auto-add stray buttons.
   const footerSlots = useMemo(() => {
     if (!menu) return [];
-    const configured = (config?.footer || [])
+    return (config?.footer || [])
       .map((slot) => ({
         ...slot,
         cats: (slot.categories || []).filter((cat) =>
@@ -197,13 +195,6 @@ export default function App() {
         ),
       }))
       .filter((slot) => slot.cats.length);
-    const covered = new Set();
-    configured.forEach((s) => s.cats.forEach((c) => covered.add(c.toLowerCase())));
-    const extras = menu.categories
-      .map((c) => c.category)
-      .filter((name) => !covered.has(name.toLowerCase()))
-      .map((name) => ({ label: name, icon: 'tag', cats: [name], categories: [name] }));
-    return [...configured, ...extras];
   }, [config, menu]);
   const canOrder = config?.hours?.canOrderNow !== false;
   const preorder = config?.hours?.preorder;

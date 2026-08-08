@@ -114,23 +114,25 @@ async function getMenu(opts = {}) {
   // (settings.menuCategories), use those directly. Otherwise fall back to the
   // children of a master "APP" parent category.
   const included = (getSettings().menuCategories || []).map(String);
-  const sel = new Set(included);
-  // Start from the "APP" parent's children (the everyday menu)...
+  const sel = new Set(included.map((x) => x.toLowerCase()));
   let parentId = null;
   const childIds = new Set();
-  for (const [id, c] of categories) {
-    if (norm(c.name) === norm(PARENT_CATEGORY)) { parentId = id; break; }
-  }
-  if (parentId) {
-    for (const [id, c] of categories) {
-      if (c.parentId === parentId) childIds.add(id);
-    }
-  }
-  // ...then ADD any categories switched on in "Categories in the app" (matched by
-  // id or name). Additive: turning one on never hides the rest of the menu.
   if (sel.size) {
+    // The chosen categories ARE the menu (authoritative). Match by id, raw name
+    // or cleaned display name — case-insensitive — so both new (name-based) and
+    // old (id-based) saved values keep working.
     for (const [id, c] of categories) {
-      if (sel.has(id) || sel.has(c.name) || sel.has(cleanName(c.name))) childIds.add(id);
+      if (sel.has(String(id).toLowerCase()) || sel.has((c.name || '').toLowerCase()) || sel.has(cleanName(c.name || '').toLowerCase())) childIds.add(id);
+    }
+  } else {
+    // Nothing chosen yet → fall back to the "APP" parent's children.
+    for (const [id, c] of categories) {
+      if (norm(c.name) === norm(PARENT_CATEGORY)) { parentId = id; break; }
+    }
+    if (parentId) {
+      for (const [id, c] of categories) {
+        if (c.parentId === parentId) childIds.add(id);
+      }
     }
   }
   const restrictToChildren = childIds.size > 0 || !!parentId;
