@@ -57,7 +57,7 @@ img { max-width: 100%; }
   background: var(--surface); color: var(--brand); font-size: 18px; display: grid; place-items: center;
   cursor: pointer;
 }
-.icon-row { display: flex; gap: 8px; }
+.icon-row { display: flex; gap: 8px; flex: none; }
 
 /* Announcement */
 .announce { background: var(--brand); color: #fff; text-align: center; padding: 8px 16px; font-size: 13px; }
@@ -695,7 +695,10 @@ img { max-width: 100%; }
 .card { background: var(--surface); border-radius: var(--radius); padding: 20px; box-shadow: var(--shadow-sm); }
 
 /* ── Logo ── */
-.logo-wrap { color: var(--brand); display: flex; align-items: center; background: none; border: none; padding: 0; cursor: pointer; }
+.logo-wrap { color: var(--brand); display: flex; align-items: center; background: none; border: none; padding: 0; cursor: pointer; flex: 0 1 auto; min-width: 0; overflow: hidden; }
+.logo-wrap img, .logo-wrap svg { height: 72px; width: auto; max-width: 100%; display: block; }
+/* Shrink the logo 25% on phones so the account icon is never pushed off-screen. */
+@media (max-width: 600px) { .logo-wrap img, .logo-wrap svg { height: 54px; } }
 
 /* ── Seasonal effects (decorative, non-interactive) ── */
 .fx { position: fixed; inset: 0; width: 100vw; left: 0; pointer-events: none; z-index: 55; overflow: hidden; }
