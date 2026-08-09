@@ -82,6 +82,7 @@ export default function Admin({ onExit }) {
   const [genItemId, setGenItemId] = useState(''); // quick-generate: chosen source item
   const [genSelected, setGenSelected] = useState(() => new Set()); // quick-generate: multi-select item ids
   const [combineSel, setCombineSel] = useState(() => new Set()); // preset ids selected to combine
+  const [syncBusy, setSyncBusy] = useState(false); // product-builder sync running
   const [genSection, setGenSection] = useState('Breakfast'); // quick-generate: target section
   const [genBusy, setGenBusy] = useState(false);
   const [menuSub, setMenuSub] = useState('categories'); // Menu tab sub-section
@@ -477,6 +478,52 @@ export default function Admin({ onExit }) {
     });
     const arr = [...presets]; arr.splice(idx, 1, ...parts); setPresets(arr);
   };
+  // Sync the product builder with Square: add tiles for newly-added variations,
+  // drop variations that were deleted (prices are already live from Square).
+  async function syncBuilder() {
+    setSyncBusy(true);
+    setSyncMsg('Syncing with Square…');
+    try {
+      const sourceIds = [...new Set(presets.map((p) => p.sourceItemId).filter(Boolean))];
+      const configs = {};
+      for (const id of sourceIds) { const cfg = await ensureItemConfig(id); if (cfg) configs[id] = cfg; }
+      const coveredBySource = {};
+      const sectionBySource = {};
+      for (const p of presets) {
+        if (!coveredBySource[p.sourceItemId]) coveredBySource[p.sourceItemId] = new Set();
+        presetVids(p).forEach((v) => coveredBySource[p.sourceItemId].add(v));
+        if (!sectionBySource[p.sourceItemId]) sectionBySource[p.sourceItemId] = p.section || 'Specials';
+      }
+      let removedDead = 0, trimmed = 0;
+      const reconciled = [];
+      for (const p of presets) {
+        const cfg = configs[p.sourceItemId];
+        if (!cfg) { reconciled.push(p); continue; }
+        const alive = presetVids(p).filter((vid) => cfg.variations.some((v) => v.id === vid));
+        if (!alive.length) { removedDead++; continue; }
+        if (alive.length !== presetVids(p).length) trimmed++;
+        reconciled.push({ ...p, variationId: alive[0], variationIds: alive.length > 1 ? alive : undefined });
+      }
+      const added = [];
+      for (const id of sourceIds) {
+        const cfg = configs[id]; if (!cfg) continue;
+        const covered = coveredBySource[id] || new Set();
+        for (const v of cfg.variations) {
+          if (!covered.has(v.id)) {
+            reconciled.push({ id: newPresetId(), name: v.name || cfg.name, section: sectionBySource[id] || 'Specials', sourceItemId: id, variationId: v.id, groups: {}, showImages: true });
+            added.push(v.name || cfg.name);
+          }
+        }
+      }
+      setPresets(reconciled);
+      const parts = [added.length ? `added ${added.length} new tile(s)${added.length ? ` (${added.slice(0, 4).join(', ')}${added.length > 4 ? '…' : ''})` : ''}` : 'no new variations'];
+      if (removedDead) parts.push(`removed ${removedDead} tile(s) whose variation was deleted`);
+      if (trimmed) parts.push(`trimmed ${trimmed} combined tile(s)`);
+      setSyncMsg(`Sync: ${parts.join('; ')}. Prices update automatically. Press Save changes to keep new/removed tiles.`);
+    } catch (e) {
+      setSyncMsg('Sync failed: ' + (e.message || 'unknown error'));
+    } finally { setSyncBusy(false); }
+  }
   // Toggle which variations a combined tile offers.
   const toggleVariationId = (pid, vid) => setPresets(presets.map((p) => {
     if (p.id !== pid) return p;
@@ -1437,6 +1484,10 @@ export default function Admin({ onExit }) {
                     <span>Hide the original item from the menu once it has presets</span>
                   </label>
                   <p className="muted" style={{ fontSize: 'var(--fs-sm)', margin: '0 0 10px' }}>Tip: tick 2+ tiles from the same product (e.g. 6oz + 12oz) in a section, then press <strong>Combine</strong> on that section to merge them into one tile with a size toggle.</p>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
+                    <button className="btn ghost" disabled={syncBusy} onClick={syncBuilder} style={{ padding: '6px 12px' }}>{syncBusy ? 'Syncing…' : '🔄 Sync new variations from Square'}</button>
+                    {syncMsg && <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>{syncMsg}</span>}
+                  </div>
                   {/* Quick generate: one tile per variation */}
                   <div style={{ border: '1px dashed var(--accent)', borderRadius: 12, padding: 10, marginBottom: 12, background: 'var(--brand-soft)' }}>
                     <div style={{ fontWeight: 700, fontSize: 'var(--fs-base)', marginBottom: 6 }}>⚡ Quick generate — a tile per variation</div>
