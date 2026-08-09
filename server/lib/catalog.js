@@ -439,15 +439,21 @@ async function getAllProducts() {
     const hasPricedVariation = (d.variations || [])
       .some((v) => !v.is_deleted && moneyToNumber(v.item_variation_data?.price_money) !== null);
     if (!hasPricedVariation) continue;
-    const catId = d.reporting_category?.id
-      || (Array.isArray(d.categories) && d.categories[0] && d.categories[0].id)
-      || d.category_id || null;
+    // Every category this item is nested in (Square lets an item belong to many),
+    // so the builder can show/filter by category and you know you're editing the
+    // right POS item.
+    const catIds = [];
+    if (Array.isArray(d.categories)) for (const c of d.categories) if (c && c.id) catIds.push(c.id);
+    if (d.reporting_category?.id) catIds.push(d.reporting_category.id);
+    if (d.category_id) catIds.push(d.category_id);
+    const categoryNames = [...new Set(catIds.map((id) => catNames.get(id)).filter(Boolean))];
     const imageId = (d.image_ids || [])[0];
     out.push({
       id: item.id,
       name: d.name || 'Item',
       image: imageId ? images.get(imageId) || null : null,
-      category: (catId && catNames.get(catId)) || '',
+      category: categoryNames[0] || '',
+      categories: categoryNames,
     });
   }
   out.sort((a, b) => (a.category || '').localeCompare(b.category || '') || a.name.localeCompare(b.name));

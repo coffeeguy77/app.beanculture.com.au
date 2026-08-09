@@ -74,6 +74,11 @@ export default function Admin({ onExit }) {
   const [expanded, setExpanded] = useState({});
   const [secSearch, setSecSearch] = useState({}); // product-section id -> search text
   const [itemConfigs, setItemConfigs] = useState({}); // itemId -> full config for the builder
+  const [srcSearch, setSrcSearch] = useState({}); // picker id -> search text
+  const [srcCat, setSrcCat] = useState({});       // picker id -> category filter
+  const [genItemId, setGenItemId] = useState(''); // quick-generate: chosen source item
+  const [genSection, setGenSection] = useState('Breakfast'); // quick-generate: target section
+  const [genBusy, setGenBusy] = useState(false);
   const [imgBusy, setImgBusy] = useState(null);      // item id currently uploading
   const [imgOverride, setImgOverride] = useState({}); // item id -> freshly uploaded url
   const [users, setUsers] = useState(null);          // loyalty customers (Users tab)
@@ -384,6 +389,89 @@ export default function Admin({ onExit }) {
       if (Object.keys(g).length) groups[groupId] = g; else delete groups[groupId];
       return { ...p, groups };
     }));
+  const newPresetId = () => 'pre' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  // Duplicate a preset right below itself (name + " copy") so you can quickly
+  // spin off variants and just tweak the name/options.
+  const dupPreset = (id) => {
+    const i = presets.findIndex((x) => x.id === id);
+    if (i < 0) return;
+    const src = presets[i];
+    const copy = { ...src, id: newPresetId(), name: (src.name || '') + ' copy', groups: JSON.parse(JSON.stringify(src.groups || {})) };
+    const arr = [...presets];
+    arr.splice(i + 1, 0, copy);
+    setPresets(arr);
+  };
+  // Ensure an item's config is loaded, returning it.
+  async function ensureItemConfig(id) {
+    if (!id) return null;
+    if (itemConfigs[id]) return itemConfigs[id];
+    const r = await fetch(`/api/admin/item-config?id=${encodeURIComponent(id)}&pass=${encodeURIComponent(pass)}`);
+    if (!r.ok) return null;
+    const d = await r.json();
+    if (d && d.item) { setItemConfigs((x) => ({ ...x, [id]: d.item })); return d.item; }
+    return null;
+  }
+  // Quick generate: one preset per variation of the chosen item (locked to that
+  // variation, no options yet — tweak/duplicate after).
+  async function generatePresets() {
+    if (!genItemId) return;
+    setGenBusy(true);
+    try {
+      const cfg = await ensureItemConfig(genItemId);
+      if (!cfg || !cfg.variations.length) return;
+      const section = (genSection || '').trim() || 'Specials';
+      const made = cfg.variations.map((v) => ({
+        id: newPresetId(), name: v.name || cfg.name, section, sourceItemId: genItemId, variationId: v.id, groups: {}, showImages: true,
+      }));
+      setPresets([...presets, ...made]);
+    } finally { setGenBusy(false); }
+  }
+
+  // ---- shared searchable source-item picker (used by generator + presets) ----
+  const productCategories = [...new Set(allProducts.flatMap((p) => p.categories || (p.category ? [p.category] : [])))].sort();
+  function renderSourcePicker(pickerId, currentId, onPick) {
+    const q = (srcSearch[pickerId] || '').toLowerCase();
+    const catf = srcCat[pickerId] || '';
+    const list = allProducts.filter((p) => {
+      const cats = p.categories || (p.category ? [p.category] : []);
+      if (catf && !cats.some((c) => c.toLowerCase() === catf.toLowerCase())) return false;
+      if (q && !(p.name.toLowerCase().includes(q) || cats.join(' ').toLowerCase().includes(q))) return false;
+      return true;
+    });
+    const current = allProducts.find((p) => p.id === currentId);
+    return (
+      <div>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 6 }}>
+          <input placeholder="Search items…" value={srcSearch[pickerId] || ''} onChange={(e) => setSrcSearch((x) => ({ ...x, [pickerId]: e.target.value }))}
+            style={{ flex: '1 1 150px', padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 10 }} />
+          <select value={catf} onChange={(e) => setSrcCat((x) => ({ ...x, [pickerId]: e.target.value }))}
+            style={{ padding: 8, borderRadius: 10, border: '1px solid var(--line)' }}>
+            <option value="">All categories</option>
+            {productCategories.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </div>
+        {current && <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>Selected: <strong>{current.name}</strong>{(current.categories || []).length ? ` · in ${current.categories.join(', ')}` : ''}</div>}
+        <div style={{ maxHeight: 220, overflowY: 'auto', border: '1px solid var(--line)', borderRadius: 8 }}>
+          {allProducts.length === 0 && <p className="muted" style={{ fontSize: 12, padding: 8 }}>Loading items…</p>}
+          {list.map((p) => {
+            const cats = p.categories || (p.category ? [p.category] : []);
+            return (
+              <button key={p.id} onClick={() => onPick(p.id)} type="button"
+                style={{ display: 'flex', width: '100%', textAlign: 'left', gap: 8, alignItems: 'center', padding: '6px 8px', border: 'none', borderBottom: '1px solid var(--line)', background: currentId === p.id ? 'var(--brand-soft)' : 'transparent', cursor: 'pointer' }}>
+                {p.image
+                  ? <img src={p.image} alt="" style={{ width: 30, height: 30, borderRadius: 6, objectFit: 'cover', flex: 'none' }} />
+                  : <span style={{ width: 30, height: 30, borderRadius: 6, background: 'var(--brand-soft)', flex: 'none', display: 'grid', placeItems: 'center', fontSize: 14 }}>🍽️</span>}
+                <span style={{ flex: 1, minWidth: 0 }}>
+                  <span style={{ fontSize: 14, display: 'block' }}>{p.name}</span>
+                  {cats.length ? <span className="muted" style={{ fontSize: 11 }}>{cats.join(' · ')}</span> : null}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
 
   // ---- menu section order (storefront): categories AND product sections ----
   // Everything is ordered by s.menuOrder (display names). Anything not yet in
@@ -1066,7 +1154,22 @@ export default function Admin({ onExit }) {
                     (always applied, hidden). Orders still submit as the real Square variation + modifiers, so printers
                     and KDS work automatically. Presets appear as tiles in the section you name.
                   </p>
-                  {presets.length === 0 && <p className="muted" style={{ fontSize: 12 }}>No presets yet. Add one below.</p>}
+                  {/* Quick generate: one tile per variation */}
+                  <div style={{ border: '1px dashed var(--accent)', borderRadius: 12, padding: 10, marginBottom: 12, background: 'var(--brand-soft)' }}>
+                    <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 6 }}>⚡ Quick generate — a tile per variation</div>
+                    <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>Pick an item and a section, then generate one preset for every variation (e.g. Porridge, Avo Toast…). Tweak options or duplicate after.</p>
+                    {renderSourcePicker('gen', genItemId, setGenItemId)}
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end', marginTop: 8 }}>
+                      <label style={{ display: 'grid', gap: 4, flex: '1 1 180px' }}>
+                        <span className="muted" style={{ fontSize: 12 }}>Show in section</span>
+                        <input list="menu-section-names" value={genSection} onChange={(e) => setGenSection(e.target.value)} placeholder="e.g. Breakfast"
+                          style={{ padding: 8, borderRadius: 10, border: '1px solid var(--line)' }} />
+                      </label>
+                      <button className="btn" disabled={!genItemId || genBusy} onClick={generatePresets}
+                        style={{ opacity: !genItemId || genBusy ? 0.5 : 1 }}>{genBusy ? 'Generating…' : 'Generate tiles'}</button>
+                    </div>
+                  </div>
+                  {presets.length === 0 && <p className="muted" style={{ fontSize: 12 }}>No presets yet. Generate some above, or add one below.</p>}
                   {presets.map((p) => {
                     const cfg = itemConfigs[p.sourceItemId];
                     const isOpen = !!expanded[p.id];
@@ -1087,19 +1190,16 @@ export default function Admin({ onExit }) {
                               style={{ fontWeight: 700, flex: 1, minWidth: 0, padding: '6px 8px', border: '1px solid var(--line)', borderRadius: 8 }} />
                             {price != null && <span className="muted" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>{formatMoney(price, data?.currency)}</span>}
                           </label>
+                          <button className="link" title="Duplicate preset" onClick={() => dupPreset(p.id)}>⧉</button>
                           <button className="link" onClick={() => setExpanded((x) => ({ ...x, [p.id]: !isOpen }))}>{isOpen ? '▲' : '▼'}</button>
                           <button className="link" style={{ color: '#c0392b' }} title="Remove preset" onClick={() => rmPreset(p.id)}>✕</button>
                         </div>
                         {isOpen && (
                           <div style={{ marginTop: 8, borderTop: '1px solid var(--line)', paddingTop: 8, display: 'grid', gap: 8 }}>
-                            <label style={{ display: 'grid', gap: 4 }}>
+                            <div style={{ display: 'grid', gap: 4 }}>
                               <span className="muted" style={{ fontSize: 12 }}>Source product</span>
-                              <select value={p.sourceItemId || ''} onChange={(e) => updPreset(p.id, { sourceItemId: e.target.value, variationId: '', groups: {} })}
-                                style={{ padding: 8, borderRadius: 10, border: '1px solid var(--line)' }}>
-                                <option value="">{allProducts.length ? '— pick a product —' : 'Loading products…'}</option>
-                                {allProducts.map((pr) => <option key={pr.id} value={pr.id}>{pr.name}{pr.category ? ` · ${pr.category}` : ''}</option>)}
-                              </select>
-                            </label>
+                              {renderSourcePicker(p.id, p.sourceItemId, (id) => updPreset(p.id, { sourceItemId: id, variationId: '', groups: {} }))}
+                            </div>
                             {p.sourceItemId && !cfg && <p className="muted" style={{ fontSize: 12 }}>Loading item options…</p>}
                             {cfg && (
                               <>
