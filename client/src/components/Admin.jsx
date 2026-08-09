@@ -49,7 +49,7 @@ const InsightsIcon = svg(<>
 const TABS = [
   { id: 'store', label: 'Store', Icon: StoreIcon },
   { id: 'insights', label: 'Insights', Icon: InsightsIcon },
-  { id: 'menu', label: 'Menu', Icon: MenuIcon },
+  { id: 'menu', label: 'Menus', Icon: MenuIcon },
   { id: 'banners', label: 'Banners', Icon: BannerIcon },
   { id: 'users', label: 'Users', Icon: InsightsIcon },
   { id: 'coupons', label: 'Coupons', Icon: BannerIcon },
@@ -996,7 +996,7 @@ export default function Admin({ onExit }) {
               <>
                 <div className="menu-layout">
                   <div className="menu-subnav">
-                    {[['categories', 'Categories'], ['layout', 'Layout & footer'], ['items', 'Items offered'], ['builder', 'Product builder']].map(([k, label]) => (
+                    {[['categories', 'Categories'], ['items', 'Category Menu'], ['builder', 'Product builder']].map(([k, label]) => (
                       <button key={k} type="button" className={`chip ${menuSub === k ? 'on' : ''}`} onClick={() => setMenuSub(k)} style={{ fontSize: 13 }}>{label}</button>
                     ))}
                   </div>
@@ -1048,7 +1048,7 @@ export default function Admin({ onExit }) {
                 </div>
                 )}
 
-                {menuSub === 'layout' && (<>
+                {menuSub === 'items' && (<>
                 <div className="card" style={card}>
                   <div className="group-title">Menu layout</div>
                   <label style={{ ...row, marginBottom: 6 }}><input type="radio" checked={s.layoutMode !== 'single'} onChange={() => set({ layoutMode: 'onepage' })} /> One page (all categories scroll)</label>
@@ -1083,12 +1083,10 @@ export default function Admin({ onExit }) {
                   ))}
                   <button className="btn ghost full" onClick={addSlot}>+ Add footer button</button>
                 </div>
-                </>)}
 
-                {menuSub === 'items' && (
                 <div className="card" style={card}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                    <div className="group-title" style={{ margin: 0 }}>Menu items offered</div>
+                    <div className="group-title" style={{ margin: 0 }}>Category Menu</div>
                     <button type="button" className={`chip ${deleteLock ? 'on' : ''}`} onClick={() => setDeleteLock((v) => !v)} style={{ fontSize: 12 }}
                       title={deleteLock ? 'Delete locked — tap to allow removing sections' : 'Delete unlocked — tap to lock'}>
                       {deleteLock ? '🔒 Delete locked' : '🔓 Delete unlocked'}
@@ -1100,7 +1098,7 @@ export default function Admin({ onExit }) {
                     products (e.g. “Breakfast”) under a name you choose — handy for a product that shouldn’t pull in its
                     whole category. Use ↑/↓ to set the order everything appears on the storefront.
                   </p>
-                  {adminCat.length === 0 && <p className="muted" style={{ fontSize: 12 }}>Loading catalog…</p>}
+                  {orderedUnits.length === 0 && <p className="muted" style={{ fontSize: 12 }}>No categories or sections yet. Add categories in the Categories tab, or build sections in Product builder.</p>}
                   {orderedUnits.map((u, idx) => {
                     if (u.type === 'presetsec') {
                       const hidden = isSectionHidden(u.name);
@@ -1273,7 +1271,7 @@ export default function Admin({ onExit }) {
                   })}
                   <button className="btn ghost full" onClick={addSection}>+ Add product section</button>
                 </div>
-                )}
+                </>)}
 
                 {/* ───────── PRODUCT BUILDER ───────── */}
                 {menuSub === 'builder' && (
