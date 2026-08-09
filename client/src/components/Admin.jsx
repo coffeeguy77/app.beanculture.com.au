@@ -75,6 +75,7 @@ export default function Admin({ onExit }) {
   const [secSearch, setSecSearch] = useState({}); // product-section id -> search text
   const [secPickerOpen, setSecPickerOpen] = useState({}); // product-section id -> full catalog open
   const [srcOpen, setSrcOpen] = useState({}); // preset id -> source picker expanded
+  const [srcShowAll, setSrcShowAll] = useState({}); // picker id -> show full list
   const [itemConfigs, setItemConfigs] = useState({}); // itemId -> full config for the builder
   const [srcSearch, setSrcSearch] = useState({}); // picker id -> search text
   const [srcCat, setSrcCat] = useState({});       // picker id -> category filter
@@ -423,6 +424,23 @@ export default function Admin({ onExit }) {
   // Per-section top/footer nav inclusion (product-builder sections).
   const presetSectionNav = s?.presetSectionNav || {};
   const setSectionNav = (name, patch) => set({ presetSectionNav: { ...presetSectionNav, [name]: { ...(presetSectionNav[name] || {}), ...patch } } });
+  // Existing section names offered as quick-pick chips (or type a new one).
+  const existingSectionNames = [...new Set([
+    ...presets.map((p) => (p.section || '').trim()),
+    ...(s?.productSections || []).map((p) => (p.name || '').trim()),
+    ...adminCat.map((c) => c.category),
+  ].filter(Boolean))].sort();
+  const renderSectionChips = (current, onPick) => (
+    existingSectionNames.length ? (
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
+        {existingSectionNames.map((n) => (
+          <button key={n} type="button" onClick={() => onPick(n)}
+            className={`chip ${current && String(current).toLowerCase() === n.toLowerCase() ? 'on' : ''}`}
+            style={{ fontSize: 11, padding: '4px 8px' }}>{n}</button>
+        ))}
+      </div>
+    ) : null
+  );
 
   const newPresetId = () => 'pre' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   // Duplicate a preset right below itself (name + " copy") so you can quickly
@@ -474,6 +492,8 @@ export default function Admin({ onExit }) {
       return true;
     });
     const current = allProducts.find((p) => p.id === currentId);
+    // Keep the list hidden until you search, pick a category, or press "show all".
+    const showList = !!q || !!catf || !!srcShowAll[pickerId];
     return (
       <div>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 6 }}>
@@ -486,24 +506,34 @@ export default function Admin({ onExit }) {
           </select>
         </div>
         {current && <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>Selected: <strong>{current.name}</strong>{(current.categories || []).length ? ` · in ${current.categories.join(', ')}` : ''}</div>}
-        <div style={{ maxHeight: 220, overflowY: 'auto', border: '1px solid var(--line)', borderRadius: 8 }}>
-          {allProducts.length === 0 && <p className="muted" style={{ fontSize: 12, padding: 8 }}>Loading items…</p>}
-          {list.map((p) => {
-            const cats = p.categories || (p.category ? [p.category] : []);
-            return (
-              <button key={p.id} onClick={() => onPick(p.id)} type="button"
-                style={{ display: 'flex', width: '100%', textAlign: 'left', gap: 8, alignItems: 'center', padding: '6px 8px', border: 'none', borderBottom: '1px solid var(--line)', background: currentId === p.id ? 'var(--brand-soft)' : 'transparent', cursor: 'pointer' }}>
-                {p.image
-                  ? <img src={p.image} alt="" style={{ width: 30, height: 30, borderRadius: 6, objectFit: 'cover', flex: 'none' }} />
-                  : <span style={{ width: 30, height: 30, borderRadius: 6, background: 'var(--brand-soft)', flex: 'none', display: 'grid', placeItems: 'center', fontSize: 14 }}>🍽️</span>}
-                <span style={{ flex: 1, minWidth: 0 }}>
-                  <span style={{ fontSize: 14, display: 'block' }}>{p.name}</span>
-                  {cats.length ? <span className="muted" style={{ fontSize: 11 }}>{cats.join(' · ')}</span> : null}
-                </span>
-              </button>
-            );
-          })}
-        </div>
+        {!showList ? (
+          <button className="link" onClick={() => setSrcShowAll((x) => ({ ...x, [pickerId]: true }))} style={{ fontSize: 13 }}>Show all items…</button>
+        ) : (
+          <>
+            {srcShowAll[pickerId] && !q && !catf && (
+              <button className="link" onClick={() => setSrcShowAll((x) => ({ ...x, [pickerId]: false }))} style={{ fontSize: 12, marginBottom: 4 }}>▲ Hide list</button>
+            )}
+            <div style={{ maxHeight: 220, overflowY: 'auto', border: '1px solid var(--line)', borderRadius: 8 }}>
+              {allProducts.length === 0 && <p className="muted" style={{ fontSize: 12, padding: 8 }}>Loading items…</p>}
+              {list.length === 0 && allProducts.length > 0 && <p className="muted" style={{ fontSize: 12, padding: 8 }}>No matching items.</p>}
+              {list.map((p) => {
+                const cats = p.categories || (p.category ? [p.category] : []);
+                return (
+                  <button key={p.id} onClick={() => onPick(p.id)} type="button"
+                    style={{ display: 'flex', width: '100%', textAlign: 'left', gap: 8, alignItems: 'center', padding: '6px 8px', border: 'none', borderBottom: '1px solid var(--line)', background: currentId === p.id ? 'var(--brand-soft)' : 'transparent', cursor: 'pointer' }}>
+                    {p.image
+                      ? <img src={p.image} alt="" style={{ width: 30, height: 30, borderRadius: 6, objectFit: 'cover', flex: 'none' }} />
+                      : <span style={{ width: 30, height: 30, borderRadius: 6, background: 'var(--brand-soft)', flex: 'none', display: 'grid', placeItems: 'center', fontSize: 14 }}>🍽️</span>}
+                    <span style={{ flex: 1, minWidth: 0 }}>
+                      <span style={{ fontSize: 14, display: 'block' }}>{p.name}</span>
+                      {cats.length ? <span className="muted" style={{ fontSize: 11 }}>{cats.join(' · ')}</span> : null}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </>
+        )}
       </div>
     );
   }
@@ -1295,13 +1325,14 @@ export default function Admin({ onExit }) {
                     {renderSourcePicker('gen', genItemId, setGenItemId)}
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end', marginTop: 8 }}>
                       <label style={{ display: 'grid', gap: 4, flex: '1 1 180px' }}>
-                        <span className="muted" style={{ fontSize: 12 }}>Show in section</span>
-                        <input list="menu-section-names" value={genSection} onChange={(e) => setGenSection(e.target.value)} placeholder="e.g. Breakfast"
+                        <span className="muted" style={{ fontSize: 12 }}>Show in section (pick one below or type a new name)</span>
+                        <input value={genSection} onChange={(e) => setGenSection(e.target.value)} placeholder="e.g. Breakfast"
                           style={{ padding: 8, borderRadius: 10, border: '1px solid var(--line)' }} />
                       </label>
                       <button className="btn" disabled={!genItemId || genBusy} onClick={generatePresets}
                         style={{ opacity: !genItemId || genBusy ? 0.5 : 1 }}>{genBusy ? 'Generating…' : 'Generate tiles'}</button>
                     </div>
+                    {renderSectionChips(genSection, setGenSection)}
                   </div>
                   {presets.length === 0 && <p className="muted" style={{ fontSize: 12 }}>No presets yet. Generate some above, or add one below.</p>}
                   {presetsSorted.map((p, i) => {
@@ -1322,7 +1353,12 @@ export default function Admin({ onExit }) {
                     return (
                       <React.Fragment key={p.id}>
                       {showHeader && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', margin: '4px 0 8px', padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 10, background: 'var(--brand-soft)' }}>
+                        <div
+                          onDragOver={(e) => { if (drag && drag.list === 'preset') { e.preventDefault(); if (dragOver !== `sec:${secName}`) setDragOver(`sec:${secName}`); } }}
+                          onDragLeave={() => setDragOver((k) => (k === `sec:${secName}` ? null : k))}
+                          onDrop={(e) => { e.preventDefault(); if (drag && drag.list === 'preset') { const dp = presetsSorted[drag.index]; if (dp && (dp.section || '').trim() !== secName) updPreset(dp.id, { section: secName === '(no section)' ? '' : secName }); } setDrag(null); setDragOver(null); }}
+                          className={dragOver === `sec:${secName}` ? 'drag-over' : ''}
+                          style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', margin: '4px 0 8px', padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 10, background: 'var(--brand-soft)' }}>
                           <button type="button" onClick={() => setCollapsedSecs((x) => ({ ...x, [secName]: !secCollapsed }))}
                             style={{ flex: 1, minWidth: 120, textAlign: 'left', background: 'none', border: 'none', fontWeight: 700, cursor: 'pointer' }}>
                             {secName} · {secCount} {secCount === 1 ? 'tile' : 'tiles'} {secCollapsed ? '▼' : '▲'}
@@ -1385,11 +1421,12 @@ export default function Admin({ onExit }) {
                                     </select>
                                   </label>
                                   <label style={{ display: 'grid', gap: 4, flex: '1 1 180px' }}>
-                                    <span className="muted" style={{ fontSize: 12 }}>Show in section</span>
-                                    <input list="menu-section-names" value={p.section || ''} onChange={(e) => updPreset(p.id, { section: e.target.value })} placeholder="e.g. Breakfast"
+                                    <span className="muted" style={{ fontSize: 12 }}>Show in section (pick below or type new)</span>
+                                    <input value={p.section || ''} onChange={(e) => updPreset(p.id, { section: e.target.value })} placeholder="e.g. Breakfast"
                                       style={{ padding: 8, borderRadius: 10, border: '1px solid var(--line)' }} />
                                   </label>
                                 </div>
+                                {renderSectionChips(p.section, (n) => updPreset(p.id, { section: n }))}
                                 {(cfg.modifierGroups || []).map((g) => (
                                   <div key={g.id} style={{ border: '1px solid var(--line)', borderRadius: 10, padding: 8 }}>
                                     <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 6 }}>{g.name}
