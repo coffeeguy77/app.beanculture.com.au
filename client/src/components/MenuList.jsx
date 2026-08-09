@@ -32,6 +32,18 @@ export default function MenuList({ categories, currency, onPick, scrollTo, onScr
         return (
         <section key={cat.category}>
           <h2 className="cat-title" id={slug(cat.category)}>{cat.category}{kitchenShut && <span className="cat-shut"> · kitchen closed</span>}</h2>
+          {cat.banner && (() => {
+            const target = (cat.items || []).find((i) => i.id === cat.banner.itemId) || null;
+            return (
+              <button type="button" className="feature-banner" onClick={() => target && !target.soldOut && onPick(target)}
+                style={cat.banner.image ? { backgroundImage: `url(${imgUrl(cat.banner.image, 900)})` } : undefined}>
+                <span className="feature-banner-body">
+                  {cat.banner.title && <span className="feature-banner-title">{cat.banner.title}</span>}
+                  {target && <span className="feature-banner-cta">{target.name} — order now →</span>}
+                </span>
+              </button>
+            );
+          })()}
           <div className={`items ${showImages ? '' : 'noimg'}`}>
             {cat.items.map((item) => {
               const from = fromPrice(item);

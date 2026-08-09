@@ -396,7 +396,10 @@ async function getMenu(opts = {}) {
       if (existing) { existing.items.push(...tiles); continue; }
       const nav = sectionNav[secName] || {};
       if (!(nav.top === true || nav.footer === true)) continue;
-      sections.push({ category: secName, items: tiles, showImages: nav.showImages !== false, custom: true, builder: true, topNav: nav.top === true, footerNav: nav.footer === true });
+      const banner = nav.banner && nav.banner.on && (nav.banner.title || nav.banner.image)
+        ? { title: nav.banner.title || '', image: nav.banner.image || null, itemId: nav.banner.itemId || null }
+        : null;
+      sections.push({ category: secName, items: tiles, showImages: nav.showImages !== false, custom: true, builder: true, topNav: nav.top === true, footerNav: nav.footer === true, banner });
     }
     // Hide the original master items now that presets represent them (keep the
     // preset tiles themselves). Drop any section left empty as a result.

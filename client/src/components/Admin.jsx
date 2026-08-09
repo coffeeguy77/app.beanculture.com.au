@@ -80,6 +80,7 @@ export default function Admin({ onExit }) {
   const [secPickerOpen, setSecPickerOpen] = useState({}); // product-section id -> full catalog open
   const [srcOpen, setSrcOpen] = useState({}); // preset id -> source picker expanded
   const [srcShowAll, setSrcShowAll] = useState({}); // picker id -> show full list
+  const [bannerOpen, setBannerOpen] = useState({}); // section name -> banner config open
   const [itemConfigs, setItemConfigs] = useState({}); // itemId -> full config for the builder
   const [srcSearch, setSrcSearch] = useState({}); // picker id -> search text
   const [srcCat, setSrcCat] = useState({});       // picker id -> category filter
@@ -1531,7 +1532,7 @@ export default function Admin({ onExit }) {
                     }
                     return (
                       <React.Fragment key={p.id}>
-                      {showHeader && (
+                      {showHeader && (<>
                         <div
                           onDragOver={(e) => { if (drag && drag.list === 'preset') { e.preventDefault(); if (dragOver !== `sec:${secName}`) setDragOver(`sec:${secName}`); } }}
                           onDragLeave={() => setDragOver((k) => (k === `sec:${secName}` ? null : k))}
@@ -1555,8 +1556,39 @@ export default function Admin({ onExit }) {
                           <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 'var(--fs-sm)' }} title="Show product images for this section (hide to avoid empty thumbnails)">
                             <input type="checkbox" checked={presetSectionNav[secName]?.showImages !== false} onChange={(e) => setSectionNav(secName, { showImages: e.target.checked })} /> Images
                           </label>
+                          <button className="link" title="Feature banner for this section" onClick={() => setBannerOpen((x) => ({ ...x, [secName]: !x[secName] }))}
+                            style={{ fontSize: 'var(--fs-sm)', color: presetSectionNav[secName]?.banner?.on ? 'var(--accent)' : 'var(--muted)', fontWeight: presetSectionNav[secName]?.banner?.on ? 700 : 400 }}>🎯 Banner</button>
                         </div>
-                      )}
+                        {bannerOpen[secName] && (() => {
+                          const bn = presetSectionNav[secName]?.banner || {};
+                          const setBn = (patch) => setSectionNav(secName, { banner: { ...bn, ...patch } });
+                          return (
+                            <div style={{ margin: '0 0 10px', padding: 10, border: '1px solid var(--accent)', borderRadius: 10, background: 'var(--surface)', display: 'grid', gap: 8 }}>
+                              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--fs-sm)' }}>
+                                <input type="checkbox" checked={bn.on === true} onChange={(e) => setBn({ on: e.target.checked })} />
+                                <strong>Feature banner</strong> — a tappable special at the top of this section
+                              </label>
+                              <input placeholder="Banner title (e.g. Try our Steak Sandwich!)" value={bn.title || ''} onChange={(e) => setBn({ title: e.target.value })}
+                                style={{ padding: 8, borderRadius: 10, border: '1px solid var(--line)' }} />
+                              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                                <label className="btn ghost" style={{ padding: '6px 12px', fontSize: 'var(--fs-sm)', cursor: 'pointer' }}>
+                                  {bn.image ? 'Replace image' : 'Upload image'}
+                                  <input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files[0]; if (f) uploadImage(f, (url) => setBn({ image: url }), 'banners'); e.target.value = ''; }} />
+                                </label>
+                                {bn.image && <img src={bn.image} alt="" style={{ height: 40, borderRadius: 6 }} />}
+                                {bn.image && <button className="link" style={{ color: '#c0392b' }} onClick={() => setBn({ image: '' })}>Remove image</button>}
+                              </div>
+                              <label style={{ display: 'grid', gap: 4 }}>
+                                <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>Links to product (opens it ready to order)</span>
+                                <select value={bn.itemId || ''} onChange={(e) => setBn({ itemId: e.target.value })} style={{ padding: 8, borderRadius: 10, border: '1px solid var(--line)' }}>
+                                  <option value="">— pick a product —</option>
+                                  {presetsSorted.filter((p) => (((p.section || '').trim() || '(no section)') === secName)).map((p) => <option key={p.id} value={'preset:' + p.id}>{p.name}</option>)}
+                                </select>
+                              </label>
+                            </div>
+                          );
+                        })()}
+                      </>)}
                       {!secCollapsed && (
                       <div {...dropZone('preset', i, (f, t) => setPresets(reorderArray(presetsSorted, f, t)))}
                         className={isDragOver('preset', i) ? 'drag-over' : ''}
