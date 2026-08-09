@@ -82,6 +82,9 @@ export default function Admin({ onExit }) {
   const [genBusy, setGenBusy] = useState(false);
   const [menuSub, setMenuSub] = useState('categories'); // Menu tab sub-section
   const [collapsedSecs, setCollapsedSecs] = useState({}); // preset section name -> collapsed
+  const [deleteLock, setDeleteLock] = useState(true); // guard against accidental section deletes
+  const [drag, setDrag] = useState(null);       // { list, index } being dragged
+  const [dragOver, setDragOver] = useState(null); // `${list}:${index}` currently hovered
   const [imgBusy, setImgBusy] = useState(null);      // item id currently uploading
   const [imgOverride, setImgOverride] = useState({}); // item id -> freshly uploaded url
   const [users, setUsers] = useState(null);          // loyalty customers (Users tab)
@@ -392,6 +395,22 @@ export default function Admin({ onExit }) {
       if (Object.keys(g).length) groups[groupId] = g; else delete groups[groupId];
       return { ...p, groups };
     }));
+  // ---- generic drag-and-drop reordering (works alongside the ↑/↓ buttons) ----
+  const reorderArray = (arr, from, to) => { const a = [...arr]; const [x] = a.splice(from, 1); a.splice(to, 0, x); return a; };
+  const dragHandle = (list, index) => ({
+    className: 'drag-handle', draggable: true, title: 'Drag to reorder', role: 'button', 'aria-label': 'Drag to reorder',
+    onDragStart: (e) => { setDrag({ list, index }); e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', String(index)); } catch (err) {} },
+    onDragEnd: () => { setDrag(null); setDragOver(null); },
+  });
+  const dropZone = (list, index, onReorder) => ({
+    onDragOver: (e) => { if (drag && drag.list === list) { e.preventDefault(); if (dragOver !== `${list}:${index}`) setDragOver(`${list}:${index}`); } },
+    onDragLeave: () => setDragOver((k) => (k === `${list}:${index}` ? null : k)),
+    onDrop: (e) => { e.preventDefault(); if (drag && drag.list === list && drag.index !== index) onReorder(drag.index, index); setDrag(null); setDragOver(null); },
+  });
+  const isDragOver = (list, index) => dragOver === `${list}:${index}`;
+  // Presets displayed grouped by section; this order is also what drag reorders.
+  const presetsSorted = [...presets].sort((a, b) => (a.section || '').localeCompare(b.section || ''));
+
   const newPresetId = () => 'pre' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   // Duplicate a preset right below itself (name + " copy") so you can quickly
   // spin off variants and just tweak the name/options.
@@ -944,11 +963,13 @@ export default function Admin({ onExit }) {
             {/* ───────── MENU ───────── */}
             {tab === 'menu' && (
               <>
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
-                  {[['categories', 'Categories'], ['layout', 'Layout & footer'], ['items', 'Items offered'], ['builder', 'Product builder']].map(([k, label]) => (
-                    <button key={k} type="button" className={`chip ${menuSub === k ? 'on' : ''}`} onClick={() => setMenuSub(k)} style={{ fontSize: 13 }}>{label}</button>
-                  ))}
-                </div>
+                <div className="menu-layout">
+                  <div className="menu-subnav">
+                    {[['categories', 'Categories'], ['layout', 'Layout & footer'], ['items', 'Items offered'], ['builder', 'Product builder']].map(([k, label]) => (
+                      <button key={k} type="button" className={`chip ${menuSub === k ? 'on' : ''}`} onClick={() => setMenuSub(k)} style={{ fontSize: 13 }}>{label}</button>
+                    ))}
+                  </div>
+                  <div className="menu-panels">
 
                 {menuSub === 'categories' && (
                 <div className="card" style={card}>
@@ -1007,8 +1028,11 @@ export default function Admin({ onExit }) {
                   <div className="group-title">Footer menu builder</div>
                   <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>Each button = an icon + one or more categories.</p>
                   {footer.map((slot, i) => (
-                    <div key={i} style={{ border: '1px solid var(--line)', borderRadius: 12, padding: 10, marginBottom: 10 }}>
+                    <div key={i} {...dropZone('footer', i, (f, t) => setFooter(reorderArray(footer, f, t)))}
+                      className={isDragOver('footer', i) ? 'drag-over' : ''}
+                      style={{ border: '1px solid var(--line)', borderRadius: 12, padding: 10, marginBottom: 10 }}>
                       <div style={{ ...row, gap: 10 }}>
+                        <span {...dragHandle('footer', i)}>⠿</span>
                         <IconPicker value={{ icon: slot.icon, iconSvg: slot.iconSvg }} brand={s.theme?.brand} onChange={(v) => updSlot(i, v)} />
                         <input value={slot.label || ''} onChange={(e) => updSlot(i, { label: e.target.value })} placeholder="Label"
                           style={{ flex: 1, minWidth: 0, padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 10 }} />
@@ -1032,7 +1056,13 @@ export default function Admin({ onExit }) {
 
                 {menuSub === 'items' && (
                 <div className="card" style={card}>
-                  <div className="group-title">Menu items offered</div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                    <div className="group-title" style={{ margin: 0 }}>Menu items offered</div>
+                    <button type="button" className={`chip ${deleteLock ? 'on' : ''}`} onClick={() => setDeleteLock((v) => !v)} style={{ fontSize: 12 }}
+                      title={deleteLock ? 'Delete locked — tap to allow removing sections' : 'Delete unlocked — tap to lock'}>
+                      {deleteLock ? '🔒 Delete locked' : '🔓 Delete unlocked'}
+                    </button>
+                  </div>
                   <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>
                     Build the menu from whole categories and/or hand-picked <strong>product sections</strong>. Tick a
                     category to offer it; expand to offer only certain items. Add a product section to group individual
@@ -1047,8 +1077,12 @@ export default function Admin({ onExit }) {
                       const q = (secSearch[sec.id] || '').toLowerCase();
                       const picked = Array.isArray(sec.items) ? sec.items.length : 0;
                       return (
-                        <div key={sec.id} style={{ border: '1px solid var(--accent)', borderRadius: 12, padding: 10, marginBottom: 10, background: 'var(--brand-soft)' }}>
+                        <div key={sec.id} {...dropZone('units', idx, (f, t) => set({ menuOrder: reorderArray(orderedUnits.map((u) => u.name), f, t) }))}
+                          className={isDragOver('units', idx) ? 'drag-over' : ''}
+                          style={{ border: '1px solid var(--accent)', borderRadius: 12, padding: 10, marginBottom: 10, background: 'var(--brand-soft)', opacity: sec.enabled === false ? 0.55 : 1 }}>
                           <div style={{ ...row, justifyContent: 'space-between' }}>
+                            <span {...dragHandle('units', idx)}>⠿</span>
+                            <input type="checkbox" checked={sec.enabled !== false} title="Show this section in the app" onChange={(e) => updSection(sec.id, { enabled: e.target.checked })} />
                             <label style={{ ...row, flex: 1, minWidth: 0 }}>
                               <span title="Product section" style={{ fontSize: 15 }}>🧩</span>
                               <input value={sec.name || ''} onChange={(e) => updSection(sec.id, { name: e.target.value })} placeholder="Section name"
@@ -1062,7 +1096,8 @@ export default function Admin({ onExit }) {
                             <button className="link" title="Move up" disabled={idx === 0} style={{ opacity: idx === 0 ? 0.3 : 1 }} onClick={() => moveUnit(u.name, -1)}>↑</button>
                             <button className="link" title="Move down" disabled={idx === orderedUnits.length - 1} style={{ opacity: idx === orderedUnits.length - 1 ? 0.3 : 1 }} onClick={() => moveUnit(u.name, 1)}>↓</button>
                             <button className="link" onClick={() => setExpanded((x) => ({ ...x, [sec.id]: !isOpen }))}>{isOpen ? '▲' : '▼'}</button>
-                            <button className="link" style={{ color: '#c0392b' }} title="Remove section" onClick={() => rmSection(sec.id)}>✕</button>
+                            <button className="link" disabled={deleteLock} style={{ color: '#c0392b', opacity: deleteLock ? 0.3 : 1 }}
+                              title={deleteLock ? 'Unlock delete (top-right) to remove' : 'Remove section'} onClick={() => rmSection(sec.id)}>✕</button>
                           </div>
                           {isOpen && (
                             <div style={{ marginTop: 8, borderTop: '1px solid var(--line)', paddingTop: 8 }}>
@@ -1119,8 +1154,11 @@ export default function Admin({ onExit }) {
                     const nOffered = offeredCount(c.category, allIds);
                     const partial = on && ms[c.category]?.items != null;
                     return (
-                      <div key={c.category} style={{ border: '1px solid var(--line)', borderRadius: 12, padding: 10, marginBottom: 10, opacity: on ? 1 : 0.55 }}>
+                      <div key={c.category} {...dropZone('units', idx, (f, t) => set({ menuOrder: reorderArray(orderedUnits.map((u) => u.name), f, t) }))}
+                        className={isDragOver('units', idx) ? 'drag-over' : ''}
+                        style={{ border: '1px solid var(--line)', borderRadius: 12, padding: 10, marginBottom: 10, opacity: on ? 1 : 0.55 }}>
                         <div style={{ ...row, justifyContent: 'space-between' }}>
+                          <span {...dragHandle('units', idx)}>⠿</span>
                           <label style={{ ...row, cursor: 'pointer', flex: 1 }}>
                             <input type="checkbox" checked={on} onChange={(e) => setCatEnabled(c.category, e.target.checked)} />
                             <span style={{ fontWeight: 700 }}>{c.category}</span>
@@ -1213,11 +1251,11 @@ export default function Admin({ onExit }) {
                     </div>
                   </div>
                   {presets.length === 0 && <p className="muted" style={{ fontSize: 12 }}>No presets yet. Generate some above, or add one below.</p>}
-                  {[...presets].sort((a, b) => (a.section || '').localeCompare(b.section || '')).map((p, i, arr) => {
+                  {presetsSorted.map((p, i) => {
                     const secName = (p.section || '').trim() || '(no section)';
-                    const showHeader = i === 0 || (((arr[i - 1].section || '').trim() || '(no section)') !== secName);
+                    const showHeader = i === 0 || (((presetsSorted[i - 1].section || '').trim() || '(no section)') !== secName);
                     const secCollapsed = !!collapsedSecs[secName];
-                    const secCount = arr.filter((x) => ((x.section || '').trim() || '(no section)') === secName).length;
+                    const secCount = presetsSorted.filter((x) => ((x.section || '').trim() || '(no section)') === secName).length;
                     const cfg = itemConfigs[p.sourceItemId];
                     const isOpen = !!expanded[p.id];
                     const v = cfg && (cfg.variations.find((x) => x.id === p.variationId) || cfg.variations[0]);
@@ -1237,8 +1275,11 @@ export default function Admin({ onExit }) {
                         </button>
                       )}
                       {!secCollapsed && (
-                      <div style={{ border: '1px solid var(--accent)', borderRadius: 12, padding: 10, marginBottom: 10 }}>
+                      <div {...dropZone('preset', i, (f, t) => setPresets(reorderArray(presetsSorted, f, t)))}
+                        className={isDragOver('preset', i) ? 'drag-over' : ''}
+                        style={{ border: '1px solid var(--accent)', borderRadius: 12, padding: 10, marginBottom: 10 }}>
                         <div style={{ ...row, justifyContent: 'space-between', opacity: p.enabled === false ? 0.5 : 1 }}>
+                          <span {...dragHandle('preset', i)}>⠿</span>
                           <label style={{ ...row, flex: 1, minWidth: 0 }}>
                             <input type="checkbox" checked={p.enabled !== false} title="Available — untick to hide this tile when unavailable"
                               onChange={(e) => updPreset(p.id, { enabled: e.target.checked })} />
@@ -1316,6 +1357,8 @@ export default function Admin({ onExit }) {
                   <button className="btn ghost full" onClick={addPreset}>+ Add preset</button>
                 </div>
                 )}
+                  </div>
+                </div>
               </>
             )}
 
@@ -1339,7 +1382,9 @@ export default function Admin({ onExit }) {
                 {!data.cloudinary && <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>Add Cloudinary keys in Railway to enable image upload; you can still paste a URL.</p>}
                 <div className="admin-bannergrid">
                   {hero.map((sl, i) => (
-                    <div key={i} style={{ border: '1px solid var(--line)', borderRadius: 12, padding: 10 }}>
+                    <div key={i} {...dropZone('banner', i, (f, t) => setHero(reorderArray(hero, f, t)))}
+                      className={isDragOver('banner', i) ? 'drag-over' : ''}
+                      style={{ border: '1px solid var(--line)', borderRadius: 12, padding: 10 }}>
                       {(() => {
                         const img = sl.image || (typeof sl.bg === 'string' && (sl.bg.match(/url\((['"]?)(.*?)\1\)/) || [])[2]) || '';
                         return img ? (
@@ -1354,6 +1399,7 @@ export default function Admin({ onExit }) {
                         );
                       })()}
                       <div style={{ ...row, justifyContent: 'flex-end', marginBottom: 6 }}>
+                        <span {...dragHandle('banner', i)} style={{ marginRight: 'auto' }}>⠿</span>
                         <button className="link" onClick={() => moveSlide(i, -1)}>↑</button>
                         <button className="link" onClick={() => moveSlide(i, 1)}>↓</button>
                         <button className="link" style={{ color: '#c0392b' }} onClick={() => rmSlide(i)}>Remove</button>
