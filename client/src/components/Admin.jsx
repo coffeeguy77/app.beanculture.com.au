@@ -504,19 +504,25 @@ export default function Admin({ onExit }) {
         if (alive.length !== presetVids(p).length) trimmed++;
         reconciled.push({ ...p, variationId: alive[0], variationIds: alive.length > 1 ? alive : undefined });
       }
-      const added = [];
+      // A product you've already combined (size toggle) auto-absorbs its new
+      // sizes; everything else adds as a separate tile.
+      const combinedForSource = {};
+      for (const p of reconciled) if (isCombined(p) && !combinedForSource[p.sourceItemId]) combinedForSource[p.sourceItemId] = p;
+      const added = []; let extended = 0;
       for (const id of sourceIds) {
         const cfg = configs[id]; if (!cfg) continue;
         const covered = coveredBySource[id] || new Set();
         for (const v of cfg.variations) {
-          if (!covered.has(v.id)) {
-            reconciled.push({ id: newPresetId(), name: v.name || cfg.name, section: sectionBySource[id] || 'Specials', sourceItemId: id, variationId: v.id, groups: {}, showImages: true });
-            added.push(v.name || cfg.name);
-          }
+          if (covered.has(v.id)) continue;
+          covered.add(v.id);
+          const combo = combinedForSource[id];
+          if (combo) { combo.variationIds = [...presetVids(combo), v.id]; combo.variationId = combo.variationIds[0]; extended++; }
+          else { reconciled.push({ id: newPresetId(), name: v.name || cfg.name, section: sectionBySource[id] || 'Specials', sourceItemId: id, variationId: v.id, groups: {}, showImages: true }); added.push(v.name || cfg.name); }
         }
       }
       setPresets(reconciled);
-      const parts = [added.length ? `added ${added.length} new tile(s)${added.length ? ` (${added.slice(0, 4).join(', ')}${added.length > 4 ? '…' : ''})` : ''}` : 'no new variations'];
+      const parts = [added.length ? `added ${added.length} new tile(s) (${added.slice(0, 4).join(', ')}${added.length > 4 ? '…' : ''})` : 'no new tiles'];
+      if (extended) parts.push(`added ${extended} new size(s) to combined tile(s)`);
       if (removedDead) parts.push(`removed ${removedDead} tile(s) whose variation was deleted`);
       if (trimmed) parts.push(`trimmed ${trimmed} combined tile(s)`);
       setSyncMsg(`Sync: ${parts.join('; ')}. Prices update automatically. Press Save changes to keep new/removed tiles.`);

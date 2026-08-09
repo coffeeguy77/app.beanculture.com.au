@@ -708,7 +708,64 @@ app.listen(PORT, () => console.log(`Bean Culture app on :${PORT} (Square env: ${
 db.init().finally(() => {
   scheduler.start();
   seedPresetNavFooter();
+  // Auto-sync the product builder with Square a few times a day (incl. each
+  // morning) so newly-added variations appear and deleted ones are cleaned up
+  // without anyone pressing Sync. First run shortly after boot.
+  setTimeout(syncPresetsWithSquare, 30000);
+  setInterval(syncPresetsWithSquare, 6 * 60 * 60 * 1000);
 });
+
+// Reconcile settings.presets against live Square variations and persist. Adds a
+// tile for each new variation (new sizes join a tile you've already combined;
+// everything else adds separately), drops tiles whose variation was deleted.
+// Prices need no sync — the storefront always reads them live.
+async function syncPresetsWithSquare() {
+  if (!db.enabled) return;
+  try {
+    const settings = getSettings();
+    const presets = settings.presets || [];
+    if (!presets.length) return;
+    const vids = (p) => (Array.isArray(p.variationIds) && p.variationIds.length ? p.variationIds : [p.variationId].filter(Boolean));
+    const sourceIds = [...new Set(presets.map((p) => p.sourceItemId).filter(Boolean))];
+    const configs = {};
+    for (const id of sourceIds) { try { const cfg = await catalog.getItemConfig(id); if (cfg) configs[id] = cfg; } catch {} }
+    if (!Object.keys(configs).length) return; // couldn't reach Square — skip this run
+    const coveredBySource = {}; const sectionBySource = {};
+    for (const p of presets) {
+      if (!coveredBySource[p.sourceItemId]) coveredBySource[p.sourceItemId] = new Set();
+      vids(p).forEach((v) => coveredBySource[p.sourceItemId].add(v));
+      if (!sectionBySource[p.sourceItemId]) sectionBySource[p.sourceItemId] = p.section || 'Specials';
+    }
+    const reconciled = []; let removedDead = 0;
+    for (const p of presets) {
+      const cfg = configs[p.sourceItemId];
+      if (!cfg) { reconciled.push(p); continue; }
+      const alive = vids(p).filter((vid) => cfg.variations.some((v) => v.id === vid));
+      if (!alive.length) { removedDead++; continue; }
+      reconciled.push({ ...p, variationId: alive[0], variationIds: alive.length > 1 ? alive : undefined });
+    }
+    const combinedForSource = {};
+    for (const p of reconciled) if (vids(p).length > 1 && !combinedForSource[p.sourceItemId]) combinedForSource[p.sourceItemId] = p;
+    let added = 0, extended = 0;
+    const newId = () => 'pre' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    for (const id of sourceIds) {
+      const cfg = configs[id]; if (!cfg) continue;
+      const covered = coveredBySource[id] || new Set();
+      for (const v of cfg.variations) {
+        if (covered.has(v.id)) continue;
+        covered.add(v.id);
+        const combo = combinedForSource[id];
+        if (combo) { combo.variationIds = [...vids(combo), v.id]; combo.variationId = combo.variationIds[0]; extended++; }
+        else { reconciled.push({ id: newId(), name: v.name || cfg.name, section: sectionBySource[id] || 'Specials', sourceItemId: id, variationId: v.id, groups: {}, showImages: true }); added++; }
+      }
+    }
+    if (!added && !extended && !removedDead) return; // nothing structural changed
+    const overrides = { ...(db.getOverrides() || {}), presets: reconciled };
+    await db.saveOverrides(overrides);
+    menuCache = { data: null, at: 0 };
+    console.log(`[sync] presets reconciled with Square — +${added} tiles, +${extended} sizes, -${removedDead} removed`);
+  } catch (e) { console.error('[sync] preset auto-sync failed:', e.message); }
+}
 
 // One-time migration: now that Top/Footer toggles are authoritative for builder
 // sections, seed footer:true for any builder section that was already wired into
