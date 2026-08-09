@@ -133,18 +133,11 @@ async function getMenu(opts = {}) {
     for (const [id, c] of categories) {
       if (selectedNames.has(cleanName(c.name || '').toLowerCase())) childIds.add(id);
     }
-  } else {
-    // Nothing chosen yet → fall back to the "APP" parent's children.
-    for (const [id, c] of categories) {
-      if (norm(c.name) === norm(PARENT_CATEGORY)) { parentId = id; break; }
-    }
-    if (parentId) {
-      for (const [id, c] of categories) {
-        if (c.parentId === parentId) childIds.add(id);
-      }
-    }
   }
-  const restrictToChildren = childIds.size > 0 || !!parentId;
+  // Categories appear ONLY when explicitly selected in the admin. Nothing
+  // selected = no category sections (the menu is then built from product
+  // sections and product-builder sections instead of any hardcoded fallback).
+  const restrictToChildren = true;
 
 
   // Every category id an item belongs to, with the item's ordinal within each.
@@ -311,7 +304,7 @@ async function getMenu(opts = {}) {
   let sections = finalEntries.map((e) => {
     const s2 = selLower[e.name.toLowerCase()];
     const showImages = !s2 || s2.showImages !== false;
-    return { category: e.name, items: e.items, showImages };
+    return { category: e.name, items: e.items, showImages, topNav: true, footerNav: false };
   });
 
   // Custom product sections: hand-picked products grouped under an owner-named
@@ -329,7 +322,7 @@ async function getMenu(opts = {}) {
         if (mi && !seen.has(id)) { list.push(mi); seen.add(id); }
       }
       if (!list.length && !opts.includeEmpty) continue;
-      sections.push({ category: name, items: list, showImages: ps.showImages !== false, custom: true });
+      sections.push({ category: name, items: list, showImages: ps.showImages !== false, custom: true, topNav: true, footerNav: false });
     }
   }
 
@@ -390,10 +383,12 @@ async function getMenu(opts = {}) {
       if (!presetsBySection.has(secName)) presetsBySection.set(secName, []);
       presetsBySection.get(secName).push(tile);
     }
+    const sectionNav = getSettings().presetSectionNav || {};
     for (const [secName, tiles] of presetsBySection) {
       const existing = sections.find((s) => s.category.toLowerCase() === secName.toLowerCase());
-      if (existing) existing.items.push(...tiles);
-      else sections.push({ category: secName, items: tiles, showImages: true, custom: true });
+      if (existing) { existing.items.push(...tiles); continue; }
+      const nav = sectionNav[secName] || {};
+      sections.push({ category: secName, items: tiles, showImages: true, custom: true, builder: true, topNav: nav.top === true, footerNav: nav.footer === true });
     }
     // Hide the original master items now that presets represent them (keep the
     // preset tiles themselves). Drop any section left empty as a result.

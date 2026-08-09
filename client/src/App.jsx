@@ -187,7 +187,7 @@ export default function App() {
   // reachable from the top category chips — we don't auto-add stray buttons.
   const footerSlots = useMemo(() => {
     if (!menu) return [];
-    return (config?.footer || [])
+    const manual = (config?.footer || [])
       .map((slot) => ({
         ...slot,
         cats: (slot.categories || []).filter((cat) =>
@@ -195,6 +195,12 @@ export default function App() {
         ),
       }))
       .filter((slot) => slot.cats.length);
+    // Auto footer links from product-builder sections toggled "Footer".
+    const manualNames = new Set(manual.flatMap((s) => s.cats.map((c) => c.toLowerCase())));
+    const auto = menu.categories
+      .filter((c) => c.footerNav === true && !manualNames.has(c.category.toLowerCase()))
+      .map((c) => ({ label: c.category, icon: 'bag', categories: [c.category], cats: [c.category] }));
+    return [...manual, ...auto];
   }, [config, menu]);
   const canOrder = config?.hours?.canOrderNow !== false;
   const preorder = config?.hours?.preorder;
@@ -543,7 +549,7 @@ export default function App() {
             </div>
             {!query && (
               <CategoryNav
-                categories={menu.categories.map((c) => c.category)}
+                categories={menu.categories.filter((c) => c.topNav !== false).map((c) => c.category)}
                 active={layoutMode === 'single' ? (activeGroup && activeGroup.length === 1 ? activeGroup[0] : null) : activeCat}
                 onPick={(cat) => {
                   // Category chips are sticky, so just swap the list below — don't

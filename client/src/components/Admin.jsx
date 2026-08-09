@@ -286,11 +286,8 @@ export default function Admin({ onExit }) {
     allCats.find((c) => catKey(c.rawName) === catKey(e) || catKey(c.name) === catKey(e));
   const selectedCatIds = (() => {
     const raw = s?.menuCategories || [];
-    if (raw.length === 0) {
-      // Not curated yet → seed with whatever is live on the app right now.
-      const live = new Set((cats || []).map(catKey));
-      return new Set(allCats.filter((c) => live.has(catKey(c.name)) || live.has(catKey(c.rawName))).map((c) => c.id));
-    }
+    // Nothing hardcoded: an empty selection means no categories are shown.
+    if (raw.length === 0) return new Set();
     const ids = new Set();
     for (const e of raw) { const hit = findCat(e); if (hit) ids.add(hit.id); }
     return ids;
@@ -412,6 +409,9 @@ export default function Admin({ onExit }) {
   const isDragOver = (list, index) => dragOver === `${list}:${index}`;
   // Presets displayed grouped by section; this order is also what drag reorders.
   const presetsSorted = [...presets].sort((a, b) => (a.section || '').localeCompare(b.section || ''));
+  // Per-section top/footer nav inclusion (product-builder sections).
+  const presetSectionNav = s?.presetSectionNav || {};
+  const setSectionNav = (name, patch) => set({ presetSectionNav: { ...presetSectionNav, [name]: { ...(presetSectionNav[name] || {}), ...patch } } });
 
   const newPresetId = () => 'pre' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   // Duplicate a preset right below itself (name + " copy") so you can quickly
@@ -1307,10 +1307,18 @@ export default function Admin({ onExit }) {
                     return (
                       <React.Fragment key={p.id}>
                       {showHeader && (
-                        <button type="button" onClick={() => setCollapsedSecs((x) => ({ ...x, [secName]: !secCollapsed }))}
-                          style={{ display: 'flex', width: '100%', justifyContent: 'space-between', alignItems: 'center', gap: 8, padding: '8px 10px', margin: '4px 0 8px', border: '1px solid var(--line)', borderRadius: 10, background: 'var(--brand-soft)', fontWeight: 700, cursor: 'pointer' }}>
-                          <span>{secName} · {secCount} {secCount === 1 ? 'tile' : 'tiles'}</span><span>{secCollapsed ? '▼ show' : '▲ hide'}</span>
-                        </button>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', margin: '4px 0 8px', padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 10, background: 'var(--brand-soft)' }}>
+                          <button type="button" onClick={() => setCollapsedSecs((x) => ({ ...x, [secName]: !secCollapsed }))}
+                            style={{ flex: 1, minWidth: 120, textAlign: 'left', background: 'none', border: 'none', fontWeight: 700, cursor: 'pointer' }}>
+                            {secName} · {secCount} {secCount === 1 ? 'tile' : 'tiles'} {secCollapsed ? '▼' : '▲'}
+                          </button>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }} title="Show this section in the top menu links">
+                            <input type="checkbox" checked={presetSectionNav[secName]?.top === true} onChange={(e) => setSectionNav(secName, { top: e.target.checked })} /> Top menu
+                          </label>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }} title="Show this section in the footer menu links">
+                            <input type="checkbox" checked={presetSectionNav[secName]?.footer === true} onChange={(e) => setSectionNav(secName, { footer: e.target.checked })} /> Footer
+                          </label>
+                        </div>
                       )}
                       {!secCollapsed && (
                       <div {...dropZone('preset', i, (f, t) => setPresets(reorderArray(presetsSorted, f, t)))}

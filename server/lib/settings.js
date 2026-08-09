@@ -187,14 +187,13 @@ const DEFAULTS = {
   // and one OR MORE categories. A multi-category slot combines those sections
   // (e.g. a "Cold" slot with an ice icon = Cold Drinks + Smoothies + Shakes).
   // Available icons: cup, mug, burger, bag, smoothie, can, bean, ice, shake, tea, drink.
-  footer: [
-    { label: 'Coffee', icon: 'cup', categories: ['COFFEE'] },
-    { label: 'All Day', icon: 'burger', categories: ['ALL DAY MENU'] },
-    { label: 'Grab & Go', icon: 'bag', categories: ['GRAB AND GO'] },
-    { label: 'Smoothies', icon: 'smoothie', categories: ['SMOOTHIES'] },
-    { label: 'Cold Drinks', icon: 'can', categories: ['COLD DRINKS'] },
-    { label: 'Coffee Bags', icon: 'bean', categories: ['COFFEE BAGS'] },
-  ],
+  // No hardcoded defaults — the owner builds these, and can auto-add product-
+  // builder sections via their Top/Footer toggles (see presetSectionNav).
+  footer: [],
+  // Per product-builder-section navigation: { [sectionName]: { top, footer } }.
+  // top → the section appears in the top menu links (category chips); footer →
+  // it appears as a footer menu link. Set from the Product builder section rows.
+  presetSectionNav: {},
   // Hero carousel. Each slide links to a category (by display name), an item id,
   // an external url, or nothing.
   hero: [
