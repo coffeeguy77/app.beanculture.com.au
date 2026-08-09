@@ -110,7 +110,7 @@ export default function ItemModal({ item, currency, onClose, onAdd }) {
 
           <label className="field">
             <span>Notes (optional)</span>
-            <input placeholder="e.g. oat milk, extra hot" value={note} onChange={(e) => setNote(e.target.value)} />
+            <textarea className="notes-input" rows={2} value={note} onChange={(e) => setNote(e.target.value)} />
           </label>
 
           <div className="qty-row">

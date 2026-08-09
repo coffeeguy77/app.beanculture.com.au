@@ -54,7 +54,7 @@ img { max-width: 100%; }
 .topbar .brand { font-family: Georgia, serif; font-weight: 700; font-size: 20px; color: var(--brand); }
 .iconbtn {
   width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--line);
-  background: var(--surface); color: var(--ink); font-size: 18px; display: grid; place-items: center;
+  background: var(--surface); color: var(--brand); font-size: 18px; display: grid; place-items: center;
   cursor: pointer;
 }
 .icon-row { display: flex; gap: 8px; }
@@ -200,6 +200,7 @@ img { max-width: 100%; }
   box-shadow: var(--shadow-sm); position: relative;
 }
 .feature-banner::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, rgba(0,0,0,.55), rgba(0,0,0,.05)); }
+.feature-banner.no-text::after { display: none; }
 .feature-banner-body { position: relative; z-index: 1; display: flex; flex-direction: column; gap: 4px; padding: 16px 18px; }
 .feature-banner-title { color: #fff; font-weight: 800; font-size: 18px; text-shadow: 0 1px 3px rgba(0,0,0,.5); }
 .feature-banner-cta { color: #fff; font-weight: 600; font-size: 13px; opacity: .95; text-shadow: 0 1px 3px rgba(0,0,0,.5); }
@@ -292,6 +293,7 @@ img { max-width: 100%; }
 .field span { font-weight: 600; }
 .field input, .field textarea { padding: 13px 14px; border: 1px solid var(--line); border-radius: 12px; font-size: 16px; color: var(--ink); background: var(--surface); }
 .field input:focus, .field textarea:focus { outline: 2px solid var(--accent); border-color: transparent; }
+.notes-input { width: 100%; font-family: inherit; resize: vertical; min-height: 52px; line-height: 1.4; white-space: pre-wrap; }
 .req::after { content: ' *'; color: var(--accent); }
 
 .stepper { display: flex; align-items: center; gap: 4px; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
@@ -870,10 +872,6 @@ img { max-width: 100%; }
 
 .slot-svg { display: inline-flex; }
 .slot-svg svg { width: 100%; height: 100%; display: block; }
-
-/* Footer buttons wrap to new rows when there are many. */
-.catbar { flex-wrap: wrap; row-gap: 2px; }
-.catbar .navitem { flex: 1 0 18%; }
 
 /* ── Storefront contact + install ── */
 .store-contact { padding: 8px 16px 4px; }

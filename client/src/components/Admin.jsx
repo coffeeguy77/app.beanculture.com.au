@@ -1568,8 +1568,14 @@ export default function Admin({ onExit }) {
                                 <input type="checkbox" checked={bn.on === true} onChange={(e) => setBn({ on: e.target.checked })} />
                                 <strong>Feature banner</strong> — a tappable special at the top of this section
                               </label>
-                              <input placeholder="Banner title (e.g. Try our Steak Sandwich!)" value={bn.title || ''} onChange={(e) => setBn({ title: e.target.value })}
-                                style={{ padding: 8, borderRadius: 10, border: '1px solid var(--line)' }} />
+                              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--fs-sm)' }}>
+                                <input type="checkbox" checked={bn.hideText === true} onChange={(e) => setBn({ hideText: e.target.checked })} />
+                                Hide text (my image already has a title / call-to-action)
+                              </label>
+                              {!bn.hideText && (
+                                <input placeholder="Banner title (e.g. Try our Steak Sandwich!)" value={bn.title || ''} onChange={(e) => setBn({ title: e.target.value })}
+                                  style={{ padding: 8, borderRadius: 10, border: '1px solid var(--line)' }} />
+                              )}
                               <p className="muted" style={{ fontSize: 'var(--fs-xs)', margin: 0 }}>Recommended image: <strong>1200 × 300px</strong> (4:1 wide banner). It’s stretched to fill the box — nothing is cropped, so design to this shape.</p>
                               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                                 <label className="btn ghost" style={{ padding: '6px 12px', fontSize: 'var(--fs-sm)', cursor: 'pointer' }}>

@@ -397,7 +397,7 @@ async function getMenu(opts = {}) {
       const nav = sectionNav[secName] || {};
       if (!(nav.top === true || nav.footer === true)) continue;
       const banner = nav.banner && nav.banner.on && (nav.banner.title || nav.banner.image)
-        ? { title: nav.banner.title || '', image: nav.banner.image || null, itemId: nav.banner.itemId || null }
+        ? { title: nav.banner.title || '', image: nav.banner.image || null, itemId: nav.banner.itemId || null, hideText: nav.banner.hideText === true }
         : null;
       sections.push({ category: secName, items: tiles, showImages: nav.showImages !== false, custom: true, builder: true, topNav: nav.top === true, footerNav: nav.footer === true, banner });
     }
