@@ -34,6 +34,10 @@ app.use((req, _res, next) => {
   next();
 });
 
+// A build id that changes on every deploy — the client compares it and reloads
+// itself when a new version is live, so nobody is ever stuck on a stale app.
+const BUILD_ID = process.env.RAILWAY_GIT_COMMIT_SHA || process.env.RAILWAY_DEPLOYMENT_ID || String(Date.now());
+
 // ---- Public config: Square SDK ids + storefront settings + hours snapshot ----
 app.get('/api/config', async (_req, res) => {
   const settings = getSettings();
@@ -44,6 +48,7 @@ app.get('/api/config', async (_req, res) => {
     hoursStatus = { open: true, canOrderNow: true };
   }
   res.json({
+    build: BUILD_ID,
     applicationId: sq.APPLICATION_ID,
     locationId: sq.LOCATION_ID,
     environment: sq.ENV,

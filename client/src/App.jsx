@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { api, formatMoney, imgUrl } from './api.js';
 import { applyTheme } from './theme.js';
 import { getUser, setUser as saveUser, getSavedTheme, setSavedTheme, getSeasonOptOut, setSeasonOptOut, getStoredOrder, setStoredOrder } from './store.js';
@@ -98,11 +98,13 @@ export default function App() {
   const [activeCat, setActiveCat] = useState(null);
   const [activeGroup, setActiveGroup] = useState(null); // category names shown in 'single' layout
 
+  const buildRef = useRef(null); // live build id, to detect a new deploy
   // Load config + menu; apply theme (saved user theme wins over store default).
   useEffect(() => {
     api.getConfig()
       .then((cfg) => {
         setConfig(cfg);
+        buildRef.current = cfg.build || null;
         const active = resolveTheme(cfg);
         applyTheme(active);
         setActiveTheme(active);
@@ -112,6 +114,22 @@ export default function App() {
       })
       .catch((e) => setLoadErr(e.message));
     api.getMenu().then(setMenu).catch((e) => setLoadErr(e.message));
+  }, []);
+
+  // Auto-update: when the tab is re-shown, check the live build id and refresh
+  // config/menu. If a NEW deploy is live, reload once so nobody is stuck stale.
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible') return;
+      api.getConfig().then((cfg) => {
+        if (buildRef.current && cfg.build && cfg.build !== buildRef.current) { window.location.reload(); return; }
+        buildRef.current = cfg.build || buildRef.current;
+        setConfig(cfg);
+      }).catch(() => {});
+      api.getMenu().then(setMenu).catch(() => {});
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
   }, []);
 
   // Admin route
