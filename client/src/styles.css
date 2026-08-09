@@ -195,8 +195,8 @@ img { max-width: 100%; }
 /* Feature banner (tap-to-order special) shown at the top of a menu section. */
 .feature-banner {
   display: block; width: 100%; border: none; cursor: pointer; text-align: left;
-  border-radius: 16px; overflow: hidden; margin: 4px 0 14px; min-height: 96px;
-  background-color: var(--brand); background-size: cover; background-position: center;
+  border-radius: 16px; overflow: hidden; margin: 4px 0 14px; min-height: 200px;
+  background-color: var(--brand); background-size: 100% 100%; background-position: center; background-repeat: no-repeat;
   box-shadow: var(--shadow-sm); position: relative;
 }
 .feature-banner::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, rgba(0,0,0,.55), rgba(0,0,0,.05)); }

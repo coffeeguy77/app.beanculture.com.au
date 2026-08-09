@@ -1570,6 +1570,7 @@ export default function Admin({ onExit }) {
                               </label>
                               <input placeholder="Banner title (e.g. Try our Steak Sandwich!)" value={bn.title || ''} onChange={(e) => setBn({ title: e.target.value })}
                                 style={{ padding: 8, borderRadius: 10, border: '1px solid var(--line)' }} />
+                              <p className="muted" style={{ fontSize: 'var(--fs-xs)', margin: 0 }}>Recommended image: <strong>1200 × 300px</strong> (4:1 wide banner). It’s stretched to fill the box — nothing is cropped, so design to this shape.</p>
                               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                                 <label className="btn ghost" style={{ padding: '6px 12px', fontSize: 'var(--fs-sm)', cursor: 'pointer' }}>
                                   {bn.image ? 'Replace image' : 'Upload image'}
@@ -1710,6 +1711,7 @@ export default function Admin({ onExit }) {
             {tab === 'banners' && (
               <div className="card" style={card}>
                 <div className="group-title">Banners (hero carousel)</div>
+                <p className="muted" style={{ fontSize: 'var(--fs-xs)', margin: '0 0 10px' }}>Recommended image: <strong>1200 × 800px</strong> (3:2). Images are stretched to fill the banner — nothing is cropped, so design to this shape.</p>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', margin: '2px 0 12px', paddingBottom: 12, borderBottom: '1px solid var(--line)' }}>
                   <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
                     <input type="checkbox" checked={s.heroAutoplay !== false} onChange={(e) => set({ heroAutoplay: e.target.checked })} />
