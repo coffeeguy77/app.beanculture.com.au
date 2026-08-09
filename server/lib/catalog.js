@@ -401,6 +401,9 @@ async function getMenu(opts = {}) {
       for (const sec of sections) sec.items = sec.items.filter((it) => it.isPreset || !presetSourceIds.has(it.id));
       if (!opts.includeEmpty) sections = sections.filter((sec) => sec.items.length > 0);
     }
+    // Sections the owner has hidden by name (from "Menu items offered").
+    const hidden = new Set((getSettings().hiddenSections || []).map((n) => String(n).toLowerCase()));
+    if (hidden.size) sections = sections.filter((sec) => !hidden.has(String(sec.category).toLowerCase()));
   }
 
   // Apply the owner's custom section order (settings.menuOrder = display names)

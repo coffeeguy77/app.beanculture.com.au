@@ -72,6 +72,9 @@ const DEFAULTS = {
   // When on, an item that has presets built from it is hidden from the normal
   // menu (its presets represent it), so the big master tile doesn't also show.
   hidePresetSources: true,
+  // Section display names hidden from the storefront (by name). Used to show/hide
+  // product-builder sections from "Menu items offered" without deleting them.
+  hiddenSections: [],
   // Default theme — light pastel pink.
   theme: {
     bg: '#fdf1f4',

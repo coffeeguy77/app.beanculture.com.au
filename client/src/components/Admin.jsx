@@ -238,6 +238,7 @@ export default function Admin({ onExit }) {
     const names = [
       ...(data?.categories || []).map((c) => c.name),
       ...((s?.productSections || []).map((ps) => (ps.name || '').trim()).filter(Boolean)),
+      ...((s?.presets || []).map((p) => (p.section || '').trim()).filter(Boolean)),
     ];
     const seen = new Set();
     return names.filter((n) => { const k = n.toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; });
@@ -496,17 +497,34 @@ export default function Admin({ onExit }) {
     );
   }
 
-  // ---- menu section order (storefront): categories AND product sections ----
-  // Everything is ordered by s.menuOrder (display names). Anything not yet in
-  // that list falls to the end. Units carry their type so we can render each.
+  // ---- hide/show whole sections by name (from "Menu items offered") ----
+  const hiddenSections = s?.hiddenSections || [];
+  const isSectionHidden = (name) => hiddenSections.some((n) => n.toLowerCase() === String(name).toLowerCase());
+  const toggleSectionHidden = (name) => set({
+    hiddenSections: isSectionHidden(name)
+      ? hiddenSections.filter((n) => n.toLowerCase() !== String(name).toLowerCase())
+      : [...hiddenSections, name],
+  });
+
+  // ---- menu section order (storefront): categories, product sections AND
+  // product-builder sections. Everything is ordered by s.menuOrder (display
+  // names). Anything not yet in that list falls to the end.
   const menuOrder = s?.menuOrder || [];
   const orderRank = (name) => {
     const i = menuOrder.findIndex((n) => String(n).toLowerCase() === String(name).toLowerCase());
     return i === -1 ? Number.MAX_SAFE_INTEGER : i;
   };
+  const unitNamesLower = new Set([
+    ...adminCat.map((c) => c.category.toLowerCase()),
+    ...productSections.map((ps) => (ps.name || '').toLowerCase()),
+  ]);
+  const presetSectionUnits = [...new Set(presets.map((p) => (p.section || '').trim()).filter(Boolean))]
+    .filter((name) => !unitNamesLower.has(name.toLowerCase()))
+    .map((name) => ({ type: 'presetsec', name, count: presets.filter((p) => (p.section || '').trim().toLowerCase() === name.toLowerCase()).length }));
   const orderedUnits = [
     ...adminCat.map((c) => ({ type: 'cat', name: c.category, cat: c })),
     ...productSections.map((ps) => ({ type: 'section', name: ps.name || '', section: ps })),
+    ...presetSectionUnits,
   ].sort((a, b) => orderRank(a.name) - orderRank(b.name));
   const moveUnit = (name, dir) => setS((cur) => {
     // Authoritative order = the units as currently shown; swap two of them.
@@ -1072,6 +1090,25 @@ export default function Admin({ onExit }) {
                   </p>
                   {adminCat.length === 0 && <p className="muted" style={{ fontSize: 12 }}>Loading catalog…</p>}
                   {orderedUnits.map((u, idx) => {
+                    if (u.type === 'presetsec') {
+                      const hidden = isSectionHidden(u.name);
+                      return (
+                        <div key={'ps:' + u.name} {...dropZone('units', idx, (f, t) => set({ menuOrder: reorderArray(orderedUnits.map((x) => x.name), f, t) }))}
+                          className={isDragOver('units', idx) ? 'drag-over' : ''}
+                          style={{ border: '1px solid var(--line)', borderRadius: 12, padding: 10, marginBottom: 10, opacity: hidden ? 0.55 : 1 }}>
+                          <div style={{ ...row, justifyContent: 'space-between' }}>
+                            <span {...dragHandle('units', idx)}>⠿</span>
+                            <input type="checkbox" checked={!hidden} title="Show this product-builder section" onChange={() => toggleSectionHidden(u.name)} />
+                            <span title="Product builder section" style={{ fontSize: 15 }}>🛠️</span>
+                            <span style={{ fontWeight: 700, flex: 1, minWidth: 0 }}>{u.name}</span>
+                            <span className="muted" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>{u.count} {u.count === 1 ? 'tile' : 'tiles'} · builder</span>
+                            <button className="link" title="Move up" disabled={idx === 0} style={{ opacity: idx === 0 ? 0.3 : 1 }} onClick={() => moveUnit(u.name, -1)}>↑</button>
+                            <button className="link" title="Move down" disabled={idx === orderedUnits.length - 1} style={{ opacity: idx === orderedUnits.length - 1 ? 0.3 : 1 }} onClick={() => moveUnit(u.name, 1)}>↓</button>
+                            <button className="link" title="Edit in Product builder" onClick={() => setMenuSub('builder')}>✎</button>
+                          </div>
+                        </div>
+                      );
+                    }
                     if (u.type === 'section') {
                       const sec = u.section;
                       const isOpen = !!expanded[sec.id];
