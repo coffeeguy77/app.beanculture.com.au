@@ -572,8 +572,7 @@ export default function App() {
             />
             {!(wide && view === 'checkout') && (
               <OrderTypeBar dineIn={dineIn} setDineIn={setDineIn} table={table} setTable={setTable} lock={tableLock} onUnlock={unlockTable} onScanned={applyScannedTable}
-                when={preWhen} setWhen={setPreWhen} at={preAt} setAt={setPreAt} hours={config.hours}
-                onReserve={config.reservations ? () => setView('reserve') : null} />
+                when={preWhen} setWhen={setPreWhen} at={preAt} setAt={setPreAt} hours={config.hours} />
             )}
             <div className="search">
               <input placeholder="Search the menu…" value={query} onChange={(e) => setQuery(e.target.value)} />
@@ -581,9 +580,17 @@ export default function App() {
             {!query && (
               <CategoryNav
                 variant={config?.topMenuStyle || 'stacked'}
-                categories={menu.categories.filter((c) => c.topNav !== false).map((c) => c.category)}
-                active={layoutMode === 'single' ? (activeGroup && activeGroup.length === 1 ? activeGroup[0] : null) : activeCat}
+                categories={[
+                  ...menu.categories.filter((c) => c.topNav !== false).map((c) => c.category),
+                  // Reservations lives at the end of the menu nav, not as a real
+                  // product category — picking it switches views instead of
+                  // filtering the grid below. 'Reservations' is a reserved chip
+                  // name; a Square category with that exact name would collide.
+                  ...(config.reservations ? ['Reservations'] : []),
+                ]}
+                active={view === 'reserve' ? 'Reservations' : (layoutMode === 'single' ? (activeGroup && activeGroup.length === 1 ? activeGroup[0] : null) : activeCat)}
                 onPick={(cat) => {
+                  if (cat === 'Reservations' && config.reservations) { setView('reserve'); return; }
                   // Category chips are sticky, so just swap the list below — don't
                   // yank the page to the top.
                   if (layoutMode === 'single') setActiveGroup([cat]);
