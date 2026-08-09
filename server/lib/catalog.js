@@ -338,8 +338,11 @@ async function getMenu(opts = {}) {
       const src = itemsById.get(p.sourceItemId);
       if (!src) continue;
       presetSourceIds.add(p.sourceItemId);
-      const variation = (src.variations || []).find((v) => v.id === p.variationId) || src.variations[0];
-      if (!variation) continue;
+      // A preset can offer ONE locked variation, or several (a "combined" tile,
+      // e.g. a coffee with 6oz + 12oz that the customer toggles between).
+      const vids = Array.isArray(p.variationIds) && p.variationIds.length ? p.variationIds : [p.variationId];
+      const chosenVars = vids.map((id) => (src.variations || []).find((v) => v.id === id)).filter(Boolean);
+      if (!chosenVars.length) continue;
 
       const groupCfg = p.groups || {};
       const groups = [];
@@ -365,13 +368,14 @@ async function getMenu(opts = {}) {
 
       const tile = {
         id: 'preset:' + p.id,
-        name: (p.name || '').trim() || variation.name || src.name,
+        name: (p.name || '').trim() || chosenVars[0].name || src.name,
         description: src.description || '',
         image: src.image || null,
         // Locked-modifier price is baked into the displayed price; Square still
-        // recomputes the true total from the ids we submit.
-        soldOut: !!variation.soldOut,
-        variations: [{ id: variation.id, name: variation.name, price: (variation.price || 0) + lockedTotal, soldOut: !!variation.soldOut }],
+        // recomputes the true total from the ids we submit. Multiple variations
+        // become a size toggle in the item sheet.
+        soldOut: chosenVars.every((v) => !!v.soldOut),
+        variations: chosenVars.map((v) => ({ id: v.id, name: v.name, price: (v.price || 0) + lockedTotal, soldOut: !!v.soldOut })),
         modifierGroups: groups,
         lockedModifierIds,
         lockedModifierNames,
