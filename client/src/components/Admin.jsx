@@ -74,6 +74,7 @@ export default function Admin({ onExit }) {
   const [expanded, setExpanded] = useState({});
   const [secSearch, setSecSearch] = useState({}); // product-section id -> search text
   const [secPickerOpen, setSecPickerOpen] = useState({}); // product-section id -> full catalog open
+  const [srcOpen, setSrcOpen] = useState({}); // preset id -> source picker expanded
   const [itemConfigs, setItemConfigs] = useState({}); // itemId -> full config for the builder
   const [srcSearch, setSrcSearch] = useState({}); // picker id -> search text
   const [srcCat, setSrcCat] = useState({});       // picker id -> category filter
@@ -1296,7 +1297,20 @@ export default function Admin({ onExit }) {
                           <div style={{ marginTop: 8, borderTop: '1px solid var(--line)', paddingTop: 8, display: 'grid', gap: 8 }}>
                             <div style={{ display: 'grid', gap: 4 }}>
                               <span className="muted" style={{ fontSize: 12 }}>Source product</span>
-                              {renderSourcePicker(p.id, p.sourceItemId, (id) => updPreset(p.id, { sourceItemId: id, variationId: '', groups: {} }))}
+                              {(() => {
+                                const cur = allProducts.find((x) => x.id === p.sourceItemId);
+                                const open = !!srcOpen[p.id];
+                                return (
+                                  <div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                                      <span style={{ fontSize: 14 }}>{cur ? cur.name : '— none selected —'}
+                                        {cur && (cur.categories || []).length ? <span className="muted" style={{ fontSize: 12 }}> · {cur.categories.join(', ')}</span> : null}</span>
+                                      <button className="link" onClick={() => setSrcOpen((x) => ({ ...x, [p.id]: !open }))}>{open ? 'Close' : (cur ? 'Change' : 'Choose product')}</button>
+                                    </div>
+                                    {open && renderSourcePicker(p.id, p.sourceItemId, (id) => { updPreset(p.id, { sourceItemId: id, variationId: '', groups: {} }); setSrcOpen((x) => ({ ...x, [p.id]: false })); })}
+                                  </div>
+                                );
+                              })()}
                             </div>
                             {p.sourceItemId && !cfg && <p className="muted" style={{ fontSize: 12 }}>Loading item options…</p>}
                             {cfg && (
