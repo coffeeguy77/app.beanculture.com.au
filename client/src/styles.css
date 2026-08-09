@@ -921,6 +921,12 @@ img { max-width: 100%; }
 
 /* ── Admin typography baseline: one consistent type scale everywhere ── */
 :root { --fs-xs: 11px; --fs-sm: 12px; --fs-base: 13px; --fs-md: 14px; --fs-lg: 15px; --fs-xl: 18px; }
+/* Distinct colour for real Square "App categories" vs pink builder sections. */
+:root { --appcat: #2f7d95; --appcat-soft: #e4f1f5; }
+.chip.appcat { border-color: var(--appcat); color: var(--appcat); }
+.chip.appcat.on { background: var(--appcat); border-color: var(--appcat); color: #fff; }
+.appcat-row { border-left: 4px solid var(--appcat) !important; }
+.builder-row { border-left: 4px solid var(--accent) !important; }
 .admin-panel { font-size: var(--fs-base); line-height: 1.45; color: var(--ink); }
 .admin-panel input:not([type=checkbox]):not([type=radio]):not([type=range]),
 .admin-panel select,

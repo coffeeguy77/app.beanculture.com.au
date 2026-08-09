@@ -437,7 +437,7 @@ export default function Admin({ onExit }) {
         {existingSectionNames.map((n) => (
           <button key={n} type="button" onClick={() => onPick(n)}
             className={`chip ${current && String(current).toLowerCase() === n.toLowerCase() ? 'on' : ''}`}
-            style={{ fontSize: 11, padding: '4px 8px' }}>{n}</button>
+            style={{ fontSize: 'var(--fs-xs)', padding: '4px 8px' }}>{n}</button>
         ))}
       </div>
     ) : null
@@ -518,16 +518,16 @@ export default function Admin({ onExit }) {
           </select>
         </div>
         {!showList ? (
-          <button className="link" onClick={() => setSrcShowAll((x) => ({ ...x, [pickerId]: true }))} style={{ fontSize: 13 }}>Show all items…</button>
+          <button className="link" onClick={() => setSrcShowAll((x) => ({ ...x, [pickerId]: true }))} style={{ fontSize: 'var(--fs-base)' }}>Show all items…</button>
         ) : (
           <>
             <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 4 }}>
               <button className="link" onClick={toggleAll}>{allSelected ? 'Clear all' : `Select all (${list.length})`}</button>
-              {genSelected.size > 0 && <span className="muted" style={{ fontSize: 12 }}>{genSelected.size} selected</span>}
+              {genSelected.size > 0 && <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>{genSelected.size} selected</span>}
             </div>
             <div style={{ maxHeight: 240, overflowY: 'auto', border: '1px solid var(--line)', borderRadius: 8 }}>
-              {allProducts.length === 0 && <p className="muted" style={{ fontSize: 12, padding: 8 }}>Loading items…</p>}
-              {list.length === 0 && allProducts.length > 0 && <p className="muted" style={{ fontSize: 12, padding: 8 }}>No matching items.</p>}
+              {allProducts.length === 0 && <p className="muted" style={{ fontSize: 'var(--fs-sm)', padding: 8 }}>Loading items…</p>}
+              {list.length === 0 && allProducts.length > 0 && <p className="muted" style={{ fontSize: 'var(--fs-sm)', padding: 8 }}>No matching items.</p>}
               {list.map((p) => {
                 const cats = p.categories || (p.category ? [p.category] : []);
                 return (
@@ -535,10 +535,10 @@ export default function Admin({ onExit }) {
                     <input type="checkbox" checked={genSelected.has(p.id)} onChange={() => toggleOne(p.id)} />
                     {p.image
                       ? <img src={p.image} alt="" style={{ width: 30, height: 30, borderRadius: 6, objectFit: 'cover', flex: 'none' }} />
-                      : <span style={{ width: 30, height: 30, borderRadius: 6, background: 'var(--brand-soft)', flex: 'none', display: 'grid', placeItems: 'center', fontSize: 14 }}>🍽️</span>}
+                      : <span style={{ width: 30, height: 30, borderRadius: 6, background: 'var(--brand-soft)', flex: 'none', display: 'grid', placeItems: 'center', fontSize: 'var(--fs-md)' }}>🍽️</span>}
                     <span style={{ flex: 1, minWidth: 0 }}>
-                      <span style={{ fontSize: 14, display: 'block' }}>{p.name}</span>
-                      {cats.length ? <span className="muted" style={{ fontSize: 11 }}>{cats.join(' · ')}</span> : null}
+                      <span style={{ fontSize: 'var(--fs-md)', display: 'block' }}>{p.name}</span>
+                      {cats.length ? <span className="muted" style={{ fontSize: 'var(--fs-xs)' }}>{cats.join(' · ')}</span> : null}
                     </span>
                   </label>
                 );
@@ -575,17 +575,17 @@ export default function Admin({ onExit }) {
             {productCategories.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
         </div>
-        {current && <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>Selected: <strong>{current.name}</strong>{(current.categories || []).length ? ` · in ${current.categories.join(', ')}` : ''}</div>}
+        {current && <div className="muted" style={{ fontSize: 'var(--fs-sm)', marginBottom: 4 }}>Selected: <strong>{current.name}</strong>{(current.categories || []).length ? ` · in ${current.categories.join(', ')}` : ''}</div>}
         {!showList ? (
-          <button className="link" onClick={() => setSrcShowAll((x) => ({ ...x, [pickerId]: true }))} style={{ fontSize: 13 }}>Show all items…</button>
+          <button className="link" onClick={() => setSrcShowAll((x) => ({ ...x, [pickerId]: true }))} style={{ fontSize: 'var(--fs-base)' }}>Show all items…</button>
         ) : (
           <>
             {srcShowAll[pickerId] && !q && !catf && (
-              <button className="link" onClick={() => setSrcShowAll((x) => ({ ...x, [pickerId]: false }))} style={{ fontSize: 12, marginBottom: 4 }}>▲ Hide list</button>
+              <button className="link" onClick={() => setSrcShowAll((x) => ({ ...x, [pickerId]: false }))} style={{ fontSize: 'var(--fs-sm)', marginBottom: 4 }}>▲ Hide list</button>
             )}
             <div style={{ maxHeight: 220, overflowY: 'auto', border: '1px solid var(--line)', borderRadius: 8 }}>
-              {allProducts.length === 0 && <p className="muted" style={{ fontSize: 12, padding: 8 }}>Loading items…</p>}
-              {list.length === 0 && allProducts.length > 0 && <p className="muted" style={{ fontSize: 12, padding: 8 }}>No matching items.</p>}
+              {allProducts.length === 0 && <p className="muted" style={{ fontSize: 'var(--fs-sm)', padding: 8 }}>Loading items…</p>}
+              {list.length === 0 && allProducts.length > 0 && <p className="muted" style={{ fontSize: 'var(--fs-sm)', padding: 8 }}>No matching items.</p>}
               {list.map((p) => {
                 const cats = p.categories || (p.category ? [p.category] : []);
                 return (
@@ -593,10 +593,10 @@ export default function Admin({ onExit }) {
                     style={{ display: 'flex', width: '100%', textAlign: 'left', gap: 8, alignItems: 'center', padding: '6px 8px', border: 'none', borderBottom: '1px solid var(--line)', background: currentId === p.id ? 'var(--brand-soft)' : 'transparent', cursor: 'pointer' }}>
                     {p.image
                       ? <img src={p.image} alt="" style={{ width: 30, height: 30, borderRadius: 6, objectFit: 'cover', flex: 'none' }} />
-                      : <span style={{ width: 30, height: 30, borderRadius: 6, background: 'var(--brand-soft)', flex: 'none', display: 'grid', placeItems: 'center', fontSize: 14 }}>🍽️</span>}
+                      : <span style={{ width: 30, height: 30, borderRadius: 6, background: 'var(--brand-soft)', flex: 'none', display: 'grid', placeItems: 'center', fontSize: 'var(--fs-md)' }}>🍽️</span>}
                     <span style={{ flex: 1, minWidth: 0 }}>
-                      <span style={{ fontSize: 14, display: 'block' }}>{p.name}</span>
-                      {cats.length ? <span className="muted" style={{ fontSize: 11 }}>{cats.join(' · ')}</span> : null}
+                      <span style={{ fontSize: 'var(--fs-md)', display: 'block' }}>{p.name}</span>
+                      {cats.length ? <span className="muted" style={{ fontSize: 'var(--fs-xs)' }}>{cats.join(' · ')}</span> : null}
                     </span>
                   </button>
                 );
@@ -746,7 +746,7 @@ export default function Admin({ onExit }) {
           <button className="link" onClick={onExit}>← Store</button>
           <h2 style={{ margin: 0, fontFamily: 'Georgia, serif' }}>Control panel</h2>
           {!data.dbEnabled
-            ? <span className="muted" style={{ fontSize: 11 }}>⚠ DB off — changes won’t persist</span>
+            ? <span className="muted" style={{ fontSize: 'var(--fs-xs)' }}>⚠ DB off — changes won’t persist</span>
             : <span style={{ width: 60 }} />}
         </div>
 
@@ -759,7 +759,7 @@ export default function Admin({ onExit }) {
                 </button>
                 {t.id === 'menu' && tab === 'menu' && (
                   <div className="admin-subtabs">
-                    {[['categories', 'Categories'], ['items', 'Category Menu'], ['builder', 'Product builder']].map(([k, label]) => (
+                    {[['categories', 'Categories'], ['items', 'Menu Builder'], ['builder', 'Product builder']].map(([k, label]) => (
                       <button key={k} className={menuSub === k ? 'on' : ''} onClick={() => setMenuSub(k)} type="button">{label}</button>
                     ))}
                   </div>
@@ -774,9 +774,9 @@ export default function Admin({ onExit }) {
               <>
                 <div className="card" style={card}>
                   <div style={{ fontWeight: 800, color: h.open ? '#2e7d51' : 'var(--brand)' }}>{h.open ? '● Open now' : '● Closed'}</div>
-                  <div className="muted" style={{ fontSize: 12 }}>{h.timezone} · {h.hasHours ? 'hours from Square' : 'no hours set in Square'}</div>
+                  <div className="muted" style={{ fontSize: 'var(--fs-sm)' }}>{h.timezone} · {h.hasHours ? 'hours from Square' : 'no hours set in Square'}</div>
                   <button className="btn full" style={{ marginTop: 12 }} onClick={syncNow}>Sync menu from Square now</button>
-                  {syncMsg && <p className="muted" style={{ fontSize: 13, margin: '6px 0 0' }}>{syncMsg}</p>}
+                  {syncMsg && <p className="muted" style={{ fontSize: 'var(--fs-base)', margin: '6px 0 0' }}>{syncMsg}</p>}
                 </div>
                 <div className="card" style={card}>
                   <div className="group-title">Store details</div>
@@ -787,7 +787,7 @@ export default function Admin({ onExit }) {
 
                 <div className="card" style={card}>
                   <div className="group-title">Contact &amp; location</div>
-                  <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>Shown on the storefront with tap-to-call and directions (both tracked in Insights).</p>
+                  <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 0 }}>Shown on the storefront with tap-to-call and directions (both tracked in Insights).</p>
                   <label className="field"><span>Address</span><input value={s.contact?.address || ''} onChange={(e) => setContact('address', e.target.value)} placeholder="123 Main St, Suburb NSW" /></label>
                   <label className="field" style={{ marginTop: 10 }}><span>Phone</span><input value={s.contact?.phone || ''} onChange={(e) => setContact('phone', e.target.value)} placeholder="+61 2 1234 5678" /></label>
                   <label className="field" style={{ marginTop: 10 }}><span>Map link (optional — built from the address if blank)</span><input value={s.contact?.mapsUrl || ''} onChange={(e) => setContact('mapsUrl', e.target.value)} placeholder="https://maps.google.com/…" /></label>
@@ -795,21 +795,21 @@ export default function Admin({ onExit }) {
 
                 <div className="card" style={card}>
                   <div className="group-title">Branding</div>
-                  {!data.cloudinary && <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>Add Cloudinary keys in Railway to upload images.</p>}
+                  {!data.cloudinary && <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 0 }}>Add Cloudinary keys in Railway to upload images.</p>}
                   <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
                     <div>
-                      <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>Logo (header)</div>
+                      <div className="muted" style={{ fontSize: 'var(--fs-sm)', marginBottom: 6 }}>Logo (header)</div>
                       <div style={{ ...row }}>
-                        {s.logoUrl ? <img src={s.logoUrl} alt="" style={{ height: 34, background: '#f6eef1', borderRadius: 6 }} /> : <span className="muted" style={{ fontSize: 12 }}>Default</span>}
-                        <label className="btn ghost" style={{ padding: '8px 12px', fontSize: 13, cursor: 'pointer' }}>Upload<input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files[0]; if (f) uploadImage(f, (url) => set({ logoUrl: url }), 'logo'); }} /></label>
+                        {s.logoUrl ? <img src={s.logoUrl} alt="" style={{ height: 34, background: '#f6eef1', borderRadius: 6 }} /> : <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>Default</span>}
+                        <label className="btn ghost" style={{ padding: '8px 12px', fontSize: 'var(--fs-base)', cursor: 'pointer' }}>Upload<input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files[0]; if (f) uploadImage(f, (url) => set({ logoUrl: url }), 'logo'); }} /></label>
                         {s.logoUrl && <button className="link" style={{ color: '#c0392b' }} onClick={() => set({ logoUrl: '' })}>Reset</button>}
                       </div>
                     </div>
                     <div>
-                      <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>Favicon (browser tab)</div>
+                      <div className="muted" style={{ fontSize: 'var(--fs-sm)', marginBottom: 6 }}>Favicon (browser tab)</div>
                       <div style={{ ...row }}>
-                        {s.faviconUrl ? <img src={s.faviconUrl} alt="" style={{ height: 28, width: 28, borderRadius: 6 }} /> : <span className="muted" style={{ fontSize: 12 }}>Default</span>}
-                        <label className="btn ghost" style={{ padding: '8px 12px', fontSize: 13, cursor: 'pointer' }}>Upload<input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files[0]; if (f) uploadImage(f, (url) => set({ faviconUrl: url }), 'favicon'); }} /></label>
+                        {s.faviconUrl ? <img src={s.faviconUrl} alt="" style={{ height: 28, width: 28, borderRadius: 6 }} /> : <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>Default</span>}
+                        <label className="btn ghost" style={{ padding: '8px 12px', fontSize: 'var(--fs-base)', cursor: 'pointer' }}>Upload<input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files[0]; if (f) uploadImage(f, (url) => set({ faviconUrl: url }), 'favicon'); }} /></label>
                         {s.faviconUrl && <button className="link" style={{ color: '#c0392b' }} onClick={() => set({ faviconUrl: '' })}>Reset</button>}
                       </div>
                     </div>
@@ -818,11 +818,11 @@ export default function Admin({ onExit }) {
 
                 <div className="card" style={card}>
                   <div className="group-title">Store page</div>
-                  <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>The About / contact page customers reach from the store button in the header. Opening hours and address/phone come from Square + Contact above.</p>
+                  <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 0 }}>The About / contact page customers reach from the store button in the header. Opening hours and address/phone come from Square + Contact above.</p>
                   <div style={{ ...row, marginBottom: 10 }}>
-                    <div className="muted" style={{ fontSize: 12, minWidth: 92 }}>Store photo</div>
-                    {s.storePhoto ? <img src={s.storePhoto} alt="" style={{ height: 44, borderRadius: 8 }} /> : <span className="muted" style={{ fontSize: 12 }}>None</span>}
-                    <label className="btn ghost" style={{ padding: '8px 12px', fontSize: 13, cursor: 'pointer' }}>Upload<input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files[0]; if (f) uploadImage(f, (url) => set({ storePhoto: url }), 'store'); }} /></label>
+                    <div className="muted" style={{ fontSize: 'var(--fs-sm)', minWidth: 92 }}>Store photo</div>
+                    {s.storePhoto ? <img src={s.storePhoto} alt="" style={{ height: 44, borderRadius: 8 }} /> : <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>None</span>}
+                    <label className="btn ghost" style={{ padding: '8px 12px', fontSize: 'var(--fs-base)', cursor: 'pointer' }}>Upload<input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files[0]; if (f) uploadImage(f, (url) => set({ storePhoto: url }), 'store'); }} /></label>
                     {s.storePhoto && <button className="link" style={{ color: '#c0392b' }} onClick={() => set({ storePhoto: '' })}>Remove</button>}
                   </div>
                   <label className="field"><span>Bio / about</span><textarea rows={3} value={s.bio || ''} onChange={(e) => set({ bio: e.target.value })} placeholder="A short story about your café…" /></label>
@@ -833,20 +833,20 @@ export default function Admin({ onExit }) {
                 <div className="card" style={card}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div className="group-title" style={{ margin: 0 }}>Customer messages</div>
-                    <button type="button" className="btn ghost" style={{ padding: '6px 12px', fontSize: 13 }} onClick={loadMessages}>{msgs === null ? 'Load' : 'Refresh'}</button>
+                    <button type="button" className="btn ghost" style={{ padding: '6px 12px', fontSize: 'var(--fs-base)' }} onClick={loadMessages}>{msgs === null ? 'Load' : 'Refresh'}</button>
                   </div>
-                  <p className="muted" style={{ fontSize: 12, marginTop: 4 }}>Enquiries, feedback and catering requests sent from the store page.</p>
-                  {msgs === null && <p className="muted" style={{ fontSize: 12 }}>Tap Load to see messages.</p>}
-                  {msgs && msgs.length === 0 && <p className="muted" style={{ fontSize: 12 }}>No messages yet.</p>}
+                  <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 4 }}>Enquiries, feedback and catering requests sent from the store page.</p>
+                  {msgs === null && <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>Tap Load to see messages.</p>}
+                  {msgs && msgs.length === 0 && <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>No messages yet.</p>}
                   {msgs && msgs.map((m) => (
                     <div key={m.id} className="history-item" style={{ opacity: m.handled ? 0.55 : 1 }}>
                       <div className="history-top">
                         <span><span className="pill" style={{ textTransform: 'capitalize' }}>{m.type}</span> {m.name || 'Anonymous'}</span>
-                        <span className="muted" style={{ fontSize: 12 }}>{new Date(m.createdAt).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })}</span>
+                        <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>{new Date(m.createdAt).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })}</span>
                       </div>
-                      {m.contact && <div className="muted" style={{ fontSize: 12, margin: '2px 0' }}>{m.contact}</div>}
-                      <div style={{ fontSize: 14, whiteSpace: 'pre-line' }}>{m.body}</div>
-                      <button className="link" style={{ padding: 0, fontSize: 13 }} onClick={() => toggleHandled(m)}>{m.handled ? 'Mark unread' : 'Mark done'}</button>
+                      {m.contact && <div className="muted" style={{ fontSize: 'var(--fs-sm)', margin: '2px 0' }}>{m.contact}</div>}
+                      <div style={{ fontSize: 'var(--fs-md)', whiteSpace: 'pre-line' }}>{m.body}</div>
+                      <button className="link" style={{ padding: 0, fontSize: 'var(--fs-base)' }} onClick={() => toggleHandled(m)}>{m.handled ? 'Mark unread' : 'Mark done'}</button>
                     </div>
                   ))}
                 </div>
@@ -854,26 +854,26 @@ export default function Admin({ onExit }) {
                 <div className="card" style={card}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div className="group-title" style={{ margin: 0 }}>Reservations</div>
-                    <button type="button" className="btn ghost" style={{ padding: '6px 12px', fontSize: 13 }} onClick={loadReservations}>{resv === null ? 'Load' : 'Refresh'}</button>
+                    <button type="button" className="btn ghost" style={{ padding: '6px 12px', fontSize: 'var(--fs-base)' }} onClick={loadReservations}>{resv === null ? 'Load' : 'Refresh'}</button>
                   </div>
-                  <p className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+                  <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 4 }}>
                     Table bookings from the app. Alerts: {resvChannels.sms ? 'SMS on' : 'SMS off'} · {resvChannels.email ? 'email on' : 'email off'}. Each booking also creates a $0 Square order so it prints + shows in Square.
                   </p>
-                  {resv === null && <p className="muted" style={{ fontSize: 12 }}>Tap Load to see reservations.</p>}
-                  {resv && resv.length === 0 && <p className="muted" style={{ fontSize: 12 }}>No reservations yet.</p>}
+                  {resv === null && <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>Tap Load to see reservations.</p>}
+                  {resv && resv.length === 0 && <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>No reservations yet.</p>}
                   {resv && resv.map((r) => (
                     <div key={r.id} className="history-item" style={{ opacity: r.status === 'cancelled' ? 0.5 : 1 }}>
                       <div className="history-top">
                         <span><strong>{r.party} {r.party === 1 ? 'guest' : 'guests'}</strong> · {r.name || '—'}</span>
                         <span className={`pill`} style={{ textTransform: 'capitalize', background: r.status === 'confirmed' ? '#e6f6ec' : r.status === 'seated' ? '#eef' : r.status === 'cancelled' ? '#fdecec' : '#f4eef1' }}>{r.status}</span>
                       </div>
-                      <div className="muted" style={{ fontSize: 13, margin: '3px 0' }}>
+                      <div className="muted" style={{ fontSize: 'var(--fs-base)', margin: '3px 0' }}>
                         {r.reserveAt ? new Date(r.reserveAt).toLocaleString('en-AU', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : '—'} · {r.phone || ''}{r.email ? ` · ${r.email}` : ''}
                       </div>
-                      {r.notes && <div style={{ fontSize: 13 }}>{r.notes}</div>}
+                      {r.notes && <div style={{ fontSize: 'var(--fs-base)' }}>{r.notes}</div>}
                       <div style={{ display: 'flex', gap: 12, marginTop: 4 }}>
                         {['confirmed', 'seated', 'cancelled'].filter((st) => st !== r.status).map((st) => (
-                          <button key={st} className="link" style={{ padding: 0, fontSize: 13, textTransform: 'capitalize', color: st === 'cancelled' ? '#c0392b' : undefined }} onClick={() => setResvStatus(r, st)}>Mark {st}</button>
+                          <button key={st} className="link" style={{ padding: 0, fontSize: 'var(--fs-base)', textTransform: 'capitalize', color: st === 'cancelled' ? '#c0392b' : undefined }} onClick={() => setResvStatus(r, st)}>Mark {st}</button>
                         ))}
                       </div>
                     </div>
@@ -883,11 +883,11 @@ export default function Admin({ onExit }) {
                 <div className="card" style={card}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
                     <div className="group-title" style={{ margin: 0 }}>Opening hours</div>
-                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13 }} className="muted">
+                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 'var(--fs-base)' }} className="muted">
                       <input type="checkbox" checked={!!s.useAppHours} onChange={(e) => set({ useAppHours: e.target.checked })} /> Set my own hours (override Square)
                     </label>
                   </div>
-                  <p className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+                  <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 4 }}>
                     {s.useAppHours ? 'These hours decide when the app is open and when customers can order “now”.' : 'Currently using your Square location hours. Tick above to set hours here instead.'}
                   </p>
                   {s.useAppHours && <HoursEditor value={s.storeHours} onChange={(v) => set({ storeHours: v })} />}
@@ -896,19 +896,19 @@ export default function Admin({ onExit }) {
                 <div className="card" style={card}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
                     <div className="group-title" style={{ margin: 0 }}>Kitchen hours</div>
-                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13 }} className="muted">
+                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 'var(--fs-base)' }} className="muted">
                       <input type="checkbox" checked={!!s.kitchenHoursOn} onChange={(e) => set({ kitchenHoursOn: e.target.checked })} /> Kitchen has its own hours
                     </label>
                   </div>
-                  <p className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+                  <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 4 }}>
                     Made-to-order categories are only available while the kitchen is open. Everything else (pre-made / fridge items) stays available whenever the store is open. Leave off to keep the kitchen open whenever the store is.
                   </p>
                   {s.kitchenHoursOn && (
                     <>
                       <HoursEditor value={s.kitchenHours} onChange={(v) => set({ kitchenHours: v })} />
-                      <div className="group-title" style={{ marginTop: 14, fontSize: 13 }}>Made-to-order categories</div>
-                      <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>Tick the categories the kitchen makes on demand. These go unavailable when the kitchen closes.</p>
-                      {cats.length === 0 && <p className="muted" style={{ fontSize: 12 }}>No categories loaded yet.</p>}
+                      <div className="group-title" style={{ marginTop: 14, fontSize: 'var(--fs-base)' }}>Made-to-order categories</div>
+                      <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 0 }}>Tick the categories the kitchen makes on demand. These go unavailable when the kitchen closes.</p>
+                      {cats.length === 0 && <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>No categories loaded yet.</p>}
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                         {cats.map((c) => {
                           const on = (s.kitchenCategories || []).includes(c);
@@ -926,7 +926,7 @@ export default function Admin({ onExit }) {
 
                 <div className="card" style={card}>
                   <div className="group-title">Closed dates</div>
-                  <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>Annual leave, public holidays. Closed days can’t be booked for pre-orders. Use a range for multi-day closures (e.g. late Dec – mid Jan). Tick “every year” for recurring dates.</p>
+                  <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 0 }}>Annual leave, public holidays. Closed days can’t be booked for pre-orders. Use a range for multi-day closures (e.g. late Dec – mid Jan). Tick “every year” for recurring dates.</p>
                   <div className="segmented" style={{ maxWidth: 280, marginBottom: 10 }}>
                     <button type="button" className={!newClosure.range ? 'seg active' : 'seg'} onClick={() => setNewClosure((c) => ({ ...c, range: false }))}>Single day</button>
                     <button type="button" className={newClosure.range ? 'seg active' : 'seg'} onClick={() => setNewClosure((c) => ({ ...c, range: true }))}>Date range</button>
@@ -962,7 +962,7 @@ export default function Admin({ onExit }) {
             {tab === 'insights' && (
               <>
                 <div style={{ display: 'flex', gap: 8, marginBottom: 12, alignItems: 'center' }}>
-                  <span className="muted" style={{ fontSize: 13 }}>Last</span>
+                  <span className="muted" style={{ fontSize: 'var(--fs-base)' }}>Last</span>
                   {[7, 30, 90].map((d) => <button key={d} className={`chip ${aDays === d ? 'on' : ''}`} onClick={() => setADays(d)}>{d} days</button>)}
                 </div>
 
@@ -987,9 +987,9 @@ export default function Admin({ onExit }) {
                   ].filter(Boolean);
                   return (
                     <>
-                      <div className="group-title" style={{ marginBottom: 8 }}>Sales &amp; signups <span className="muted" style={{ fontWeight: 400, fontSize: 12 }}>· live from Square</span></div>
+                      <div className="group-title" style={{ marginBottom: 8 }}>Sales &amp; signups <span className="muted" style={{ fontWeight: 400, fontSize: 'var(--fs-sm)' }}>· live from Square</span></div>
                       {(!salesOk || !signupsOk) && (
-                        <p className="muted" style={{ fontSize: 12, margin: '0 0 8px' }}>
+                        <p className="muted" style={{ fontSize: 'var(--fs-sm)', margin: '0 0 8px' }}>
                           {!salesOk && 'Sales couldn’t load — your Square token needs the Orders (read) permission. '}
                           {!signupsOk && 'Signups need the Square loyalty program enabled.'}
                         </p>
@@ -1003,7 +1003,7 @@ export default function Admin({ onExit }) {
                         <div className="card" style={card}>
                           <div className="group-title">Daily revenue</div>
                           <div className="chart-bars">
-                            {sDaily.length === 0 && <span className="muted" style={{ fontSize: 12 }}>No completed sales in this period.</span>}
+                            {sDaily.length === 0 && <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>No completed sales in this period.</span>}
                             {sDaily.slice(-30).map((d, i) => (
                               <div key={i} className="chart-col" title={`${d.day}: ${formatMoney(d.revenue, cur)} · ${d.orders} order${d.orders === 1 ? '' : 's'}`}>
                                 <div className="bar bar-buys" style={{ height: `${(d.revenue / maxRev) * 100}%` }} />
@@ -1016,7 +1016,7 @@ export default function Admin({ onExit }) {
                         <div className="card" style={card}>
                           <div className="group-title">New loyalty signups</div>
                           <div className="chart-bars">
-                            {gDaily.length === 0 && <span className="muted" style={{ fontSize: 12 }}>No new signups in this period.</span>}
+                            {gDaily.length === 0 && <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>No new signups in this period.</span>}
                             {gDaily.slice(-30).map((d, i) => (
                               <div key={i} className="chart-col" title={`${d.day}: ${d.n} signup${d.n === 1 ? '' : 's'}`}>
                                 <div className="bar bar-signup" style={{ height: `${(d.n / maxSign) * 100}%` }} />
@@ -1060,7 +1060,7 @@ export default function Admin({ onExit }) {
                       <div className="card" style={card}>
                         <div className="group-title">Daily visits &amp; orders</div>
                         <div className="chart-bars">
-                          {daily.length === 0 && <span className="muted" style={{ fontSize: 12 }}>No data yet.</span>}
+                          {daily.length === 0 && <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>No data yet.</span>}
                           {daily.slice(-30).map((d, i) => (
                             <div key={i} className="chart-col" title={`${d.day}: ${d.views} visits, ${d.purchases} orders`}>
                               <div className="bar bar-views" style={{ height: `${(d.views / maxDaily) * 100}%` }} />
@@ -1085,12 +1085,12 @@ export default function Admin({ onExit }) {
                       <div className="ins-two">
                         <div className="card" style={card}>
                           <div className="group-title">Most viewed</div>
-                          {(analytics.topViewed || []).length === 0 && <p className="muted" style={{ fontSize: 12 }}>No data yet.</p>}
+                          {(analytics.topViewed || []).length === 0 && <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>No data yet.</p>}
                           {(analytics.topViewed || []).map((p) => <TopRow key={p.name} name={p.name} n={p.n} max={analytics.topViewed[0]?.n || 1} />)}
                         </div>
                         <div className="card" style={card}>
                           <div className="group-title">Most purchased</div>
-                          {(analytics.topPurchased || []).length === 0 && <p className="muted" style={{ fontSize: 12 }}>No data yet.</p>}
+                          {(analytics.topPurchased || []).length === 0 && <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>No data yet.</p>}
                           {(analytics.topPurchased || []).map((p) => <TopRow key={p.name} name={p.name} n={p.n} max={analytics.topPurchased[0]?.n || 1} />)}
                         </div>
                       </div>
@@ -1104,30 +1104,30 @@ export default function Admin({ onExit }) {
             {tab === 'menu' && (
               <>
                 <div className="menu-subnav">
-                  {[['categories', 'Categories'], ['items', 'Category Menu'], ['builder', 'Product builder']].map(([k, label]) => (
-                    <button key={k} type="button" className={`chip ${menuSub === k ? 'on' : ''}`} onClick={() => setMenuSub(k)} style={{ fontSize: 13 }}>{label}</button>
+                  {[['categories', 'Categories'], ['items', 'Menu Builder'], ['builder', 'Product builder']].map(([k, label]) => (
+                    <button key={k} type="button" className={`chip ${menuSub === k ? 'on' : ''}`} onClick={() => setMenuSub(k)} style={{ fontSize: 'var(--fs-base)' }}>{label}</button>
                   ))}
                 </div>
 
                 {menuSub === 'categories' && (
                 <div className="card" style={card}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                    <div className="group-title" style={{ margin: 0 }}>Categories in the app</div>
+                    <div className="group-title" style={{ margin: 0 }}>Categories in Menu</div>
                     <button type="button" className={`chip ${catsLocked ? 'on' : ''}`} onClick={() => setCatsLocked((v) => !v)}
-                      style={{ fontSize: 12 }} title={catsLocked ? 'Locked — tap to make changes' : 'Unlocked — tap to lock'}>
+                      style={{ fontSize: 'var(--fs-sm)' }} title={catsLocked ? 'Locked — tap to make changes' : 'Unlocked — tap to lock'}>
                       {catsLocked ? '🔒 Locked' : '🔓 Unlocked'}
                     </button>
                   </div>
-                  <p className="muted" style={{ fontSize: 12, marginTop: 6 }}>
+                  <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 6 }}>
                     Tap any category to show or hide it in the app — including your uppercase Square ones. Changes apply
                     to the customer menu when you press <strong>Save changes</strong>.{catsLocked ? ' Unlock to make changes.' : ''}
                   </p>
-                  {allCats.length === 0 && <p className="muted" style={{ fontSize: 12 }}>No Square categories loaded yet — create categories in Square, then Sync.</p>}
+                  {allCats.length === 0 && <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>No Square categories loaded yet — create categories in Square, then Sync.</p>}
                   {(() => {
                     const showing = allCats.filter(isCatSelected);
                     const addable = allCats.filter((c) => !isCatSelected(c));
                     const chip = (c, active) => (
-                      <button key={c.id} type="button" className={`chip ${active ? 'on' : ''}`}
+                      <button key={c.id} type="button" className={`chip appcat ${active ? 'on' : ''}`}
                         disabled={catsLocked}
                         onClick={() => { if (!catsLocked) toggleCat(c); }}
                         style={catsLocked ? { opacity: active ? 0.85 : 0.5, cursor: 'not-allowed' } : undefined}
@@ -1139,13 +1139,13 @@ export default function Admin({ onExit }) {
                       <>
                         {showing.length > 0 && (
                           <>
-                            <p className="muted" style={{ fontSize: 11, margin: '10px 0 6px', textTransform: 'uppercase', letterSpacing: 0.4 }}>Showing in the app · tap to hide</p>
+                            <p className="muted" style={{ fontSize: 'var(--fs-xs)', margin: '10px 0 6px', textTransform: 'uppercase', letterSpacing: 0.4 }}>Showing in the app · tap to hide</p>
                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>{showing.map((c) => chip(c, true))}</div>
                           </>
                         )}
                         {addable.length > 0 && (
                           <>
-                            <p className="muted" style={{ fontSize: 11, margin: '14px 0 6px', textTransform: 'uppercase', letterSpacing: 0.4 }}>Hidden · tap to show</p>
+                            <p className="muted" style={{ fontSize: 'var(--fs-xs)', margin: '14px 0 6px', textTransform: 'uppercase', letterSpacing: 0.4 }}>Hidden · tap to show</p>
                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>{addable.map((c) => chip(c, false))}</div>
                           </>
                         )}
@@ -1164,7 +1164,7 @@ export default function Admin({ onExit }) {
 
                 <div className="card" style={card}>
                   <div className="group-title">Footer menu builder</div>
-                  <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>Each button = an icon + one or more categories.</p>
+                  <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 0 }}>Each button = an icon + one or more categories.</p>
                   {footer.map((slot, i) => (
                     <div key={i} {...dropZone('footer', i, (f, t) => setFooter(reorderArray(footer, f, t)))}
                       className={isDragOver('footer', i) ? 'drag-over' : ''}
@@ -1183,7 +1183,7 @@ export default function Admin({ onExit }) {
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
                         {cats.map((c) => {
                           const on = slot.categories.some((x) => x.toLowerCase() === c.toLowerCase());
-                          return <button key={c} onClick={() => toggleSlotCat(i, c)} className={`chip ${on ? 'on' : ''}`} style={{ fontSize: 11, padding: '5px 9px' }}>{c}</button>;
+                          return <button key={c} onClick={() => toggleSlotCat(i, c)} className={`chip ${on ? 'on' : ''}`} style={{ fontSize: 'var(--fs-xs)', padding: '5px 9px' }}>{c}</button>;
                         })}
                       </div>
                     </div>
@@ -1193,32 +1193,32 @@ export default function Admin({ onExit }) {
 
                 <div className="card" style={card}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                    <div className="group-title" style={{ margin: 0 }}>Category Menu</div>
-                    <button type="button" className={`chip ${deleteLock ? 'on' : ''}`} onClick={() => setDeleteLock((v) => !v)} style={{ fontSize: 12 }}
+                    <div className="group-title" style={{ margin: 0 }}>Menu Builder</div>
+                    <button type="button" className={`chip ${deleteLock ? 'on' : ''}`} onClick={() => setDeleteLock((v) => !v)} style={{ fontSize: 'var(--fs-sm)' }}
                       title={deleteLock ? 'Delete locked — tap to allow removing sections' : 'Delete unlocked — tap to lock'}>
                       {deleteLock ? '🔒 Delete locked' : '🔓 Delete unlocked'}
                     </button>
                   </div>
-                  <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>
+                  <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 0 }}>
                     Build the menu from whole categories and/or hand-picked <strong>product sections</strong>. Tick a
                     category to offer it; expand to offer only certain items. Add a product section to group individual
                     products (e.g. “Breakfast”) under a name you choose — handy for a product that shouldn’t pull in its
                     whole category. Use ↑/↓ to set the order everything appears on the storefront.
                   </p>
-                  {orderedUnits.length === 0 && <p className="muted" style={{ fontSize: 12 }}>No categories or sections yet. Add categories in the Categories tab, or build sections in Product builder.</p>}
+                  {orderedUnits.length === 0 && <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>No categories or sections yet. Add categories in the Categories tab, or build sections in Product builder.</p>}
                   {orderedUnits.map((u, idx) => {
                     if (u.type === 'presetsec') {
                       const hidden = isSectionHidden(u.name);
                       return (
                         <div key={'ps:' + u.name} {...dropZone('units', idx, (f, t) => set({ menuOrder: reorderArray(orderedUnits.map((x) => x.name), f, t) }))}
-                          className={isDragOver('units', idx) ? 'drag-over' : ''}
+                          className={`builder-row ${isDragOver('units', idx) ? 'drag-over' : ''}`}
                           style={{ border: '1px solid var(--line)', borderRadius: 12, padding: 10, marginBottom: 10, opacity: hidden ? 0.55 : 1 }}>
                           <div style={{ ...row, justifyContent: 'space-between' }}>
                             <span {...dragHandle('units', idx)}>⠿</span>
                             <input type="checkbox" checked={!hidden} title="Show this product-builder section" onChange={() => toggleSectionHidden(u.name)} />
-                            <span title="Product builder section" style={{ fontSize: 15 }}>🛠️</span>
+                            <span title="Product builder section" style={{ fontSize: 'var(--fs-lg)' }}>🛠️</span>
                             <span style={{ fontWeight: 700, flex: 1, minWidth: 0 }}>{u.name}</span>
-                            <span className="muted" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>{u.count} {u.count === 1 ? 'tile' : 'tiles'} · builder</span>
+                            <span className="muted" style={{ fontSize: 'var(--fs-sm)', whiteSpace: 'nowrap' }}>{u.count} {u.count === 1 ? 'tile' : 'tiles'} · builder</span>
                             <button className="link" title="Move up" disabled={idx === 0} style={{ opacity: idx === 0 ? 0.3 : 1 }} onClick={() => moveUnit(u.name, -1)}>↑</button>
                             <button className="link" title="Move down" disabled={idx === orderedUnits.length - 1} style={{ opacity: idx === orderedUnits.length - 1 ? 0.3 : 1 }} onClick={() => moveUnit(u.name, 1)}>↓</button>
                             <button className="link" title="Edit in Product builder" onClick={() => setMenuSub('builder')}>✎</button>
@@ -1242,12 +1242,12 @@ export default function Admin({ onExit }) {
                             <span {...dragHandle('units', idx)}>⠿</span>
                             <input type="checkbox" checked={sec.enabled !== false} title="Show this section in the app" onChange={(e) => updSection(sec.id, { enabled: e.target.checked })} />
                             <label style={{ ...row, flex: 1, minWidth: 0 }}>
-                              <span title="Product section" style={{ fontSize: 15 }}>🧩</span>
+                              <span title="Product section" style={{ fontSize: 'var(--fs-lg)' }}>🧩</span>
                               <input value={sec.name || ''} onChange={(e) => updSection(sec.id, { name: e.target.value })} placeholder="Section name"
                                 style={{ fontWeight: 700, flex: 1, minWidth: 0, padding: '6px 8px', border: '1px solid var(--line)', borderRadius: 8 }} />
-                              <span className="muted" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>{picked} picked</span>
+                              <span className="muted" style={{ fontSize: 'var(--fs-sm)', whiteSpace: 'nowrap' }}>{picked} picked</span>
                             </label>
-                            <label style={{ ...row, cursor: 'pointer', fontSize: 12 }} className="muted" title="Show product images for this section">
+                            <label style={{ ...row, cursor: 'pointer', fontSize: 'var(--fs-sm)' }} className="muted" title="Show product images for this section">
                               <input type="checkbox" checked={sec.showImages !== false} onChange={(e) => updSection(sec.id, { showImages: e.target.checked })} />
                               <span>Images</span>
                             </label>
@@ -1267,13 +1267,13 @@ export default function Admin({ onExit }) {
                                       <input type="checkbox" checked onChange={() => toggleSectionItem(sec.id, p.id)} />
                                       {p.image
                                         ? <img src={p.image} alt="" style={{ width: 30, height: 30, borderRadius: 6, objectFit: 'cover', flex: 'none' }} />
-                                        : <span style={{ width: 30, height: 30, borderRadius: 6, background: 'var(--surface)', flex: 'none', display: 'grid', placeItems: 'center', fontSize: 14 }}>🍽️</span>}
-                                      <span style={{ fontSize: 14, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
-                                      {p.category && <span className="muted" style={{ fontSize: 11, whiteSpace: 'nowrap' }}>{p.category}</span>}
+                                        : <span style={{ width: 30, height: 30, borderRadius: 6, background: 'var(--surface)', flex: 'none', display: 'grid', placeItems: 'center', fontSize: 'var(--fs-md)' }}>🍽️</span>}
+                                      <span style={{ fontSize: 'var(--fs-md)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
+                                      {p.category && <span className="muted" style={{ fontSize: 'var(--fs-xs)', whiteSpace: 'nowrap' }}>{p.category}</span>}
                                     </label>
                                   ))}
                                 </div>
-                              ) : <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>No products chosen yet.</p>}
+                              ) : <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 0 }}>No products chosen yet.</p>}
 
                               <button className="link" onClick={() => setSecPickerOpen((x) => ({ ...x, [sec.id]: !x[sec.id] }))}>
                                 {secPickerOpen[sec.id] ? '▲ Hide product list' : '＋ Add / browse products'}
@@ -1283,7 +1283,7 @@ export default function Admin({ onExit }) {
                                   <input placeholder="Search products…" value={secSearch[sec.id] || ''}
                                     onChange={(e) => setSecSearch((x) => ({ ...x, [sec.id]: e.target.value }))}
                                     style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 10, marginBottom: 8 }} />
-                                  {allProducts.length === 0 && <p className="muted" style={{ fontSize: 12 }}>Loading products…</p>}
+                                  {allProducts.length === 0 && <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>Loading products…</p>}
                                   <div style={{ maxHeight: 320, overflowY: 'auto' }}>
                                     {allProducts
                                       .filter((p) => !q || p.name.toLowerCase().includes(q) || (p.category || '').toLowerCase().includes(q))
@@ -1292,9 +1292,9 @@ export default function Admin({ onExit }) {
                                           <input type="checkbox" checked={sectionHasItem(sec, p.id)} onChange={() => toggleSectionItem(sec.id, p.id)} />
                                           {p.image
                                             ? <img src={p.image} alt="" style={{ width: 30, height: 30, borderRadius: 6, objectFit: 'cover', flex: 'none' }} />
-                                            : <span style={{ width: 30, height: 30, borderRadius: 6, background: 'var(--surface)', flex: 'none', display: 'grid', placeItems: 'center', fontSize: 14 }}>🍽️</span>}
-                                          <span style={{ fontSize: 14, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
-                                          {p.category && <span className="muted" style={{ fontSize: 11, whiteSpace: 'nowrap' }}>{p.category}</span>}
+                                            : <span style={{ width: 30, height: 30, borderRadius: 6, background: 'var(--surface)', flex: 'none', display: 'grid', placeItems: 'center', fontSize: 'var(--fs-md)' }}>🍽️</span>}
+                                          <span style={{ fontSize: 'var(--fs-md)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
+                                          {p.category && <span className="muted" style={{ fontSize: 'var(--fs-xs)', whiteSpace: 'nowrap' }}>{p.category}</span>}
                                         </label>
                                       ))}
                                   </div>
@@ -1313,18 +1313,18 @@ export default function Admin({ onExit }) {
                     const partial = on && ms[c.category]?.items != null;
                     return (
                       <div key={c.category} {...dropZone('units', idx, (f, t) => set({ menuOrder: reorderArray(orderedUnits.map((u) => u.name), f, t) }))}
-                        className={isDragOver('units', idx) ? 'drag-over' : ''}
+                        className={`appcat-row ${isDragOver('units', idx) ? 'drag-over' : ''}`}
                         style={{ border: '1px solid var(--line)', borderRadius: 12, padding: 10, marginBottom: 10, opacity: on ? 1 : 0.55 }}>
                         <div style={{ ...row, justifyContent: 'space-between' }}>
                           <span {...dragHandle('units', idx)}>⠿</span>
                           <label style={{ ...row, cursor: 'pointer', flex: 1 }}>
                             <input type="checkbox" checked={on} onChange={(e) => setCatEnabled(c.category, e.target.checked)} />
                             <span style={{ fontWeight: 700 }}>{c.category}</span>
-                            <span className="muted" style={{ fontSize: 12 }}>
+                            <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>
                               {partial ? `${nOffered}/${c.items.length} items` : `all ${c.items.length}`}
                             </span>
                           </label>
-                          <label style={{ ...row, cursor: 'pointer', fontSize: 12 }} className="muted" title="Show product images for this category">
+                          <label style={{ ...row, cursor: 'pointer', fontSize: 'var(--fs-sm)' }} className="muted" title="Show product images for this category">
                             <input type="checkbox" checked={showImages(c.category)} disabled={!on}
                               onChange={(e) => setMS(c.category, { showImages: e.target.checked })} />
                             <span>Images</span>
@@ -1358,11 +1358,11 @@ export default function Admin({ onExit }) {
                                         onChange={() => toggleItem(c.category, it.id, allIds)} />
                                       {img
                                         ? <img src={img} alt="" style={{ width: 34, height: 34, borderRadius: 8, objectFit: 'cover', flex: 'none' }} />
-                                        : <span style={{ width: 34, height: 34, borderRadius: 8, background: 'var(--brand-soft)', flex: 'none', display: 'grid', placeItems: 'center', fontSize: 15 }}>🍽️</span>}
-                                      <span style={{ fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.name}</span>
+                                        : <span style={{ width: 34, height: 34, borderRadius: 8, background: 'var(--brand-soft)', flex: 'none', display: 'grid', placeItems: 'center', fontSize: 'var(--fs-lg)' }}>🍽️</span>}
+                                      <span style={{ fontSize: 'var(--fs-md)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.name}</span>
                                     </label>
                                     <label className="btn ghost" title="Upload a real photo to this Square item"
-                                      style={{ padding: '5px 10px', fontSize: 12, cursor: imgBusy === it.id ? 'default' : 'pointer', flex: 'none', opacity: imgBusy === it.id ? 0.6 : 1 }}>
+                                      style={{ padding: '5px 10px', fontSize: 'var(--fs-sm)', cursor: imgBusy === it.id ? 'default' : 'pointer', flex: 'none', opacity: imgBusy === it.id ? 0.6 : 1 }}>
                                       {imgBusy === it.id ? 'Uploading…' : (img ? 'Replace' : 'Photo')}
                                       <input type="file" accept="image/*" style={{ display: 'none' }} disabled={imgBusy === it.id}
                                         onChange={(e) => { const f = e.target.files[0]; if (f) uploadSquareImage(f, it.id); e.target.value = ''; }} />
@@ -1384,25 +1384,25 @@ export default function Admin({ onExit }) {
                 {menuSub === 'builder' && (
                 <div className="card" style={card}>
                   <div className="group-title">Product builder</div>
-                  <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>
+                  <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 0 }}>
                     Turn ONE variable Square item (e.g. “Breakfast”) into several named tiles — without creating new
                     Square products. Pick the item, lock a variation, then set each option to <strong>Hide</strong>,
                     <strong> Show</strong> (customer can pick), <strong>Default</strong> (pre-ticked) or <strong>Lock</strong>
                     (always applied, hidden). Orders still submit as the real Square variation + modifiers, so printers
                     and KDS work automatically. Presets appear as tiles in the section you name.
                   </p>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, marginBottom: 10, cursor: 'pointer' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--fs-base)', marginBottom: 10, cursor: 'pointer' }}>
                     <input type="checkbox" checked={s.hidePresetSources !== false} onChange={(e) => set({ hidePresetSources: e.target.checked })} />
                     <span>Hide the original item from the menu once it has presets</span>
                   </label>
                   {/* Quick generate: one tile per variation */}
                   <div style={{ border: '1px dashed var(--accent)', borderRadius: 12, padding: 10, marginBottom: 12, background: 'var(--brand-soft)' }}>
-                    <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 6 }}>⚡ Quick generate — a tile per variation</div>
-                    <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>Choose a category or search, tick the items (or Select all), then generate a preset for every variation of each. Tweak options or duplicate after.</p>
+                    <div style={{ fontWeight: 700, fontSize: 'var(--fs-base)', marginBottom: 6 }}>⚡ Quick generate — a tile per variation</div>
+                    <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 0 }}>Choose a category or search, tick the items (or Select all), then generate a preset for every variation of each. Tweak options or duplicate after.</p>
                     {renderGenPicker()}
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end', marginTop: 8 }}>
                       <label style={{ display: 'grid', gap: 4, flex: '1 1 180px' }}>
-                        <span className="muted" style={{ fontSize: 12 }}>Show in section (pick one below or type a new name)</span>
+                        <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>Show in section (pick one below or type a new name)</span>
                         <input value={genSection} onChange={(e) => setGenSection(e.target.value)} placeholder="e.g. Breakfast"
                           style={{ padding: 8, borderRadius: 10, border: '1px solid var(--line)' }} />
                       </label>
@@ -1411,7 +1411,7 @@ export default function Admin({ onExit }) {
                     </div>
                     {renderSectionChips(genSection, setGenSection)}
                   </div>
-                  {presets.length === 0 && <p className="muted" style={{ fontSize: 12 }}>No presets yet. Generate some above, or add one below.</p>}
+                  {presets.length === 0 && <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>No presets yet. Generate some above, or add one below.</p>}
                   {presetsSorted.map((p, i) => {
                     const secName = (p.section || '').trim() || '(no section)';
                     const showHeader = i === 0 || (((presetsSorted[i - 1].section || '').trim() || '(no section)') !== secName);
@@ -1440,10 +1440,10 @@ export default function Admin({ onExit }) {
                             style={{ flex: 1, minWidth: 120, textAlign: 'left', background: 'none', border: 'none', fontWeight: 700, cursor: 'pointer' }}>
                             {secName} · {secCount} {secCount === 1 ? 'tile' : 'tiles'} {secCollapsed ? '▼' : '▲'}
                           </button>
-                          <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }} title="Show this section in the top menu links">
+                          <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 'var(--fs-sm)' }} title="Show this section in the top menu links">
                             <input type="checkbox" checked={presetSectionNav[secName]?.top === true} onChange={(e) => setSectionNav(secName, { top: e.target.checked })} /> Top menu
                           </label>
-                          <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }} title="Show this section in the footer menu links">
+                          <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 'var(--fs-sm)' }} title="Show this section in the footer menu links">
                             <input type="checkbox" checked={presetSectionNav[secName]?.footer === true} onChange={(e) => setSectionNav(secName, { footer: e.target.checked })} /> Footer
                           </label>
                         </div>
@@ -1457,10 +1457,10 @@ export default function Admin({ onExit }) {
                           <label style={{ ...row, flex: 1, minWidth: 0 }}>
                             <input type="checkbox" checked={p.enabled !== false} title="Available — untick to hide this tile when unavailable"
                               onChange={(e) => updPreset(p.id, { enabled: e.target.checked })} />
-                            <span title="Preset" style={{ fontSize: 15 }}>🛠️</span>
+                            <span title="Preset" style={{ fontSize: 'var(--fs-lg)' }}>🛠️</span>
                             <input value={p.name || ''} onChange={(e) => updPreset(p.id, { name: e.target.value })} placeholder="Tile name (e.g. Egg & Bacon Roll – Rocket & Aioli)"
                               style={{ fontWeight: 700, flex: 1, minWidth: 0, padding: '6px 8px', border: '1px solid var(--line)', borderRadius: 8 }} />
-                            {price != null && <span className="muted" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>{formatMoney(price, data?.currency)}</span>}
+                            {price != null && <span className="muted" style={{ fontSize: 'var(--fs-sm)', whiteSpace: 'nowrap' }}>{formatMoney(price, data?.currency)}</span>}
                           </label>
                           <button className="link" title="Duplicate preset" onClick={() => dupPreset(p.id)}>⧉</button>
                           <button className="link" onClick={() => setExpanded((x) => ({ ...x, [p.id]: !isOpen }))}>{isOpen ? '▲' : '▼'}</button>
@@ -1469,15 +1469,15 @@ export default function Admin({ onExit }) {
                         {isOpen && (
                           <div style={{ marginTop: 8, borderTop: '1px solid var(--line)', paddingTop: 8, display: 'grid', gap: 8 }}>
                             <div style={{ display: 'grid', gap: 4 }}>
-                              <span className="muted" style={{ fontSize: 12 }}>Source product</span>
+                              <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>Source product</span>
                               {(() => {
                                 const cur = allProducts.find((x) => x.id === p.sourceItemId);
                                 const open = !!srcOpen[p.id];
                                 return (
                                   <div>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                                      <span style={{ fontSize: 14 }}>{cur ? cur.name : '— none selected —'}
-                                        {cur && (cur.categories || []).length ? <span className="muted" style={{ fontSize: 12 }}> · {cur.categories.join(', ')}</span> : null}</span>
+                                      <span style={{ fontSize: 'var(--fs-md)' }}>{cur ? cur.name : '— none selected —'}
+                                        {cur && (cur.categories || []).length ? <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}> · {cur.categories.join(', ')}</span> : null}</span>
                                       <button className="link" onClick={() => setSrcOpen((x) => ({ ...x, [p.id]: !open }))}>{open ? 'Close' : (cur ? 'Change' : 'Choose product')}</button>
                                     </div>
                                     {open && renderSourcePicker(p.id, p.sourceItemId, (id) => { updPreset(p.id, { sourceItemId: id, variationId: '', groups: {} }); setSrcOpen((x) => ({ ...x, [p.id]: false })); })}
@@ -1485,12 +1485,12 @@ export default function Admin({ onExit }) {
                                 );
                               })()}
                             </div>
-                            {p.sourceItemId && !cfg && <p className="muted" style={{ fontSize: 12 }}>Loading item options…</p>}
+                            {p.sourceItemId && !cfg && <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>Loading item options…</p>}
                             {cfg && (
                               <>
                                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                                   <label style={{ display: 'grid', gap: 4, flex: '1 1 180px' }}>
-                                    <span className="muted" style={{ fontSize: 12 }}>Variation (locked)</span>
+                                    <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>Variation (locked)</span>
                                     <select value={p.variationId || ''} onChange={(e) => updPreset(p.id, { variationId: e.target.value })}
                                       style={{ padding: 8, borderRadius: 10, border: '1px solid var(--line)' }}>
                                       <option value="">— pick a variation —</option>
@@ -1498,7 +1498,7 @@ export default function Admin({ onExit }) {
                                     </select>
                                   </label>
                                   <label style={{ display: 'grid', gap: 4, flex: '1 1 180px' }}>
-                                    <span className="muted" style={{ fontSize: 12 }}>Show in section (pick below or type new)</span>
+                                    <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>Show in section (pick below or type new)</span>
                                     <input value={p.section || ''} onChange={(e) => updPreset(p.id, { section: e.target.value })} placeholder="e.g. Breakfast"
                                       style={{ padding: 8, borderRadius: 10, border: '1px solid var(--line)' }} />
                                   </label>
@@ -1506,7 +1506,7 @@ export default function Admin({ onExit }) {
                                 {renderSectionChips(p.section, (n) => updPreset(p.id, { section: n }))}
                                 {(cfg.modifierGroups || []).map((g) => (
                                   <div key={g.id} style={{ border: '1px solid var(--line)', borderRadius: 10, padding: 8 }}>
-                                    <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 6 }}>{g.name}
+                                    <div style={{ fontWeight: 600, fontSize: 'var(--fs-base)', marginBottom: 6 }}>{g.name}
                                       <span className="muted" style={{ fontWeight: 400 }}>{g.selectionType === 'SINGLE' ? ' · choose one' : g.max > 0 ? ` · up to ${g.max}` : ''}</span>
                                     </div>
                                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
@@ -1521,7 +1521,7 @@ export default function Admin({ onExit }) {
                                         }[st];
                                         return (
                                           <button key={m.id} onClick={() => cyclePresetMod(p.id, g.id, m.id)} title="Tap to cycle Hide → Show → Default → Lock"
-                                            style={{ ...sty, borderRadius: 999, padding: '5px 10px', fontSize: 12, cursor: 'pointer' }}>
+                                            style={{ ...sty, borderRadius: 999, padding: '5px 10px', fontSize: 'var(--fs-sm)', cursor: 'pointer' }}>
                                             {m.name}{m.price > 0 ? ` +${formatMoney(m.price, data?.currency)}` : ''} · {label}
                                           </button>
                                         );
@@ -1529,7 +1529,7 @@ export default function Admin({ onExit }) {
                                     </div>
                                   </div>
                                 ))}
-                                {(!cfg.modifierGroups || cfg.modifierGroups.length === 0) && <p className="muted" style={{ fontSize: 12 }}>This item has no modifier options.</p>}
+                                {(!cfg.modifierGroups || cfg.modifierGroups.length === 0) && <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>This item has no modifier options.</p>}
                               </>
                             )}
                           </div>
@@ -1559,13 +1559,13 @@ export default function Admin({ onExit }) {
                   </label>
                   {s.heroAutoplay !== false && (
                     <label style={{ display: 'flex', alignItems: 'center', gap: 8, flex: '1 1 180px', minWidth: 160 }}>
-                      <span className="muted" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>Every {Number(s.heroInterval) || 5}s</span>
+                      <span className="muted" style={{ fontSize: 'var(--fs-sm)', whiteSpace: 'nowrap' }}>Every {Number(s.heroInterval) || 5}s</span>
                       <input type="range" min="2" max="15" step="1" value={Number(s.heroInterval) || 5}
                         onChange={(e) => set({ heroInterval: Number(e.target.value) })} style={{ flex: 1 }} />
                     </label>
                   )}
                 </div>
-                {!data.cloudinary && <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>Add Cloudinary keys in Railway to enable image upload; you can still paste a URL.</p>}
+                {!data.cloudinary && <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 0 }}>Add Cloudinary keys in Railway to enable image upload; you can still paste a URL.</p>}
                 <div className="admin-bannergrid">
                   {hero.map((sl, i) => (
                     <div key={i} {...dropZone('banner', i, (f, t) => setHero(reorderArray(hero, f, t)))}
@@ -1623,11 +1623,11 @@ export default function Admin({ onExit }) {
                         )}
                       </div>
                       <div style={row}>
-                        <label className="btn ghost" style={{ padding: '8px 12px', fontSize: 13, cursor: 'pointer' }}>
+                        <label className="btn ghost" style={{ padding: '8px 12px', fontSize: 'var(--fs-base)', cursor: 'pointer' }}>
                           Upload image
                           <input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files[0]; if (f) uploadImage(f, (url) => updSlide(i, { image: url, bg: `url(${url}) center/contain no-repeat` })); }} />
                         </label>
-                        <input style={{ flex: 1, padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 10, fontSize: 11 }} value={sl.bg || ''} onChange={(e) => updSlide(i, { bg: e.target.value })} placeholder="background (gradient or url(...) center/cover)" />
+                        <input style={{ flex: 1, padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 10, fontSize: 'var(--fs-xs)' }} value={sl.bg || ''} onChange={(e) => updSlide(i, { bg: e.target.value })} placeholder="background (gradient or url(...) center/cover)" />
                       </div>
                     </div>
                   ))}
@@ -1641,11 +1641,11 @@ export default function Admin({ onExit }) {
               <div className="card" style={card}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
                   <div className="group-title" style={{ margin: 0 }}>Users · loyalty members</div>
-                  <button type="button" className="btn ghost" style={{ padding: '6px 12px', fontSize: 13 }} disabled={usersBusy} onClick={loadUsers}>{usersBusy ? 'Loading…' : (users === null ? 'Load' : 'Refresh')}</button>
+                  <button type="button" className="btn ghost" style={{ padding: '6px 12px', fontSize: 'var(--fs-base)' }} disabled={usersBusy} onClick={loadUsers}>{usersBusy ? 'Loading…' : (users === null ? 'Load' : 'Refresh')}</button>
                 </div>
-                <p className="muted" style={{ fontSize: 12, marginTop: 6 }}>Everyone enrolled in your Square loyalty program — name, contact, points and when they joined. Pulled live from Square.</p>
-                {users === null && !usersBusy && <p className="muted" style={{ fontSize: 13 }}>Tap Load to fetch your loyalty members.</p>}
-                {users && users.length === 0 && <p className="muted" style={{ fontSize: 13 }}>No loyalty members yet.</p>}
+                <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 6 }}>Everyone enrolled in your Square loyalty program — name, contact, points and when they joined. Pulled live from Square.</p>
+                {users === null && !usersBusy && <p className="muted" style={{ fontSize: 'var(--fs-base)' }}>Tap Load to fetch your loyalty members.</p>}
+                {users && users.length === 0 && <p className="muted" style={{ fontSize: 'var(--fs-base)' }}>No loyalty members yet.</p>}
                 {users && users.length > 0 && (() => {
                   const fmtJoined = (iso) => iso ? new Date(iso).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
                   const now = Date.now();
@@ -1671,7 +1671,7 @@ export default function Admin({ onExit }) {
                   });
                   const totalRedeemers = users.filter((u) => u.redemptions > 0).length;
                   const totalActive = users.filter((u) => u.points > 0).length;
-                  const SEL = { padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 10, fontSize: 13 };
+                  const SEL = { padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 10, fontSize: 'var(--fs-base)' };
                   const chip = (key, label) => (
                     <button type="button" className={`chip ${userFilter === key ? 'on' : ''}`} onClick={() => setUserFilter(key)}>{label}</button>
                   );
@@ -1693,25 +1693,25 @@ export default function Admin({ onExit }) {
                         {chip('active', `Has points ${totalActive}`)}
                         {chip('redeemers', `Redeemed ${totalRedeemers}`)}
                         {chip('new', 'Joined ≤30 days')}
-                        <span className="muted" style={{ fontSize: 13, fontWeight: 700, marginLeft: 'auto' }}>{rows.length} shown</span>
+                        <span className="muted" style={{ fontSize: 'var(--fs-base)', fontWeight: 700, marginLeft: 'auto' }}>{rows.length} shown</span>
                       </div>
                       <div className="admin-users">
                         {rows.map((u) => (
                           <div key={u.id} className="user-row">
                             <div className="user-main">
                               <div className="user-name">{u.name || 'Guest'}</div>
-                              <div className="muted" style={{ fontSize: 12.5 }}>{[u.phone, u.email].filter(Boolean).join(' · ') || '—'}</div>
+                              <div className="muted" style={{ fontSize: 'var(--fs-sm)' }}>{[u.phone, u.email].filter(Boolean).join(' · ') || '—'}</div>
                             </div>
                             <div className="user-meta">
                               <span className="user-pts">{u.points} pts</span>
-                              <span className="muted" style={{ fontSize: 11.5 }}>
+                              <span className="muted" style={{ fontSize: 'var(--fs-xs)' }}>
                                 {u.lifetimePoints} earned{u.redemptions > 0 ? ` · ${u.redemptions} redeemed` : ''}
                               </span>
-                              <span className="muted" style={{ fontSize: 11.5 }}>Joined {fmtJoined(u.enrolledAt)}</span>
+                              <span className="muted" style={{ fontSize: 'var(--fs-xs)' }}>Joined {fmtJoined(u.enrolledAt)}</span>
                             </div>
                           </div>
                         ))}
-                        {rows.length === 0 && <p className="muted" style={{ fontSize: 13 }}>No members match.</p>}
+                        {rows.length === 0 && <p className="muted" style={{ fontSize: 'var(--fs-base)' }}>No members match.</p>}
                       </div>
                     </>
                   );
@@ -1723,8 +1723,8 @@ export default function Admin({ onExit }) {
             {tab === 'coupons' && (
               <div className="card" style={card}>
                 <div className="group-title">Coupons</div>
-                <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>Create codes customers type at checkout. The discount is applied to the Square order, so they only pay the reduced total. Remember to press <strong>Save changes</strong>.</p>
-                {couponList.length === 0 && <p className="muted" style={{ fontSize: 13 }}>No coupons yet — add one below.</p>}
+                <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 0 }}>Create codes customers type at checkout. The discount is applied to the Square order, so they only pay the reduced total. Remember to press <strong>Save changes</strong>.</p>
+                {couponList.length === 0 && <p className="muted" style={{ fontSize: 'var(--fs-base)' }}>No coupons yet — add one below.</p>}
                 {couponList.map((c, i) => (
                   <div key={i} style={{ border: '1px solid var(--line)', borderRadius: 12, padding: 12, marginBottom: 10 }}>
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -1747,13 +1747,13 @@ export default function Admin({ onExit }) {
                       <button className="link" style={{ color: '#c0392b' }} onClick={() => rmCoupon(i)}>Remove</button>
                     </div>
                     <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center', marginTop: 8 }}>
-                      <label style={{ ...row, fontSize: 13 }} className="muted">
+                      <label style={{ ...row, fontSize: 'var(--fs-base)' }} className="muted">
                         <span>Expires</span>
                         <input type="date" value={c.expiry || ''} onChange={(e) => updCoupon(i, { expiry: e.target.value })}
                           style={{ padding: '6px 8px', border: '1px solid var(--line)', borderRadius: 10 }} />
-                        {c.expiry && <button className="link" style={{ fontSize: 12, padding: 2 }} onClick={() => updCoupon(i, { expiry: '' })}>clear</button>}
+                        {c.expiry && <button className="link" style={{ fontSize: 'var(--fs-sm)', padding: 2 }} onClick={() => updCoupon(i, { expiry: '' })}>clear</button>}
                       </label>
-                      <label style={{ ...row, cursor: 'pointer', fontSize: 13 }}>
+                      <label style={{ ...row, cursor: 'pointer', fontSize: 'var(--fs-base)' }}>
                         <input type="checkbox" checked={c.active !== false} onChange={(e) => updCoupon(i, { active: e.target.checked })} />
                         <span>{c.active !== false ? 'Active' : 'Off'}</span>
                       </label>
@@ -1768,12 +1768,12 @@ export default function Admin({ onExit }) {
             {tab === 'push' && (
               <div className="card" style={card}>
                 <div className="group-title">Push · message your customers</div>
-                <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>
+                <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 0 }}>
                   Send a message to everyone in your Square loyalty program. This web app can’t push to phone lock-screens (that needs a native app), so messages go out by SMS or email. Only message customers who’ve opted in.
                 </p>
 
                 {notifyStatus && !notifyStatus.sms && !notifyStatus.email && (
-                  <p className="error-text" style={{ fontSize: 13 }}>No channels are set up yet. Add Twilio (SMS) and/or Resend (email) env vars in Railway to enable this.</p>
+                  <p className="error-text" style={{ fontSize: 'var(--fs-base)' }}>No channels are set up yet. Add Twilio (SMS) and/or Resend (email) env vars in Railway to enable this.</p>
                 )}
 
                 <div className="segmented" style={{ maxWidth: 320, marginBottom: 12 }}>
@@ -1798,7 +1798,7 @@ export default function Admin({ onExit }) {
                   <input inputMode="url" value={push.link} onChange={(e) => setPush((p) => ({ ...p, link: e.target.value }))} placeholder="https://app.beanculture.com.au" /></label>
 
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
-                  <span className="muted" style={{ fontSize: 12.5 }}>
+                  <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>
                     {users === null ? 'Counting audience…' : `To ${users.length} loyalty member${users.length === 1 ? '' : 's'}${push.channel === 'sms' ? ` · ${users.filter((u) => u.phone).length} with a phone` : ` · ${users.filter((u) => u.email).length} with an email`}`}
                   </span>
                   <button className="btn" disabled={pushBusy || !push.message.trim() || (notifyStatus && !notifyStatus[push.channel])}
@@ -1806,7 +1806,7 @@ export default function Admin({ onExit }) {
                 </div>
 
                 {pushResult && (
-                  <p className="muted" style={{ fontSize: 13, marginTop: 12 }}>
+                  <p className="muted" style={{ fontSize: 'var(--fs-base)', marginTop: 12 }}>
                     ✓ Sent to <strong>{pushResult.sent}</strong>{pushResult.skipped ? ` · ${pushResult.skipped} skipped (no ${push.channel === 'sms' ? 'phone' : 'email'})` : ''}{pushResult.failed ? ` · ${pushResult.failed} failed` : ''}.
                   </p>
                 )}
@@ -1817,7 +1817,7 @@ export default function Admin({ onExit }) {
             {tab === 'tables' && (
               <div className="card" style={card}>
                 <div className="group-title">Table QR codes</div>
-                <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>
+                <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 0 }}>
                   Generate a QR for each table. Scanning it opens the app with <strong>Dine in</strong> and that
                   table number locked in — the guest taps ✕ only if they need to change it. Print and place one on each table.
                 </p>
@@ -1832,22 +1832,22 @@ export default function Admin({ onExit }) {
                 </div>
                 <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap', marginTop: 14 }}>
                   <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span className="muted" style={{ fontSize: 13 }}>Code colour</span>
+                    <span className="muted" style={{ fontSize: 'var(--fs-base)' }}>Code colour</span>
                     <input type="color" value={qrFg} onChange={(e) => setQrFg(e.target.value)} style={{ width: 40, height: 30, border: 'none', background: 'none', cursor: 'pointer' }} />
                   </label>
                   <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span className="muted" style={{ fontSize: 13 }}>Background</span>
+                    <span className="muted" style={{ fontSize: 'var(--fs-base)' }}>Background</span>
                     <input type="color" value={qrBg} onChange={(e) => setQrBg(e.target.value)} style={{ width: 40, height: 30, border: 'none', background: 'none', cursor: 'pointer' }} />
                   </label>
                   <label style={{ display: 'flex', alignItems: 'center', gap: 8, flex: '1 1 200px', minWidth: 180 }}>
-                    <span className="muted" style={{ fontSize: 13, whiteSpace: 'nowrap' }}>Size {qrSize}px</span>
+                    <span className="muted" style={{ fontSize: 'var(--fs-base)', whiteSpace: 'nowrap' }}>Size {qrSize}px</span>
                     <input type="range" min="120" max="320" step="10" value={qrSize} onChange={(e) => setQrSize(Number(e.target.value))} style={{ flex: 1 }} />
                   </label>
                 </div>
                 {qrCodes.length > 0 && (
                   <>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '14px 0 2px' }}>
-                      <span className="muted" style={{ fontSize: 12 }}>{qrCodes.length} table{qrCodes.length === 1 ? '' : 's'} · links to {origin || 'this site'}</span>
+                      <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>{qrCodes.length} table{qrCodes.length === 1 ? '' : 's'} · links to {origin || 'this site'}</span>
                       <button className="link" onClick={() => window.print()}>🖨 Print cards</button>
                     </div>
                     <div className="qr-print" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${Math.min(qrSize + 48, 300)}px, 1fr))` }}>
@@ -1870,7 +1870,7 @@ export default function Admin({ onExit }) {
               <>
                 <div className="card" style={card}>
                   <div className="group-title">Default theme</div>
-                  <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>The store’s base colours (guests can still pick their own theme).</p>
+                  <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 0 }}>The store’s base colours (guests can still pick their own theme).</p>
                   {['brand', 'accent', 'bg', 'ink'].map((k) => (
                     <div key={k} style={{ ...row, justifyContent: 'space-between', padding: '8px 0', borderTop: '1px solid var(--line)' }}>
                       <span style={{ textTransform: 'capitalize' }}>{k === 'bg' ? 'Background' : k === 'ink' ? 'Text' : k}</span>
@@ -1881,7 +1881,7 @@ export default function Admin({ onExit }) {
 
                 <div className="card" style={card}>
                   <div className="group-title">Festive &amp; seasonal themes</div>
-                  <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>
+                  <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 0 }}>
                     Auto-activate on their dates (a single day or a range). Guests can override. Each shows its banner
                     #1 in the hero while active. Adjust variable holidays (Easter, Lunar New Year, Mother’s/Father’s Day) each year.
                   </p>
@@ -1891,8 +1891,8 @@ export default function Admin({ onExit }) {
                       return (
                         <div key={i} style={{ border: '1px solid var(--line)', borderRadius: 12, padding: 10, opacity: t.enabled === false ? 0.6 : 1 }}>
                           <div style={{ ...row, justifyContent: 'space-between' }}>
-                            <input value={t.name || ''} onChange={(e) => updSeasonal(i, { name: e.target.value })} style={{ flex: 1, minWidth: 0, fontWeight: 700, border: 'none', background: 'transparent', fontSize: 15 }} />
-                            <label style={{ ...row, fontSize: 12 }} className="muted"><input type="checkbox" checked={t.enabled !== false} onChange={(e) => updSeasonal(i, { enabled: e.target.checked })} /> On</label>
+                            <input value={t.name || ''} onChange={(e) => updSeasonal(i, { name: e.target.value })} style={{ flex: 1, minWidth: 0, fontWeight: 700, border: 'none', background: 'transparent', fontSize: 'var(--fs-lg)' }} />
+                            <label style={{ ...row, fontSize: 'var(--fs-sm)' }} className="muted"><input type="checkbox" checked={t.enabled !== false} onChange={(e) => updSeasonal(i, { enabled: e.target.checked })} /> On</label>
                             {BUILTIN_SEASONAL.includes(t.id)
                               ? <span title="Built-in festive theme — turn it Off to hide it" style={{ width: 14 }} />
                               : <button className="link" style={{ color: '#c0392b' }} onClick={() => rmSeasonal(i)}>✕</button>}
@@ -1903,28 +1903,28 @@ export default function Admin({ onExit }) {
                           </div>
                           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 8, alignItems: 'center' }}>
                             {['brand', 'accent', 'bg', 'ink'].map((k) => (
-                              <label key={k} style={{ ...row, fontSize: 11 }} className="muted"><span style={{ textTransform: 'capitalize' }}>{k}</span>
+                              <label key={k} style={{ ...row, fontSize: 'var(--fs-xs)' }} className="muted"><span style={{ textTransform: 'capitalize' }}>{k}</span>
                                 <input type="color" value={(t.theme && t.theme[k]) || '#000000'} onChange={(e) => updSeasonalTheme(i, k, e.target.value)} style={{ width: 30, height: 24, border: 'none', background: 'none' }} /></label>
                             ))}
                           </div>
-                          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 8, fontSize: 12 }} className="muted">
+                          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 8, fontSize: 'var(--fs-sm)' }} className="muted">
                             {['snow', 'hearts', 'petals', 'confetti'].map((fx) => (
                               <label key={fx} style={{ ...row }}><input type="checkbox" checked={!!(t.effects && t.effects[fx])} onChange={(e) => updSeasonal(i, { effects: { ...(t.effects || {}), [fx]: e.target.checked } })} /> {fx}</label>
                             ))}
                           </div>
                           <div style={{ marginTop: 10, borderTop: '1px solid var(--line)', paddingTop: 8 }}>
-                            <div className="muted" style={{ fontSize: 11, marginBottom: 4 }}>Banner (shown #1 while active)</div>
+                            <div className="muted" style={{ fontSize: 'var(--fs-xs)', marginBottom: 4 }}>Banner (shown #1 while active)</div>
                             {img && <img src={img} alt="" style={{ width: '100%', borderRadius: 8, marginBottom: 6 }} />}
                             <input value={t.banner?.title || ''} onChange={(e) => updSeasonalBanner(i, { title: e.target.value })} placeholder="Banner title" style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 10, marginBottom: 6 }} />
                             <input value={t.banner?.subtitle || ''} onChange={(e) => updSeasonalBanner(i, { subtitle: e.target.value })} placeholder="Subtitle" style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 10, marginBottom: 6 }} />
                             <div style={{ ...row, gap: 8 }}>
                               <input value={t.banner?.cta || ''} onChange={(e) => updSeasonalBanner(i, { cta: e.target.value })} placeholder="Button text" style={{ flex: 1, minWidth: 0, padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 10 }} />
-                              <label className="btn ghost" style={{ padding: '8px 12px', fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap' }}>Image
+                              <label className="btn ghost" style={{ padding: '8px 12px', fontSize: 'var(--fs-base)', cursor: 'pointer', whiteSpace: 'nowrap' }}>Image
                                 <input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files[0]; if (f) uploadImage(f, (url) => updSeasonalBanner(i, { image: url, bg: `url(${url}) center/contain no-repeat` }), 'themes'); }} /></label>
                             </div>
                             {/* Destination — same options as the hero banners */}
                             <div style={{ ...row, gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
-                              <span className="muted" style={{ fontSize: 12 }}>Tapping goes to</span>
+                              <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>Tapping goes to</span>
                               <select value={t.banner?.link?.type || 'scroll'} onChange={(e) => updSeasonalBanner(i, { link: { ...(t.banner?.link || {}), type: e.target.value } })} style={{ padding: 8, borderRadius: 10, border: '1px solid var(--line)' }}>
                                 {LINK_TYPES.map((lt) => <option key={lt} value={lt}>{lt}</option>)}
                               </select>
@@ -1966,7 +1966,7 @@ export default function Admin({ onExit }) {
       {/* Sticky save bar */}
       <div className="admin-savebar">
         <div className="admin-savebar-inner">
-          <span className="muted" style={{ fontSize: 12, flex: 1 }}>{savedMsg}</span>
+          <span className="muted" style={{ fontSize: 'var(--fs-sm)', flex: 1 }}>{savedMsg}</span>
           <button className="btn" style={{ minWidth: 140 }} disabled={saving} onClick={save}>{saving ? 'Saving…' : 'Save changes'}</button>
         </div>
       </div>
