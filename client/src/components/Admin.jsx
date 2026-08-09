@@ -1265,12 +1265,32 @@ export default function Admin({ onExit }) {
                 </div>
 
                 <div className="card" style={card}>
-                  <div className="group-title">Footer &amp; top menus</div>
-                  <p className="muted" style={{ fontSize: 'var(--fs-sm)', margin: 0 }}>
-                    Your bottom (footer) and top menus are built automatically from the <strong>Top menu</strong> and <strong>Footer</strong>
-                    tickboxes on each section in <strong>Product builder</strong>. Tick a section for Footer to give it a footer button (icon chosen
-                    automatically), or Top menu to put it in the top category bar.
-                  </p>
+                  <div className="group-title">Footer menu builder</div>
+                  <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 0 }}>Each button = an icon + one or more sections. Group sections under a single button (e.g. “Food” = Breakfast + Lunch). Any section placed in a button appears on the storefront; the <strong>Top menu</strong> tickbox in Product builder adds a section to the top bar.</p>
+                  {footer.map((slot, i) => (
+                    <div key={i} {...dropZone('footer', i, (f, t) => setFooter(reorderArray(footer, f, t)))}
+                      className={isDragOver('footer', i) ? 'drag-over' : ''}
+                      style={{ border: '1px solid var(--line)', borderRadius: 12, padding: 10, marginBottom: 10 }}>
+                      <div style={{ ...row, gap: 10 }}>
+                        <span {...dragHandle('footer', i)}>⠿</span>
+                        <IconPicker value={{ icon: slot.icon, iconSvg: slot.iconSvg }} brand={s.theme?.brand} onChange={(v) => updSlot(i, v)} />
+                        <input value={slot.label || ''} onChange={(e) => updSlot(i, { label: e.target.value })} placeholder="Label"
+                          style={{ flex: 1, minWidth: 0, padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 10 }} />
+                        <div style={row}>
+                          <button className="link" onClick={() => moveSlot(i, -1)}>↑</button>
+                          <button className="link" onClick={() => moveSlot(i, 1)}>↓</button>
+                          <button className="link" style={{ color: '#c0392b' }} onClick={() => rmSlot(i)}>✕</button>
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                        {cats.map((c) => {
+                          const on = slot.categories.some((x) => x.toLowerCase() === c.toLowerCase());
+                          return <button key={c} onClick={() => toggleSlotCat(i, c)} className={`chip ${on ? 'on' : ''}`} style={{ fontSize: 'var(--fs-xs)', padding: '5px 9px' }}>{c}</button>;
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                  <button className="btn ghost full" onClick={addSlot}>+ Add footer button</button>
                 </div>
 
                 <div className="card" style={card}>
@@ -1533,11 +1553,8 @@ export default function Admin({ onExit }) {
                             <button className="btn" disabled={!secCanCombine} title={secCanCombine ? 'Combine the selected tiles' : 'Selected tiles must be from the same product'}
                               onClick={() => combinePresets(secSel.map((x) => x.id))} style={{ padding: '5px 10px', fontSize: 'var(--fs-sm)', opacity: secCanCombine ? 1 : 0.5 }}>⛓ Combine ({secSel.length})</button>
                           )}
-                          <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 'var(--fs-sm)' }} title="Show this section in the top menu links">
+                          <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 'var(--fs-sm)' }} title="Show this section in the top category bar">
                             <input type="checkbox" checked={presetSectionNav[secName]?.top === true} onChange={(e) => setSectionNav(secName, { top: e.target.checked })} /> Top menu
-                          </label>
-                          <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 'var(--fs-sm)' }} title="Show this section in the footer menu links">
-                            <input type="checkbox" checked={presetSectionNav[secName]?.footer === true} onChange={(e) => setSectionNav(secName, { footer: e.target.checked })} /> Footer
                           </label>
                         </div>
                       )}

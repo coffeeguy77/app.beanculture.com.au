@@ -185,27 +185,20 @@ export default function App() {
   // Bottom-nav slots come ONLY from the footer builder groups you set up (kept to
   // categories that exist in the live menu). Categories not in a group are still
   // reachable from the top category chips — we don't auto-add stray buttons.
-  // The footer is built entirely from sections toggled "Footer" in the Product
-  // builder — one button per section, with a sensible icon by name.
+  // The footer is built from the grouped buttons in the Footer menu builder;
+  // each button can point at one or more sections (e.g. "Food" = Breakfast +
+  // Lunch). Sections not present in the live menu are filtered out.
   const footerSlots = useMemo(() => {
     if (!menu) return [];
-    const iconFor = (n) => {
-      const s = (n || '').toLowerCase();
-      if (s.includes('coffee')) return 'cup';
-      if (s.includes('tea')) return 'tea';
-      if (s.includes('cold')) return 'can';
-      if (s.includes('shake')) return 'shake';
-      if (s.includes('smooth')) return 'smoothie';
-      if (s.includes('cake') || s.includes('pastr')) return 'bag';
-      if (s.includes('ice')) return 'ice';
-      if (s.includes('lunch') || s.includes('breakfast') || s.includes('all day') || s.includes('food') || s.includes('wrap') || s.includes('burger')) return 'burger';
-      if (s.includes('bean') || s.includes('bag')) return 'bean';
-      return 'drink';
-    };
-    return menu.categories
-      .filter((c) => c.footerNav === true)
-      .map((c) => ({ label: c.category, icon: iconFor(c.category), categories: [c.category], cats: [c.category] }));
-  }, [menu]);
+    return (config?.footer || [])
+      .map((slot) => ({
+        ...slot,
+        cats: (slot.categories || []).filter((cat) =>
+          menu.categories.some((c) => c.category.toLowerCase() === cat.toLowerCase())
+        ),
+      }))
+      .filter((slot) => slot.cats.length);
+  }, [config, menu]);
   const canOrder = config?.hours?.canOrderNow !== false;
   const preorder = config?.hours?.preorder;
   const storeOpen = config?.hours?.open !== false;
