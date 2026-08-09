@@ -207,7 +207,16 @@ export default function Admin({ onExit }) {
     try { await api.setReservationStatus(pass, r.id, status); } catch {}
   }
 
-  const cats = (data?.categories || []).map((c) => c.name);
+  // Footer buttons can point at whole categories AND hand-picked product
+  // sections, so include the product-section names here (deduped, case-insensitive).
+  const cats = (() => {
+    const names = [
+      ...(data?.categories || []).map((c) => c.name),
+      ...((s?.productSections || []).map((ps) => (ps.name || '').trim()).filter(Boolean)),
+    ];
+    const seen = new Set();
+    return names.filter((n) => { const k = n.toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; });
+  })();
 
   // ---- generic setters ----
   const set = (patch) => setS((cur) => ({ ...cur, ...patch }));
