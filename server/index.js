@@ -71,6 +71,7 @@ app.get('/api/config', async (_req, res) => {
     heroAutoplay: settings.heroAutoplay,
     heroInterval: settings.heroInterval,
     layoutMode: settings.layoutMode,
+    topMenuStyle: settings.topMenuStyle,
     footer: settings.footer,
     cloudinary: cloudinary.configured(),
     hours: hoursStatus,
