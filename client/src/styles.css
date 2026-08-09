@@ -187,6 +187,14 @@ img { max-width: 100%; }
   backdrop-filter: blur(8px); scrollbar-width: none; border-bottom: 1px solid var(--line);
 }
 .catnav::-webkit-scrollbar { display: none; }
+/* Stacked/wrap style: chips flow onto multiple rows so none run off-screen. */
+.catnav.stacked { overflow-x: visible; flex-wrap: wrap; }
+.catnav.stacked.collapsed { max-height: 46px; overflow: hidden; }
+.catnav-toggle {
+  position: sticky; z-index: 20; align-self: stretch; margin-left: auto;
+  border: 1px solid var(--line); background: var(--surface); color: var(--brand);
+  border-radius: 999px; padding: 6px 12px; font-size: 12px; font-weight: 700; cursor: pointer; white-space: nowrap;
+}
 .chip {
   flex: 0 0 auto; padding: 8px 14px; border-radius: 999px; border: 1px solid var(--line);
   background: var(--surface); color: var(--ink); font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap;

@@ -388,18 +388,15 @@ async function getMenu(opts = {}) {
       presetsBySection.get(secName).push(tile);
     }
     const sectionNav = getSettings().presetSectionNav || {};
-    // A builder section shows on the storefront when it's placed in a footer
-    // button (the Footer menu builder handles grouping) OR its Top-menu toggle is
-    // on (top category bar). Neither = it appears in no menu.
-    const footerRefs = new Set();
-    for (const slot of getSettings().footer || []) for (const c of slot.categories || []) footerRefs.add(String(c).toLowerCase());
+    // A builder section shows on the storefront when its Top-menu or Footer
+    // toggle is on. Top → top category bar; Footer → footer menu (grouped by the
+    // Footer menu builder, or its own button). showImages hides empty thumbnails.
     for (const [secName, tiles] of presetsBySection) {
       const existing = sections.find((s) => s.category.toLowerCase() === secName.toLowerCase());
       if (existing) { existing.items.push(...tiles); continue; }
       const nav = sectionNav[secName] || {};
-      const inFooter = footerRefs.has(secName.toLowerCase());
-      if (!(nav.top === true || inFooter)) continue;
-      sections.push({ category: secName, items: tiles, showImages: true, custom: true, builder: true, topNav: nav.top === true, footerNav: inFooter });
+      if (!(nav.top === true || nav.footer === true)) continue;
+      sections.push({ category: secName, items: tiles, showImages: nav.showImages !== false, custom: true, builder: true, topNav: nav.top === true, footerNav: nav.footer === true });
     }
     // Hide the original master items now that presets represent them (keep the
     // preset tiles themselves). Drop any section left empty as a result.

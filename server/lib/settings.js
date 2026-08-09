@@ -183,6 +183,9 @@ const DEFAULTS = {
   // Menu layout: 'onepage' (all categories on one scroll) or 'single' (one
   // category/group at a time, chosen from the footer).
   layoutMode: 'onepage',
+  // Top category bar style: 'stacked' (wraps onto rows, expandable) or 'swipe'
+  // (single scrolling row). Stacked avoids items running off-screen.
+  topMenuStyle: 'stacked',
   // Footer "menu builder": each slot has an icon (from the built-in stroke set)
   // and one OR MORE categories. A multi-category slot combines those sections
   // (e.g. a "Cold" slot with an ice icon = Cold Drinks + Smoothies + Shakes).

@@ -732,8 +732,11 @@ export default function Admin({ onExit }) {
     ...visibleCats.map((c) => c.category.toLowerCase()),
     ...productSections.map((ps) => (ps.name || '').toLowerCase()),
   ]);
+  // Only LIVE builder sections (Top or Footer enabled) appear in this list — it
+  // reflects exactly what's on the storefront. Enable a section in Product builder.
   const presetSectionUnits = [...new Set(presets.map((p) => (p.section || '').trim()).filter(Boolean))]
     .filter((name) => !unitNamesLower.has(name.toLowerCase()))
+    .filter((name) => { const nav = presetSectionNav[name] || {}; return nav.top === true || nav.footer === true; })
     .map((name) => ({ type: 'presetsec', name, count: presets.filter((p) => (p.section || '').trim().toLowerCase() === name.toLowerCase()).length }));
   const orderedUnits = [
     ...visibleCats.map((c) => ({ type: 'cat', name: c.category, cat: c })),
@@ -1262,6 +1265,11 @@ export default function Admin({ onExit }) {
                   <div className="group-title">Menu layout</div>
                   <label style={{ ...row, marginBottom: 6 }}><input type="radio" checked={s.layoutMode !== 'single'} onChange={() => set({ layoutMode: 'onepage' })} /> One page (all categories scroll)</label>
                   <label style={row}><input type="radio" checked={s.layoutMode === 'single'} onChange={() => set({ layoutMode: 'single' })} /> Single category (one at a time)</label>
+                  <div style={{ ...row, marginTop: 12, flexWrap: 'wrap' }}>
+                    <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>Top category bar:</span>
+                    <label style={{ ...row, gap: 4 }}><input type="radio" name="topmenustyle" checked={(s.topMenuStyle || 'stacked') === 'stacked'} onChange={() => set({ topMenuStyle: 'stacked' })} /> Stacked (wraps, expandable)</label>
+                    <label style={{ ...row, gap: 4 }}><input type="radio" name="topmenustyle" checked={s.topMenuStyle === 'swipe'} onChange={() => set({ topMenuStyle: 'swipe' })} /> Swipe (single scrolling row)</label>
+                  </div>
                 </div>
 
                 <div className="card" style={card}>
@@ -1295,7 +1303,7 @@ export default function Admin({ onExit }) {
 
                 <div className="card" style={card}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                    <div className="group-title" style={{ margin: 0 }}>Menu Builder</div>
+                    <div className="group-title" style={{ margin: 0 }}>Top Menu — live sections &amp; order</div>
                     <button type="button" className={`chip ${deleteLock ? 'on' : ''}`} onClick={() => setDeleteLock((v) => !v)} style={{ fontSize: 'var(--fs-sm)' }}
                       title={deleteLock ? 'Delete locked — tap to allow removing sections' : 'Delete unlocked — tap to lock'}>
                       {deleteLock ? '🔒 Delete locked' : '🔓 Delete unlocked'}
@@ -1555,6 +1563,12 @@ export default function Admin({ onExit }) {
                           )}
                           <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 'var(--fs-sm)' }} title="Show this section in the top category bar">
                             <input type="checkbox" checked={presetSectionNav[secName]?.top === true} onChange={(e) => setSectionNav(secName, { top: e.target.checked })} /> Top menu
+                          </label>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 'var(--fs-sm)' }} title="Show this section in the footer menu">
+                            <input type="checkbox" checked={presetSectionNav[secName]?.footer === true} onChange={(e) => setSectionNav(secName, { footer: e.target.checked })} /> Footer
+                          </label>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 'var(--fs-sm)' }} title="Show product images for this section (hide to avoid empty thumbnails)">
+                            <input type="checkbox" checked={presetSectionNav[secName]?.showImages !== false} onChange={(e) => setSectionNav(secName, { showImages: e.target.checked })} /> Images
                           </label>
                         </div>
                       )}

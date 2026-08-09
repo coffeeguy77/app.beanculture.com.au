@@ -185,19 +185,35 @@ export default function App() {
   // Bottom-nav slots come ONLY from the footer builder groups you set up (kept to
   // categories that exist in the live menu). Categories not in a group are still
   // reachable from the top category chips — we don't auto-add stray buttons.
-  // The footer is built from the grouped buttons in the Footer menu builder;
-  // each button can point at one or more sections (e.g. "Food" = Breakfast +
-  // Lunch). Sections not present in the live menu are filtered out.
+  // Footer = sections with the "Footer" toggle on. The Footer menu builder can
+  // group some into a single labelled button (e.g. "Food" = Breakfast + Lunch);
+  // any footer-on section not in a group gets its own button (icon by name).
   const footerSlots = useMemo(() => {
     if (!menu) return [];
-    return (config?.footer || [])
-      .map((slot) => ({
-        ...slot,
-        cats: (slot.categories || []).filter((cat) =>
-          menu.categories.some((c) => c.category.toLowerCase() === cat.toLowerCase())
-        ),
-      }))
+    const iconFor = (n) => {
+      const s = (n || '').toLowerCase();
+      if (s.includes('coffee')) return 'cup';
+      if (s.includes('tea')) return 'tea';
+      if (s.includes('cold')) return 'can';
+      if (s.includes('shake')) return 'shake';
+      if (s.includes('smooth')) return 'smoothie';
+      if (s.includes('cake') || s.includes('pastr')) return 'bag';
+      if (s.includes('ice')) return 'ice';
+      if (s.includes('lunch') || s.includes('breakfast') || s.includes('food') || s.includes('wrap') || s.includes('burger') || s.includes('all day')) return 'burger';
+      if (s.includes('bean') || s.includes('bag')) return 'bean';
+      return 'drink';
+    };
+    const live = menu.categories.filter((c) => c.footerNav === true);
+    const liveNames = new Set(live.map((c) => c.category.toLowerCase()));
+    const grouped = new Set();
+    const manual = (config?.footer || [])
+      .map((slot) => ({ ...slot, cats: (slot.categories || []).filter((cat) => liveNames.has(cat.toLowerCase())) }))
       .filter((slot) => slot.cats.length);
+    manual.forEach((slot) => slot.cats.forEach((c) => grouped.add(c.toLowerCase())));
+    const auto = live
+      .filter((c) => !grouped.has(c.category.toLowerCase()))
+      .map((c) => ({ label: c.category, icon: iconFor(c.category), categories: [c.category], cats: [c.category] }));
+    return [...manual, ...auto];
   }, [config, menu]);
   const canOrder = config?.hours?.canOrderNow !== false;
   const preorder = config?.hours?.preorder;
@@ -546,6 +562,7 @@ export default function App() {
             </div>
             {!query && (
               <CategoryNav
+                variant={config?.topMenuStyle || 'stacked'}
                 categories={menu.categories.filter((c) => c.topNav !== false).map((c) => c.category)}
                 active={layoutMode === 'single' ? (activeGroup && activeGroup.length === 1 ? activeGroup[0] : null) : activeCat}
                 onPick={(cat) => {
