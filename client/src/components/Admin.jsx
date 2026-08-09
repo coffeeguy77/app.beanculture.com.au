@@ -486,7 +486,15 @@ export default function Admin({ onExit }) {
     try {
       const sourceIds = [...new Set(presets.map((p) => p.sourceItemId).filter(Boolean))];
       const configs = {};
-      for (const id of sourceIds) { const cfg = await ensureItemConfig(id); if (cfg) configs[id] = cfg; }
+      // Fetch FRESH from Square (bypass the cached configs) so newly-added
+      // variations are seen; also refresh the cache for the editors.
+      for (const id of sourceIds) {
+        try {
+          const r = await fetch(`/api/admin/item-config?id=${encodeURIComponent(id)}&pass=${encodeURIComponent(pass)}`);
+          if (r.ok) { const d = await r.json(); if (d && d.item) configs[id] = d.item; }
+        } catch (err) { /* skip this item */ }
+      }
+      if (Object.keys(configs).length) setItemConfigs((x) => ({ ...x, ...configs }));
       const coveredBySource = {};
       const sectionBySource = {};
       for (const p of presets) {
