@@ -81,7 +81,6 @@ export default function Admin({ onExit }) {
   const [srcCat, setSrcCat] = useState({});       // picker id -> category filter
   const [genItemId, setGenItemId] = useState(''); // quick-generate: chosen source item
   const [genSelected, setGenSelected] = useState(() => new Set()); // quick-generate: multi-select item ids
-  const [combineMode, setCombineMode] = useState(false); // selecting tiles to combine
   const [combineSel, setCombineSel] = useState(() => new Set()); // preset ids selected to combine
   const [genSection, setGenSection] = useState('Breakfast'); // quick-generate: target section
   const [genBusy, setGenBusy] = useState(false);
@@ -449,9 +448,9 @@ export default function Admin({ onExit }) {
   const presetVids = (p) => (Array.isArray(p.variationIds) && p.variationIds.length ? p.variationIds : [p.variationId].filter(Boolean));
   const isCombined = (p) => presetVids(p).length > 1;
   const toggleCombineSel = (id) => setCombineSel((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
-  // Merge the selected tiles (same source item) into one tile with a size toggle.
-  const combineSelected = () => {
-    const chosen = presets.filter((p) => combineSel.has(p.id));
+  // Merge the given tiles (must share a source item) into one tile with a size toggle.
+  const combinePresets = (ids) => {
+    const chosen = presets.filter((p) => ids.includes(p.id));
     if (chosen.length < 2) return;
     const src = chosen[0].sourceItemId;
     if (!chosen.every((p) => p.sourceItemId === src)) { alert('Combine only works on tiles built from the SAME source product.'); return; }
@@ -461,11 +460,10 @@ export default function Admin({ onExit }) {
     const base = chosen[0];
     const combined = { ...base, id: newPresetId(), variationId: vids[0], variationIds: vids, name: cfg?.name || base.name };
     const anchor = presets.findIndex((p) => p.id === base.id);
-    const remaining = presets.filter((p) => !combineSel.has(p.id));
+    const remaining = presets.filter((p) => !ids.includes(p.id));
     remaining.splice(Math.min(Math.max(0, anchor), remaining.length), 0, combined);
     setPresets(remaining);
-    setCombineSel(new Set());
-    setCombineMode(false);
+    setCombineSel((prev) => { const n = new Set(prev); ids.forEach((id) => n.delete(id)); return n; });
   };
   // Split a combined tile back into one tile per variation.
   const splitPreset = (id) => {
@@ -487,11 +485,6 @@ export default function Admin({ onExit }) {
     if (!next.length) return p;
     return { ...p, variationIds: next, variationId: next[0] };
   }));
-  // Can the current selection be combined? (2+ tiles, same source)
-  const combineReady = (() => {
-    const chosen = presets.filter((p) => combineSel.has(p.id));
-    return chosen.length >= 2 && chosen.every((p) => p.sourceItemId === chosen[0].sourceItemId);
-  })();
   // Duplicate a preset right below itself (name + " copy") so you can quickly
   // spin off variants and just tweak the name/options.
   const dupPreset = (id) => {
@@ -1443,17 +1436,7 @@ export default function Admin({ onExit }) {
                     <input type="checkbox" checked={s.hidePresetSources !== false} onChange={(e) => set({ hidePresetSources: e.target.checked })} />
                     <span>Hide the original item from the menu once it has presets</span>
                   </label>
-                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }}>
-                    <button type="button" className={`chip ${combineMode ? 'on' : ''}`} onClick={() => { setCombineMode((v) => !v); setCombineSel(new Set()); }} style={{ fontSize: 'var(--fs-sm)' }}>
-                      {combineMode ? '✓ Selecting tiles to combine' : '⛓ Combine variations'}
-                    </button>
-                    {combineMode && (
-                      <>
-                        <button className="btn" disabled={!combineReady} onClick={combineSelected} style={{ padding: '6px 12px', opacity: combineReady ? 1 : 0.5 }}>Combine ({combineSel.size})</button>
-                        <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>Tick 2+ tiles from the same product (e.g. 6oz + 12oz) — they merge into one tile with a size toggle.</span>
-                      </>
-                    )}
-                  </div>
+                  <p className="muted" style={{ fontSize: 'var(--fs-sm)', margin: '0 0 10px' }}>Tip: tick 2+ tiles from the same product (e.g. 6oz + 12oz) in a section, then press <strong>Combine</strong> on that section to merge them into one tile with a size toggle.</p>
                   {/* Quick generate: one tile per variation */}
                   <div style={{ border: '1px dashed var(--accent)', borderRadius: 12, padding: 10, marginBottom: 12, background: 'var(--brand-soft)' }}>
                     <div style={{ fontWeight: 700, fontSize: 'var(--fs-base)', marginBottom: 6 }}>⚡ Quick generate — a tile per variation</div>
@@ -1474,8 +1457,10 @@ export default function Admin({ onExit }) {
                   {presetsSorted.map((p, i) => {
                     const secName = (p.section || '').trim() || '(no section)';
                     const showHeader = i === 0 || (((presetsSorted[i - 1].section || '').trim() || '(no section)') !== secName);
-                    const secCollapsed = !!collapsedSecs[secName];
+                    const secCollapsed = !collapsedSecs[secName]; // sections start collapsed; click to open
                     const secCount = presetsSorted.filter((x) => ((x.section || '').trim() || '(no section)') === secName).length;
+                    const secSel = presetsSorted.filter((x) => (((x.section || '').trim() || '(no section)') === secName) && combineSel.has(x.id));
+                    const secCanCombine = secSel.length >= 2 && secSel.every((x) => x.sourceItemId === secSel[0].sourceItemId);
                     const cfg = itemConfigs[p.sourceItemId];
                     const isOpen = !!expanded[p.id];
                     const v = cfg && (cfg.variations.find((x) => x.id === p.variationId) || cfg.variations[0]);
@@ -1495,10 +1480,14 @@ export default function Admin({ onExit }) {
                           onDrop={(e) => { e.preventDefault(); if (drag && drag.list === 'preset') { const dp = presetsSorted[drag.index]; if (dp && (dp.section || '').trim() !== secName) updPreset(dp.id, { section: secName === '(no section)' ? '' : secName }); } setDrag(null); setDragOver(null); }}
                           className={dragOver === `sec:${secName}` ? 'drag-over' : ''}
                           style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', margin: '4px 0 8px', padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 10, background: 'var(--brand-soft)' }}>
-                          <button type="button" onClick={() => setCollapsedSecs((x) => ({ ...x, [secName]: !secCollapsed }))}
+                          <button type="button" onClick={() => setCollapsedSecs((x) => ({ ...x, [secName]: !x[secName] }))}
                             style={{ flex: 1, minWidth: 120, textAlign: 'left', background: 'none', border: 'none', fontWeight: 700, cursor: 'pointer' }}>
                             {secName} · {secCount} {secCount === 1 ? 'tile' : 'tiles'} {secCollapsed ? '▼' : '▲'}
                           </button>
+                          {secSel.length >= 2 && (
+                            <button className="btn" disabled={!secCanCombine} title={secCanCombine ? 'Combine the selected tiles' : 'Selected tiles must be from the same product'}
+                              onClick={() => combinePresets(secSel.map((x) => x.id))} style={{ padding: '5px 10px', fontSize: 'var(--fs-sm)', opacity: secCanCombine ? 1 : 0.5 }}>⛓ Combine ({secSel.length})</button>
+                          )}
                           <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 'var(--fs-sm)' }} title="Show this section in the top menu links">
                             <input type="checkbox" checked={presetSectionNav[secName]?.top === true} onChange={(e) => setSectionNav(secName, { top: e.target.checked })} /> Top menu
                           </label>
@@ -1510,9 +1499,8 @@ export default function Admin({ onExit }) {
                       {!secCollapsed && (
                       <div {...dropZone('preset', i, (f, t) => setPresets(reorderArray(presetsSorted, f, t)))}
                         className={isDragOver('preset', i) ? 'drag-over' : ''}
-                        style={{ border: '1px solid var(--accent)', borderRadius: 12, padding: 10, marginBottom: 10 }}>
+                        style={{ border: '1px solid var(--accent)', borderRadius: 12, padding: 10, marginBottom: 10, outline: combineSel.has(p.id) ? '2px solid var(--accent)' : 'none', outlineOffset: 2 }}>
                         <div style={{ ...row, justifyContent: 'space-between', opacity: p.enabled === false ? 0.5 : 1 }}>
-                          {combineMode && <input type="checkbox" checked={combineSel.has(p.id)} title="Select this tile to combine" onChange={() => toggleCombineSel(p.id)} style={{ accentColor: 'var(--accent)', transform: 'scale(1.2)' }} />}
                           <span {...dragHandle('preset', i)}>⠿</span>
                           <label style={{ ...row, flex: 1, minWidth: 0 }}>
                             <input type="checkbox" checked={p.enabled !== false} title="Available — untick to hide this tile when unavailable"
@@ -1523,6 +1511,7 @@ export default function Admin({ onExit }) {
                             {isCombined(p) && <span className="muted" style={{ fontSize: 'var(--fs-xs)', whiteSpace: 'nowrap' }}>· {presetVids(p).length} sizes</span>}
                             {price != null && <span className="muted" style={{ fontSize: 'var(--fs-sm)', whiteSpace: 'nowrap' }}>{isCombined(p) ? 'from ' : ''}{formatMoney(price, data?.currency)}</span>}
                           </label>
+                          <button className="link" title="Select to combine (tick 2+ from the same product)" onClick={() => toggleCombineSel(p.id)} style={{ color: combineSel.has(p.id) ? 'var(--accent)' : 'var(--muted)', fontWeight: combineSel.has(p.id) ? 700 : 400 }}>⛓</button>
                           <button className="link" title="Duplicate preset" onClick={() => dupPreset(p.id)}>⧉</button>
                           <button className="link" onClick={() => setExpanded((x) => ({ ...x, [p.id]: !isOpen }))}>{isOpen ? '▲' : '▼'}</button>
                           <button className="link" style={{ color: '#c0392b' }} title="Remove preset" onClick={() => rmPreset(p.id)}>✕</button>

@@ -388,17 +388,14 @@ async function getMenu(opts = {}) {
       presetsBySection.get(secName).push(tile);
     }
     const sectionNav = getSettings().presetSectionNav || {};
-    // A builder section is shown on the storefront only when opted in: its Top or
-    // Footer toggle is on, or it's referenced by a footer button. This stops a
-    // brand-new builder section from auto-appearing until you choose to show it.
-    const footerRefs = new Set();
-    for (const slot of getSettings().footer || []) for (const c of slot.categories || []) footerRefs.add(String(c).toLowerCase());
+    // The Top/Footer toggles are authoritative: a builder section appears on the
+    // storefront ONLY where it's ticked — Top → top category menu, Footer →
+    // footer menu. Neither ticked = it appears in no menu.
     for (const [secName, tiles] of presetsBySection) {
       const existing = sections.find((s) => s.category.toLowerCase() === secName.toLowerCase());
       if (existing) { existing.items.push(...tiles); continue; }
       const nav = sectionNav[secName] || {};
-      const optedIn = nav.top === true || nav.footer === true || footerRefs.has(secName.toLowerCase());
-      if (!optedIn) continue;
+      if (!(nav.top === true || nav.footer === true)) continue;
       sections.push({ category: secName, items: tiles, showImages: true, custom: true, builder: true, topNav: nav.top === true, footerNav: nav.footer === true });
     }
     // Hide the original master items now that presets represent them (keep the
