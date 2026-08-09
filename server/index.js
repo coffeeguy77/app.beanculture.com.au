@@ -707,4 +707,30 @@ const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => console.log(`Bean Culture app on :${PORT} (Square env: ${sq.ENV})`));
 db.init().finally(() => {
   scheduler.start();
+  seedPresetNavFooter();
 });
+
+// One-time migration: now that Top/Footer toggles are authoritative for builder
+// sections, seed footer:true for any builder section that was already wired into
+// a footer button, so existing menus don't disappear. Runs once (guarded flag),
+// only ADDS where no nav entry exists yet — never overrides your choices.
+async function seedPresetNavFooter() {
+  try {
+    if (!db.enabled) return;
+    const settings = getSettings();
+    if (settings.presetNavSeeded) return;
+    const overrides = { ...(db.getOverrides() || {}) };
+    const footerRefs = new Set();
+    for (const slot of settings.footer || []) for (const c of slot.categories || []) footerRefs.add(String(c).toLowerCase());
+    const nav = { ...(overrides.presetSectionNav || settings.presetSectionNav || {}) };
+    let seeded = 0;
+    for (const p of settings.presets || []) {
+      const name = (p.section || '').trim();
+      if (name && footerRefs.has(name.toLowerCase()) && !nav[name]) { nav[name] = { footer: true }; seeded++; }
+    }
+    overrides.presetSectionNav = nav;
+    overrides.presetNavSeeded = true;
+    await db.saveOverrides(overrides);
+    console.log(`[migrate] preset nav: seeded footer:true for ${seeded} section(s)`);
+  } catch (e) { console.error('[migrate] preset nav seed failed:', e.message); }
+}
