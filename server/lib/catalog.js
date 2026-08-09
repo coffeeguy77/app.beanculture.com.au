@@ -194,6 +194,7 @@ async function getMenu(opts = {}) {
   // belongs to (that we're showing) — this is the fix for items like "Taro" that
   // sit in several Square categories but previously only surfaced in one.
   const byCatId = new Map(); // catId -> [{ item, ordinal }]
+  const itemsById = new Map(); // id -> menuItem, for EVERY offerable product
 
   for (const item of items) {
     const d = item.item_data || {};
@@ -210,19 +211,6 @@ async function getMenu(opts = {}) {
     const present =
       item.present_at_all_locations || (item.present_at_location_ids || []).includes(LOCATION_ID);
     if (!present) continue;
-
-    // Which of the item's categories are actually shown in the app?
-    const memberIds = itemCategoryMap(d);
-    let targetIds = [...memberIds.keys()];
-    if (restrictToChildren) {
-      targetIds = targetIds.filter((id) => childIds.has(id));
-    } else if (MENU_CATEGORIES.length) {
-      targetIds = targetIds.filter((id) => {
-        const nm = categories.get(id)?.name;
-        return nm && MENU_CATEGORIES.some((w) => w.toLowerCase() === nm.toLowerCase());
-      });
-    }
-    if (!targetIds.length) continue;
 
     const imageId = (d.image_ids || [])[0];
     const image = imageId ? images.get(imageId) : null;
@@ -250,6 +238,22 @@ async function getMenu(opts = {}) {
       variations,
       modifierGroups: buildModifiers(d),
     };
+
+    // Keep EVERY offerable product (regardless of category membership) so a
+    // hand-picked product section can surface it without loading its category.
+    itemsById.set(item.id, menuItem);
+
+    // Which of the item's categories are actually shown in the app?
+    const memberIds = itemCategoryMap(d);
+    let targetIds = [...memberIds.keys()];
+    if (restrictToChildren) {
+      targetIds = targetIds.filter((id) => childIds.has(id));
+    } else if (MENU_CATEGORIES.length) {
+      targetIds = targetIds.filter((id) => {
+        const nm = categories.get(id)?.name;
+        return nm && MENU_CATEGORIES.some((w) => w.toLowerCase() === nm.toLowerCase());
+      });
+    }
 
     for (const catId of targetIds) {
       if (!byCatId.has(catId)) byCatId.set(catId, []);
@@ -303,29 +307,89 @@ async function getMenu(opts = {}) {
 
   const finalEntries = opts.includeEmpty ? entries : entries.filter((e) => e.items.length > 0);
 
-  // Apply the owner's custom category order (settings.menuOrder = display names).
-  // Listed categories come first in that order; anything not listed keeps its
-  // existing (Square catalog) order after them. Array.sort is stable, so ties
-  // (both unlisted) preserve their relative position.
-  const orderNames = (getSettings().menuOrder || []).map((n) => String(n).toLowerCase());
-  if (orderNames.length) {
-    const rank = (e) => {
-      const i = orderNames.indexOf(String(e.name).toLowerCase());
-      return i === -1 ? Number.MAX_SAFE_INTEGER : i;
-    };
-    finalEntries.sort((a, b) => rank(a) - rank(b));
-  }
-
-  console.log(
-    `[menu] ${restrictToChildren ? childIds.size + ' shown categories' : 'no restriction (all)'} | ${finalEntries.length} shown: ${finalEntries.map((e) => `${e.name}(${e.items.length})`).join(', ')}`
-  );
-
-  const menu = finalEntries.map((e) => {
+  // Normalize category-derived sections to the storefront shape.
+  const sections = finalEntries.map((e) => {
     const s2 = selLower[e.name.toLowerCase()];
     const showImages = !s2 || s2.showImages !== false;
     return { category: e.name, items: e.items, showImages };
   });
-  return { currency: CURRENCY, categories: menu };
+
+  // Custom product sections: hand-picked products grouped under an owner-named
+  // heading, built from itemsById so a product can be surfaced WITHOUT loading
+  // its whole category. Applied to the live storefront only (applySelection).
+  if (applySelection) {
+    for (const ps of getSettings().productSections || []) {
+      if (!ps || ps.enabled === false) continue;
+      const name = String(ps.name || '').trim();
+      if (!name) continue;
+      const seen = new Set();
+      const list = [];
+      for (const id of Array.isArray(ps.items) ? ps.items : []) {
+        const mi = itemsById.get(id);
+        if (mi && !seen.has(id)) { list.push(mi); seen.add(id); }
+      }
+      if (!list.length && !opts.includeEmpty) continue;
+      sections.push({ category: name, items: list, showImages: ps.showImages !== false, custom: true });
+    }
+  }
+
+  // Apply the owner's custom section order (settings.menuOrder = display names)
+  // across BOTH category and product sections. Listed names come first in that
+  // order; anything not listed keeps its current order after them (stable sort).
+  const orderNames = (getSettings().menuOrder || []).map((n) => String(n).toLowerCase());
+  if (orderNames.length) {
+    const rank = (sec) => {
+      const i = orderNames.indexOf(String(sec.category).toLowerCase());
+      return i === -1 ? Number.MAX_SAFE_INTEGER : i;
+    };
+    sections.sort((a, b) => rank(a) - rank(b));
+  }
+
+  console.log(
+    `[menu] ${restrictToChildren ? childIds.size + ' shown categories' : 'no restriction (all)'} | ${sections.length} sections: ${sections.map((e) => `${e.category}(${e.items.length})`).join(', ')}`
+  );
+
+  return { currency: CURRENCY, categories: sections };
+}
+
+// Flat list of EVERY offerable Square product (id, name, image, category name),
+// regardless of which categories are loaded in the app — used by the admin
+// "product sections" picker so any product can be hand-picked into a section.
+async function getAllProducts() {
+  const objects = await listAllCatalog('ITEM,CATEGORY,IMAGE');
+  const catNames = new Map();
+  const images = new Map();
+  const items = [];
+  for (const obj of objects) {
+    if (obj.is_deleted) continue;
+    if (obj.type === 'CATEGORY') catNames.set(obj.id, cleanName(obj.category_data?.name || 'Menu'));
+    else if (obj.type === 'IMAGE') images.set(obj.id, obj.image_data?.url || null);
+    else if (obj.type === 'ITEM') items.push(obj);
+  }
+  const out = [];
+  for (const item of items) {
+    const d = item.item_data || {};
+    if (d.is_archived) continue;
+    if ((d.ecom_visibility || 'VISIBLE').toUpperCase() === 'HIDDEN') continue;
+    const present =
+      item.present_at_all_locations || (item.present_at_location_ids || []).includes(LOCATION_ID);
+    if (!present) continue;
+    const hasPricedVariation = (d.variations || [])
+      .some((v) => !v.is_deleted && moneyToNumber(v.item_variation_data?.price_money) !== null);
+    if (!hasPricedVariation) continue;
+    const catId = d.reporting_category?.id
+      || (Array.isArray(d.categories) && d.categories[0] && d.categories[0].id)
+      || d.category_id || null;
+    const imageId = (d.image_ids || [])[0];
+    out.push({
+      id: item.id,
+      name: d.name || 'Item',
+      image: imageId ? images.get(imageId) || null : null,
+      category: (catId && catNames.get(catId)) || '',
+    });
+  }
+  out.sort((a, b) => (a.category || '').localeCompare(b.category || '') || a.name.localeCompare(b.name));
+  return out;
 }
 
 // Full menu ignoring the admin selection, including empty categories — used by
@@ -350,4 +414,4 @@ async function getAllCategories() {
   return out;
 }
 
-module.exports = { getMenu, getFullMenu, getAllCategories, cleanName };
+module.exports = { getMenu, getFullMenu, getAllCategories, getAllProducts, cleanName };

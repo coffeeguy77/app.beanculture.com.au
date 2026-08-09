@@ -68,9 +68,11 @@ export default function Admin({ onExit }) {
   const [savedMsg, setSavedMsg] = useState('');
   const [syncMsg, setSyncMsg] = useState('');
   const [adminCat, setAdminCat] = useState([]);
+  const [allProducts, setAllProducts] = useState([]);
   const [sqCats, setSqCats] = useState([]);
   const [catsLocked, setCatsLocked] = useState(true);
   const [expanded, setExpanded] = useState({});
+  const [secSearch, setSecSearch] = useState({}); // product-section id -> search text
   const [imgBusy, setImgBusy] = useState(null);      // item id currently uploading
   const [imgOverride, setImgOverride] = useState({}); // item id -> freshly uploaded url
   const [users, setUsers] = useState(null);          // loyalty customers (Users tab)
@@ -156,6 +158,10 @@ export default function Admin({ onExit }) {
       try {
         const sc = await fetch(`/api/admin/square-categories?pass=${encodeURIComponent(p || '')}`);
         if (sc.ok) { const sd = await sc.json(); setSqCats(sd.categories || []); }
+      } catch {}
+      try {
+        const pr = await fetch(`/api/admin/products?pass=${encodeURIComponent(p || '')}`);
+        if (pr.ok) { const pd = await pr.json(); setAllProducts(pd.products || []); }
       } catch {}
     } catch (e) { setError(e.message); }
   }
@@ -322,18 +328,36 @@ export default function Admin({ onExit }) {
     return sel.items.filter((id) => allIds.includes(id)).length;
   };
 
-  // ---- category display order (storefront) ----
-  // Categories are shown in the saved order (s.menuOrder = display names); any
-  // category not yet in that list falls to the end in its catalog order.
+  // ---- product sections (hand-picked products under an owner-named heading) ----
+  const productSections = s?.productSections || [];
+  const setSections = (arr) => set({ productSections: arr });
+  const addSection = () =>
+    setSections([...productSections, { id: 'sec' + Date.now().toString(36), name: 'New section', items: [], showImages: true }]);
+  const updSection = (id, patch) => setSections(productSections.map((x) => (x.id === id ? { ...x, ...patch } : x)));
+  const rmSection = (id) => setSections(productSections.filter((x) => x.id !== id));
+  const sectionHasItem = (sec, itemId) => Array.isArray(sec.items) && sec.items.includes(itemId);
+  const toggleSectionItem = (id, itemId) =>
+    setSections(productSections.map((x) => {
+      if (x.id !== id) return x;
+      const cur = Array.isArray(x.items) ? x.items : [];
+      return { ...x, items: cur.includes(itemId) ? cur.filter((i) => i !== itemId) : [...cur, itemId] };
+    }));
+
+  // ---- menu section order (storefront): categories AND product sections ----
+  // Everything is ordered by s.menuOrder (display names). Anything not yet in
+  // that list falls to the end. Units carry their type so we can render each.
   const menuOrder = s?.menuOrder || [];
   const orderRank = (name) => {
     const i = menuOrder.findIndex((n) => String(n).toLowerCase() === String(name).toLowerCase());
     return i === -1 ? Number.MAX_SAFE_INTEGER : i;
   };
-  const orderedCat = [...adminCat].sort((a, b) => orderRank(a.category) - orderRank(b.category));
-  const moveCat = (name, dir) => setS((cur) => {
-    // Authoritative order = the categories as currently shown; swap two of them.
-    const base = orderedCat.map((c) => c.category);
+  const orderedUnits = [
+    ...adminCat.map((c) => ({ type: 'cat', name: c.category, cat: c })),
+    ...productSections.map((ps) => ({ type: 'section', name: ps.name || '', section: ps })),
+  ].sort((a, b) => orderRank(a.name) - orderRank(b.name));
+  const moveUnit = (name, dir) => setS((cur) => {
+    // Authoritative order = the units as currently shown; swap two of them.
+    const base = orderedUnits.map((u) => u.name);
     const i = base.findIndex((n) => n.toLowerCase() === String(name).toLowerCase());
     const j = i + dir;
     if (i < 0 || j < 0 || j >= base.length) return cur;
@@ -866,11 +890,62 @@ export default function Admin({ onExit }) {
                 <div className="card" style={card}>
                   <div className="group-title">Menu items offered</div>
                   <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>
-                    Tick a category to offer it in the app. Use ↑/↓ to set the order categories appear on the storefront.
-                    Expand to offer the whole category or only certain items — smarter for app ordering &amp; delivery.
+                    Build the menu from whole categories and/or hand-picked <strong>product sections</strong>. Tick a
+                    category to offer it; expand to offer only certain items. Add a product section to group individual
+                    products (e.g. “Breakfast”) under a name you choose — handy for a product that shouldn’t pull in its
+                    whole category. Use ↑/↓ to set the order everything appears on the storefront.
                   </p>
                   {adminCat.length === 0 && <p className="muted" style={{ fontSize: 12 }}>Loading catalog…</p>}
-                  {orderedCat.map((c, idx) => {
+                  {orderedUnits.map((u, idx) => {
+                    if (u.type === 'section') {
+                      const sec = u.section;
+                      const isOpen = !!expanded[sec.id];
+                      const q = (secSearch[sec.id] || '').toLowerCase();
+                      const picked = Array.isArray(sec.items) ? sec.items.length : 0;
+                      return (
+                        <div key={sec.id} style={{ border: '1px solid var(--accent)', borderRadius: 12, padding: 10, marginBottom: 10, background: 'var(--brand-soft)' }}>
+                          <div style={{ ...row, justifyContent: 'space-between' }}>
+                            <label style={{ ...row, flex: 1, minWidth: 0 }}>
+                              <span title="Product section" style={{ fontSize: 15 }}>🧩</span>
+                              <input value={sec.name || ''} onChange={(e) => updSection(sec.id, { name: e.target.value })} placeholder="Section name"
+                                style={{ fontWeight: 700, flex: 1, minWidth: 0, padding: '6px 8px', border: '1px solid var(--line)', borderRadius: 8 }} />
+                              <span className="muted" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>{picked} picked</span>
+                            </label>
+                            <label style={{ ...row, cursor: 'pointer', fontSize: 12 }} className="muted" title="Show product images for this section">
+                              <input type="checkbox" checked={sec.showImages !== false} onChange={(e) => updSection(sec.id, { showImages: e.target.checked })} />
+                              <span>Images</span>
+                            </label>
+                            <button className="link" title="Move up" disabled={idx === 0} style={{ opacity: idx === 0 ? 0.3 : 1 }} onClick={() => moveUnit(u.name, -1)}>↑</button>
+                            <button className="link" title="Move down" disabled={idx === orderedUnits.length - 1} style={{ opacity: idx === orderedUnits.length - 1 ? 0.3 : 1 }} onClick={() => moveUnit(u.name, 1)}>↓</button>
+                            <button className="link" onClick={() => setExpanded((x) => ({ ...x, [sec.id]: !isOpen }))}>{isOpen ? '▲' : '▼'}</button>
+                            <button className="link" style={{ color: '#c0392b' }} title="Remove section" onClick={() => rmSection(sec.id)}>✕</button>
+                          </div>
+                          {isOpen && (
+                            <div style={{ marginTop: 8, borderTop: '1px solid var(--line)', paddingTop: 8 }}>
+                              <input placeholder="Search products…" value={secSearch[sec.id] || ''}
+                                onChange={(e) => setSecSearch((x) => ({ ...x, [sec.id]: e.target.value }))}
+                                style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 10, marginBottom: 8 }} />
+                              {allProducts.length === 0 && <p className="muted" style={{ fontSize: 12 }}>Loading products…</p>}
+                              <div style={{ maxHeight: 320, overflowY: 'auto' }}>
+                                {allProducts
+                                  .filter((p) => !q || p.name.toLowerCase().includes(q) || (p.category || '').toLowerCase().includes(q))
+                                  .map((p) => (
+                                    <label key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', cursor: 'pointer' }}>
+                                      <input type="checkbox" checked={sectionHasItem(sec, p.id)} onChange={() => toggleSectionItem(sec.id, p.id)} />
+                                      {p.image
+                                        ? <img src={p.image} alt="" style={{ width: 30, height: 30, borderRadius: 6, objectFit: 'cover', flex: 'none' }} />
+                                        : <span style={{ width: 30, height: 30, borderRadius: 6, background: 'var(--surface)', flex: 'none', display: 'grid', placeItems: 'center', fontSize: 14 }}>🍽️</span>}
+                                      <span style={{ fontSize: 14, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
+                                      {p.category && <span className="muted" style={{ fontSize: 11, whiteSpace: 'nowrap' }}>{p.category}</span>}
+                                    </label>
+                                  ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    }
+                    const c = u.cat;
                     const allIds = c.items.map((i) => i.id);
                     const on = catEnabled(c.category);
                     const isOpen = !!expanded[c.category];
@@ -893,10 +968,10 @@ export default function Admin({ onExit }) {
                           </label>
                           <button className="link" title="Move up" disabled={idx === 0}
                             style={{ opacity: idx === 0 ? 0.3 : 1 }}
-                            onClick={() => moveCat(c.category, -1)}>↑</button>
-                          <button className="link" title="Move down" disabled={idx === orderedCat.length - 1}
-                            style={{ opacity: idx === orderedCat.length - 1 ? 0.3 : 1 }}
-                            onClick={() => moveCat(c.category, 1)}>↓</button>
+                            onClick={() => moveUnit(c.category, -1)}>↑</button>
+                          <button className="link" title="Move down" disabled={idx === orderedUnits.length - 1}
+                            style={{ opacity: idx === orderedUnits.length - 1 ? 0.3 : 1 }}
+                            onClick={() => moveUnit(c.category, 1)}>↓</button>
                           <button className="link" onClick={() => setExpanded((x) => ({ ...x, [c.category]: !isOpen }))}>
                             {isOpen ? '▲' : '▼'}
                           </button>
@@ -936,6 +1011,7 @@ export default function Admin({ onExit }) {
                       </div>
                     );
                   })}
+                  <button className="btn ghost full" onClick={addSection}>+ Add product section</button>
                 </div>
               </>
             )}

@@ -50,11 +50,16 @@ const DEFAULTS = {
   // Which Square categories appear in the app (category IDs). Empty = use the
   // "APP" parent category's children automatically (legacy behaviour).
   menuCategories: [],
-  // Custom order for the menu category sections on the storefront, as an array
-  // of display names (e.g. ['Coffee','All Day Menu',…]). Set from the admin
-  // "Menu items offered" ↑/↓ controls. Categories not listed keep their Square
-  // order after the listed ones. Empty = Square's catalog order (legacy).
+  // Custom order for the menu sections on the storefront, as an array of display
+  // names (e.g. ['Coffee','All Day Menu',…]). Set from the admin "Menu items
+  // offered" ↑/↓ controls. Covers both categories and product sections; names
+  // not listed keep their order after the listed ones. Empty = Square's order.
   menuOrder: [],
+  // Product sections: hand-picked Square products grouped under a name you
+  // choose (e.g. "Breakfast"). They appear as menu sections alongside the
+  // category sections, and are surfaced even if their Square category isn't
+  // loaded. Each: { id, name, items:[squareItemId], showImages, enabled }.
+  productSections: [],
   // Default theme — light pastel pink.
   theme: {
     bg: '#fdf1f4',

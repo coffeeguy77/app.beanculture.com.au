@@ -560,6 +560,16 @@ app.get('/api/admin/square-categories', async (req, res) => {
   }
 });
 
+// ---- Admin: every Square product (to hand-pick into product sections) ----
+app.get('/api/admin/products', async (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    res.json({ products: await catalog.getAllProducts() });
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+
 // ---- Validate a coupon code (for the checkout to show the discount) ----
 app.get('/api/coupon', (req, res) => {
   try {
