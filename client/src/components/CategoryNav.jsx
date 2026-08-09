@@ -23,18 +23,22 @@ export default function CategoryNav({ categories, active, onPick, variant = 'sta
         else { lines += 1; u = w; }
       }
       if (lines <= 1) { setBreaks((p) => (p.length ? [] : p)); return; }
-      // Aim for equal total width per row; fill greedily to that target so each
-      // row fits and rows look evenly balanced (and stay centered via CSS).
-      const total = ws.reduce((a, b) => a + b, 0) + gap * (ws.length - 1);
-      const targetW = total / lines;
-      const br = [];
-      u = 0; let cnt = 0; let placed = 1;
-      for (let i = 0; i < ws.length; i++) {
-        const w = ws[i];
-        const next = cnt === 0 ? w : u + gap + w;
-        if (cnt > 0 && next > targetW && placed < lines) { br.push(i); u = w; cnt = 1; placed += 1; }
-        else { u = next; cnt += 1; }
-      }
+      // Pack the chips into exactly `lines` rows while minimising the widest row
+      // (binary search on the max row width). This balances the rows evenly and
+      // guarantees every row fits the container; CSS then centres each row.
+      const pack = (W) => {
+        const br = [];
+        let uu = 0, cnt = 0, rows = 1;
+        for (let i = 0; i < ws.length; i++) {
+          const w = ws[i];
+          if (cnt > 0 && uu + gap + w > W) { br.push(i); uu = w; cnt = 1; rows += 1; }
+          else { uu = cnt === 0 ? w : uu + gap + w; cnt += 1; }
+        }
+        return { rows, br };
+      };
+      let lo = Math.max(...ws), hi = cw;
+      while (lo < hi) { const mid = Math.floor((lo + hi) / 2); if (pack(mid).rows <= lines) hi = mid; else lo = mid + 1; }
+      const br = pack(lo).br;
       setBreaks((prev) => (prev.length === br.length && prev.every((v, i) => v === br[i]) ? prev : br));
     };
     compute();
