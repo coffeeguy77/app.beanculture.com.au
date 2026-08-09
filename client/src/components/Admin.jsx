@@ -1296,20 +1296,12 @@ export default function Admin({ onExit }) {
                 </div>
 
                 <div className="card" style={card}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                    <div className="group-title" style={{ margin: 0 }}>Top Menu — live sections &amp; order</div>
-                    <button type="button" className={`chip ${deleteLock ? 'on' : ''}`} onClick={() => setDeleteLock((v) => !v)} style={{ fontSize: 'var(--fs-sm)' }}
-                      title={deleteLock ? 'Delete locked — tap to allow removing sections' : 'Delete unlocked — tap to lock'}>
-                      {deleteLock ? '🔒 Delete locked' : '🔓 Delete unlocked'}
-                    </button>
-                  </div>
+                  <div className="group-title">Top Menu — live sections &amp; order</div>
                   <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 0 }}>
-                    Build the menu from whole categories and/or hand-picked <strong>product sections</strong>. Tick a
-                    category to offer it; expand to offer only certain items. Add a product section to group individual
-                    products (e.g. “Breakfast”) under a name you choose — handy for a product that shouldn’t pull in its
-                    whole category. Use ↑/↓ to set the order everything appears on the storefront.
+                    The sections currently live on the storefront (turned on via the <strong>Top menu</strong> / <strong>Footer</strong>
+                    toggles in Product builder). Drag or use ↑/↓ to set the order they appear.
                   </p>
-                  {orderedUnits.length === 0 && <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>No categories or sections yet. Add categories in the Categories tab, or build sections in Product builder.</p>}
+                  {orderedUnits.length === 0 && <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>No live sections yet — turn on Top menu and/or Footer for a section in Product builder.</p>}
                   {orderedUnits.map((u, idx) => {
                     if (u.type === 'presetsec') {
                       const hidden = isSectionHidden(u.name);
@@ -1325,10 +1317,6 @@ export default function Admin({ onExit }) {
                             <span className="muted" style={{ fontSize: 'var(--fs-sm)', whiteSpace: 'nowrap' }}>{u.count} {u.count === 1 ? 'tile' : 'tiles'} · builder</span>
                             <button className="link" title="Move up" disabled={idx === 0} style={{ opacity: idx === 0 ? 0.3 : 1 }} onClick={() => moveUnit(u.name, -1)}>↑</button>
                             <button className="link" title="Move down" disabled={idx === orderedUnits.length - 1} style={{ opacity: idx === orderedUnits.length - 1 ? 0.3 : 1 }} onClick={() => moveUnit(u.name, 1)}>↓</button>
-                            <button className="link" title="Edit in Product builder" onClick={() => setTab('productbuilder')}>✎</button>
-                            <button className="link" disabled={deleteLock} style={{ color: '#c0392b', opacity: deleteLock ? 0.3 : 1 }}
-                              title={deleteLock ? 'Unlock delete (top-right) to remove' : 'Delete this builder section and all its tiles'}
-                              onClick={() => { if (window.confirm(`Delete the "${u.name}" section and its ${u.count} tile(s)?`)) setPresets(presets.filter((p) => (p.section || '').trim().toLowerCase() !== u.name.toLowerCase())); }}>✕</button>
                           </div>
                         </div>
                       );
