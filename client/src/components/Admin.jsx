@@ -84,6 +84,7 @@ export default function Admin({ onExit }) {
   const [menuSub, setMenuSub] = useState('categories'); // Menu tab sub-section
   const [collapsedSecs, setCollapsedSecs] = useState({}); // preset section name -> collapsed
   const [deleteLock, setDeleteLock] = useState(true); // guard against accidental section deletes
+  const [removedCats, setRemovedCats] = useState(() => new Set()); // categories removed this session
   const [drag, setDrag] = useState(null);       // { list, index } being dragged
   const [dragOver, setDragOver] = useState(null); // `${list}:${index}` currently hovered
   const [imgBusy, setImgBusy] = useState(null);      // item id currently uploading
@@ -297,6 +298,16 @@ export default function Admin({ onExit }) {
     const ids = new Set(selectedCatIds);      // start from the FULL current set…
     if (ids.has(c.id)) ids.delete(c.id); else ids.add(c.id); // …flip just this one…
     set({ menuCategories: [...ids] });         // …and store ids (never drops the rest)
+  };
+  // Remove a category from the app entirely (from Menu items offered), by display
+  // name — drops every matching Square category id from menuCategories.
+  const removeCategoryFromApp = (displayName) => {
+    const ids = new Set(selectedCatIds);
+    for (const cc of allCats) {
+      if ((cc.name || '').toLowerCase() === displayName.toLowerCase() || (cc.rawName || '').toLowerCase() === displayName.toLowerCase()) ids.delete(cc.id);
+    }
+    set({ menuCategories: [...ids] });
+    setRemovedCats((prev) => new Set(prev).add(displayName.toLowerCase()));
   };
 
   // ---- seasonal / festive theme scheduler ----
@@ -514,15 +525,16 @@ export default function Admin({ onExit }) {
     const i = menuOrder.findIndex((n) => String(n).toLowerCase() === String(name).toLowerCase());
     return i === -1 ? Number.MAX_SAFE_INTEGER : i;
   };
+  const visibleCats = adminCat.filter((c) => !removedCats.has((c.category || '').toLowerCase()));
   const unitNamesLower = new Set([
-    ...adminCat.map((c) => c.category.toLowerCase()),
+    ...visibleCats.map((c) => c.category.toLowerCase()),
     ...productSections.map((ps) => (ps.name || '').toLowerCase()),
   ]);
   const presetSectionUnits = [...new Set(presets.map((p) => (p.section || '').trim()).filter(Boolean))]
     .filter((name) => !unitNamesLower.has(name.toLowerCase()))
     .map((name) => ({ type: 'presetsec', name, count: presets.filter((p) => (p.section || '').trim().toLowerCase() === name.toLowerCase()).length }));
   const orderedUnits = [
-    ...adminCat.map((c) => ({ type: 'cat', name: c.category, cat: c })),
+    ...visibleCats.map((c) => ({ type: 'cat', name: c.category, cat: c })),
     ...productSections.map((ps) => ({ type: 'section', name: ps.name || '', section: ps })),
     ...presetSectionUnits,
   ].sort((a, b) => orderRank(a.name) - orderRank(b.name));
@@ -1105,6 +1117,9 @@ export default function Admin({ onExit }) {
                             <button className="link" title="Move up" disabled={idx === 0} style={{ opacity: idx === 0 ? 0.3 : 1 }} onClick={() => moveUnit(u.name, -1)}>↑</button>
                             <button className="link" title="Move down" disabled={idx === orderedUnits.length - 1} style={{ opacity: idx === orderedUnits.length - 1 ? 0.3 : 1 }} onClick={() => moveUnit(u.name, 1)}>↓</button>
                             <button className="link" title="Edit in Product builder" onClick={() => setMenuSub('builder')}>✎</button>
+                            <button className="link" disabled={deleteLock} style={{ color: '#c0392b', opacity: deleteLock ? 0.3 : 1 }}
+                              title={deleteLock ? 'Unlock delete (top-right) to remove' : 'Delete this builder section and all its tiles'}
+                              onClick={() => { if (window.confirm(`Delete the "${u.name}" section and its ${u.count} tile(s)?`)) setPresets(presets.filter((p) => (p.section || '').trim().toLowerCase() !== u.name.toLowerCase())); }}>✕</button>
                           </div>
                         </div>
                       );
@@ -1218,6 +1233,8 @@ export default function Admin({ onExit }) {
                           <button className="link" onClick={() => setExpanded((x) => ({ ...x, [c.category]: !isOpen }))}>
                             {isOpen ? '▲' : '▼'}
                           </button>
+                          <button className="link" disabled={deleteLock} style={{ color: '#c0392b', opacity: deleteLock ? 0.3 : 1 }}
+                            title={deleteLock ? 'Unlock delete (top-right) to remove' : 'Remove this category from the app'} onClick={() => removeCategoryFromApp(c.category)}>✕</button>
                         </div>
                         {isOpen && (
                           <div style={{ marginTop: 8, borderTop: '1px solid var(--line)', paddingTop: 8 }}>
