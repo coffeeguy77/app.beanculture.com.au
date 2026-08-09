@@ -510,6 +510,7 @@ app.get('/api/admin/overview', async (req, res) => {
     settings,
     hours: hoursStatus,
     cloudinary: cloudinary.configured(),
+    dbEnabled: db.enabled, // drives the admin "changes won't persist" banner
     categories: menu ? menu.categories.map((c) => ({ name: c.category, count: c.items.length })) : [],
     settingsJsonHint:
       'To change theme/hero/announcement live, set a SETTINGS_JSON env var in Railway with the edited settings object.',
