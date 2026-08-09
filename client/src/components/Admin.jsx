@@ -80,6 +80,7 @@ export default function Admin({ onExit }) {
   const [srcSearch, setSrcSearch] = useState({}); // picker id -> search text
   const [srcCat, setSrcCat] = useState({});       // picker id -> category filter
   const [genItemId, setGenItemId] = useState(''); // quick-generate: chosen source item
+  const [genSelected, setGenSelected] = useState(() => new Set()); // quick-generate: multi-select item ids
   const [genSection, setGenSection] = useState('Breakfast'); // quick-generate: target section
   const [genBusy, setGenBusy] = useState(false);
   const [menuSub, setMenuSub] = useState('categories'); // Menu tab sub-section
@@ -467,17 +468,86 @@ export default function Admin({ onExit }) {
   // Quick generate: one preset per variation of the chosen item (locked to that
   // variation, no options yet — tweak/duplicate after).
   async function generatePresets() {
-    if (!genItemId) return;
+    const ids = [...genSelected];
+    if (!ids.length) return;
     setGenBusy(true);
     try {
-      const cfg = await ensureItemConfig(genItemId);
-      if (!cfg || !cfg.variations.length) return;
       const section = (genSection || '').trim() || 'Specials';
-      const made = cfg.variations.map((v) => ({
-        id: newPresetId(), name: v.name || cfg.name, section, sourceItemId: genItemId, variationId: v.id, groups: {}, showImages: true,
-      }));
-      setPresets([...presets, ...made]);
+      const made = [];
+      for (const id of ids) {
+        const cfg = await ensureItemConfig(id);
+        if (!cfg || !cfg.variations.length) continue;
+        const multi = cfg.variations.length > 1;
+        for (const v of cfg.variations) {
+          const nm = (v.name && v.name.trim()) ? (multi && !v.name.toLowerCase().includes(cfg.name.toLowerCase()) ? `${cfg.name} ${v.name}` : v.name) : cfg.name;
+          made.push({ id: newPresetId(), name: nm, section, sourceItemId: id, variationId: v.id, groups: {}, showImages: true });
+        }
+      }
+      if (made.length) setPresets([...presets, ...made]);
+      setGenSelected(new Set());
     } finally { setGenBusy(false); }
+  }
+  // Multi-select source picker for the generator (tick items / select all).
+  function renderGenPicker() {
+    const pickerId = 'gen';
+    const q = (srcSearch[pickerId] || '').toLowerCase();
+    const catf = srcCat[pickerId] || '';
+    const list = allProducts.filter((p) => {
+      const cats = p.categories || (p.category ? [p.category] : []);
+      if (catf && !cats.some((c) => c.toLowerCase() === catf.toLowerCase())) return false;
+      if (q && !(p.name.toLowerCase().includes(q) || cats.join(' ').toLowerCase().includes(q))) return false;
+      return true;
+    });
+    const showList = !!q || !!catf || !!srcShowAll[pickerId];
+    const allSelected = list.length > 0 && list.every((p) => genSelected.has(p.id));
+    const toggleAll = () => setGenSelected((prev) => {
+      const next = new Set(prev);
+      if (allSelected) list.forEach((p) => next.delete(p.id)); else list.forEach((p) => next.add(p.id));
+      return next;
+    });
+    const toggleOne = (id) => setGenSelected((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+    return (
+      <div>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 6 }}>
+          <input placeholder="Search items…" value={srcSearch[pickerId] || ''} onChange={(e) => setSrcSearch((x) => ({ ...x, [pickerId]: e.target.value }))}
+            style={{ flex: '1 1 150px', padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 10 }} />
+          <select value={catf} onChange={(e) => setSrcCat((x) => ({ ...x, [pickerId]: e.target.value }))}
+            style={{ padding: 8, borderRadius: 10, border: '1px solid var(--line)' }}>
+            <option value="">All categories</option>
+            {productCategories.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </div>
+        {!showList ? (
+          <button className="link" onClick={() => setSrcShowAll((x) => ({ ...x, [pickerId]: true }))} style={{ fontSize: 13 }}>Show all items…</button>
+        ) : (
+          <>
+            <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 4 }}>
+              <button className="link" onClick={toggleAll}>{allSelected ? 'Clear all' : `Select all (${list.length})`}</button>
+              {genSelected.size > 0 && <span className="muted" style={{ fontSize: 12 }}>{genSelected.size} selected</span>}
+            </div>
+            <div style={{ maxHeight: 240, overflowY: 'auto', border: '1px solid var(--line)', borderRadius: 8 }}>
+              {allProducts.length === 0 && <p className="muted" style={{ fontSize: 12, padding: 8 }}>Loading items…</p>}
+              {list.length === 0 && allProducts.length > 0 && <p className="muted" style={{ fontSize: 12, padding: 8 }}>No matching items.</p>}
+              {list.map((p) => {
+                const cats = p.categories || (p.category ? [p.category] : []);
+                return (
+                  <label key={p.id} style={{ display: 'flex', width: '100%', gap: 8, alignItems: 'center', padding: '6px 8px', borderBottom: '1px solid var(--line)', cursor: 'pointer' }}>
+                    <input type="checkbox" checked={genSelected.has(p.id)} onChange={() => toggleOne(p.id)} />
+                    {p.image
+                      ? <img src={p.image} alt="" style={{ width: 30, height: 30, borderRadius: 6, objectFit: 'cover', flex: 'none' }} />
+                      : <span style={{ width: 30, height: 30, borderRadius: 6, background: 'var(--brand-soft)', flex: 'none', display: 'grid', placeItems: 'center', fontSize: 14 }}>🍽️</span>}
+                    <span style={{ flex: 1, minWidth: 0 }}>
+                      <span style={{ fontSize: 14, display: 'block' }}>{p.name}</span>
+                      {cats.length ? <span className="muted" style={{ fontSize: 11 }}>{cats.join(' · ')}</span> : null}
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          </>
+        )}
+      </div>
+    );
   }
 
   // ---- shared searchable source-item picker (used by generator + presets) ----
@@ -683,9 +753,18 @@ export default function Admin({ onExit }) {
         <div className="admin-layout">
           <nav className="admin-tabs">
             {TABS.map((t) => (
-              <button key={t.id} className={`admin-tab ${tab === t.id ? 'on' : ''}`} onClick={() => setTab(t.id)} type="button">
-                <t.Icon size={20} /><span>{t.label}</span>
-              </button>
+              <React.Fragment key={t.id}>
+                <button className={`admin-tab ${tab === t.id ? 'on' : ''}`} onClick={() => setTab(t.id)} type="button">
+                  <t.Icon size={20} /><span>{t.label}</span>
+                </button>
+                {t.id === 'menu' && tab === 'menu' && (
+                  <div className="admin-subtabs">
+                    {[['categories', 'Categories'], ['items', 'Category Menu'], ['builder', 'Product builder']].map(([k, label]) => (
+                      <button key={k} className={menuSub === k ? 'on' : ''} onClick={() => setMenuSub(k)} type="button">{label}</button>
+                    ))}
+                  </div>
+                )}
+              </React.Fragment>
             ))}
           </nav>
 
@@ -1024,13 +1103,11 @@ export default function Admin({ onExit }) {
             {/* ───────── MENU ───────── */}
             {tab === 'menu' && (
               <>
-                <div className="menu-layout">
-                  <div className="menu-subnav">
-                    {[['categories', 'Categories'], ['items', 'Category Menu'], ['builder', 'Product builder']].map(([k, label]) => (
-                      <button key={k} type="button" className={`chip ${menuSub === k ? 'on' : ''}`} onClick={() => setMenuSub(k)} style={{ fontSize: 13 }}>{label}</button>
-                    ))}
-                  </div>
-                  <div className="menu-panels">
+                <div className="menu-subnav">
+                  {[['categories', 'Categories'], ['items', 'Category Menu'], ['builder', 'Product builder']].map(([k, label]) => (
+                    <button key={k} type="button" className={`chip ${menuSub === k ? 'on' : ''}`} onClick={() => setMenuSub(k)} style={{ fontSize: 13 }}>{label}</button>
+                  ))}
+                </div>
 
                 {menuSub === 'categories' && (
                 <div className="card" style={card}>
@@ -1321,16 +1398,16 @@ export default function Admin({ onExit }) {
                   {/* Quick generate: one tile per variation */}
                   <div style={{ border: '1px dashed var(--accent)', borderRadius: 12, padding: 10, marginBottom: 12, background: 'var(--brand-soft)' }}>
                     <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 6 }}>⚡ Quick generate — a tile per variation</div>
-                    <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>Pick an item and a section, then generate one preset for every variation (e.g. Porridge, Avo Toast…). Tweak options or duplicate after.</p>
-                    {renderSourcePicker('gen', genItemId, setGenItemId)}
+                    <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>Choose a category or search, tick the items (or Select all), then generate a preset for every variation of each. Tweak options or duplicate after.</p>
+                    {renderGenPicker()}
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end', marginTop: 8 }}>
                       <label style={{ display: 'grid', gap: 4, flex: '1 1 180px' }}>
                         <span className="muted" style={{ fontSize: 12 }}>Show in section (pick one below or type a new name)</span>
                         <input value={genSection} onChange={(e) => setGenSection(e.target.value)} placeholder="e.g. Breakfast"
                           style={{ padding: 8, borderRadius: 10, border: '1px solid var(--line)' }} />
                       </label>
-                      <button className="btn" disabled={!genItemId || genBusy} onClick={generatePresets}
-                        style={{ opacity: !genItemId || genBusy ? 0.5 : 1 }}>{genBusy ? 'Generating…' : 'Generate tiles'}</button>
+                      <button className="btn" disabled={!genSelected.size || genBusy} onClick={generatePresets}
+                        style={{ opacity: !genSelected.size || genBusy ? 0.5 : 1 }}>{genBusy ? 'Generating…' : `Generate tiles${genSelected.size ? ` (${genSelected.size})` : ''}`}</button>
                     </div>
                     {renderSectionChips(genSection, setGenSection)}
                   </div>
@@ -1468,8 +1545,6 @@ export default function Admin({ onExit }) {
                   <button className="btn ghost full" onClick={addPreset}>+ Add preset</button>
                 </div>
                 )}
-                  </div>
-                </div>
               </>
             )}
 

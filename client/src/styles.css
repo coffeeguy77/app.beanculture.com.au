@@ -919,13 +919,25 @@ img { max-width: 100%; }
 .gc-result { text-align: center; padding: 10px 0; }
 .gc-code { font-family: ui-monospace, Menlo, monospace; font-size: 20px; font-weight: 700; letter-spacing: 2px; background: var(--brand-soft); color: var(--ink); border-radius: 12px; padding: 14px; margin: 12px 0; word-break: break-all; }
 
-/* Menu tab sub-navigation: top pills on mobile, side nav on desktop/tablet-landscape */
+/* ── Admin typography baseline: one consistent type scale everywhere ── */
+:root { --fs-xs: 11px; --fs-sm: 12px; --fs-base: 13px; --fs-md: 14px; --fs-lg: 15px; --fs-xl: 18px; }
+.admin-panel { font-size: var(--fs-base); line-height: 1.45; color: var(--ink); }
+.admin-panel input:not([type=checkbox]):not([type=radio]):not([type=range]),
+.admin-panel select,
+.admin-panel textarea { font-family: inherit; font-size: var(--fs-md); }
+.admin-panel .group-title { font-size: var(--fs-sm); }
+.admin-panel h3 { font-size: var(--fs-xl); font-weight: 700; margin: 0 0 8px; }
+
+/* Menu sub-navigation: nested under "Menus" in the sidebar on desktop; a pill row
+   at the top of the panel on mobile. No separate side column (reclaims space). */
 .menu-subnav { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
 .menu-panels { min-width: 0; }
-@media (min-width: 900px) {
-  .menu-layout { display: grid; grid-template-columns: 190px minmax(0, 1fr); gap: 18px; align-items: start; }
-  .menu-subnav { position: sticky; top: 12px; flex-direction: column; margin-bottom: 0; }
-  .menu-subnav button { width: 100%; text-align: left; }
+.admin-subtabs { display: none; }
+@media (min-width: 960px) {
+  .menu-subnav { display: none; }
+  .admin-subtabs { display: flex; flex-direction: column; gap: 4px; margin: 2px 0 6px; padding-left: 14px; }
+  .admin-subtabs button { text-align: left; background: transparent; border: 1px solid transparent; color: var(--muted); font-size: var(--fs-base); font-weight: 600; padding: 8px 12px; border-radius: 10px; cursor: pointer; }
+  .admin-subtabs button.on { color: var(--brand); background: var(--surface); border-color: var(--line); box-shadow: var(--shadow-sm); }
 }
 /* Drag handle for sortable rows */
 .drag-handle { cursor: grab; user-select: none; color: var(--muted); font-size: 15px; line-height: 1; padding: 0 2px; touch-action: none; }
