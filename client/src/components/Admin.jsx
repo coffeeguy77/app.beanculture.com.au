@@ -414,6 +414,29 @@ export default function Admin({ onExit }) {
       if (Object.keys(g).length) groups[groupId] = g; else delete groups[groupId];
       return { ...p, groups };
     }));
+  // How many of a preset's options are currently shown (any state but Hide) vs total.
+  const presetModSummary = (p, cfg) => {
+    let total = 0, shown = 0;
+    for (const g of cfg?.modifierGroups || []) for (const m of g.modifiers) {
+      total++;
+      if ((p.groups?.[g.id]?.[m.id] || 'off') !== 'off') shown++;
+    }
+    return { total, shown };
+  };
+  // Master tickbox: force every option on a preset to plain Show or Hide
+  // (never Default/Locked — those stay a per-option choice via the cycle button).
+  const setAllPresetMods = (presetId, cfg, show) =>
+    setPresets(presets.map((p) => {
+      if (p.id !== presetId) return p;
+      if (!show) return { ...p, groups: {} };
+      const groups = {};
+      for (const g of cfg?.modifierGroups || []) {
+        const gg = {};
+        for (const m of g.modifiers) gg[m.id] = 'optional';
+        if (Object.keys(gg).length) groups[g.id] = gg;
+      }
+      return { ...p, groups };
+    }));
   // ---- generic drag-and-drop reordering (works alongside the ↑/↓ buttons) ----
   const reorderArray = (arr, from, to) => { const a = [...arr]; const [x] = a.splice(from, 1); a.splice(to, 0, x); return a; };
   const dragHandle = (list, index) => ({
@@ -1669,6 +1692,20 @@ export default function Admin({ onExit }) {
                                   </label>
                                 </div>
                                 {renderSectionChips(p.section, (n) => updPreset(p.id, { section: n }))}
+                                {(cfg.modifierGroups && cfg.modifierGroups.length > 0) && (() => {
+                                  const { total, shown } = presetModSummary(p, cfg);
+                                  const allShown = total > 0 && shown === total;
+                                  const someShown = shown > 0 && shown < total;
+                                  return (
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 'var(--fs-sm)', fontWeight: 600, cursor: 'pointer' }}>
+                                      <input type="checkbox" checked={allShown}
+                                        ref={(el) => { if (el) el.indeterminate = someShown; }}
+                                        onChange={(e) => setAllPresetMods(p.id, cfg, e.target.checked)} />
+                                      Show all options
+                                      <span className="muted" style={{ fontWeight: 400 }}>({shown}/{total} shown — {allShown ? 'ticked = Show' : 'unticked = Hide'})</span>
+                                    </label>
+                                  );
+                                })()}
                                 {(cfg.modifierGroups || []).map((g) => (
                                   <div key={g.id} style={{ border: '1px solid var(--line)', borderRadius: 10, padding: 8 }}>
                                     <div style={{ fontWeight: 600, fontSize: 'var(--fs-base)', marginBottom: 6 }}>{g.name}
