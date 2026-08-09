@@ -79,6 +79,8 @@ export default function Admin({ onExit }) {
   const [genItemId, setGenItemId] = useState(''); // quick-generate: chosen source item
   const [genSection, setGenSection] = useState('Breakfast'); // quick-generate: target section
   const [genBusy, setGenBusy] = useState(false);
+  const [menuSub, setMenuSub] = useState('categories'); // Menu tab sub-section
+  const [collapsedSecs, setCollapsedSecs] = useState({}); // preset section name -> collapsed
   const [imgBusy, setImgBusy] = useState(null);      // item id currently uploading
   const [imgOverride, setImgOverride] = useState({}); // item id -> freshly uploaded url
   const [users, setUsers] = useState(null);          // loyalty customers (Users tab)
@@ -941,6 +943,13 @@ export default function Admin({ onExit }) {
             {/* ───────── MENU ───────── */}
             {tab === 'menu' && (
               <>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+                  {[['categories', 'Categories'], ['layout', 'Layout & footer'], ['items', 'Items offered'], ['builder', 'Product builder']].map(([k, label]) => (
+                    <button key={k} type="button" className={`chip ${menuSub === k ? 'on' : ''}`} onClick={() => setMenuSub(k)} style={{ fontSize: 13 }}>{label}</button>
+                  ))}
+                </div>
+
+                {menuSub === 'categories' && (
                 <div className="card" style={card}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
                     <div className="group-title" style={{ margin: 0 }}>Categories in the app</div>
@@ -984,7 +993,9 @@ export default function Admin({ onExit }) {
                     );
                   })()}
                 </div>
+                )}
 
+                {menuSub === 'layout' && (<>
                 <div className="card" style={card}>
                   <div className="group-title">Menu layout</div>
                   <label style={{ ...row, marginBottom: 6 }}><input type="radio" checked={s.layoutMode !== 'single'} onChange={() => set({ layoutMode: 'onepage' })} /> One page (all categories scroll)</label>
@@ -1016,7 +1027,9 @@ export default function Admin({ onExit }) {
                   ))}
                   <button className="btn ghost full" onClick={addSlot}>+ Add footer button</button>
                 </div>
+                </>)}
 
+                {menuSub === 'items' && (
                 <div className="card" style={card}>
                   <div className="group-title">Menu items offered</div>
                   <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>
@@ -1143,8 +1156,10 @@ export default function Admin({ onExit }) {
                   })}
                   <button className="btn ghost full" onClick={addSection}>+ Add product section</button>
                 </div>
+                )}
 
                 {/* ───────── PRODUCT BUILDER ───────── */}
+                {menuSub === 'builder' && (
                 <div className="card" style={card}>
                   <div className="group-title">Product builder</div>
                   <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>
@@ -1154,6 +1169,10 @@ export default function Admin({ onExit }) {
                     (always applied, hidden). Orders still submit as the real Square variation + modifiers, so printers
                     and KDS work automatically. Presets appear as tiles in the section you name.
                   </p>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, marginBottom: 10, cursor: 'pointer' }}>
+                    <input type="checkbox" checked={s.hidePresetSources !== false} onChange={(e) => set({ hidePresetSources: e.target.checked })} />
+                    <span>Hide the original item from the menu once it has presets</span>
+                  </label>
                   {/* Quick generate: one tile per variation */}
                   <div style={{ border: '1px dashed var(--accent)', borderRadius: 12, padding: 10, marginBottom: 12, background: 'var(--brand-soft)' }}>
                     <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 6 }}>⚡ Quick generate — a tile per variation</div>
@@ -1170,7 +1189,11 @@ export default function Admin({ onExit }) {
                     </div>
                   </div>
                   {presets.length === 0 && <p className="muted" style={{ fontSize: 12 }}>No presets yet. Generate some above, or add one below.</p>}
-                  {presets.map((p) => {
+                  {[...presets].sort((a, b) => (a.section || '').localeCompare(b.section || '')).map((p, i, arr) => {
+                    const secName = (p.section || '').trim() || '(no section)';
+                    const showHeader = i === 0 || (((arr[i - 1].section || '').trim() || '(no section)') !== secName);
+                    const secCollapsed = !!collapsedSecs[secName];
+                    const secCount = arr.filter((x) => ((x.section || '').trim() || '(no section)') === secName).length;
                     const cfg = itemConfigs[p.sourceItemId];
                     const isOpen = !!expanded[p.id];
                     const v = cfg && (cfg.variations.find((x) => x.id === p.variationId) || cfg.variations[0]);
@@ -1182,7 +1205,15 @@ export default function Admin({ onExit }) {
                       }
                     }
                     return (
-                      <div key={p.id} style={{ border: '1px solid var(--accent)', borderRadius: 12, padding: 10, marginBottom: 10 }}>
+                      <React.Fragment key={p.id}>
+                      {showHeader && (
+                        <button type="button" onClick={() => setCollapsedSecs((x) => ({ ...x, [secName]: !secCollapsed }))}
+                          style={{ display: 'flex', width: '100%', justifyContent: 'space-between', alignItems: 'center', gap: 8, padding: '8px 10px', margin: '4px 0 8px', border: '1px solid var(--line)', borderRadius: 10, background: 'var(--brand-soft)', fontWeight: 700, cursor: 'pointer' }}>
+                          <span>{secName} · {secCount} {secCount === 1 ? 'tile' : 'tiles'}</span><span>{secCollapsed ? '▼ show' : '▲ hide'}</span>
+                        </button>
+                      )}
+                      {!secCollapsed && (
+                      <div style={{ border: '1px solid var(--accent)', borderRadius: 12, padding: 10, marginBottom: 10 }}>
                         <div style={{ ...row, justifyContent: 'space-between' }}>
                           <label style={{ ...row, flex: 1, minWidth: 0 }}>
                             <span title="Preset" style={{ fontSize: 15 }}>🛠️</span>
@@ -1249,6 +1280,8 @@ export default function Admin({ onExit }) {
                           </div>
                         )}
                       </div>
+                      )}
+                      </React.Fragment>
                     );
                   })}
                   <datalist id="menu-section-names">
@@ -1256,6 +1289,7 @@ export default function Admin({ onExit }) {
                   </datalist>
                   <button className="btn ghost full" onClick={addPreset}>+ Add preset</button>
                 </div>
+                )}
               </>
             )}
 

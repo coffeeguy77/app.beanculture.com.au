@@ -69,6 +69,9 @@ const DEFAULTS = {
   // A modifier not listed is hidden; 'optional' = shown/off, 'default' = shown/on,
   // 'locked' = hidden + always applied (its price is baked into the tile price).
   presets: [],
+  // When on, an item that has presets built from it is hidden from the normal
+  // menu (its presets represent it), so the big master tile doesn't also show.
+  hidePresetSources: true,
   // Default theme — light pastel pink.
   theme: {
     bg: '#fdf1f4',

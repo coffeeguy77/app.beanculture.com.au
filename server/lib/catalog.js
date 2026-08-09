@@ -308,7 +308,7 @@ async function getMenu(opts = {}) {
   const finalEntries = opts.includeEmpty ? entries : entries.filter((e) => e.items.length > 0);
 
   // Normalize category-derived sections to the storefront shape.
-  const sections = finalEntries.map((e) => {
+  let sections = finalEntries.map((e) => {
     const s2 = selLower[e.name.toLowerCase()];
     const showImages = !s2 || s2.showImages !== false;
     return { category: e.name, items: e.items, showImages };
@@ -339,10 +339,12 @@ async function getMenu(opts = {}) {
   // real Square variation + modifier ids. Live storefront only (applySelection).
   if (applySelection) {
     const presetsBySection = new Map();
+    const presetSourceIds = new Set();
     for (const p of getSettings().presets || []) {
       if (!p || p.enabled === false) continue;
       const src = itemsById.get(p.sourceItemId);
       if (!src) continue;
+      presetSourceIds.add(p.sourceItemId);
       const variation = (src.variations || []).find((v) => v.id === p.variationId) || src.variations[0];
       if (!variation) continue;
 
@@ -392,6 +394,12 @@ async function getMenu(opts = {}) {
       const existing = sections.find((s) => s.category.toLowerCase() === secName.toLowerCase());
       if (existing) existing.items.push(...tiles);
       else sections.push({ category: secName, items: tiles, showImages: true, custom: true });
+    }
+    // Hide the original master items now that presets represent them (keep the
+    // preset tiles themselves). Drop any section left empty as a result.
+    if (getSettings().hidePresetSources !== false && presetSourceIds.size) {
+      for (const sec of sections) sec.items = sec.items.filter((it) => it.isPreset || !presetSourceIds.has(it.id));
+      if (!opts.includeEmpty) sections = sections.filter((sec) => sec.items.length > 0);
     }
   }
 
