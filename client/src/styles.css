@@ -189,12 +189,6 @@ img { max-width: 100%; }
 .catnav::-webkit-scrollbar { display: none; }
 /* Stacked/wrap style: chips flow onto multiple rows so none run off-screen. */
 .catnav.stacked { overflow-x: visible; flex-wrap: wrap; }
-.catnav.stacked.collapsed { max-height: 46px; overflow: hidden; }
-.catnav-toggle {
-  position: sticky; z-index: 20; align-self: stretch; margin-left: auto;
-  border: 1px solid var(--line); background: var(--surface); color: var(--brand);
-  border-radius: 999px; padding: 6px 12px; font-size: 12px; font-weight: 700; cursor: pointer; white-space: nowrap;
-}
 .chip {
   flex: 0 0 auto; padding: 8px 14px; border-radius: 999px; border: 1px solid var(--line);
   background: var(--surface); color: var(--ink); font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap;
@@ -254,11 +248,12 @@ img { max-width: 100%; }
 .navitem.on { color: var(--brand); }
 .navitem .ic { font-size: 20px; display: grid; place-items: center; }
 
-/* Hot-category footer (6 shortcuts) */
-.catbar { justify-content: space-between; padding: 7px 6px calc(7px + env(safe-area-inset-bottom)); }
-.catbar .navitem { flex: 1 1 0; min-width: 0; padding: 2px 0; gap: 3px; color: var(--brand); }
+/* Hot-category footer — 6 shortcuts per row, wraps to more rows if needed. */
+.catbar { flex-wrap: wrap; justify-content: center; padding: 5px 3px calc(5px + env(safe-area-inset-bottom)); row-gap: 2px; }
+.catbar .navitem { flex: 0 0 16.66%; min-width: 0; padding: 3px 1px; gap: 2px; color: var(--brand); }
 .catbar .navitem:active { transform: scale(0.94); }
-.catbar .navlabel { font-size: 9.5px; line-height: 1.1; text-align: center; color: var(--muted); white-space: nowrap; }
+.catbar .navitem .ic { font-size: 18px; }
+.catbar .navlabel { font-size: 9px; line-height: 1.1; text-align: center; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 
 /* Sheet / modal */
 .backdrop { position: fixed; inset: 0; background: rgba(40,20,28,0.5); z-index: 60; display: flex; align-items: flex-end; justify-content: center; }

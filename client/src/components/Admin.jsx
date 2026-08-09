@@ -46,10 +46,14 @@ const InsightsIcon = svg(<>
   <path d="M4 20V11" /><path d="M10 20V4" /><path d="M16 20v-6" /><path d="M3 20h18" />
 </>);
 
+const BuildIcon = svg(<>
+  <path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18v3h3l6.3-6.3a4 4 0 0 0 5.4-5.4l-2.7 2.7-2-2 2.7-2.7z" />
+</>);
 const TABS = [
   { id: 'store', label: 'Store', Icon: StoreIcon },
   { id: 'insights', label: 'Insights', Icon: InsightsIcon },
-  { id: 'menu', label: 'Menus', Icon: MenuIcon },
+  { id: 'menubuilder', label: 'Menu Builder', Icon: MenuIcon },
+  { id: 'productbuilder', label: 'Product Builder', Icon: BuildIcon },
   { id: 'banners', label: 'Banners', Icon: BannerIcon },
   { id: 'users', label: 'Users', Icon: InsightsIcon },
   { id: 'coupons', label: 'Coupons', Icon: BannerIcon },
@@ -858,18 +862,9 @@ export default function Admin({ onExit }) {
         <div className="admin-layout">
           <nav className="admin-tabs">
             {TABS.map((t) => (
-              <React.Fragment key={t.id}>
-                <button className={`admin-tab ${tab === t.id ? 'on' : ''}`} onClick={() => setTab(t.id)} type="button">
-                  <t.Icon size={20} /><span>{t.label}</span>
-                </button>
-                {t.id === 'menu' && tab === 'menu' && (
-                  <div className="admin-subtabs">
-                    {[['categories', 'Categories'], ['items', 'Menu Builder'], ['builder', 'Product builder']].map(([k, label]) => (
-                      <button key={k} className={menuSub === k ? 'on' : ''} onClick={() => setMenuSub(k)} type="button">{label}</button>
-                    ))}
-                  </div>
-                )}
-              </React.Fragment>
+              <button key={t.id} className={`admin-tab ${tab === t.id ? 'on' : ''}`} onClick={() => setTab(t.id)} type="button">
+                <t.Icon size={20} /><span>{t.label}</span>
+              </button>
             ))}
           </nav>
 
@@ -1206,15 +1201,9 @@ export default function Admin({ onExit }) {
             )}
 
             {/* ───────── MENU ───────── */}
-            {tab === 'menu' && (
+            {tab === 'menubuilder' && (
               <>
-                <div className="menu-subnav">
-                  {[['categories', 'Categories'], ['items', 'Menu Builder'], ['builder', 'Product builder']].map(([k, label]) => (
-                    <button key={k} type="button" className={`chip ${menuSub === k ? 'on' : ''}`} onClick={() => setMenuSub(k)} style={{ fontSize: 'var(--fs-base)' }}>{label}</button>
-                  ))}
-                </div>
-
-                {menuSub === 'categories' && (
+                {false && (
                 <div className="card" style={card}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
                     <div className="group-title" style={{ margin: 0 }}>Categories in Menu</div>
@@ -1260,15 +1249,20 @@ export default function Admin({ onExit }) {
                 </div>
                 )}
 
-                {menuSub === 'items' && (<>
+                {true && (<>
                 <div className="card" style={card}>
                   <div className="group-title">Menu layout</div>
-                  <label style={{ ...row, marginBottom: 6 }}><input type="radio" checked={s.layoutMode !== 'single'} onChange={() => set({ layoutMode: 'onepage' })} /> One page (all categories scroll)</label>
-                  <label style={row}><input type="radio" checked={s.layoutMode === 'single'} onChange={() => set({ layoutMode: 'single' })} /> Single category (one at a time)</label>
-                  <div style={{ ...row, marginTop: 12, flexWrap: 'wrap' }}>
-                    <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>Top category bar:</span>
-                    <label style={{ ...row, gap: 4 }}><input type="radio" name="topmenustyle" checked={(s.topMenuStyle || 'stacked') === 'stacked'} onChange={() => set({ topMenuStyle: 'stacked' })} /> Stacked (wraps, expandable)</label>
-                    <label style={{ ...row, gap: 4 }}><input type="radio" name="topmenustyle" checked={s.topMenuStyle === 'swipe'} onChange={() => set({ topMenuStyle: 'swipe' })} /> Swipe (single scrolling row)</label>
+                  <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
+                    <div style={{ display: 'grid', gap: 4 }}>
+                      <span className="muted" style={{ fontSize: 'var(--fs-xs)', textTransform: 'uppercase', letterSpacing: 0.4 }}>Page style</span>
+                      <label style={{ ...row, gap: 6 }}><input type="radio" checked={s.layoutMode !== 'single'} onChange={() => set({ layoutMode: 'onepage' })} /> One page (all scroll)</label>
+                      <label style={{ ...row, gap: 6 }}><input type="radio" checked={s.layoutMode === 'single'} onChange={() => set({ layoutMode: 'single' })} /> Single category</label>
+                    </div>
+                    <div style={{ display: 'grid', gap: 4 }}>
+                      <span className="muted" style={{ fontSize: 'var(--fs-xs)', textTransform: 'uppercase', letterSpacing: 0.4 }}>Top category bar</span>
+                      <label style={{ ...row, gap: 6 }}><input type="radio" name="topmenustyle" checked={(s.topMenuStyle || 'stacked') === 'stacked'} onChange={() => set({ topMenuStyle: 'stacked' })} /> Stacked (wraps to rows)</label>
+                      <label style={{ ...row, gap: 6 }}><input type="radio" name="topmenustyle" checked={s.topMenuStyle === 'swipe'} onChange={() => set({ topMenuStyle: 'swipe' })} /> Swipe (one scrolling row)</label>
+                    </div>
                   </div>
                 </div>
 
@@ -1331,7 +1325,7 @@ export default function Admin({ onExit }) {
                             <span className="muted" style={{ fontSize: 'var(--fs-sm)', whiteSpace: 'nowrap' }}>{u.count} {u.count === 1 ? 'tile' : 'tiles'} · builder</span>
                             <button className="link" title="Move up" disabled={idx === 0} style={{ opacity: idx === 0 ? 0.3 : 1 }} onClick={() => moveUnit(u.name, -1)}>↑</button>
                             <button className="link" title="Move down" disabled={idx === orderedUnits.length - 1} style={{ opacity: idx === orderedUnits.length - 1 ? 0.3 : 1 }} onClick={() => moveUnit(u.name, 1)}>↓</button>
-                            <button className="link" title="Edit in Product builder" onClick={() => setMenuSub('builder')}>✎</button>
+                            <button className="link" title="Edit in Product builder" onClick={() => setTab('productbuilder')}>✎</button>
                             <button className="link" disabled={deleteLock} style={{ color: '#c0392b', opacity: deleteLock ? 0.3 : 1 }}
                               title={deleteLock ? 'Unlock delete (top-right) to remove' : 'Delete this builder section and all its tiles'}
                               onClick={() => { if (window.confirm(`Delete the "${u.name}" section and its ${u.count} tile(s)?`)) setPresets(presets.filter((p) => (p.section || '').trim().toLowerCase() !== u.name.toLowerCase())); }}>✕</button>
@@ -1486,12 +1480,15 @@ export default function Admin({ onExit }) {
                       </div>
                     );
                   })}
-                  <button className="btn ghost full" onClick={addSection}>+ Add product section</button>
                 </div>
                 </>)}
+              </>
+            )}
 
+            {tab === 'productbuilder' && (
+              <>
                 {/* ───────── PRODUCT BUILDER ───────── */}
-                {menuSub === 'builder' && (
+                {true && (
                 <div className="card" style={card}>
                   <div className="group-title">Product builder</div>
                   <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 0 }}>
