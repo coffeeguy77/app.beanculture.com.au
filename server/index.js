@@ -739,7 +739,7 @@ async function syncPresetsWithSquare() {
     // Diagnostic: show what Square returns per source vs what's covered.
     for (const id of sourceIds) {
       const cfg = configs[id];
-      console.log(`[sync-diag] ${cfg ? JSON.stringify(cfg.name) : '(no cfg)'} id=${id} squareVars=${cfg ? cfg.variations.length : 0} covered=${(coveredBySource[id] || new Set()).size} section=${JSON.stringify(sectionBySource[id])}`);
+      if (cfg && /tea/i.test(cfg.name)) console.log(`[sync-diag] ${JSON.stringify(cfg.name)} id=${id} names=${JSON.stringify(cfg.variations.map((v) => v.name))}`);
     }
     const reconciled = []; let removedDead = 0;
     for (const p of presets) {
