@@ -333,6 +333,68 @@ async function getMenu(opts = {}) {
     }
   }
 
+  // Product-builder presets: named "hot links" into ONE variable Square item.
+  // Each preset locks a variation and curates which modifier options show; it
+  // renders as its own tile in its section and, when ordered, submits as the
+  // real Square variation + modifier ids. Live storefront only (applySelection).
+  if (applySelection) {
+    const presetsBySection = new Map();
+    for (const p of getSettings().presets || []) {
+      if (!p || p.enabled === false) continue;
+      const src = itemsById.get(p.sourceItemId);
+      if (!src) continue;
+      const variation = (src.variations || []).find((v) => v.id === p.variationId) || src.variations[0];
+      if (!variation) continue;
+
+      const groupCfg = p.groups || {};
+      const groups = [];
+      const lockedModifierIds = [];
+      const lockedModifierNames = [];
+      const defaults = {};
+      let lockedTotal = 0;
+      for (const g of src.modifierGroups || []) {
+        const cfg = groupCfg[g.id];
+        if (!cfg) continue; // group not configured → hidden
+        const offered = [];
+        for (const m of g.modifiers) {
+          const state = cfg[m.id]; // 'optional' | 'default' | 'locked' ; undefined → off
+          if (!state) continue;
+          if (state === 'locked') { lockedModifierIds.push(m.id); lockedModifierNames.push(m.name); lockedTotal += m.price || 0; continue; }
+          offered.push(m);
+          if (state === 'default') { (defaults[g.id] = defaults[g.id] || []).push(m.id); }
+        }
+        if (offered.length) {
+          groups.push({ id: g.id, name: g.name, selectionType: g.selectionType, min: g.min, max: g.max, modifiers: offered });
+        }
+      }
+
+      const tile = {
+        id: 'preset:' + p.id,
+        name: (p.name || '').trim() || variation.name || src.name,
+        description: src.description || '',
+        image: src.image || null,
+        // Locked-modifier price is baked into the displayed price; Square still
+        // recomputes the true total from the ids we submit.
+        soldOut: !!variation.soldOut,
+        variations: [{ id: variation.id, name: variation.name, price: (variation.price || 0) + lockedTotal, soldOut: !!variation.soldOut }],
+        modifierGroups: groups,
+        lockedModifierIds,
+        lockedModifierNames,
+        defaults,
+        isPreset: true,
+        presetSourceItemId: p.sourceItemId,
+      };
+      const secName = String(p.section || '').trim() || 'Specials';
+      if (!presetsBySection.has(secName)) presetsBySection.set(secName, []);
+      presetsBySection.get(secName).push(tile);
+    }
+    for (const [secName, tiles] of presetsBySection) {
+      const existing = sections.find((s) => s.category.toLowerCase() === secName.toLowerCase());
+      if (existing) existing.items.push(...tiles);
+      else sections.push({ category: secName, items: tiles, showImages: true, custom: true });
+    }
+  }
+
   // Apply the owner's custom section order (settings.menuOrder = display names)
   // across BOTH category and product sections. Listed names come first in that
   // order; anything not listed keeps its current order after them (stable sort).
@@ -414,4 +476,51 @@ async function getAllCategories() {
   return out;
 }
 
-module.exports = { getMenu, getFullMenu, getAllCategories, getAllProducts, cleanName };
+// Full configuration of ONE Square item (variations + modifier groups with
+// prices) for the admin Product builder. Uses Square's retrieve-object with
+// related objects so it works for any item, even one not loaded in the app.
+async function getItemConfig(itemId) {
+  if (!itemId) return null;
+  const data = await squareFetch(`/v2/catalog/object/${encodeURIComponent(itemId)}?include_related_objects=true`);
+  const obj = data.object;
+  if (!obj || obj.type !== 'ITEM') return null;
+  const d = obj.item_data || {};
+  const modLists = new Map();
+  const imgs = new Map();
+  for (const r of data.related_objects || []) {
+    if (r.type === 'MODIFIER_LIST') modLists.set(r.id, r);
+    else if (r.type === 'IMAGE') imgs.set(r.id, r.image_data?.url || null);
+  }
+  const variations = (d.variations || [])
+    .filter((v) => !v.is_deleted)
+    .map((v) => ({
+      id: v.id,
+      name: v.item_variation_data?.name || '',
+      price: moneyToNumber(v.item_variation_data?.price_money),
+      soldOut: variationSoldOut(v),
+    }))
+    .filter((v) => v.price !== null);
+  const modifierGroups = [];
+  for (const ref of d.modifier_list_info || []) {
+    if (ref.enabled === false) continue;
+    const list = modLists.get(ref.modifier_list_id);
+    if (!list) continue;
+    const ld = list.modifier_list_data || {};
+    const mods = (ld.modifiers || [])
+      .filter((m) => !m.is_deleted)
+      .map((m) => ({ id: m.id, name: m.modifier_data?.name || '', price: moneyToNumber(m.modifier_data?.price_money) || 0 }));
+    if (!mods.length) continue;
+    modifierGroups.push({
+      id: list.id,
+      name: ld.name || 'Options',
+      selectionType: (ld.selection_type || 'MULTIPLE').toUpperCase(),
+      min: typeof ref.min_selected_modifiers === 'number' ? ref.min_selected_modifiers : 0,
+      max: typeof ref.max_selected_modifiers === 'number' ? ref.max_selected_modifiers : -1,
+      modifiers: mods,
+    });
+  }
+  const imageId = (d.image_ids || [])[0];
+  return { id: obj.id, name: d.name || 'Item', image: imageId ? imgs.get(imageId) || null : null, variations, modifierGroups };
+}
+
+module.exports = { getMenu, getFullMenu, getAllCategories, getAllProducts, getItemConfig, cleanName };

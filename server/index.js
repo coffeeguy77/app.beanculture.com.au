@@ -571,6 +571,18 @@ app.get('/api/admin/products', async (req, res) => {
   }
 });
 
+// ---- Admin: one item's full config (variations + modifiers) for the builder ----
+app.get('/api/admin/item-config', async (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const cfg = await catalog.getItemConfig(String(req.query.id || ''));
+    if (!cfg) return res.status(404).json({ error: 'Item not found' });
+    res.json({ item: cfg });
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+
 // ---- Validate a coupon code (for the checkout to show the discount) ----
 app.get('/api/coupon', (req, res) => {
   try {

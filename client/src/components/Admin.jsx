@@ -73,6 +73,7 @@ export default function Admin({ onExit }) {
   const [catsLocked, setCatsLocked] = useState(true);
   const [expanded, setExpanded] = useState({});
   const [secSearch, setSecSearch] = useState({}); // product-section id -> search text
+  const [itemConfigs, setItemConfigs] = useState({}); // itemId -> full config for the builder
   const [imgBusy, setImgBusy] = useState(null);      // item id currently uploading
   const [imgOverride, setImgOverride] = useState({}); // item id -> freshly uploaded url
   const [users, setUsers] = useState(null);          // loyalty customers (Users tab)
@@ -166,6 +167,18 @@ export default function Admin({ onExit }) {
     } catch (e) { setError(e.message); }
   }
   useEffect(() => { load(''); }, []);
+  // Fetch the full config (variations + modifiers) for any item used by a preset.
+  useEffect(() => {
+    const ids = [...new Set((s?.presets || []).map((p) => p.sourceItemId).filter(Boolean))];
+    ids.forEach((id) => {
+      if (itemConfigs[id]) return;
+      fetch(`/api/admin/item-config?id=${encodeURIComponent(id)}&pass=${encodeURIComponent(pass)}`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => { if (d && d.item) setItemConfigs((x) => ({ ...x, [id]: d.item })); })
+        .catch(() => {});
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [s?.presets]);
   useEffect(() => {
     if (tab === 'push') {
       if (notifyStatus === null) api.adminNotifyStatus(pass).then(setNotifyStatus).catch(() => setNotifyStatus({ sms: false, email: false }));
@@ -350,6 +363,26 @@ export default function Admin({ onExit }) {
       if (x.id !== id) return x;
       const cur = Array.isArray(x.items) ? x.items : [];
       return { ...x, items: cur.includes(itemId) ? cur.filter((i) => i !== itemId) : [...cur, itemId] };
+    }));
+
+  // ---- product builder presets (named hot-links into one variable item) ----
+  const presets = s?.presets || [];
+  const setPresets = (arr) => set({ presets: arr });
+  const addPreset = () =>
+    setPresets([...presets, { id: 'pre' + Date.now().toString(36), name: 'New preset', section: 'Breakfast', sourceItemId: '', variationId: '', groups: {}, showImages: true }]);
+  const updPreset = (id, patch) => setPresets(presets.map((x) => (x.id === id ? { ...x, ...patch } : x)));
+  const rmPreset = (id) => setPresets(presets.filter((x) => x.id !== id));
+  // Cycle a modifier through Off → Show → Default → Lock → Off for a preset.
+  const CYCLE = { undefined: 'optional', off: 'optional', optional: 'default', default: 'locked', locked: undefined };
+  const cyclePresetMod = (presetId, groupId, modId) =>
+    setPresets(presets.map((p) => {
+      if (p.id !== presetId) return p;
+      const groups = { ...(p.groups || {}) };
+      const g = { ...(groups[groupId] || {}) };
+      const next = CYCLE[g[modId] || 'off'];
+      if (next) g[modId] = next; else delete g[modId];
+      if (Object.keys(g).length) groups[groupId] = g; else delete groups[groupId];
+      return { ...p, groups };
     }));
 
   // ---- menu section order (storefront): categories AND product sections ----
@@ -1021,6 +1054,107 @@ export default function Admin({ onExit }) {
                     );
                   })}
                   <button className="btn ghost full" onClick={addSection}>+ Add product section</button>
+                </div>
+
+                {/* ───────── PRODUCT BUILDER ───────── */}
+                <div className="card" style={card}>
+                  <div className="group-title">Product builder</div>
+                  <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>
+                    Turn ONE variable Square item (e.g. “Breakfast”) into several named tiles — without creating new
+                    Square products. Pick the item, lock a variation, then set each option to <strong>Hide</strong>,
+                    <strong> Show</strong> (customer can pick), <strong>Default</strong> (pre-ticked) or <strong>Lock</strong>
+                    (always applied, hidden). Orders still submit as the real Square variation + modifiers, so printers
+                    and KDS work automatically. Presets appear as tiles in the section you name.
+                  </p>
+                  {presets.length === 0 && <p className="muted" style={{ fontSize: 12 }}>No presets yet. Add one below.</p>}
+                  {presets.map((p) => {
+                    const cfg = itemConfigs[p.sourceItemId];
+                    const isOpen = !!expanded[p.id];
+                    const v = cfg && (cfg.variations.find((x) => x.id === p.variationId) || cfg.variations[0]);
+                    let price = v ? (v.price || 0) : null;
+                    if (cfg && price != null) {
+                      for (const g of cfg.modifierGroups || []) {
+                        const gc = p.groups?.[g.id] || {};
+                        for (const m of g.modifiers) { const st = gc[m.id]; if (st === 'locked' || st === 'default') price += m.price || 0; }
+                      }
+                    }
+                    return (
+                      <div key={p.id} style={{ border: '1px solid var(--accent)', borderRadius: 12, padding: 10, marginBottom: 10 }}>
+                        <div style={{ ...row, justifyContent: 'space-between' }}>
+                          <label style={{ ...row, flex: 1, minWidth: 0 }}>
+                            <span title="Preset" style={{ fontSize: 15 }}>🛠️</span>
+                            <input value={p.name || ''} onChange={(e) => updPreset(p.id, { name: e.target.value })} placeholder="Tile name (e.g. Egg & Bacon Roll – Rocket & Aioli)"
+                              style={{ fontWeight: 700, flex: 1, minWidth: 0, padding: '6px 8px', border: '1px solid var(--line)', borderRadius: 8 }} />
+                            {price != null && <span className="muted" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>{formatMoney(price, data?.currency)}</span>}
+                          </label>
+                          <button className="link" onClick={() => setExpanded((x) => ({ ...x, [p.id]: !isOpen }))}>{isOpen ? '▲' : '▼'}</button>
+                          <button className="link" style={{ color: '#c0392b' }} title="Remove preset" onClick={() => rmPreset(p.id)}>✕</button>
+                        </div>
+                        {isOpen && (
+                          <div style={{ marginTop: 8, borderTop: '1px solid var(--line)', paddingTop: 8, display: 'grid', gap: 8 }}>
+                            <label style={{ display: 'grid', gap: 4 }}>
+                              <span className="muted" style={{ fontSize: 12 }}>Source product</span>
+                              <select value={p.sourceItemId || ''} onChange={(e) => updPreset(p.id, { sourceItemId: e.target.value, variationId: '', groups: {} })}
+                                style={{ padding: 8, borderRadius: 10, border: '1px solid var(--line)' }}>
+                                <option value="">{allProducts.length ? '— pick a product —' : 'Loading products…'}</option>
+                                {allProducts.map((pr) => <option key={pr.id} value={pr.id}>{pr.name}{pr.category ? ` · ${pr.category}` : ''}</option>)}
+                              </select>
+                            </label>
+                            {p.sourceItemId && !cfg && <p className="muted" style={{ fontSize: 12 }}>Loading item options…</p>}
+                            {cfg && (
+                              <>
+                                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                                  <label style={{ display: 'grid', gap: 4, flex: '1 1 180px' }}>
+                                    <span className="muted" style={{ fontSize: 12 }}>Variation (locked)</span>
+                                    <select value={p.variationId || ''} onChange={(e) => updPreset(p.id, { variationId: e.target.value })}
+                                      style={{ padding: 8, borderRadius: 10, border: '1px solid var(--line)' }}>
+                                      <option value="">— pick a variation —</option>
+                                      {cfg.variations.map((vr) => <option key={vr.id} value={vr.id}>{vr.name || cfg.name} · {formatMoney(vr.price, data?.currency)}</option>)}
+                                    </select>
+                                  </label>
+                                  <label style={{ display: 'grid', gap: 4, flex: '1 1 180px' }}>
+                                    <span className="muted" style={{ fontSize: 12 }}>Show in section</span>
+                                    <input list="menu-section-names" value={p.section || ''} onChange={(e) => updPreset(p.id, { section: e.target.value })} placeholder="e.g. Breakfast"
+                                      style={{ padding: 8, borderRadius: 10, border: '1px solid var(--line)' }} />
+                                  </label>
+                                </div>
+                                {(cfg.modifierGroups || []).map((g) => (
+                                  <div key={g.id} style={{ border: '1px solid var(--line)', borderRadius: 10, padding: 8 }}>
+                                    <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 6 }}>{g.name}
+                                      <span className="muted" style={{ fontWeight: 400 }}>{g.selectionType === 'SINGLE' ? ' · choose one' : g.max > 0 ? ` · up to ${g.max}` : ''}</span>
+                                    </div>
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                                      {g.modifiers.map((m) => {
+                                        const st = p.groups?.[g.id]?.[m.id] || 'off';
+                                        const label = { off: 'Hide', optional: 'Show', default: 'Default', locked: 'Locked' }[st];
+                                        const sty = {
+                                          off: { background: 'transparent', color: 'var(--muted)', border: '1px solid var(--line)' },
+                                          optional: { background: 'var(--brand-soft)', color: 'var(--ink)', border: '1px solid var(--accent)' },
+                                          default: { background: 'var(--accent)', color: '#fff', border: '1px solid var(--accent)' },
+                                          locked: { background: 'var(--ink)', color: '#fff', border: '1px solid var(--ink)' },
+                                        }[st];
+                                        return (
+                                          <button key={m.id} onClick={() => cyclePresetMod(p.id, g.id, m.id)} title="Tap to cycle Hide → Show → Default → Lock"
+                                            style={{ ...sty, borderRadius: 999, padding: '5px 10px', fontSize: 12, cursor: 'pointer' }}>
+                                            {m.name}{m.price > 0 ? ` +${formatMoney(m.price, data?.currency)}` : ''} · {label}
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                ))}
+                                {(!cfg.modifierGroups || cfg.modifierGroups.length === 0) && <p className="muted" style={{ fontSize: 12 }}>This item has no modifier options.</p>}
+                              </>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                  <datalist id="menu-section-names">
+                    {[...new Set([...adminCat.map((c) => c.category), ...productSections.map((x) => x.name), ...presets.map((x) => x.section)].filter(Boolean))].map((n) => <option key={n} value={n} />)}
+                  </datalist>
+                  <button className="btn ghost full" onClick={addPreset}>+ Add preset</button>
                 </div>
               </>
             )}

@@ -8,7 +8,13 @@ function makeKey(item, variationId, modifierIds, note) {
 export default function ItemModal({ item, currency, onClose, onAdd }) {
   const firstAvail = item.variations.find((v) => !v.soldOut) || item.variations[0];
   const [variationId, setVariationId] = useState(firstAvail?.id);
-  const [selected, setSelected] = useState({});
+  // Preset tiles arrive with default-on options; seed the selection from them.
+  const [selected, setSelected] = useState(() => {
+    const init = {};
+    const d = item.defaults || {};
+    for (const gid of Object.keys(d)) init[gid] = new Set(d[gid]);
+    return init;
+  });
   const [qty, setQty] = useState(1);
   const [note, setNote] = useState('');
 
@@ -45,11 +51,17 @@ export default function ItemModal({ item, currency, onClose, onAdd }) {
   const unitPrice = (variation?.price || 0) + modifierPrice;
 
   function handleAdd() {
+    // Locked modifiers (from a preset) are always applied and hidden; their
+    // price is already baked into the variation price, so only add their ids.
+    const lockIds = item.lockedModifierIds || [];
+    const lockNames = item.lockedModifierNames || [];
+    const allIds = [...modifierIds, ...lockIds];
+    const allNames = [...modifierNames, ...lockNames];
     onAdd({
-      key: makeKey(item, variationId, modifierIds, note),
-      itemId: item.id, itemName: item.name,
+      key: makeKey(item, variationId, allIds, note),
+      itemId: item.presetSourceItemId || item.id, itemName: item.name,
       variationId, variationName: variation?.name || '',
-      modifierIds, modifierNames, unitPrice, quantity: qty, note: note.trim(),
+      modifierIds: allIds, modifierNames: allNames, unitPrice, quantity: qty, note: note.trim(),
     });
   }
 

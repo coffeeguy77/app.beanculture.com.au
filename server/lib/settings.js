@@ -60,6 +60,15 @@ const DEFAULTS = {
   // category sections, and are surfaced even if their Square category isn't
   // loaded. Each: { id, name, items:[squareItemId], showImages, enabled }.
   productSections: [],
+  // Product builder presets: a named "hot link" into ONE variable Square item.
+  // Each preset locks a variation and curates which of the item's modifier
+  // options the customer sees. Ordered, they submit as the real Square variation
+  // + modifier ids, so printers/KDS/reporting work with no new Square products.
+  // Each: { id, name, section, sourceItemId, variationId, showImages, enabled,
+  //   groups: { [modifierGroupId]: { [modifierId]: 'optional'|'default'|'locked' } } }
+  // A modifier not listed is hidden; 'optional' = shown/off, 'default' = shown/on,
+  // 'locked' = hidden + always applied (its price is baked into the tile price).
+  presets: [],
   // Default theme — light pastel pink.
   theme: {
     bg: '#fdf1f4',
