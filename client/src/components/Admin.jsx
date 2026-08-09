@@ -73,6 +73,7 @@ export default function Admin({ onExit }) {
   const [catsLocked, setCatsLocked] = useState(true);
   const [expanded, setExpanded] = useState({});
   const [secSearch, setSecSearch] = useState({}); // product-section id -> search text
+  const [secPickerOpen, setSecPickerOpen] = useState({}); // product-section id -> full catalog open
   const [itemConfigs, setItemConfigs] = useState({}); // itemId -> full config for the builder
   const [srcSearch, setSrcSearch] = useState({}); // picker id -> search text
   const [srcCat, setSrcCat] = useState({});       // picker id -> category filter
@@ -1065,16 +1066,12 @@ export default function Admin({ onExit }) {
                           </div>
                           {isOpen && (
                             <div style={{ marginTop: 8, borderTop: '1px solid var(--line)', paddingTop: 8 }}>
-                              <input placeholder="Search products…" value={secSearch[sec.id] || ''}
-                                onChange={(e) => setSecSearch((x) => ({ ...x, [sec.id]: e.target.value }))}
-                                style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 10, marginBottom: 8 }} />
-                              {allProducts.length === 0 && <p className="muted" style={{ fontSize: 12 }}>Loading products…</p>}
-                              <div style={{ maxHeight: 320, overflowY: 'auto' }}>
-                                {allProducts
-                                  .filter((p) => !q || p.name.toLowerCase().includes(q) || (p.category || '').toLowerCase().includes(q))
-                                  .map((p) => (
+                              {/* Products offered here now — untick to remove one (e.g. if unavailable). */}
+                              {picked > 0 ? (
+                                <div style={{ marginBottom: 8 }}>
+                                  {allProducts.filter((p) => sectionHasItem(sec, p.id)).map((p) => (
                                     <label key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', cursor: 'pointer' }}>
-                                      <input type="checkbox" checked={sectionHasItem(sec, p.id)} onChange={() => toggleSectionItem(sec.id, p.id)} />
+                                      <input type="checkbox" checked onChange={() => toggleSectionItem(sec.id, p.id)} />
                                       {p.image
                                         ? <img src={p.image} alt="" style={{ width: 30, height: 30, borderRadius: 6, objectFit: 'cover', flex: 'none' }} />
                                         : <span style={{ width: 30, height: 30, borderRadius: 6, background: 'var(--surface)', flex: 'none', display: 'grid', placeItems: 'center', fontSize: 14 }}>🍽️</span>}
@@ -1082,7 +1079,34 @@ export default function Admin({ onExit }) {
                                       {p.category && <span className="muted" style={{ fontSize: 11, whiteSpace: 'nowrap' }}>{p.category}</span>}
                                     </label>
                                   ))}
-                              </div>
+                                </div>
+                              ) : <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>No products chosen yet.</p>}
+
+                              <button className="link" onClick={() => setSecPickerOpen((x) => ({ ...x, [sec.id]: !x[sec.id] }))}>
+                                {secPickerOpen[sec.id] ? '▲ Hide product list' : '＋ Add / browse products'}
+                              </button>
+                              {secPickerOpen[sec.id] && (
+                                <div style={{ marginTop: 8 }}>
+                                  <input placeholder="Search products…" value={secSearch[sec.id] || ''}
+                                    onChange={(e) => setSecSearch((x) => ({ ...x, [sec.id]: e.target.value }))}
+                                    style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 10, marginBottom: 8 }} />
+                                  {allProducts.length === 0 && <p className="muted" style={{ fontSize: 12 }}>Loading products…</p>}
+                                  <div style={{ maxHeight: 320, overflowY: 'auto' }}>
+                                    {allProducts
+                                      .filter((p) => !q || p.name.toLowerCase().includes(q) || (p.category || '').toLowerCase().includes(q))
+                                      .map((p) => (
+                                        <label key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', cursor: 'pointer' }}>
+                                          <input type="checkbox" checked={sectionHasItem(sec, p.id)} onChange={() => toggleSectionItem(sec.id, p.id)} />
+                                          {p.image
+                                            ? <img src={p.image} alt="" style={{ width: 30, height: 30, borderRadius: 6, objectFit: 'cover', flex: 'none' }} />
+                                            : <span style={{ width: 30, height: 30, borderRadius: 6, background: 'var(--surface)', flex: 'none', display: 'grid', placeItems: 'center', fontSize: 14 }}>🍽️</span>}
+                                          <span style={{ fontSize: 14, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
+                                          {p.category && <span className="muted" style={{ fontSize: 11, whiteSpace: 'nowrap' }}>{p.category}</span>}
+                                        </label>
+                                      ))}
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           )}
                         </div>
@@ -1214,8 +1238,10 @@ export default function Admin({ onExit }) {
                       )}
                       {!secCollapsed && (
                       <div style={{ border: '1px solid var(--accent)', borderRadius: 12, padding: 10, marginBottom: 10 }}>
-                        <div style={{ ...row, justifyContent: 'space-between' }}>
+                        <div style={{ ...row, justifyContent: 'space-between', opacity: p.enabled === false ? 0.5 : 1 }}>
                           <label style={{ ...row, flex: 1, minWidth: 0 }}>
+                            <input type="checkbox" checked={p.enabled !== false} title="Available — untick to hide this tile when unavailable"
+                              onChange={(e) => updPreset(p.id, { enabled: e.target.checked })} />
                             <span title="Preset" style={{ fontSize: 15 }}>🛠️</span>
                             <input value={p.name || ''} onChange={(e) => updPreset(p.id, { name: e.target.value })} placeholder="Tile name (e.g. Egg & Bacon Roll – Rocket & Aioli)"
                               style={{ fontWeight: 700, flex: 1, minWidth: 0, padding: '6px 8px', border: '1px solid var(--line)', borderRadius: 8 }} />
