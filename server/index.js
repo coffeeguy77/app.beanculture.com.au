@@ -736,11 +736,6 @@ async function syncPresetsWithSquare() {
       vids(p).forEach((v) => coveredBySource[p.sourceItemId].add(v));
       if (!sectionBySource[p.sourceItemId]) sectionBySource[p.sourceItemId] = p.section || 'Specials';
     }
-    // Diagnostic: show what Square returns per source vs what's covered.
-    for (const id of sourceIds) {
-      const cfg = configs[id];
-      if (cfg && /tea/i.test(cfg.name)) console.log(`[sync-diag] ${JSON.stringify(cfg.name)} id=${id} names=${JSON.stringify(cfg.variations.map((v) => v.name))}`);
-    }
     const reconciled = []; let removedDead = 0;
     for (const p of presets) {
       const cfg = configs[p.sourceItemId];
