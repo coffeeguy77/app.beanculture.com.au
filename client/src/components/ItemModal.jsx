@@ -24,8 +24,13 @@ export default function ItemModal({ item, currency, onClose, onAdd }) {
     setSelected((prev) => {
       const cur = new Set(prev[group.id] || []);
       if (group.selectionType === 'SINGLE') {
-        cur.clear();
-        cur.add(mod.id);
+        // Pill behaviour: tapping the already-chosen option deselects it back
+        // to "none picked" instead of being stuck once chosen, like a radio
+        // button would be. Required groups (group.min > 0) are enforced at
+        // Add-to-cart time instead, so a customer can still freely clear their
+        // pick and reconsider while the sheet is open.
+        if (cur.has(mod.id)) cur.clear();
+        else { cur.clear(); cur.add(mod.id); }
       } else if (cur.has(mod.id)) cur.delete(mod.id);
       else {
         if (group.max > 0 && cur.size >= group.max) return prev;
@@ -34,6 +39,15 @@ export default function ItemModal({ item, currency, onClose, onAdd }) {
       return { ...prev, [group.id]: cur };
     });
   }
+
+  // Groups the customer hasn't satisfied yet (min selections not met) — used
+  // to block Add-to-cart and to flag the offending group inline.
+  const unmetGroups = (item.modifierGroups || []).filter((group) => {
+    const need = group.min || 0;
+    if (need <= 0) return false;
+    const have = (selected[group.id]?.size) || 0;
+    return have < need;
+  });
 
   const { modifierIds, modifierNames, modifierPrice } = useMemo(() => {
     const ids = [], names = [];
@@ -88,38 +102,53 @@ export default function ItemModal({ item, currency, onClose, onAdd }) {
             </div>
           )}
 
-          {(item.modifierGroups || []).map((group) => (
+          {(item.modifierGroups || []).map((group) => {
+            const required = (group.min || 0) > 0;
+            const have = (selected[group.id]?.size) || 0;
+            const unmet = required && have < group.min;
+            return (
             <div key={group.id} className="group">
               <div className="group-title">
                 {group.name}
                 {group.selectionType === 'SINGLE' ? ' · choose one' : group.max > 0 ? ` · up to ${group.max}` : ''}
+                {required && <span className="group-required"> · required</span>}
               </div>
-              {group.modifiers.map((mod) => {
-                const chosen = (selected[group.id] || new Set()).has(mod.id);
-                return (
-                  <label key={mod.id} className="opt">
-                    <input type={group.selectionType === 'SINGLE' ? 'radio' : 'checkbox'} name={group.id}
-                      checked={chosen} onChange={() => toggleModifier(group, mod)} />
-                    <span className="opt-name">{mod.name}</span>
-                    {mod.price > 0 && <span className="opt-price">+{formatMoney(mod.price, currency)}</span>}
-                  </label>
-                );
-              })}
+              <div className="opt-pills">
+                {group.modifiers.map((mod) => {
+                  const chosen = (selected[group.id] || new Set()).has(mod.id);
+                  return (
+                    <button key={mod.id} type="button" className={`opt-pill ${chosen ? 'on' : ''}`}
+                      onClick={() => toggleModifier(group, mod)}>
+                      <span className="opt-name">{mod.name}</span>
+                      {mod.price > 0 && <span className="opt-price">+{formatMoney(mod.price, currency)}</span>}
+                    </button>
+                  );
+                })}
+              </div>
+              {unmet && <p className="group-warn">Select at least {group.min === 1 ? 'one' : group.min}</p>}
             </div>
-          ))}
+            );
+          })}
 
           <label className="field">
             <span>Notes (optional)</span>
             <textarea className="notes-input" rows={2} value={note} onChange={(e) => setNote(e.target.value)} />
           </label>
 
+          {unmetGroups.length > 0 && (
+            <p className="group-warn" style={{ marginTop: -4 }}>
+              Please choose {unmetGroups.map((g) => g.name).join(', ')} before adding to your order.
+            </p>
+          )}
           <div className="qty-row">
             <div className="stepper">
               <button onClick={() => setQty((q) => Math.max(1, q - 1))}>−</button>
               <span>{qty}</span>
               <button onClick={() => setQty((q) => q + 1)}>+</button>
             </div>
-            <button className="btn" onClick={handleAdd}>Add · {formatMoney(unitPrice * qty, currency)}</button>
+            <button className="btn" onClick={handleAdd} disabled={unmetGroups.length > 0}>
+              Add · {formatMoney(unitPrice * qty, currency)}
+            </button>
           </div>
         </div>
       </div>

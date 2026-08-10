@@ -295,6 +295,18 @@ img { max-width: 100%; }
 .opt.disabled { opacity: 0.4; }
 .opt-name { flex: 1; }
 .opt-price { color: var(--muted); font-size: 14px; }
+.opt-pills { display: flex; flex-wrap: wrap; gap: 8px; }
+.opt-pill {
+  display: flex; align-items: center; gap: 6px; padding: 9px 14px; border-radius: 999px;
+  border: 1.5px solid var(--line); background: var(--surface); color: var(--ink);
+  font-size: 14px; cursor: pointer; font-family: inherit;
+}
+.opt-pill .opt-name { flex: none; }
+.opt-pill .opt-price { font-size: 12px; }
+.opt-pill.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.opt-pill.on .opt-price { color: var(--accent-ink); opacity: 0.85; }
+.group-required { color: var(--accent); font-weight: 700; text-transform: none; letter-spacing: normal; }
+.group-warn { color: #c0262d; font-size: 13px; font-weight: 600; margin: 6px 0 0; }
 
 /* Fields */
 .field { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--muted); }

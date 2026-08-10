@@ -465,7 +465,7 @@ export default function Admin({ onExit }) {
   const presets = s?.presets || [];
   const setPresets = (arr) => set({ presets: arr });
   const addPreset = () =>
-    setPresets([...presets, { id: 'pre' + Date.now().toString(36), name: 'New preset', section: 'Breakfast', sourceItemId: '', variationId: '', groups: {}, showImages: true }]);
+    setPresets([...presets, { id: 'pre' + Date.now().toString(36), name: 'New preset', section: 'Breakfast', sourceItemId: '', variationId: '', groups: {}, requiredGroups: [], showImages: true }]);
   const updPreset = (id, patch) => setPresets(presets.map((x) => (x.id === id ? { ...x, ...patch } : x)));
   const rmPreset = (id) => setPresets(presets.filter((x) => x.id !== id));
   // Cycle a modifier through Off → Show → Default → Lock → Off for a preset.
@@ -479,6 +479,19 @@ export default function Admin({ onExit }) {
       if (next) g[modId] = next; else delete g[modId];
       if (Object.keys(g).length) groups[groupId] = g; else delete groups[groupId];
       return { ...p, groups };
+    }));
+  // Whether the customer MUST pick at least one option from this group before
+  // they can add the preset to their cart. This is a per-preset override on
+  // top of whatever Square's own modifier-list minimum says — the simplest
+  // correct place for it, since marking every individual option "required"
+  // (the alternative) collapses to exactly this the moment more than one
+  // option is required, but is easy to leave inconsistent (e.g. 2 of 3 ticked).
+  const toggleRequiredGroup = (presetId, groupId) =>
+    setPresets(presets.map((p) => {
+      if (p.id !== presetId) return p;
+      const cur = new Set(p.requiredGroups || []);
+      if (cur.has(groupId)) cur.delete(groupId); else cur.add(groupId);
+      return { ...p, requiredGroups: [...cur] };
     }));
   // How many of a preset's options are currently shown (any state but Hide) vs total.
   const presetModSummary = (p, cfg) => {
@@ -1846,10 +1859,21 @@ export default function Admin({ onExit }) {
                                     </label>
                                   );
                                 })()}
-                                {(cfg.modifierGroups || []).map((g) => (
-                                  <div key={g.id} style={{ border: '1px solid var(--line)', borderRadius: 10, padding: 8 }}>
-                                    <div style={{ fontWeight: 600, fontSize: 'var(--fs-base)', marginBottom: 6 }}>{g.name}
-                                      <span className="muted" style={{ fontWeight: 400 }}>{g.selectionType === 'SINGLE' ? ' · choose one' : g.max > 0 ? ` · up to ${g.max}` : ''}</span>
+                                {(cfg.modifierGroups || []).map((g) => {
+                                  const isRequired = (p.requiredGroups || []).includes(g.id);
+                                  const groupShown = Object.keys(p.groups?.[g.id] || {}).length > 0;
+                                  return (
+                                  <div key={g.id} style={{ border: `1px solid ${isRequired ? 'var(--accent)' : 'var(--line)'}`, borderRadius: 10, padding: 8 }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
+                                      <div style={{ fontWeight: 600, fontSize: 'var(--fs-base)' }}>{g.name}
+                                        <span className="muted" style={{ fontWeight: 400 }}>{g.selectionType === 'SINGLE' ? ' · choose one' : g.max > 0 ? ` · up to ${g.max}` : ''}</span>
+                                      </div>
+                                      <label title={groupShown ? 'Customer must pick at least one option from this group before adding to cart' : 'Show at least one option below to make this group required'}
+                                        style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 'var(--fs-sm)', fontWeight: 600, cursor: groupShown ? 'pointer' : 'not-allowed', color: isRequired ? 'var(--accent)' : 'var(--muted)', flex: 'none', opacity: groupShown ? 1 : 0.5 }}>
+                                        <input type="checkbox" checked={isRequired} disabled={!groupShown}
+                                          onChange={() => toggleRequiredGroup(p.id, g.id)} />
+                                        Required
+                                      </label>
                                     </div>
                                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                                       {g.modifiers.map((m) => {
@@ -1870,7 +1894,8 @@ export default function Admin({ onExit }) {
                                       })}
                                     </div>
                                   </div>
-                                ))}
+                                  );
+                                })}
                                 {(!cfg.modifierGroups || cfg.modifierGroups.length === 0) && <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>This item has no modifier options.</p>}
                               </>
                             )}

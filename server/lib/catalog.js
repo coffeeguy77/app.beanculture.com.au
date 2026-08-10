@@ -345,6 +345,10 @@ async function getMenu(opts = {}) {
       if (!chosenVars.length) continue;
 
       const groupCfg = p.groups || {};
+      // Groups the owner has explicitly marked "Required" in Product builder,
+      // on top of whatever Square's own modifier-list minimum already says —
+      // this is the one place that overrides Square's min for this preset only.
+      const requiredGroupIds = new Set(Array.isArray(p.requiredGroups) ? p.requiredGroups : []);
       const groups = [];
       const lockedModifierIds = [];
       const lockedModifierNames = [];
@@ -362,7 +366,8 @@ async function getMenu(opts = {}) {
           if (state === 'default') { (defaults[g.id] = defaults[g.id] || []).push(m.id); }
         }
         if (offered.length) {
-          groups.push({ id: g.id, name: g.name, selectionType: g.selectionType, min: g.min, max: g.max, modifiers: offered });
+          const min = requiredGroupIds.has(g.id) ? Math.max(g.min || 0, 1) : g.min;
+          groups.push({ id: g.id, name: g.name, selectionType: g.selectionType, min, max: g.max, modifiers: offered });
         }
       }
 
