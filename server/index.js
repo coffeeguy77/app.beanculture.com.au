@@ -467,7 +467,7 @@ app.post('/api/reserve', async (req, res) => {
     // Best-effort Square order (so it prints + shows in Square). Never blocks the booking.
     let squareOrderId = null;
     try {
-      const o = await orders.createReservationOrder({ name, phone, partySize: party, at, notes });
+      const o = await orders.createReservationOrder({ name, phone, partySize: party, at, notes, variationId: getSettings().reservationVariationId });
       squareOrderId = o?.id || null;
     } catch (e) { console.error('[reserve] Square order failed:', e.message); }
 
@@ -494,6 +494,30 @@ app.post('/api/admin/reservations/status', async (req, res) => {
   try {
     await db.setReservationStatus(req.body?.id, req.body?.status);
     res.json({ ok: true });
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+
+// ---- Admin: reservation ticket printing — find or auto-create the catalog
+// item that reservation orders are placed against (see server/lib/orders.js
+// createReservationOrder). Lets the owner self-serve this instead of it being
+// a manual, API-console-only setup step. ----
+app.get('/api/admin/reservation-item/search', async (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    res.json({ items: await catalog.searchItemsByName(req.query.q || 'Table Reservation') });
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+app.post('/api/admin/reservation-item/create', async (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const { name, categoryId } = req.body || {};
+    if (!categoryId) return res.status(400).json({ error: 'Pick a category first.' });
+    const result = await catalog.createReservationCatalogItem({ name, categoryId });
+    res.json(result);
   } catch (e) {
     res.status(502).json({ error: e.message });
   }

@@ -126,6 +126,9 @@ export default function Admin({ onExit }) {
   const [msgs, setMsgs] = useState(null);
   const [resv, setResv] = useState(null);
   const [resvChannels, setResvChannels] = useState({});
+  const [resvItemResults, setResvItemResults] = useState(null); // catalog search results
+  const [resvItemCatId, setResvItemCatId] = useState(''); // chosen category for auto-create
+  const [resvItemBusy, setResvItemBusy] = useState(false);
   const [newClosure, setNewClosure] = useState({ date: '', annual: false, label: '' });
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
 
@@ -227,6 +230,48 @@ export default function Admin({ onExit }) {
   async function loadReservations() {
     try { const d = await api.adminReservations(pass); setResv(d.reservations || []); setResvChannels({ sms: d.sms, email: d.email }); }
     catch (e) { alert('Could not load reservations: ' + e.message); }
+  }
+  // ---- Reservation ticket printing: find or auto-create the catalog item ----
+  // (see server/lib/orders.js createReservationOrder for why this matters —
+  // an ad-hoc line item has no print category and can silently fail to print).
+  async function persistSettingsPatch(patch) {
+    const merged = { ...s, ...patch };
+    setS(merged);
+    setSaving(true); setSavedMsg('');
+    try {
+      const r = await fetch(`/api/admin/settings?pass=${encodeURIComponent(pass)}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ settings: merged }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || 'Save failed');
+      setSavedMsg('Saved — live now.');
+    } catch (e) { setSavedMsg('Save failed: ' + e.message); alert('Could not save: ' + e.message); }
+    finally { setSaving(false); setTimeout(() => setSavedMsg(''), 5000); }
+  }
+  async function findReservationItem() {
+    setResvItemBusy(true);
+    try {
+      const r = await fetch(`/api/admin/reservation-item/search?q=${encodeURIComponent('Table Reservation')}&pass=${encodeURIComponent(pass)}`);
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || 'Search failed');
+      setResvItemResults(d.items || []);
+    } catch (e) { alert('Search failed: ' + e.message); }
+    finally { setResvItemBusy(false); }
+  }
+  async function createReservationItem() {
+    if (!resvItemCatId) { alert('Pick a category first — ideally one that already prints reliably (e.g. the same category a coffee or grab-and-go item uses).'); return; }
+    setResvItemBusy(true);
+    try {
+      const r = await fetch(`/api/admin/reservation-item/create?pass=${encodeURIComponent(pass)}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'Table Reservation', categoryId: resvItemCatId }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || 'Create failed');
+      await persistSettingsPatch({ reservationVariationId: d.variationId });
+      setResvItemResults(null);
+    } catch (e) { alert('Create failed: ' + e.message); }
+    finally { setResvItemBusy(false); }
   }
   async function loadUsers() {
     setUsersBusy(true);
@@ -998,6 +1043,51 @@ export default function Admin({ onExit }) {
                   <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 4 }}>
                     Table bookings from the app. Alerts: {resvChannels.sms ? 'SMS on' : 'SMS off'} · {resvChannels.email ? 'email on' : 'email off'}. Each booking also creates a $0 Square order so it prints + shows in Square.
                   </p>
+
+                  <div style={{ marginTop: 4, marginBottom: 10, padding: 10, border: '1px solid var(--line)', borderRadius: 10 }}>
+                    <div style={{ fontWeight: 600, fontSize: 'var(--fs-sm)', marginBottom: 4 }}>Ticket printing</div>
+                    {s.reservationVariationId ? (
+                      <p className="muted" style={{ fontSize: 'var(--fs-sm)', margin: '0 0 8px' }}>
+                        ✓ Linked to a real catalog item — reservation tickets print through its category's routing, same as a normal order.{' '}
+                        <button type="button" className="link" style={{ color: '#c0392b' }} onClick={() => persistSettingsPatch({ reservationVariationId: '' })}>Unlink</button>
+                      </p>
+                    ) : (
+                      <p className="muted" style={{ fontSize: 'var(--fs-sm)', margin: '0 0 8px' }}>
+                        Not linked yet — reservations use a generic line item with no print category, which can silently fail to print. Link an existing "Table Reservation" item, or create one automatically in a category that already prints reliably (e.g. the same one your coffee or grab-and-go items use).
+                      </p>
+                    )}
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                      <button type="button" className="btn ghost" disabled={resvItemBusy} onClick={findReservationItem} style={{ padding: '6px 12px', fontSize: 'var(--fs-sm)' }}>
+                        {resvItemBusy ? 'Working…' : 'Find existing item'}
+                      </button>
+                      <select value={resvItemCatId} onChange={(e) => setResvItemCatId(e.target.value)}
+                        style={{ padding: '7px 8px', borderRadius: 8, border: '1px solid var(--line)', fontSize: 'var(--fs-sm)' }}>
+                        <option value="">— pick a category that already prints —</option>
+                        {sqCats.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                      </select>
+                      <button type="button" className="btn ghost" disabled={resvItemBusy || !resvItemCatId} onClick={createReservationItem} style={{ padding: '6px 12px', fontSize: 'var(--fs-sm)' }}>
+                        {resvItemBusy ? 'Working…' : 'Create automatically'}
+                      </button>
+                    </div>
+                    {resvItemResults && (
+                      <div style={{ marginTop: 8, display: 'grid', gap: 6 }}>
+                        {resvItemResults.length === 0 && <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>No matching item found — try Create automatically instead.</p>}
+                        {resvItemResults.map((it) => (
+                          <div key={it.id} style={{ fontSize: 'var(--fs-sm)' }}>
+                            <span style={{ fontWeight: 600 }}>{it.name}</span>{' '}
+                            {it.variations.length === 0 && <span className="muted">— no variations</span>}
+                            {it.variations.map((v) => (
+                              <button key={v.id} type="button" className="link" style={{ marginLeft: 8 }}
+                                onClick={() => persistSettingsPatch({ reservationVariationId: v.id })}>
+                                Use "{v.name || 'Regular'}"{v.price ? ` (${formatMoney(v.price.amount, v.price.currency)})` : ''}{v.sellable === false ? ' — not sellable, avoid' : ''}
+                              </button>
+                            ))}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
                   {resv === null && <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>Tap Load to see reservations.</p>}
                   {resv && resv.length === 0 && <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>No reservations yet.</p>}
                   {resv && resv.map((r) => (

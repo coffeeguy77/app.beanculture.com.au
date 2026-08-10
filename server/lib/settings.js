@@ -50,6 +50,13 @@ const DEFAULTS = {
   // Which Square categories appear in the app (category IDs). Empty = use the
   // "APP" parent category's children automatically (legacy behaviour).
   menuCategories: [],
+  // Reservation ticket printing: the variation id of a real Square catalog
+  // item to put on each $0 reservation order, so it inherits that item's
+  // category print routing (an ad-hoc line item has no category and can
+  // silently fail to print). Set from Admin → Store → Reservations, which can
+  // find or auto-create the item. Empty = fall back to SQUARE_RESERVATION_
+  // VARIATION_ID (Railway env var) if set, otherwise an ad-hoc line item.
+  reservationVariationId: '',
   // Custom order for the menu sections on the storefront, as an array of display
   // names (e.g. ['Coffee','All Day Menu',…]). Set from the admin "Menu items
   // offered" ↑/↓ controls. Covers both categories and product sections; names

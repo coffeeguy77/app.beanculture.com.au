@@ -4,7 +4,7 @@
 // - Honors Square availability: ecom_visibility + per-location sold_out.
 // - Syncs live (short cache) so menu/stock changes in Square reflect fast.
 
-const { squareFetch, LOCATION_ID, CURRENCY, moneyToNumber } = require('./squareClient');
+const { squareFetch, LOCATION_ID, CURRENCY, moneyToNumber, idem } = require('./squareClient');
 const { getSettings } = require('./settings');
 
 const PARENT_CATEGORY = (process.env.SQUARE_PARENT_CATEGORY || 'APPs').trim();
@@ -546,4 +546,68 @@ async function getItemConfig(itemId) {
   return { id: obj.id, name: d.name || 'Item', image: imageId ? imgs.get(imageId) || null : null, variations, modifierGroups };
 }
 
-module.exports = { getMenu, getFullMenu, getAllCategories, getAllProducts, getItemConfig, cleanName };
+// ---- Reservation ticket printing: find or create a real catalog item ----
+// Ad-hoc (non-catalog) line items have no print category, so Square's printer
+// routing can silently skip them even though the order lands fine in the
+// dashboard. These let the admin panel (Store → Reservations) link an
+// existing item or create a new $0 one in a category that already prints
+// reliably, instead of anyone having to do this by hand via the API.
+async function searchItemsByName(text) {
+  const data = await squareFetch('/v2/catalog/search-catalog-items', {
+    method: 'POST',
+    body: { text_filter: String(text || ''), limit: 20 },
+  });
+  return (data.items || []).map((obj) => ({
+    id: obj.id,
+    name: obj.item_data?.name || 'Item',
+    categoryIds: (obj.item_data?.categories || []).map((c) => c.id).filter(Boolean),
+    variations: (obj.item_data?.variations || [])
+      .filter((v) => !v.is_deleted)
+      .map((v) => ({
+        id: v.id,
+        name: v.item_variation_data?.name || '',
+        sellable: v.item_variation_data?.sellable !== false,
+        price: v.item_variation_data?.price_money || null,
+      })),
+  }));
+}
+
+async function createReservationCatalogItem({ name, categoryId }) {
+  const body = {
+    idempotency_key: idem(),
+    object: {
+      type: 'ITEM',
+      id: '#reservationItem',
+      item_data: {
+        name: (name || 'Table Reservation').trim().slice(0, 512),
+        product_type: 'REGULAR',
+        categories: categoryId ? [{ id: categoryId }] : [],
+        reporting_category: categoryId ? { id: categoryId } : undefined,
+        variations: [
+          {
+            type: 'ITEM_VARIATION',
+            id: '#reservationVariation',
+            item_variation_data: {
+              item_id: '#reservationItem',
+              name: 'Regular',
+              pricing_type: 'FIXED_PRICING',
+              price_money: { amount: 0, currency: CURRENCY },
+              sellable: true,
+              stockable: false,
+            },
+          },
+        ],
+      },
+    },
+  };
+  const data = await squareFetch('/v2/catalog/object', { method: 'POST', body });
+  const created = data.catalog_object;
+  const variation = (created?.item_data?.variations || [])[0];
+  if (!variation?.id) throw new Error('Square did not return a variation id');
+  return { itemId: created.id, variationId: variation.id };
+}
+
+module.exports = {
+  getMenu, getFullMenu, getAllCategories, getAllProducts, getItemConfig, cleanName,
+  searchItemsByName, createReservationCatalogItem,
+};

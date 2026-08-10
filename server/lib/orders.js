@@ -191,12 +191,14 @@ async function getHistory(customerId, limit = 25) {
 // IMPORTANT: most Square printer routing only auto-prints items that belong to
 // a routed print category. A bare ad-hoc line item (no catalog_object_id) has
 // no category, so it can silently fail to print even though the order shows up
-// fine in the Square dashboard. If SQUARE_RESERVATION_VARIATION_ID is set (a
-// real, $0, catalog item — see server/.env.example), we reference that instead
-// so the ticket inherits its category's printer routing, same as normal orders.
-const RESERVATION_VARIATION_ID = (process.env.SQUARE_RESERVATION_VARIATION_ID || '').trim();
+// fine in the Square dashboard. Pass `variationId` (from settings.reservationVariationId,
+// set via Admin → Store → Reservations, which can find or auto-create the item)
+// to reference a real catalog item instead, so the ticket inherits its
+// category's printer routing, same as normal orders. Falls back to the
+// SQUARE_RESERVATION_VARIATION_ID env var (legacy/manual setup) if unset.
+const RESERVATION_VARIATION_ID_ENV = (process.env.SQUARE_RESERVATION_VARIATION_ID || '').trim();
 
-async function createReservationOrder({ name, phone, partySize, at, notes }) {
+async function createReservationOrder({ name, phone, partySize, at, notes, variationId }) {
   const when = at ? new Date(at) : null;
   const scheduled = when && when.getTime() > Date.now();
   const detail = [`Table reservation`, `${partySize || '?'} guest(s)`, name && `Name: ${name}`, phone && `Ph: ${phone}`, notes && `Notes: ${notes}`]
@@ -207,8 +209,9 @@ async function createReservationOrder({ name, phone, partySize, at, notes }) {
     schedule_type: scheduled ? 'SCHEDULED' : 'ASAP',
   };
   if (scheduled) pickup_details.pickup_at = when.toISOString();
-  const lineItem = RESERVATION_VARIATION_ID
-    ? { catalog_object_id: RESERVATION_VARIATION_ID, quantity: '1', note: detail }
+  const resolvedVariationId = (variationId || RESERVATION_VARIATION_ID_ENV || '').trim();
+  const lineItem = resolvedVariationId
+    ? { catalog_object_id: resolvedVariationId, quantity: '1', note: detail }
     : { name: 'Table reservation', quantity: '1', base_price_money: { amount: 0, currency: CURRENCY }, note: detail };
   const order = {
     location_id: LOCATION_ID,
