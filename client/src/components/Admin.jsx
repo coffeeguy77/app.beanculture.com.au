@@ -1282,7 +1282,7 @@ export default function Admin({ onExit }) {
                       {salesOk && topClients.length > 0 && (
                         <div className="ins-card">
                           <div className="group-title">Best clients</div>
-                          <p className="ins-card-sub">By spend in this period · guests are grouped by the name given at checkout</p>
+                          <p className="ins-card-sub">By spend in this period · identified loyalty members only (anonymous walk-ins aren't included)</p>
                           {topClients.map((cl, i) => <ClientRow key={cl.name + i} c={cl} cur={cur} rank={i + 1} />)}
                         </div>
                       )}
