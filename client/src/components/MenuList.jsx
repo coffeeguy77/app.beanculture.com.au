@@ -40,7 +40,7 @@ export default function MenuList({ categories, currency, onPick, scrollTo, onScr
             const bannerShut = kitchenShut || (target && target.soldOut);
             return (
               <button type="button" className={`feature-banner ${cat.banner.hideText ? 'no-text' : ''} ${bannerShut ? 'shut' : ''}`}
-                onClick={() => target && !bannerShut && onPick(target)}
+                onClick={() => target && !bannerShut && onPick({ ...target, category: cat.category })}
                 style={cat.banner.image ? { backgroundImage: `url(${imgUrl(cat.banner.image, 900)})` } : undefined}>
                 {bannerShut && <span className="sold-tag kitchen-tag">{target && target.soldOut ? 'Sold out' : 'Kitchen closed'}</span>}
                 {!cat.banner.hideText && (
@@ -61,7 +61,7 @@ export default function MenuList({ categories, currency, onPick, scrollTo, onScr
                 <button
                   key={item.id}
                   className={`item ${unavailable ? 'sold' : ''}`}
-                  onClick={() => !unavailable && onPick(item)}
+                  onClick={() => !unavailable && onPick({ ...item, category: cat.category })}
                   type="button"
                 >
                   {item.soldOut ? <span className="sold-tag">Sold out</span> : kitchenShut && <span className="sold-tag kitchen-tag">Kitchen closed</span>}

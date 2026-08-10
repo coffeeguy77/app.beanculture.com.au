@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { api } from '../api.js';
+import { api, imgUrl } from '../api.js';
 import ScheduleWhen from './ScheduleWhen.jsx';
 
 const pad = (n) => String(n).padStart(2, '0');
@@ -22,8 +22,15 @@ function firstOpen(hours) {
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 }
 
+const SEATING_OPTIONS = [
+  { id: 'indoor', label: 'Indoor' },
+  { id: 'outdoor', label: 'Outdoor' },
+  { id: 'any', label: "Don't mind — best available" },
+];
+
 export default function ReservationForm({ config, user, onBack, onTrack }) {
   const [name, setName] = useState(user?.name || '');
+  const [seating, setSeating] = useState('');
   const [phone, setPhone] = useState(user?.phone || '');
   const [email, setEmail] = useState('');
   const [party, setParty] = useState(2);
@@ -56,11 +63,14 @@ export default function ReservationForm({ config, user, onBack, onTrack }) {
   async function submit() {
     if (!name.trim()) { setError('Please add your name.'); return; }
     if (!phone.trim()) { setError('Please add a contact number.'); return; }
+    if (!seating) { setError('Please choose a seating preference.'); return; }
     if (!answer.trim()) { setError('Please answer the quick maths question.'); return; }
     setBusy(true); setError('');
     try {
       const at = new Date(`${date}T${time}`).toISOString();
-      await api.reserve({ name, phone, email, party, at, notes, captchaToken: captcha?.token, captchaAnswer: answer, company });
+      const seatingLabel = SEATING_OPTIONS.find((o) => o.id === seating)?.label || '';
+      const fullNotes = [`Seating: ${seatingLabel}`, notes.trim()].filter(Boolean).join(' — ');
+      await api.reserve({ name, phone, email, party, at, notes: fullNotes, captchaToken: captcha?.token, captchaAnswer: answer, company });
       setDone(true);
       onTrack && onTrack('reservation');
     } catch (e) {
@@ -98,6 +108,13 @@ export default function ReservationForm({ config, user, onBack, onTrack }) {
             <li><span className="rp-ic" aria-hidden="true">✓</span> Special requests welcome — high chairs, birthdays, access</li>
             <li><span className="rp-ic" aria-hidden="true">✓</span> A friendly confirmation before you arrive</li>
           </ul>
+
+          {config.storePhoto && (
+            <div className="reserve-photo">
+              <img src={imgUrl(config.storePhoto, 1200)} alt={config.storeName || 'Our café'} loading="eager" decoding="async" />
+            </div>
+          )}
+
           {hoursRows.length > 0 && (
             <div className="reserve-hours">
               <div className="reserve-hours-head">
@@ -133,6 +150,14 @@ export default function ReservationForm({ config, user, onBack, onTrack }) {
                 <button type="button" onClick={() => setParty((p) => Math.max(1, p - 1))} aria-label="Fewer">−</button>
                 <span style={{ minWidth: 64, textAlign: 'center' }}>{party} {party === 1 ? 'guest' : 'guests'}</span>
                 <button type="button" onClick={() => setParty((p) => Math.min(50, p + 1))} aria-label="More">+</button>
+              </div>
+            </div>
+
+            <div className="field"><span className="req">Seating preference</span>
+              <div className="opt-pills" role="group" aria-label="Seating preference">
+                {SEATING_OPTIONS.map((o) => (
+                  <button key={o.id} type="button" className={`opt-pill ${seating === o.id ? 'on' : ''}`} onClick={() => setSeating(o.id)}>{o.label}</button>
+                ))}
               </div>
             </div>
 

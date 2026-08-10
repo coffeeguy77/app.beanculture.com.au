@@ -74,6 +74,7 @@ export default function ItemModal({ item, currency, onClose, onAdd }) {
     onAdd({
       key: makeKey(item, variationId, allIds, note),
       itemId: item.presetSourceItemId || item.id, itemName: item.name,
+      category: item.category || null,
       variationId, variationName: variation?.name || '',
       modifierIds: allIds, modifierNames: allNames, unitPrice, quantity: qty, note: note.trim(),
     });

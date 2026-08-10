@@ -73,6 +73,12 @@ function variationSoldOut(variation) {
 
 async function getMenu(opts = {}) {
   const applySelection = opts.applySelection !== false;
+  // Whether to merge in custom product sections and product-builder presets.
+  // This is a structural concern (does the section exist at all) separate from
+  // applySelection (which items within a category are shown) — the admin's
+  // "full menu" view (getFullMenu, applySelection:false) still needs these
+  // sections to exist so category/item pickers have something to pick from.
+  const includeSections = opts.includeSections !== false;
   // Admin item/category selection (which items are offered in the app).
   const selection = applySelection ? getSettings().menuSelection || {} : {};
   const selLower = {};
@@ -309,8 +315,8 @@ async function getMenu(opts = {}) {
 
   // Custom product sections: hand-picked products grouped under an owner-named
   // heading, built from itemsById so a product can be surfaced WITHOUT loading
-  // its whole category. Applied to the live storefront only (applySelection).
-  if (applySelection) {
+  // its whole category.
+  if (includeSections) {
     for (const ps of getSettings().productSections || []) {
       if (!ps || ps.enabled === false) continue;
       const name = String(ps.name || '').trim();
@@ -329,8 +335,8 @@ async function getMenu(opts = {}) {
   // Product-builder presets: named "hot links" into ONE variable Square item.
   // Each preset locks a variation and curates which modifier options show; it
   // renders as its own tile in its section and, when ordered, submits as the
-  // real Square variation + modifier ids. Live storefront only (applySelection).
-  if (applySelection) {
+  // real Square variation + modifier ids.
+  if (includeSections) {
     const presetsBySection = new Map();
     const presetSourceIds = new Set();
     for (const p of getSettings().presets || []) {

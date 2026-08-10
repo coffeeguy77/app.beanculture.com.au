@@ -6,6 +6,22 @@ import HoursEditor from './HoursEditor.jsx';
 import { formatMoney, api } from '../api.js';
 
 const LINK_TYPES = ['scroll', 'category', 'item', 'account', 'url', 'none'];
+// Run an async worker over a list with at most `limit` in flight at once.
+// The Product builder can have 100+ presets pointing at Square items; firing
+// that many concurrent Square-API-backed fetches at once has been observed to
+// briefly overload the single server instance (other requests — including a
+// customer's own /api/reserve — got dial-timeout 502s while the flood was in
+// flight). Capping concurrency keeps admin usage from starving live traffic.
+async function mapLimit(items, limit, worker) {
+  const queue = [...items];
+  const runners = new Array(Math.min(limit, queue.length)).fill(0).map(async () => {
+    while (queue.length) {
+      const item = queue.shift();
+      await worker(item);
+    }
+  });
+  await Promise.all(runners);
+}
 // Built-in festive themes ship with the app and can be turned Off but not deleted.
 const BUILTIN_SEASONAL = ['christmas', 'newyear', 'australiaday', 'lunarnewyear', 'valentines', 'stpatricks', 'easter', 'anzac', 'mothersday', 'floriade', 'fathersday', 'halloween'];
 
@@ -214,15 +230,17 @@ export default function Admin({ onExit }) {
   }, [!!data]);
   const pendingResvCount = (resv || []).filter((r) => r.status === 'pending').length;
   // Fetch the full config (variations + modifiers) for any item used by a preset.
+  // Throttled (6 at a time) — see mapLimit's note above.
   useEffect(() => {
-    const ids = [...new Set((s?.presets || []).map((p) => p.sourceItemId).filter(Boolean))];
-    ids.forEach((id) => {
-      if (itemConfigs[id]) return;
-      fetch(`/api/admin/item-config?id=${encodeURIComponent(id)}&pass=${encodeURIComponent(pass)}`)
-        .then((r) => (r.ok ? r.json() : null))
-        .then((d) => { if (d && d.item) setItemConfigs((x) => ({ ...x, [id]: d.item })); })
-        .catch(() => {});
+    const ids = [...new Set((s?.presets || []).map((p) => p.sourceItemId).filter(Boolean))].filter((id) => !itemConfigs[id]);
+    mapLimit(ids, 6, async (id) => {
+      try {
+        const r = await fetch(`/api/admin/item-config?id=${encodeURIComponent(id)}&pass=${encodeURIComponent(pass)}`);
+        const d = r.ok ? await r.json() : null;
+        if (d && d.item) setItemConfigs((x) => ({ ...x, [id]: d.item }));
+      } catch {}
     });
+    return undefined;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [s?.presets]);
   useEffect(() => {

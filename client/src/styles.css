@@ -71,15 +71,37 @@ img { max-width: 100%; }
 .closed-banner.preorder-banner { justify-content: space-between; gap: 12px; }
 .closed-banner.preorder-banner span { flex: 1; }
 .closed-banner.preorder-banner .btn { padding: 9px 14px; font-size: 14px; white-space: nowrap; flex: none; }
-.closed-banner.kitchen-soon { justify-content: space-between; gap: 12px; background: #fff3e0; color: #b5560a; }
-.closed-banner.kitchen-soon span { flex: 1; }
-.closed-banner.kitchen-soon .btn { padding: 9px 14px; font-size: 14px; white-space: nowrap; flex: none; background: #b5560a; }
 .kitchen-closed-banner {
   margin: -4px 2px 12px; padding: 8px 12px; border-radius: 10px;
   background: #fdecea; color: #c0262d; border: 1px solid #f6c4c0;
   font-size: 13px; font-weight: 700; font-family: system-ui, sans-serif;
 }
-.kitchen-soon-cart { margin: 0 0 12px; }
+
+/* Kitchen-closing-soon hero — bold, solid theme colour, the countdown clock is
+   the star. Appears once, under "Your order" in the cart panel/view. */
+.kitchen-hero {
+  background: linear-gradient(135deg, var(--brand), var(--accent));
+  color: var(--accent-ink);
+  border-radius: 16px; padding: 14px 16px 16px; margin: 0 0 14px;
+  box-shadow: var(--shadow-sm);
+}
+.kitchen-hero-top { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.kitchen-hero-eyebrow {
+  font-size: 11px; font-weight: 800; letter-spacing: .6px; text-transform: uppercase;
+  opacity: 0.85;
+}
+.kitchen-hero-clock {
+  font-size: 30px; font-weight: 800; font-variant-numeric: tabular-nums;
+  line-height: 1; letter-spacing: .5px;
+}
+.kitchen-hero-main { font-size: 17px; font-weight: 800; margin-top: 6px; line-height: 1.3; }
+.kitchen-hero-cats { font-weight: 600; opacity: 0.9; }
+.kitchen-hero-btn {
+  margin-top: 10px; width: 100%; border: none; border-radius: 10px; padding: 10px 14px;
+  background: var(--accent-ink); color: var(--brand); font-weight: 800; font-size: 14px;
+  cursor: pointer;
+}
+.kitchen-soon-cart { margin: 14px 0 0; }
 
 /* Hero slider */
 .hero { padding: 12px 16px 4px; }
@@ -329,6 +351,9 @@ img { max-width: 100%; }
 .context-pill { display: inline-block; background: var(--brand-soft); color: var(--brand); padding: 6px 12px; border-radius: 999px; font-size: 13px; font-weight: 600; margin-bottom: 12px; }
 .cart-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 10px; }
 .cart-line { display: flex; gap: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 12px; }
+.cart-line.unavailable { border-color: #f6c4c0; background: #fdecea; }
+.cart-line-warn { color: #c0262d; font-size: 12.5px; font-weight: 700; margin-top: 3px; }
+.cart-unavailable-note { color: #c0262d; font-size: 13px; font-weight: 600; margin: 0 0 8px; text-align: center; }
 .cart-line-main { flex: 1; min-width: 0; }
 .cart-line-name { font-weight: 700; }
 .cart-line-sub { font-size: 13px; color: var(--muted); margin-top: 2px; }
@@ -533,6 +558,11 @@ img { max-width: 100%; }
   width: 22px; height: 22px; border-radius: 999px; font-size: 12px; font-weight: 800;
   color: var(--brand); background: color-mix(in srgb, var(--brand) 14%, var(--surface)); margin-top: 1px;
 }
+.reserve-photo {
+  border-radius: 16px; overflow: hidden; margin: 0 0 18px; background: var(--line);
+  aspect-ratio: 16/9; box-shadow: var(--shadow-sm);
+}
+.reserve-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .reserve-hours {
   background: var(--surface); border: 1px solid var(--line); border-radius: 16px;
   padding: 14px 16px; box-shadow: var(--shadow-sm);

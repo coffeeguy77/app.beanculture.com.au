@@ -328,6 +328,12 @@ export default function App() {
     kitchenClosedLabel = 'Kitchen closed';
   }
   const kitchenClosedSet = new Set((kitchenClosedCats || []).map((c) => (c || '').toLowerCase()));
+  // If the kitchen closes while an item sits in the cart (e.g. mid-shop), flag
+  // it as unavailable and block checkout until it's removed — never silently
+  // let a customer pay for something the kitchen can no longer make.
+  const cartUnavailableKeys = new Set(
+    cart.filter((c) => c.category && kitchenClosedSet.has(String(c.category).toLowerCase())).map((c) => c.key)
+  );
   // Real-time (not scheduled-time) "closes at" label for the kitchen, used by
   // the closing-soon nudges (top banner + cart sidebar) which are always about
   // right now, unlike kitchenClosedLabel above which can reflect a future
@@ -604,21 +610,10 @@ export default function App() {
             </div>
           );
         }
-        // Store open: nudge if the kitchen is about to close (within 30 min).
-        const k = h.kitchen?.closesInMin;
-        if (k != null && k > 0 && k <= 30) {
-          const now = new Date();
-          const nowHHMM = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-          const closesLabel = h.kitchen.weekly ? kitchenStatusAt(h.kitchen.weekly, dstrLocal(now), nowHHMM).closesLabel : null;
-          return (
-            <KitchenClosingBanner
-              closesInMin={k}
-              closesLabel={closesLabel}
-              categories={h.kitchen.categories}
-              onOrderNow={scrollMenu}
-            />
-          );
-        }
+        // Kitchen-closing-soon nudge now lives only under "Your order" in the
+        // cart (see KitchenClosingBanner usages below) — the top of the page
+        // already carries the announcement bar, so it doesn't need a second
+        // message up here too, and it was leaking onto the Reservations page.
         return null;
       })()}
 
@@ -666,7 +661,7 @@ export default function App() {
                   // jump to the (now visibly unavailable) category instead of
                   // opening an Add-to-cart modal for something you can't actually buy.
                   const shut = found && (found.soldOut || kitchenClosedSet.has((foundCat || '').toLowerCase()));
-                  if (found && !shut) setActiveItem(found);
+                  if (found && !shut) setActiveItem({ ...found, category: foundCat });
                   else if (found) {
                     setActiveCat(foundCat);
                     const el = document.querySelector('.menu'); if (el) el.scrollIntoView({ behavior: 'smooth' });
@@ -718,6 +713,13 @@ export default function App() {
               <div className="aside-checkout">{checkoutEl}</div>
             ) : (
               <>
+                <CartPanel
+                  cart={cart} currency={currency} onQty={updateQty}
+                  onRemove={removeItem} onClear={clearCart}
+                  dineIn={dineIn} table={table}
+                  unavailableKeys={cartUnavailableKeys}
+                  onCheckout={() => setView('checkout')}
+                />
                 {storeOpen && kitchen?.closesInMin != null && kitchen.closesInMin > 0 && kitchen.closesInMin <= 30 && (
                   <KitchenClosingBanner
                     className="kitchen-soon-cart"
@@ -727,12 +729,6 @@ export default function App() {
                     onOrderNow={() => { const el = document.querySelector('.menu'); if (el) el.scrollIntoView({ behavior: 'smooth' }); }}
                   />
                 )}
-                <CartPanel
-                  cart={cart} currency={currency} onQty={updateQty}
-                  onRemove={removeItem} onClear={clearCart}
-                  dineIn={dineIn} table={table}
-                  onCheckout={() => setView('checkout')}
-                />
               </>
             )}
           </aside>
@@ -744,6 +740,7 @@ export default function App() {
           cart={cart} currency={currency} onQty={updateQty}
           onRemove={removeItem} onClear={clearCart}
           dineIn={dineIn} table={table}
+          unavailableKeys={cartUnavailableKeys}
           onCheckout={() => setView('checkout')} onBack={() => setView('home')}
           kitchenBanner={storeOpen && kitchen?.closesInMin != null && kitchen.closesInMin > 0 && kitchen.closesInMin <= 30 ? (
             <KitchenClosingBanner

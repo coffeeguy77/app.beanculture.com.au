@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 
-// A "kitchen closing soon" nudge that ticks live (mm:ss) rather than only
+// A bold "order by" hero banner that ticks live (mm:ss) rather than only
 // updating whenever the app happens to re-fetch /api/config. `closesInMin` is
 // a snapshot taken at the last config fetch — we anchor it to a real Date once
 // and count down against the clock from there, so the countdown stays accurate
@@ -31,9 +31,16 @@ export default function KitchenClosingBanner({ closesInMin, closesLabel, categor
   const cats = (categories || []).join(' & ');
 
   return (
-    <div className={`closed-banner kitchen-soon ${className}`}>
-      <span>🔥 Kitchen closes{closesLabel ? ` at ${closesLabel}` : ''} (in {countdown}){cats ? ` for ${cats}` : ''} — order now!</span>
-      {onOrderNow && <button className="btn" onClick={onOrderNow}>Order now</button>}
+    <div className={`kitchen-hero ${className}`}>
+      <div className="kitchen-hero-top">
+        <span className="kitchen-hero-eyebrow">Kitchen closing soon</span>
+        <span className="kitchen-hero-clock" aria-label={`${mm} minutes ${ss} seconds left`}>{countdown}</span>
+      </div>
+      <div className="kitchen-hero-main">
+        {closesLabel ? `Order by ${closesLabel}` : 'Order now'}
+        {cats ? <span className="kitchen-hero-cats"> — {cats}</span> : null}
+      </div>
+      {onOrderNow && <button type="button" className="kitchen-hero-btn" onClick={onOrderNow}>Order now</button>}
     </div>
   );
 }
