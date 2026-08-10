@@ -3,26 +3,10 @@ import QRCode from 'qrcode';
 import { SlotIcon } from './icons.jsx';
 import IconPicker from './IconPicker.jsx';
 import HoursEditor from './HoursEditor.jsx';
+import Insights from './Insights.jsx';
 import { formatMoney, api } from '../api.js';
-import { BarChart, DonutChart } from './InsightsCharts.jsx';
 
 const LINK_TYPES = ['scroll', 'category', 'item', 'account', 'url', 'none'];
-// Run an async worker over a list with at most `limit` in flight at once.
-// The Product builder can have 100+ presets pointing at Square items; firing
-// that many concurrent Square-API-backed fetches at once has been observed to
-// briefly overload the single server instance (other requests — including a
-// customer's own /api/reserve — got dial-timeout 502s while the flood was in
-// flight). Capping concurrency keeps admin usage from starving live traffic.
-async function mapLimit(items, limit, worker) {
-  const queue = [...items];
-  const runners = new Array(Math.min(limit, queue.length)).fill(0).map(async () => {
-    while (queue.length) {
-      const item = queue.shift();
-      await worker(item);
-    }
-  });
-  await Promise.all(runners);
-}
 // Built-in festive themes ship with the app and can be turned Off but not deleted.
 const BUILTIN_SEASONAL = ['christmas', 'newyear', 'australiaday', 'lunarnewyear', 'valentines', 'stpatricks', 'easter', 'anzac', 'mothersday', 'floriade', 'fathersday', 'halloween'];
 
@@ -34,39 +18,6 @@ function TopRow({ name, n, max }) {
     </div>
   );
 }
-function ClientRow({ c, cur, rank }) {
-  return (
-    <div className="client-row">
-      <span className="client-rank">{rank}</span>
-      <span className="client-name">{c.name}</span>
-      <span className="client-meta">
-        <div className="client-rev">{formatMoney(c.revenue, cur)}</div>
-        <div className="client-orders">{c.orders} order{c.orders === 1 ? '' : 's'}</div>
-      </span>
-    </div>
-  );
-}
-// Compact axis labels for money — $46,697.25 -> $46.7k, $850 -> $850.
-function compactMoney(cents, cur) {
-  const v = (cents || 0) / 100;
-  if (v >= 10000) return `$${Math.round(v / 1000)}k`;
-  if (v >= 1000) return `$${(v / 1000).toFixed(1)}k`;
-  return formatMoney(Math.round(v) * 100, cur);
-}
-const INSIGHTS_PERIODS = [
-  { d: 1, label: '1 Day' },
-  { d: 7, label: '7 Days' },
-  { d: 30, label: '30 Days' },
-  { d: 90, label: '90 Days' },
-  { d: 365, label: '365 Days' },
-];
-const FUNNEL_COLORS = [
-  'var(--brand)',
-  'var(--accent)',
-  'color-mix(in srgb, var(--brand) 65%, white)',
-  'color-mix(in srgb, var(--accent) 65%, white)',
-  'color-mix(in srgb, var(--brand) 45%, var(--accent))',
-];
 
 // ---- Tab icons (stroke) ----
 const svg = (paths) => (p) => (
@@ -99,14 +50,9 @@ const InsightsIcon = svg(<>
 const BuildIcon = svg(<>
   <path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18v3h3l6.3-6.3a4 4 0 0 0 5.4-5.4l-2.7 2.7-2-2 2.7-2.7z" />
 </>);
-const CalendarIcon = svg(<>
-  <rect x="3.5" y="5" width="17" height="16" rx="2.5" /><path d="M3.5 9.5h17M8 3.5v3M16 3.5v3" />
-  <circle cx="8.5" cy="14" r="1.1" fill="currentColor" stroke="none" /><circle cx="12" cy="14" r="1.1" fill="currentColor" stroke="none" />
-</>);
 const TABS = [
   { id: 'store', label: 'Store', Icon: StoreIcon },
   { id: 'insights', label: 'Insights', Icon: InsightsIcon },
-  { id: 'reservations', label: 'Reservations', Icon: CalendarIcon },
   { id: 'menubuilder', label: 'Menu Builder', Icon: MenuIcon },
   { id: 'productbuilder', label: 'Product Builder', Icon: BuildIcon },
   { id: 'banners', label: 'Banners', Icon: BannerIcon },
@@ -117,13 +63,8 @@ const TABS = [
   { id: 'theme', label: 'Theme', Icon: ThemeIcon2 },
 ];
 
-// Passcode is remembered across refreshes (until Sign out) so the admin isn't
-// booted back to the login screen every time the page reloads.
-const ADMIN_PASS_KEY = 'bc_admin_pass';
-const loadSavedPass = () => { try { return localStorage.getItem(ADMIN_PASS_KEY) || ''; } catch { return ''; } };
-
 export default function Admin({ onExit }) {
-  const [pass, setPass] = useState(loadSavedPass);
+  const [pass, setPass] = useState('');
   const [needPass, setNeedPass] = useState(false);
   const [data, setData] = useState(null);
   const [s, setS] = useState(null); // editable settings
@@ -177,36 +118,38 @@ export default function Admin({ onExit }) {
   const [qrSize, setQrSize] = useState(190);
   const [analytics, setAnalytics] = useState(null);
   const [dashboard, setDashboard] = useState(null); // real sales + signups
-  const [aDays, setADays] = useState(1);
-  const [insightsLoading, setInsightsLoading] = useState(false);
+  const [aDays, setADays] = useState(30);
+  const [insCustomers, setInsCustomers] = useState(null); // loyalty members for Top customers
+  const [insRefreshing, setInsRefreshing] = useState(false);
+  const [insSync, setInsSync] = useState(null); // Date of last successful insights load
   const [msgs, setMsgs] = useState(null);
   const [resv, setResv] = useState(null);
   const [resvChannels, setResvChannels] = useState({});
-  const [resvItemResults, setResvItemResults] = useState(null); // catalog search results
-  const [resvItemCatId, setResvItemCatId] = useState(''); // chosen category for auto-create
-  const [resvItemBusy, setResvItemBusy] = useState(false);
   const [newClosure, setNewClosure] = useState({ date: '', annual: false, label: '' });
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
 
-  // Load analytics when the Insights tab is opened / period changes. The
-  // fastest range (Today) loads by default so numbers appear immediately;
-  // switching ranges afterwards keeps the last figures on screen (just a
-  // small "Updating…" pill) instead of blanking back to a spinner each time.
+  // Reload every Insights data source: analytics + Square dashboard + loyalty members.
+  function reloadInsights() {
+    setInsRefreshing(true);
+    setAnalytics(null);
+    setDashboard(null);
+    const aP = fetch(`/api/admin/analytics?days=${aDays}&pass=${encodeURIComponent(pass)}`)
+      .then((r) => r.json()).then((d) => setAnalytics(d.analytics || { empty: true }))
+      .catch(() => { setAnalytics({ error: true }); throw new Error('analytics'); });
+    const dP = api.adminDashboard(pass, aDays).then(setDashboard)
+      .catch(() => { setDashboard({ error: true }); throw new Error('dashboard'); });
+    const cP = api.adminCustomers(pass).then((d) => setInsCustomers((d && d.users) || []))
+      .catch(() => { setInsCustomers([]); throw new Error('customers'); });
+    Promise.allSettled([aP, dP, cP]).then((res) => {
+      if (res.some((r) => r.status === 'fulfilled')) setInsSync(new Date());
+      setInsRefreshing(false);
+    });
+  }
+
+  // Load analytics when the Insights tab is opened / period changes.
   useEffect(() => {
     if (tab !== 'insights') return;
-    let cancelled = false;
-    setInsightsLoading(true);
-    Promise.all([
-      fetch(`/api/admin/analytics?days=${aDays}&pass=${encodeURIComponent(pass)}`)
-        .then((r) => r.json()).then((d) => d.analytics || { empty: true }).catch(() => ({ error: true })),
-      api.adminDashboard(pass, aDays).catch(() => ({ error: true })),
-    ]).then(([a, d]) => {
-      if (cancelled) return;
-      setAnalytics(a);
-      setDashboard(d);
-      setInsightsLoading(false);
-    });
-    return () => { cancelled = true; };
+    reloadInsights();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, aDays]);
 
@@ -244,12 +187,11 @@ export default function Admin({ onExit }) {
     setError('');
     try {
       const res = await fetch(`/api/admin/overview?pass=${encodeURIComponent(p || '')}`);
-      if (res.status === 401) { setNeedPass(true); try { localStorage.removeItem(ADMIN_PASS_KEY); } catch {} return; }
+      if (res.status === 401) { setNeedPass(true); return; }
       const d = await res.json();
       setData(d);
       setS(JSON.parse(JSON.stringify(d.settings)));
       setNeedPass(false);
-      try { localStorage.setItem(ADMIN_PASS_KEY, p || ''); } catch {}
       try {
         const cr = await fetch(`/api/admin/catalog?pass=${encodeURIComponent(p || '')}`);
         if (cr.ok) { const cd = await cr.json(); setAdminCat(cd.categories || []); }
@@ -264,29 +206,17 @@ export default function Admin({ onExit }) {
       } catch {}
     } catch (e) { setError(e.message); }
   }
-  useEffect(() => { load(pass); }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  // Reservations: auto-load once signed in, then poll so a "new reservation"
-  // badge (and the list itself) stays current without anyone tapping Load.
-  useEffect(() => {
-    if (!data) return;
-    loadReservations();
-    const id = setInterval(loadReservations, 60000);
-    return () => clearInterval(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [!!data]);
-  const pendingResvCount = (resv || []).filter((r) => r.status === 'pending').length;
+  useEffect(() => { load(''); }, []);
   // Fetch the full config (variations + modifiers) for any item used by a preset.
-  // Throttled (6 at a time) — see mapLimit's note above.
   useEffect(() => {
-    const ids = [...new Set((s?.presets || []).map((p) => p.sourceItemId).filter(Boolean))].filter((id) => !itemConfigs[id]);
-    mapLimit(ids, 6, async (id) => {
-      try {
-        const r = await fetch(`/api/admin/item-config?id=${encodeURIComponent(id)}&pass=${encodeURIComponent(pass)}`);
-        const d = r.ok ? await r.json() : null;
-        if (d && d.item) setItemConfigs((x) => ({ ...x, [id]: d.item }));
-      } catch {}
+    const ids = [...new Set((s?.presets || []).map((p) => p.sourceItemId).filter(Boolean))];
+    ids.forEach((id) => {
+      if (itemConfigs[id]) return;
+      fetch(`/api/admin/item-config?id=${encodeURIComponent(id)}&pass=${encodeURIComponent(pass)}`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => { if (d && d.item) setItemConfigs((x) => ({ ...x, [id]: d.item })); })
+        .catch(() => {});
     });
-    return undefined;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [s?.presets]);
   useEffect(() => {
@@ -309,48 +239,6 @@ export default function Admin({ onExit }) {
   async function loadReservations() {
     try { const d = await api.adminReservations(pass); setResv(d.reservations || []); setResvChannels({ sms: d.sms, email: d.email }); }
     catch (e) { alert('Could not load reservations: ' + e.message); }
-  }
-  // ---- Reservation ticket printing: find or auto-create the catalog item ----
-  // (see server/lib/orders.js createReservationOrder for why this matters —
-  // an ad-hoc line item has no print category and can silently fail to print).
-  async function persistSettingsPatch(patch) {
-    const merged = { ...s, ...patch };
-    setS(merged);
-    setSaving(true); setSavedMsg('');
-    try {
-      const r = await fetch(`/api/admin/settings?pass=${encodeURIComponent(pass)}`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ settings: merged }),
-      });
-      const d = await r.json();
-      if (!r.ok) throw new Error(d.error || 'Save failed');
-      setSavedMsg('Saved — live now.');
-    } catch (e) { setSavedMsg('Save failed: ' + e.message); alert('Could not save: ' + e.message); }
-    finally { setSaving(false); setTimeout(() => setSavedMsg(''), 5000); }
-  }
-  async function findReservationItem() {
-    setResvItemBusy(true);
-    try {
-      const r = await fetch(`/api/admin/reservation-item/search?q=${encodeURIComponent('Table Reservation')}&pass=${encodeURIComponent(pass)}`);
-      const d = await r.json();
-      if (!r.ok) throw new Error(d.error || 'Search failed');
-      setResvItemResults(d.items || []);
-    } catch (e) { alert('Search failed: ' + e.message); }
-    finally { setResvItemBusy(false); }
-  }
-  async function createReservationItem() {
-    if (!resvItemCatId) { alert('Pick a category first — ideally one that already prints reliably (e.g. the same category a coffee or grab-and-go item uses).'); return; }
-    setResvItemBusy(true);
-    try {
-      const r = await fetch(`/api/admin/reservation-item/create?pass=${encodeURIComponent(pass)}`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: 'Table Reservation', categoryId: resvItemCatId }),
-      });
-      const d = await r.json();
-      if (!r.ok) throw new Error(d.error || 'Create failed');
-      await persistSettingsPatch({ reservationVariationId: d.variationId });
-      setResvItemResults(null);
-    } catch (e) { alert('Create failed: ' + e.message); }
-    finally { setResvItemBusy(false); }
   }
   async function loadUsers() {
     setUsersBusy(true);
@@ -529,7 +417,7 @@ export default function Admin({ onExit }) {
   const presets = s?.presets || [];
   const setPresets = (arr) => set({ presets: arr });
   const addPreset = () =>
-    setPresets([...presets, { id: 'pre' + Date.now().toString(36), name: 'New preset', section: 'Breakfast', sourceItemId: '', variationId: '', groups: {}, requiredGroups: [], showImages: true }]);
+    setPresets([...presets, { id: 'pre' + Date.now().toString(36), name: 'New preset', section: 'Breakfast', sourceItemId: '', variationId: '', groups: {}, showImages: true }]);
   const updPreset = (id, patch) => setPresets(presets.map((x) => (x.id === id ? { ...x, ...patch } : x)));
   const rmPreset = (id) => setPresets(presets.filter((x) => x.id !== id));
   // Cycle a modifier through Off → Show → Default → Lock → Off for a preset.
@@ -542,42 +430,6 @@ export default function Admin({ onExit }) {
       const next = CYCLE[g[modId] || 'off'];
       if (next) g[modId] = next; else delete g[modId];
       if (Object.keys(g).length) groups[groupId] = g; else delete groups[groupId];
-      return { ...p, groups };
-    }));
-  // Whether the customer MUST pick at least one option from this group before
-  // they can add the preset to their cart. This is a per-preset override on
-  // top of whatever Square's own modifier-list minimum says — the simplest
-  // correct place for it, since marking every individual option "required"
-  // (the alternative) collapses to exactly this the moment more than one
-  // option is required, but is easy to leave inconsistent (e.g. 2 of 3 ticked).
-  const toggleRequiredGroup = (presetId, groupId) =>
-    setPresets(presets.map((p) => {
-      if (p.id !== presetId) return p;
-      const cur = new Set(p.requiredGroups || []);
-      if (cur.has(groupId)) cur.delete(groupId); else cur.add(groupId);
-      return { ...p, requiredGroups: [...cur] };
-    }));
-  // How many of a preset's options are currently shown (any state but Hide) vs total.
-  const presetModSummary = (p, cfg) => {
-    let total = 0, shown = 0;
-    for (const g of cfg?.modifierGroups || []) for (const m of g.modifiers) {
-      total++;
-      if ((p.groups?.[g.id]?.[m.id] || 'off') !== 'off') shown++;
-    }
-    return { total, shown };
-  };
-  // Master tickbox: force every option on a preset to plain Show or Hide
-  // (never Default/Locked — those stay a per-option choice via the cycle button).
-  const setAllPresetMods = (presetId, cfg, show) =>
-    setPresets(presets.map((p) => {
-      if (p.id !== presetId) return p;
-      if (!show) return { ...p, groups: {} };
-      const groups = {};
-      for (const g of cfg?.modifierGroups || []) {
-        const gg = {};
-        for (const m of g.modifiers) gg[m.id] = 'optional';
-        if (Object.keys(gg).length) groups[g.id] = gg;
-      }
       return { ...p, groups };
     }));
   // ---- generic drag-and-drop reordering (works alongside the ↑/↓ buttons) ----
@@ -998,14 +850,6 @@ export default function Admin({ onExit }) {
     finally { setSaving(false); setTimeout(() => setSavedMsg(''), 5000); }
   }
 
-  const signOut = () => {
-    try { localStorage.removeItem(ADMIN_PASS_KEY); } catch {}
-    setPass('');
-    setData(null);
-    setS(null);
-    setNeedPass(true);
-  };
-
   if (needPass) {
     return (
       <div className="app"><main className="page">
@@ -1029,24 +873,16 @@ export default function Admin({ onExit }) {
         <div className="admin-head">
           <button className="link" onClick={onExit}>← Store</button>
           <h2 style={{ margin: 0, fontFamily: 'Georgia, serif' }}>Control panel</h2>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            {!data.dbEnabled && <span className="muted" style={{ fontSize: 'var(--fs-xs)' }}>⚠ DB off — changes won’t persist</span>}
-            <button className="link" onClick={signOut} style={{ fontSize: 'var(--fs-xs)' }}>Sign out</button>
-          </div>
+          {!data.dbEnabled
+            ? <span className="muted" style={{ fontSize: 'var(--fs-xs)' }}>⚠ DB off — changes won’t persist</span>
+            : <span style={{ width: 60 }} />}
         </div>
 
         <div className="admin-layout">
           <nav className="admin-tabs">
             {TABS.map((t) => (
-              <button key={t.id} className={`admin-tab ${tab === t.id ? 'on' : ''}`} onClick={() => setTab(t.id)} type="button" style={{ position: 'relative' }}>
-                <span style={{ position: 'relative', display: 'inline-flex' }}>
-                  <t.Icon size={20} />
-                  {t.id === 'reservations' && pendingResvCount > 0 && (
-                    <span title={`${pendingResvCount} new reservation${pendingResvCount === 1 ? '' : 's'}`}
-                      style={{ position: 'absolute', top: -2, right: -4, width: 9, height: 9, borderRadius: '50%', background: '#2ecc71', border: '1.5px solid #fff' }} />
-                  )}
-                </span>
-                <span>{t.label}</span>
+              <button key={t.id} className={`admin-tab ${tab === t.id ? 'on' : ''}`} onClick={() => setTab(t.id)} type="button">
+                <t.Icon size={20} /><span>{t.label}</span>
               </button>
             ))}
           </nav>
@@ -1135,6 +971,35 @@ export default function Admin({ onExit }) {
                 </div>
 
                 <div className="card" style={card}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div className="group-title" style={{ margin: 0 }}>Reservations</div>
+                    <button type="button" className="btn ghost" style={{ padding: '6px 12px', fontSize: 'var(--fs-base)' }} onClick={loadReservations}>{resv === null ? 'Load' : 'Refresh'}</button>
+                  </div>
+                  <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 4 }}>
+                    Table bookings from the app. Alerts: {resvChannels.sms ? 'SMS on' : 'SMS off'} · {resvChannels.email ? 'email on' : 'email off'}. Each booking also creates a $0 Square order so it prints + shows in Square.
+                  </p>
+                  {resv === null && <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>Tap Load to see reservations.</p>}
+                  {resv && resv.length === 0 && <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>No reservations yet.</p>}
+                  {resv && resv.map((r) => (
+                    <div key={r.id} className="history-item" style={{ opacity: r.status === 'cancelled' ? 0.5 : 1 }}>
+                      <div className="history-top">
+                        <span><strong>{r.party} {r.party === 1 ? 'guest' : 'guests'}</strong> · {r.name || '—'}</span>
+                        <span className={`pill`} style={{ textTransform: 'capitalize', background: r.status === 'confirmed' ? '#e6f6ec' : r.status === 'seated' ? '#eef' : r.status === 'cancelled' ? '#fdecec' : '#f4eef1' }}>{r.status}</span>
+                      </div>
+                      <div className="muted" style={{ fontSize: 'var(--fs-base)', margin: '3px 0' }}>
+                        {r.reserveAt ? new Date(r.reserveAt).toLocaleString('en-AU', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : '—'} · {r.phone || ''}{r.email ? ` · ${r.email}` : ''}
+                      </div>
+                      {r.notes && <div style={{ fontSize: 'var(--fs-base)' }}>{r.notes}</div>}
+                      <div style={{ display: 'flex', gap: 12, marginTop: 4 }}>
+                        {['confirmed', 'seated', 'cancelled'].filter((st) => st !== r.status).map((st) => (
+                          <button key={st} className="link" style={{ padding: 0, fontSize: 'var(--fs-base)', textTransform: 'capitalize', color: st === 'cancelled' ? '#c0392b' : undefined }} onClick={() => setResvStatus(r, st)}>Mark {st}</button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="card" style={card}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
                     <div className="group-title" style={{ margin: 0 }}>Opening hours</div>
                     <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 'var(--fs-base)' }} className="muted">
@@ -1214,235 +1079,7 @@ export default function Admin({ onExit }) {
 
             {/* ───────── INSIGHTS ───────── */}
             {tab === 'insights' && (
-              <>
-                <div className="ins-head">
-                  <div className="ins-period">
-                    <span className="muted" style={{ fontSize: 'var(--fs-base)' }}>Last</span>
-                    {INSIGHTS_PERIODS.map((p) => <button key={p.d} className={`chip ${aDays === p.d ? 'on' : ''}`} onClick={() => setADays(p.d)}>{p.label}</button>)}
-                  </div>
-                  <span className={`ins-updating ${insightsLoading ? 'on' : ''}`}><i className="dot" /> Updating…</span>
-                </div>
-
-                {/* ── Real sales + signups (from Square) ── */}
-                {!dashboard && <div className="ins-card" style={{ textAlign: 'center' }}><div className="spinner" /></div>}
-                {dashboard && !dashboard.error && (() => {
-                  const sl = dashboard.sales || {};
-                  const su = dashboard.signups || {};
-                  const salesOk = sl && !sl.error;
-                  const signupsOk = su && !su.error;
-                  const cur = sl.currency || 'AUD';
-                  const sDaily = (salesOk && sl.daily) || [];
-                  const gDaily = (signupsOk && su.daily) || [];
-                  const topClients = (salesOk && sl.topClients) || [];
-                  const tiles = [
-                    salesOk && { label: 'Revenue', v: formatMoney(sl.revenue, cur) },
-                    salesOk && { label: 'Orders', v: sl.orders },
-                    salesOk && { label: 'Avg order', v: formatMoney(sl.avgOrder, cur) },
-                    signupsOk && { label: 'New signups', v: su.newInRange },
-                    signupsOk && { label: 'Members', v: su.totalMembers },
-                  ].filter(Boolean);
-                  return (
-                    <>
-                      <div className="group-title" style={{ marginBottom: 8 }}>Sales &amp; signups <span className="muted" style={{ fontWeight: 400, fontSize: 'var(--fs-sm)' }}>· live from Square</span></div>
-                      {(!salesOk || !signupsOk) && (
-                        <p className="muted" style={{ fontSize: 'var(--fs-sm)', margin: '0 0 8px' }}>
-                          {!salesOk && 'Sales couldn’t load — your Square token needs the Orders (read) permission. '}
-                          {!signupsOk && 'Signups need the Square loyalty program enabled.'}
-                        </p>
-                      )}
-                      {tiles.length > 0 && (
-                        <div className="stat-tiles">
-                          {tiles.map((x) => <div key={x.label} className="stat-tile"><div className="stat-v">{x.v}</div><div className="stat-l">{x.label}</div></div>)}
-                        </div>
-                      )}
-                      {salesOk && (
-                        <div className="ins-card">
-                          <div className="group-title">Daily revenue</div>
-                          <BarChart
-                            data={sDaily.map((d) => ({ day: d.day, value: d.revenue, value2: null }))}
-                            color="var(--brand)"
-                            formatValue={(v) => formatMoney(v, cur)}
-                            formatAxis={(v) => compactMoney(v, cur)}
-                            emptyText="No completed sales in this period."
-                          />
-                        </div>
-                      )}
-                      {signupsOk && (
-                        <div className="ins-card">
-                          <div className="group-title">New loyalty signups</div>
-                          <BarChart
-                            data={gDaily.map((d) => ({ day: d.day, value: d.n }))}
-                            color="var(--accent)"
-                            formatValue={(v) => `${v} signup${v === 1 ? '' : 's'}`}
-                            formatAxis={(v) => String(v)}
-                            emptyText="No new signups in this period."
-                          />
-                        </div>
-                      )}
-                      {salesOk && topClients.length > 0 && (
-                        <div className="ins-card">
-                          <div className="group-title">Best clients</div>
-                          <p className="ins-card-sub">By spend in this period · identified loyalty members only (anonymous walk-ins aren't included)</p>
-                          {topClients.map((cl, i) => <ClientRow key={cl.name + i} c={cl} cur={cur} rank={i + 1} />)}
-                        </div>
-                      )}
-                      <div className="group-title" style={{ margin: '18px 0 8px' }}>App engagement</div>
-                    </>
-                  );
-                })()}
-
-                {!analytics && <div className="ins-card" style={{ textAlign: 'center' }}><div className="spinner" /></div>}
-                {analytics && (analytics.error || analytics.empty) && <div className="ins-card"><p className="muted" style={{ margin: 0 }}>No analytics yet — data appears as customers use the app.</p></div>}
-                {analytics && !analytics.error && !analytics.empty && (() => {
-                  const t = analytics.totals || {};
-                  const conv = t.visitors ? Math.round((t.purchases / t.visitors) * 100) : 0;
-                  const tiles = [
-                    { label: 'Visitors', v: t.visitors },
-                    { label: 'Product views', v: t.productViews },
-                    { label: 'Orders', v: t.purchases },
-                    { label: 'Conversion', v: `${conv}%` },
-                    { label: 'Revenue', v: formatMoney(t.revenue, 'AUD') },
-                    { label: 'Contact taps', v: t.contactClicks },
-                  ];
-                  const funnel = [
-                    { label: 'Visitors', v: t.visitors },
-                    { label: 'Viewed a product', v: t.productViews },
-                    { label: 'Added to cart', v: t.addCart },
-                    { label: 'Reached checkout', v: t.checkouts },
-                    { label: 'Ordered', v: t.purchases },
-                  ];
-                  const daily = analytics.daily || [];
-                  return (
-                    <>
-                      <div className="stat-tiles">
-                        {tiles.map((x) => <div key={x.label} className="stat-tile"><div className="stat-v">{x.v}</div><div className="stat-l">{x.label}</div></div>)}
-                      </div>
-                      <div className="ins-card">
-                        <div className="group-title">Daily visits &amp; orders</div>
-                        <BarChart
-                          data={daily.map((d) => ({ day: d.day, value: d.views, value2: d.purchases }))}
-                          color="var(--brand-soft)"
-                          color2="var(--brand)"
-                          formatValue={(v) => String(v)}
-                          formatAxis={(v) => String(v)}
-                          legend={[{ label: 'Visits', swatch: 'var(--brand-soft)' }, { label: 'Orders', swatch: 'var(--brand)' }]}
-                          emptyText="No data yet."
-                        />
-                      </div>
-                      <div className="ins-card">
-                        <div className="group-title">Checkout funnel</div>
-                        <DonutChart
-                          segments={funnel.map((f, i) => ({
-                            label: f.label, value: f.v, color: FUNNEL_COLORS[i],
-                            pct: t.visitors ? Math.round((f.v / t.visitors) * 100) : 0,
-                          }))}
-                          centerValue={`${conv}%`}
-                          centerLabel="ordered"
-                        />
-                      </div>
-                      <div className="ins-two">
-                        <div className="ins-card">
-                          <div className="group-title">Most viewed</div>
-                          {(analytics.topViewed || []).length === 0 && <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>No data yet.</p>}
-                          {(analytics.topViewed || []).map((p) => <TopRow key={p.name} name={p.name} n={p.n} max={analytics.topViewed[0]?.n || 1} />)}
-                        </div>
-                        <div className="ins-card">
-                          <div className="group-title">Most purchased</div>
-                          {(analytics.topPurchased || []).length === 0 && <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>No data yet.</p>}
-                          {(analytics.topPurchased || []).map((p) => <TopRow key={p.name} name={p.name} n={p.n} max={analytics.topPurchased[0]?.n || 1} />)}
-                        </div>
-                      </div>
-                    </>
-                  );
-                })()}
-              </>
-            )}
-
-            {/* ───────── RESERVATIONS ───────── */}
-            {tab === 'reservations' && (
-              <>
-                <div className="card" style={card}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div className="group-title" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
-                      Reservations
-                      {pendingResvCount > 0 && (
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: '#e6f6ec', color: '#1e824c', borderRadius: 999, padding: '2px 8px', fontSize: 'var(--fs-xs)', fontWeight: 600 }}>
-                          <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#2ecc71' }} /> {pendingResvCount} new
-                        </span>
-                      )}
-                    </div>
-                    <button type="button" className="btn ghost" style={{ padding: '6px 12px', fontSize: 'var(--fs-base)' }} onClick={loadReservations}>Refresh</button>
-                  </div>
-                  <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 4 }}>
-                    Table bookings from the app — loads automatically and refreshes every minute. Alerts: {resvChannels.sms ? 'SMS on' : 'SMS off'} · {resvChannels.email ? 'email on' : 'email off'}. Each booking also creates a $0 Square order so it prints + shows in Square.
-                  </p>
-
-                  <div style={{ marginTop: 4, marginBottom: 10, padding: 10, border: '1px solid var(--line)', borderRadius: 10 }}>
-                    <div style={{ fontWeight: 600, fontSize: 'var(--fs-sm)', marginBottom: 4 }}>Ticket printing</div>
-                    {s.reservationVariationId ? (
-                      <p className="muted" style={{ fontSize: 'var(--fs-sm)', margin: '0 0 8px' }}>
-                        ✓ Linked to a real catalog item — reservation tickets print through its category's routing, same as a normal order.{' '}
-                        <button type="button" className="link" style={{ color: '#c0392b' }} onClick={() => persistSettingsPatch({ reservationVariationId: '' })}>Unlink</button>
-                      </p>
-                    ) : (
-                      <p className="muted" style={{ fontSize: 'var(--fs-sm)', margin: '0 0 8px' }}>
-                        Not linked yet — reservations use a generic line item with no print category, which can silently fail to print. Link an existing "Table Reservation" item, or create one automatically in a category that already prints reliably (e.g. the same one your coffee or grab-and-go items use).
-                      </p>
-                    )}
-                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                      <button type="button" className="btn ghost" disabled={resvItemBusy} onClick={findReservationItem} style={{ padding: '6px 12px', fontSize: 'var(--fs-sm)' }}>
-                        {resvItemBusy ? 'Working…' : 'Find existing item'}
-                      </button>
-                      <select value={resvItemCatId} onChange={(e) => setResvItemCatId(e.target.value)}
-                        style={{ padding: '7px 8px', borderRadius: 8, border: '1px solid var(--line)', fontSize: 'var(--fs-sm)' }}>
-                        <option value="">— pick a category that already prints —</option>
-                        {sqCats.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                      </select>
-                      <button type="button" className="btn ghost" disabled={resvItemBusy || !resvItemCatId} onClick={createReservationItem} style={{ padding: '6px 12px', fontSize: 'var(--fs-sm)' }}>
-                        {resvItemBusy ? 'Working…' : 'Create automatically'}
-                      </button>
-                    </div>
-                    {resvItemResults && (
-                      <div style={{ marginTop: 8, display: 'grid', gap: 6 }}>
-                        {resvItemResults.length === 0 && <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>No matching item found — try Create automatically instead.</p>}
-                        {resvItemResults.map((it) => (
-                          <div key={it.id} style={{ fontSize: 'var(--fs-sm)' }}>
-                            <span style={{ fontWeight: 600 }}>{it.name}</span>{' '}
-                            {it.variations.length === 0 && <span className="muted">— no variations</span>}
-                            {it.variations.map((v) => (
-                              <button key={v.id} type="button" className="link" style={{ marginLeft: 8 }}
-                                onClick={() => persistSettingsPatch({ reservationVariationId: v.id })}>
-                                Use "{v.name || 'Regular'}"{v.price ? ` (${formatMoney(v.price.amount, v.price.currency)})` : ''}{v.sellable === false ? ' — not sellable, avoid' : ''}
-                              </button>
-                            ))}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  {resv === null && <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>Loading reservations…</p>}
-                  {resv && resv.length === 0 && <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>No reservations yet.</p>}
-                  {resv && resv.map((r) => (
-                    <div key={r.id} className="history-item" style={{ opacity: r.status === 'cancelled' ? 0.5 : 1 }}>
-                      <div className="history-top">
-                        <span><strong>{r.party} {r.party === 1 ? 'guest' : 'guests'}</strong> · {r.name || '—'}</span>
-                        <span className={`pill`} style={{ textTransform: 'capitalize', background: r.status === 'confirmed' ? '#e6f6ec' : r.status === 'seated' ? '#eef' : r.status === 'cancelled' ? '#fdecec' : '#f4eef1' }}>{r.status}</span>
-                      </div>
-                      <div className="muted" style={{ fontSize: 'var(--fs-base)', margin: '3px 0' }}>
-                        {r.reserveAt ? new Date(r.reserveAt).toLocaleString('en-AU', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : '—'} · {r.phone || ''}{r.email ? ` · ${r.email}` : ''}
-                      </div>
-                      {r.notes && <div style={{ fontSize: 'var(--fs-base)' }}>{r.notes}</div>}
-                      <div style={{ display: 'flex', gap: 12, marginTop: 4 }}>
-                        {['confirmed', 'seated', 'cancelled'].filter((st) => st !== r.status).map((st) => (
-                          <button key={st} className="link" style={{ padding: 0, fontSize: 'var(--fs-base)', textTransform: 'capitalize', color: st === 'cancelled' ? '#c0392b' : undefined }} onClick={() => setResvStatus(r, st)}>Mark {st}</button>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-              </>
+              <Insights days={aDays} onDays={setADays} dashboard={dashboard} analytics={analytics} customers={insCustomers} refreshing={insRefreshing} onRefresh={reloadInsights} lastSync={insSync} />
             )}
 
             {/* ───────── MENU ───────── */}
@@ -1913,35 +1550,10 @@ export default function Admin({ onExit }) {
                                   </label>
                                 </div>
                                 {renderSectionChips(p.section, (n) => updPreset(p.id, { section: n }))}
-                                {(cfg.modifierGroups && cfg.modifierGroups.length > 0) && (() => {
-                                  const { total, shown } = presetModSummary(p, cfg);
-                                  const allShown = total > 0 && shown === total;
-                                  const someShown = shown > 0 && shown < total;
-                                  return (
-                                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 'var(--fs-sm)', fontWeight: 600, cursor: 'pointer' }}>
-                                      <input type="checkbox" checked={allShown}
-                                        ref={(el) => { if (el) el.indeterminate = someShown; }}
-                                        onChange={(e) => setAllPresetMods(p.id, cfg, e.target.checked)} />
-                                      Show all options
-                                      <span className="muted" style={{ fontWeight: 400 }}>({shown}/{total} shown — {allShown ? 'ticked = Show' : 'unticked = Hide'})</span>
-                                    </label>
-                                  );
-                                })()}
-                                {(cfg.modifierGroups || []).map((g) => {
-                                  const isRequired = (p.requiredGroups || []).includes(g.id);
-                                  const groupShown = Object.keys(p.groups?.[g.id] || {}).length > 0;
-                                  return (
-                                  <div key={g.id} style={{ border: `1px solid ${isRequired ? 'var(--accent)' : 'var(--line)'}`, borderRadius: 10, padding: 8 }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
-                                      <div style={{ fontWeight: 600, fontSize: 'var(--fs-base)' }}>{g.name}
-                                        <span className="muted" style={{ fontWeight: 400 }}>{g.selectionType === 'SINGLE' ? ' · choose one' : g.max > 0 ? ` · up to ${g.max}` : ''}</span>
-                                      </div>
-                                      <label title={groupShown ? 'Customer must pick at least one option from this group before adding to cart' : 'Show at least one option below to make this group required'}
-                                        style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 'var(--fs-sm)', fontWeight: 600, cursor: groupShown ? 'pointer' : 'not-allowed', color: isRequired ? 'var(--accent)' : 'var(--muted)', flex: 'none', opacity: groupShown ? 1 : 0.5 }}>
-                                        <input type="checkbox" checked={isRequired} disabled={!groupShown}
-                                          onChange={() => toggleRequiredGroup(p.id, g.id)} />
-                                        Required
-                                      </label>
+                                {(cfg.modifierGroups || []).map((g) => (
+                                  <div key={g.id} style={{ border: '1px solid var(--line)', borderRadius: 10, padding: 8 }}>
+                                    <div style={{ fontWeight: 600, fontSize: 'var(--fs-base)', marginBottom: 6 }}>{g.name}
+                                      <span className="muted" style={{ fontWeight: 400 }}>{g.selectionType === 'SINGLE' ? ' · choose one' : g.max > 0 ? ` · up to ${g.max}` : ''}</span>
                                     </div>
                                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                                       {g.modifiers.map((m) => {
@@ -1962,8 +1574,7 @@ export default function Admin({ onExit }) {
                                       })}
                                     </div>
                                   </div>
-                                  );
-                                })}
+                                ))}
                                 {(!cfg.modifierGroups || cfg.modifierGroups.length === 0) && <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>This item has no modifier options.</p>}
                               </>
                             )}
