@@ -372,8 +372,14 @@ img { max-width: 100%; }
   font-size: 15px; line-height: 1; padding: 4px; margin-left: 2px; border-radius: 8px;
 }
 .cart-remove:hover { color: #c0392b; background: color-mix(in srgb, #c0392b 10%, transparent); }
-.cart-clear { color: var(--muted); font-size: 13px; padding: 2px 4px; }
-.cart-clear:hover { color: #c0392b; }
+.cart-clear {
+  border: none; background: none; color: var(--s-ink2, var(--muted));
+  font-size: 13px; font-weight: 600; cursor: pointer;
+  padding: 8px 10px; min-height: 40px; border-radius: 8px;
+}
+.cart-clear:hover { color: var(--brand); background: color-mix(in srgb, var(--brand) 10%, transparent); }
+.cart-clear:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.cart-clear:disabled { opacity: .4; cursor: default; }
 
 /* Checkout order summary (keeps items visible while paying) */
 .co-order { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
@@ -1290,7 +1296,7 @@ body:has(.store-shell) { background: #F7F4EF; }
 .menu-dock {
   background: var(--s-card); border: 1px solid var(--s-line); border-radius: 16px;
   box-shadow: var(--shadow-sm); padding: 8px 10px;
-  display: flex; align-items: stretch; gap: 10px;
+  display: flex; align-items: stretch; gap: 8px;
 }
 .menu-dock-eyebrow {
   flex: 0 0 auto; width: 104px; display: flex; align-items: center;
@@ -1298,26 +1304,25 @@ body:has(.store-shell) { background: #F7F4EF; }
   text-transform: uppercase; color: var(--dark, #76263E);
   border-right: 1px solid var(--s-line); padding-right: 12px;
 }
-.menu-dock-strip-wrap { position: relative; flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 6px; }
-/* overflow lives ONLY on the inner strip, never on the sticky wrapper, so
-   date/time popovers above are never clipped. */
+/* Central scroll viewport — the ONLY overflow surface. Arrows sit outside it as
+   their own flex columns, so no tile can ever slide under an arrow. Overflow
+   lives here, never on the sticky wrapper, so date/time popovers above the dock
+   are never clipped. */
+.menu-dock-viewport { position: relative; flex: 1 1 auto; min-width: 0; overflow: hidden; }
 .menu-dock-strip {
   display: flex; gap: 6px; overflow-x: auto; scroll-behavior: smooth;
-  scrollbar-width: none; -ms-overflow-style: none; padding: 3px 2px; flex: 1 1 auto;
+  scrollbar-width: none; -ms-overflow-style: none; padding: 2px 0;
 }
 .menu-dock-strip::-webkit-scrollbar { display: none; }
-/* Right-edge fade over the clipped overflow tile (and a left fade once scrolled).
-   Sits just inside the arrow (arrow 32px + 6px wrap gap = 38px), pointer-events
-   off, shown only in the scrollable direction. */
-.menu-dock-strip-wrap::before,
-.menu-dock-strip-wrap::after {
-  content: ''; position: absolute; top: 3px; bottom: 3px; width: 24px;
-  pointer-events: none; opacity: 0; transition: opacity .15s ease; z-index: 2;
+/* Edge fades inside the viewport, shown only in the scrollable direction.
+   pointer-events off so they never eat clicks/scroll on the tiles beneath. */
+.dock-fade {
+  position: absolute; top: 0; bottom: 0; width: 26px;
+  pointer-events: none; opacity: 0; transition: opacity .18s; z-index: 1;
 }
-.menu-dock-strip-wrap::before { left: 38px; background: linear-gradient(to right, var(--s-card), transparent); }
-.menu-dock-strip-wrap::after { right: 38px; background: linear-gradient(to left, var(--s-card), transparent); }
-.menu-dock-strip-wrap.can-left::before { opacity: 1; }
-.menu-dock-strip-wrap.can-right::after { opacity: 1; }
+.dock-fade.left { left: 0; background: linear-gradient(to right, var(--s-card), transparent); }
+.dock-fade.right { right: 0; background: linear-gradient(to left, var(--s-card), transparent); }
+.dock-fade.show { opacity: 1; }
 .dock-tab {
   flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px;
   min-width: 94px; height: 80px; padding: 9px 8px; cursor: pointer; position: relative;
@@ -1342,26 +1347,26 @@ body:has(.store-shell) { background: #F7F4EF; }
 }
 .dock-tab.on .dock-tab-ic { color: #fff; }
 .dock-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-/* In-flow flex controls beside the strip — they occupy their own space and never
-   overlap the first/last tile. When the strip doesn't overflow they collapse
-   (display:none) and the strip reclaims the width. */
+/* Dedicated arrow columns OUTSIDE the viewport. Both arrows stay in the layout
+   at all times (disabled at the ends) so the viewport width is constant and
+   nothing shifts as you scroll. */
 .dock-arrow {
-  position: static; transform: none; flex: 0 0 auto;
+  flex: 0 0 auto; align-self: center;
   width: 32px; height: 32px; border-radius: 50%; cursor: pointer;
   border: 1px solid var(--s-line); background: var(--s-card); color: var(--s-ink);
   font-size: 20px; line-height: 1; display: grid; place-items: center;
   box-shadow: var(--shadow-sm);
 }
-.dock-arrow:hover { border-color: var(--brand); color: var(--brand); }
+.dock-arrow:disabled { opacity: .35; cursor: default; }
+.dock-arrow:not(:disabled):hover { border-color: var(--brand); color: var(--brand); }
 .dock-arrow:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.dock-arrow.hide { display: none; }
 
 /* ── Premium menu cards ── */
 /* Editorial section heading: serif title + inline muted "· N items" metadata. */
 .store-main .cat-head { display: flex; align-items: baseline; gap: 8px; margin: 26px 2px 14px; flex-wrap: wrap; }
 .store-main .cat-head .cat-title { margin: 0; font-size: 24px; }
 .store-main .cat-count {
-  font-size: 14px; font-weight: 500; color: var(--s-ink2);
+  font-size: 13.5px; font-weight: 500; color: var(--s-ink2);
   background: none; border: none; border-radius: 0; padding: 0;
 }
 .store-main .cat-count::before { content: '· '; }
@@ -1461,9 +1466,10 @@ body:has(.store-shell) { background: #F7F4EF; }
 .store-cart .cl-controls .stepper.sm span { min-width: 36px; }
 .store-cart .cl-remove {
   border: none; background: none; color: var(--s-ink2); font-size: 13px; font-weight: 600;
-  cursor: pointer; padding: 6px 8px; border-radius: 8px;
+  cursor: pointer; min-height: 40px; padding: 8px 10px; border-radius: 8px;
 }
 .store-cart .cl-remove:hover { color: var(--brand); background: color-mix(in srgb, var(--brand) 10%, transparent); }
+.store-cart .cl-remove:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 /* Empty state matches populated height (cup + copy centred over 440px). */
 .store-cart .cart-panel-empty {
   flex: 1 1 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;

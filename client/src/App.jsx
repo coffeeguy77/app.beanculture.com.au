@@ -652,9 +652,11 @@ export default function App() {
   const coffeeCat = menu.categories.find((c) => (c.category || '').toLowerCase().includes('coffee') && c.topNav !== false) || null;
   const goMenu = () => { setView('home'); setQuery(''); window.scrollTo({ top: 0, behavior: 'smooth' }); };
   const locLabel = locationLabel(config);
+  // Nav active state on the ordering page: only "Menu" is active on home; the
+  // Coffee link is a category shortcut and is NEVER shown active. Category
+  // selection must not drive nav active state (that caused Menu + Coffee both on).
   const navActive = (key) => {
     if (key === 'menu') return view === 'home';
-    if (key === 'coffee') return view === 'home' && !!coffeeCat && dockActive === coffeeCat.category;
     if (key === 'store') return view === 'store';
     return false;
   };
@@ -703,7 +705,7 @@ export default function App() {
             <nav className="site-nav" aria-label="Primary">
               <button type="button" className={`site-nav-link${navActive('menu') ? ' on' : ''}`} onClick={goMenu}>Menu</button>
               {coffeeCat && (
-                <button type="button" className={`site-nav-link${navActive('coffee') ? ' on' : ''}`} onClick={() => { setView('home'); pickCategory(coffeeCat.category); }}>Coffee</button>
+                <button type="button" className="site-nav-link" onClick={() => { setView('home'); pickCategory(coffeeCat.category); }}>Coffee</button>
               )}
               <button type="button" className={`site-nav-link${navActive('store') ? ' on' : ''}`} onClick={() => setView('store')}>Our story</button>
               <button type="button" className={`site-nav-link${view === 'store' ? ' on' : ''}`} onClick={() => setView('store')}>Visit</button>

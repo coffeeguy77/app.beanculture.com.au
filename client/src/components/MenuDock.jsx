@@ -3,32 +3,75 @@ import { SlotIcon } from './icons.jsx';
 
 // Icon-forward "Browse menu" category dock. Presentational only — App supplies
 // the category data ({ name, count, iconName }), the active name and onPick.
-// Replaces the low-contrast text-pill CategoryNav so the storefront reads as a
-// proper menu. Sticky under the site shell; horizontal overflow gets ‹ › arrows.
+// Structure: [eyebrow] [prevArrow] [viewport(strip)] [nextArrow]. Arrows are
+// dedicated fixed-width flex columns OUTSIDE the scroll viewport, so no tile can
+// ever slide under an arrow. Sticky under the site shell.
+const EPSILON = 2;
+
 export default function MenuDock({ categories, active, onPick }) {
   const stripRef = useRef(null);
   const sentRef = useRef(null);
-  const [ov, setOv] = useState({ left: false, right: false });
+  const userNav = useRef(false);
+  const [arrows, setArrows] = useState({ left: false, right: false });
   const [stuck, setStuck] = useState(false);
 
-  // Show/hide the overflow arrows depending on scroll position.
+  // Recompute which arrows are enabled from the strip's scroll position.
+  const recalc = () => {
+    const el = stripRef.current;
+    if (!el) return;
+    const max = el.scrollWidth - el.clientWidth;
+    setArrows({ left: el.scrollLeft > EPSILON, right: el.scrollLeft < max - EPSILON });
+  };
+
+  // Scroll ONLY the strip so the active tile is visible. Never touches the page.
+  // If the active tile is already fully visible, do nothing (don't fight the user).
+  const scrollActiveIntoView = (smooth) => {
+    const el = stripRef.current;
+    if (!el || !active) return;
+    const tile = [...el.children].find(
+      (t) => t.getAttribute && t.getAttribute('data-cat-tile') === active
+    );
+    if (!tile) return;
+    const viewStart = el.scrollLeft;
+    const viewEnd = el.scrollLeft + el.clientWidth;
+    const tileStart = tile.offsetLeft;
+    const tileEnd = tile.offsetLeft + tile.offsetWidth;
+    // Already fully visible → leave it alone.
+    if (tileStart >= viewStart && tileEnd <= viewEnd) return;
+    const target = Math.max(
+      0,
+      Math.min(tile.offsetLeft - (el.clientWidth - tile.offsetWidth) / 2, el.scrollWidth - el.clientWidth)
+    );
+    el.scrollTo({ left: target, behavior: smooth ? 'smooth' : 'auto' });
+  };
+
+  // Arrow state: recompute on strip scroll, strip resize, window resize, fonts
+  // load, and whenever the category set changes.
   useEffect(() => {
     const el = stripRef.current;
     if (!el) return;
-    const measure = () => {
-      const { scrollLeft, scrollWidth, clientWidth } = el;
-      setOv({ left: scrollLeft > 2, right: scrollLeft + clientWidth < scrollWidth - 2 });
-    };
-    measure();
-    el.addEventListener('scroll', measure, { passive: true });
-    const ro = new ResizeObserver(measure);
+    recalc();
+    el.addEventListener('scroll', recalc, { passive: true });
+    const ro = new ResizeObserver(recalc);
     ro.observe(el);
-    window.addEventListener('resize', measure);
+    window.addEventListener('resize', recalc);
+    if (document.fonts && document.fonts.ready) {
+      document.fonts.ready.then(() => { recalc(); scrollActiveIntoView(false); });
+    }
     return () => {
-      el.removeEventListener('scroll', measure);
+      el.removeEventListener('scroll', recalc);
       ro.disconnect();
-      window.removeEventListener('resize', measure);
+      window.removeEventListener('resize', recalc);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [categories]);
+
+  // Bring an initially-non-first active category (restored/default) into view
+  // instantly once the strip is populated.
+  useEffect(() => {
+    recalc();
+    scrollActiveIntoView(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [categories]);
 
   // "Stuck" shadow: a sentinel just above the sticky wrapper. When it scrolls up
@@ -61,17 +104,19 @@ export default function MenuDock({ categories, active, onPick }) {
     return () => el.removeEventListener('wheel', onWheel);
   }, [categories]);
 
-  // Keep the active tab in view as scroll-spy / clicks move it.
+  // Keep the active tile visible as scroll-spy / clicks / restore move it.
+  // Smooth only when the change came from a user dock-click (and motion is ok);
+  // instant otherwise. Only repositions if the active tile is off-screen.
   useEffect(() => {
-    const el = stripRef.current;
-    if (!el || !active) return;
-    const btn = el.querySelector('.dock-tab.on');
-    if (btn) btn.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    scrollActiveIntoView(userNav.current && !reduce);
+    userNav.current = false;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active]);
 
   const nudge = (dir) => {
     const el = stripRef.current;
-    if (el) el.scrollBy({ left: dir * Math.max(200, el.clientWidth * 0.7), behavior: 'smooth' });
+    if (el) el.scrollBy({ left: dir * Math.max(200, el.clientWidth * 0.8), behavior: 'smooth' });
   };
 
   if (!categories || categories.length === 0) return null;
@@ -82,25 +127,26 @@ export default function MenuDock({ categories, active, onPick }) {
       <div className={`menu-dock-wrap${stuck ? ' is-stuck' : ''}`}>
         <div className="menu-dock">
           <span className="menu-dock-eyebrow">Browse menu</span>
-          <div className={`menu-dock-strip-wrap${ov.left ? ' can-left' : ''}${ov.right ? ' can-right' : ''}`}>
-            <button
-              type="button"
-              className={`dock-arrow left${ov.left ? '' : ' hide'}`}
-              onClick={() => nudge(-1)}
-              aria-label="Scroll categories left"
-              tabIndex={ov.left ? 0 : -1}
-            >
-              ‹
-            </button>
+          <button
+            type="button"
+            className="dock-arrow"
+            onClick={() => nudge(-1)}
+            disabled={!arrows.left}
+            aria-label="Show previous menu categories"
+          >
+            ‹
+          </button>
+          <div className="menu-dock-viewport">
             <div className="menu-dock-strip" ref={stripRef} role="tablist" aria-label="Menu categories">
               {categories.map((c) => (
                 <button
                   key={c.name}
+                  data-cat-tile={c.name}
                   type="button"
                   role="tab"
                   aria-selected={active === c.name}
                   className={`dock-tab${active === c.name ? ' on' : ''}`}
-                  onClick={() => onPick(c.name)}
+                  onClick={() => { userNav.current = true; onPick(c.name); }}
                 >
                   <span className="dock-tab-ic"><SlotIcon icon={c.iconName} size={29} /></span>
                   <span className="dock-tab-label">{c.name}</span>
@@ -108,16 +154,18 @@ export default function MenuDock({ categories, active, onPick }) {
                 </button>
               ))}
             </div>
-            <button
-              type="button"
-              className={`dock-arrow right${ov.right ? '' : ' hide'}`}
-              onClick={() => nudge(1)}
-              aria-label="Scroll categories right"
-              tabIndex={ov.right ? 0 : -1}
-            >
-              ›
-            </button>
+            <span className={`dock-fade left${arrows.left ? ' show' : ''}`} aria-hidden="true" />
+            <span className={`dock-fade right${arrows.right ? ' show' : ''}`} aria-hidden="true" />
           </div>
+          <button
+            type="button"
+            className="dock-arrow"
+            onClick={() => nudge(1)}
+            disabled={!arrows.right}
+            aria-label="Show more menu categories"
+          >
+            ›
+          </button>
         </div>
       </div>
     </>

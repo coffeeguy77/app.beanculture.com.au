@@ -13,7 +13,16 @@ export default function CartPanel({ cart, currency, onQty, onRemove, onClear, di
       <div className="cart-panel-head">
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
           <h2>Your order</h2>
-          {cart.length > 0 && onClear && <button className="link cart-clear" onClick={onClear}>Clear</button>}
+          {cart.length > 0 && onClear && (
+            <button
+              type="button"
+              className="cart-clear"
+              aria-label="Clear all items from your order"
+              onClick={() => { if (cart.length && !window.confirm('Remove all items from your order?')) return; onClear(); }}
+            >
+              Clear
+            </button>
+          )}
         </div>
         <span className="context-pill">{summary || (dineIn ? `Dine in · Table ${table || '—'}` : 'Takeaway')}</span>
       </div>
