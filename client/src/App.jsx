@@ -346,7 +346,55 @@ export default function App() {
   // Made-to-order categories are only unavailable when the store is OPEN but the
   // kitchen has shut (fridge items stay available). When the whole store is
   // closed, everything is pre-orderable for later, so nothing is disabled here.
-  const kitchenClosedCats = (storeOpen && kitchen && kitchen.open === false) ? (kitchen.categories || []) : [];
+  //
+  // For a SCHEDULED ("Later") takeaway pickup, "closed" must be evaluated at the
+  // chosen future time, not right now — otherwise you can book a 2:30pm pickup
+  // for a kitchen that closes at 2pm and still add Lunch items to the cart.
+  const DAYS_SQ = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+  const fmt12 = (hhmm) => {
+    if (!hhmm) return '';
+    const [h, m] = hhmm.split(':').map(Number);
+    const ap = h >= 12 ? 'pm' : 'am';
+    let hh = h % 12; if (hh === 0) hh = 12;
+    return m ? `${hh}:${String(m).padStart(2, '0')}${ap}` : `${hh}${ap}`;
+  };
+  const dstrLocal = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const kitchenStatusAt = (weekly, ds, hhmm) => {
+    const [y, mo, d] = ds.split('-').map(Number);
+    const dow = new Date(y, mo - 1, d).getDay();
+    const periods = (weekly?.[DAYS_SQ[dow]] || []).filter((p) => p.startMin != null && p.endMin != null);
+    const [hh, mm] = hhmm.split(':').map(Number);
+    const minutes = hh * 60 + mm;
+    let openNow = false;
+    for (const p of periods) {
+      let end = p.endMin; if (end <= p.startMin) end += 24 * 60;
+      if (minutes >= p.startMin && minutes < end) { openNow = true; break; }
+    }
+    const last = periods[periods.length - 1];
+    return { open: openNow, closesLabel: last ? fmt12(last.end) : null };
+  };
+  const schedLater = dineIn === false && preWhen === 'later' && !!(preAt?.date && preAt?.time);
+  let kitchenClosedCats = [];
+  if (storeOpen && kitchen && kitchen.hasHours && kitchen.weekly) {
+    const now = new Date();
+    const ds = schedLater ? preAt.date : dstrLocal(now);
+    const hhmm = schedLater ? preAt.time : `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    if (!kitchenStatusAt(kitchen.weekly, ds, hhmm).open) kitchenClosedCats = kitchen.categories || [];
+  } else if (storeOpen && kitchen && !schedLater && kitchen.open === false) {
+    kitchenClosedCats = kitchen.categories || [];
+  }
+  const kitchenClosedSet = new Set((kitchenClosedCats || []).map((x) => (x || '').toLowerCase()));
+  // If the kitchen closes while an item sits in the cart (e.g. mid-shop), flag
+  // it as unavailable and block checkout until it's removed — never silently
+  // let a customer pay for something the kitchen can no longer make.
+  const cartUnavailableKeys = new Set(
+    cart.filter((c) => c.category && kitchenClosedSet.has(String(c.category).toLowerCase())).map((c) => c.key)
+  );
+  // Compact "Takeaway · Now" / "Takeaway · Tue 11 Aug, 8:00am" / "Dine in ·
+  // Table 4" label for the cart sidebar's fulfilment badge.
+  const fulfilmentLabel = dineIn
+    ? `Dine in · Table ${table || '—'}`
+    : (schedLater ? `Takeaway · ${fmtWhen(preAt)}` : 'Takeaway · Now');
 
   const cartCount = cart.reduce((n, c) => n + c.quantity, 0);
   const cartTotal = cart.reduce((n, c) => n + c.unitPrice * c.quantity, 0);
@@ -764,12 +812,21 @@ export default function App() {
                 else if (link.type === 'item' && link.value) {
                   // Open the product directly (e.g. a "steak sandwich" banner → its
                   // item card), scanning every category for the matching id.
-                  let found = null;
+                  let found = null; let foundCat = null;
                   for (const c of (menu.categories || [])) {
                     const it = (c.items || []).find((x) => x.id === link.value);
-                    if (it) { found = it; break; }
+                    if (it) { found = it; foundCat = c.category; break; }
                   }
-                  if (found) setActiveItem(found);
+                  // A hero banner can point at an item whose category is sold out
+                  // or currently kitchen-closed — don't let the banner bypass that;
+                  // jump to the (now visibly unavailable) category instead of
+                  // opening an Add-to-cart modal for something you can't actually buy.
+                  const shut = found && (found.soldOut || kitchenClosedSet.has((foundCat || '').toLowerCase()));
+                  if (found && !shut) setActiveItem({ ...found, category: foundCat });
+                  else if (found) {
+                    setActiveCat(foundCat);
+                    const el = document.querySelector('.menu'); if (el) el.scrollIntoView({ behavior: 'smooth' });
+                  }
                   else { const el = document.querySelector('.menu'); if (el) el.scrollIntoView({ behavior: 'smooth' }); }
                 }
                 else if (link.type === 'account') setView('account');
@@ -809,9 +866,8 @@ export default function App() {
                 cart={cart} currency={currency} onQty={updateQty}
                 onRemove={removeItem} onClear={clearCart}
                 dineIn={dineIn} table={table}
-                summary={dineIn
-                  ? `Dine in · Table ${table || '—'}`
-                  : (preWhen === 'later' ? `Takeaway · ${fmtWhen(preAt)}` : 'Takeaway')}
+                summary={fulfilmentLabel}
+                unavailableKeys={cartUnavailableKeys}
                 onCheckout={() => setView('checkout')}
               />
             )}
@@ -824,6 +880,7 @@ export default function App() {
           cart={cart} currency={currency} onQty={updateQty}
           onRemove={removeItem} onClear={clearCart}
           dineIn={dineIn} table={table}
+          unavailableKeys={cartUnavailableKeys}
           onCheckout={() => setView('checkout')} onBack={() => setView('home')}
         />
       )}

@@ -38,8 +38,11 @@ export default function MenuList({ categories, currency, onPick, scrollTo, onScr
           </div>
           {cat.banner && (() => {
             const target = (cat.items || []).find((i) => i.id === cat.banner.itemId) || null;
+            // A banner can point at an item whose category is sold out or
+            // currently kitchen-closed — don't let it bypass that check.
+            const bannerShut = kitchenShut || (target && target.soldOut);
             return (
-              <button type="button" className={`feature-banner ${cat.banner.hideText ? 'no-text' : ''}`} onClick={() => target && !target.soldOut && onPick(target)}
+              <button type="button" className={`feature-banner ${cat.banner.hideText ? 'no-text' : ''}`} onClick={() => target && !bannerShut && onPick({ ...target, category: cat.category })}
                 style={cat.banner.image ? { backgroundImage: `url(${imgUrl(cat.banner.image, 900)})` } : undefined}>
                 {!cat.banner.hideText && (
                   <span className="feature-banner-body">
@@ -67,7 +70,7 @@ export default function MenuList({ categories, currency, onPick, scrollTo, onScr
                 <button
                   key={item.id}
                   className={`item ${unavailable ? 'sold' : ''}`}
-                  onClick={() => !unavailable && onPick(item)}
+                  onClick={() => !unavailable && onPick({ ...item, category: cat.category })}
                   type="button"
                   aria-label={`Add ${item.name}`}
                 >
