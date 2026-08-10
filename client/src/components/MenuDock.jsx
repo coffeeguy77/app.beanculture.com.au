@@ -45,6 +45,22 @@ export default function MenuDock({ categories, active, onPick }) {
     return () => io.disconnect();
   }, [categories]);
 
+  // Vertical-wheel-over-strip → horizontal scroll. Only intercept when the strip
+  // can actually scroll horizontally, and only preventDefault when we truly moved
+  // so at the ends the page keeps scrolling (non-janky).
+  useEffect(() => {
+    const el = stripRef.current;
+    if (!el) return;
+    const onWheel = (e) => {
+      if (!e.deltaY || el.scrollWidth <= el.clientWidth) return;
+      const before = el.scrollLeft;
+      el.scrollLeft += e.deltaY;
+      if (el.scrollLeft !== before) e.preventDefault();
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [categories]);
+
   // Keep the active tab in view as scroll-spy / clicks move it.
   useEffect(() => {
     const el = stripRef.current;
@@ -66,7 +82,7 @@ export default function MenuDock({ categories, active, onPick }) {
       <div className={`menu-dock-wrap${stuck ? ' is-stuck' : ''}`}>
         <div className="menu-dock">
           <span className="menu-dock-eyebrow">Browse menu</span>
-          <div className="menu-dock-strip-wrap">
+          <div className={`menu-dock-strip-wrap${ov.left ? ' can-left' : ''}${ov.right ? ' can-right' : ''}`}>
             <button
               type="button"
               className={`dock-arrow left${ov.left ? '' : ' hide'}`}
@@ -86,7 +102,7 @@ export default function MenuDock({ categories, active, onPick }) {
                   className={`dock-tab${active === c.name ? ' on' : ''}`}
                   onClick={() => onPick(c.name)}
                 >
-                  <span className="dock-tab-ic"><SlotIcon icon={c.iconName} size={33} /></span>
+                  <span className="dock-tab-ic"><SlotIcon icon={c.iconName} size={29} /></span>
                   <span className="dock-tab-label">{c.name}</span>
                   {active === c.name && c.count > 0 && <span className="dock-tab-count">{c.count}</span>}
                 </button>

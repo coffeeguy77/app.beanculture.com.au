@@ -36,11 +36,14 @@ export default function OrderTypeBar({ dineIn, setDineIn, table, setTable, lock,
         const effWhen = storeOpen ? when : 'later';
         return (
           <div className="when-row">
-            <div className="segmented when-seg">
-              <button className={effWhen === 'now' ? 'seg active' : 'seg'} disabled={!storeOpen}
-                onClick={() => storeOpen && setWhen('now')} type="button"
-                style={!storeOpen ? { opacity: 0.45, cursor: 'not-allowed' } : undefined}>Now</button>
-              <button className={effWhen === 'later' ? 'seg active' : 'seg'} onClick={() => setWhen('later')} type="button">Later</button>
+            <div className="sw-field when-field">
+              <span className="sw-label">When</span>
+              <div className="segmented when-seg">
+                <button className={effWhen === 'now' ? 'seg active' : 'seg'} disabled={!storeOpen}
+                  onClick={() => storeOpen && setWhen('now')} type="button"
+                  style={!storeOpen ? { opacity: 0.45, cursor: 'not-allowed' } : undefined}>Now</button>
+                <button className={effWhen === 'later' ? 'seg active' : 'seg'} onClick={() => setWhen('later')} type="button">Later</button>
+              </div>
             </div>
             {effWhen === 'later' && (
               <ScheduleWhen hours={hours} date={at?.date} time={at?.time}

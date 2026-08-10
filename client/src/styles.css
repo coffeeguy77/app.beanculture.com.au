@@ -1201,12 +1201,12 @@ body:has(.store-shell) { background: #F7F4EF; }
   height: 64px; max-width: 1440px; margin: 0 auto; padding: 0 20px;
 }
 .sh-logo { flex: 0 0 auto; }
-.site-header .logo-wrap img, .site-header .logo-wrap svg { height: 40px; }
+.site-header .logo-wrap img, .site-header .logo-wrap svg { height: 36px; }
 
 .site-nav { flex: 1 1 auto; display: flex; justify-content: center; align-items: center; gap: 2px; min-width: 0; }
 .site-nav-link {
   position: relative; border: none; background: none; cursor: pointer;
-  font-size: 15px; font-weight: 600; letter-spacing: .2px; color: var(--s-ink2);
+  font-size: 14px; font-weight: 600; letter-spacing: .2px; color: var(--s-ink2);
   padding: 9px 13px; border-radius: 10px; white-space: nowrap;
   transition: color .15s ease, background .15s ease;
 }
@@ -1219,10 +1219,10 @@ body:has(.store-shell) { background: #F7F4EF; }
 .site-nav-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 .site-header-right { flex: 0 0 auto; display: flex; align-items: center; gap: 14px; }
-.site-loc { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--s-ink2); max-width: 180px; }
+.site-loc { display: inline-flex; align-items: center; gap: 6px; font-size: 13.5px; font-weight: 600; color: var(--s-ink2); max-width: 180px; }
 .site-loc svg { color: var(--brand); flex: none; }
 .site-loc span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.site-header .iconbtn { width: 38px; height: 38px; }
+.site-header .iconbtn { width: 40px; height: 40px; }
 .site-header .icon-row { gap: 6px; }
 
 /* ── Notification strip (unified announcement / closed / kitchen) ── */
@@ -1266,6 +1266,15 @@ body:has(.store-shell) { background: #F7F4EF; }
 .store-layout { max-width: 1440px; margin: 0 auto; }
 /* Only the dock sticks under the shell; the search field scrolls away. */
 .store-main .search { position: static; background: transparent; }
+/* Search reads as a real control: taller, more inset for the (larger) icon,
+   consistent border with the scheduling fields, visible focus ring. */
+.store-main .search input {
+  min-height: 48px; border: 1px solid var(--s-line);
+  padding: 12px 16px 12px 44px; font-size: 15px;
+  background-position: 16px center; background-size: 19px;
+}
+.store-main .search input::placeholder { font-size: 14.5px; }
+.store-main .search input:focus { outline: 2px solid var(--accent); border-color: transparent; }
 .store-main .cat-title { scroll-margin-top: calc(var(--shell-h, 64px) + var(--dock-h, 0px) + 12px); }
 
 /* ── Category dock ("Browse menu") ── */
@@ -1280,11 +1289,11 @@ body:has(.store-shell) { background: #F7F4EF; }
 /* ONE unified white surface holding the label + tiles + arrows. */
 .menu-dock {
   background: var(--s-card); border: 1px solid var(--s-line); border-radius: 16px;
-  box-shadow: var(--shadow-sm); padding: 12px 14px;
-  display: flex; align-items: stretch; gap: 12px;
+  box-shadow: var(--shadow-sm); padding: 8px 10px;
+  display: flex; align-items: stretch; gap: 10px;
 }
 .menu-dock-eyebrow {
-  flex: 0 0 auto; width: 124px; display: flex; align-items: center;
+  flex: 0 0 auto; width: 104px; display: flex; align-items: center;
   font-size: 12.5px; font-weight: 800; letter-spacing: 1.4px; line-height: 1.25;
   text-transform: uppercase; color: var(--dark, #76263E);
   border-right: 1px solid var(--s-line); padding-right: 12px;
@@ -1293,23 +1302,35 @@ body:has(.store-shell) { background: #F7F4EF; }
 /* overflow lives ONLY on the inner strip, never on the sticky wrapper, so
    date/time popovers above are never clipped. */
 .menu-dock-strip {
-  display: flex; gap: 10px; overflow-x: auto; scroll-behavior: smooth;
+  display: flex; gap: 6px; overflow-x: auto; scroll-behavior: smooth;
   scrollbar-width: none; -ms-overflow-style: none; padding: 3px 2px; flex: 1 1 auto;
 }
 .menu-dock-strip::-webkit-scrollbar { display: none; }
+/* Right-edge fade over the clipped overflow tile (and a left fade once scrolled).
+   Sits just inside the arrow (arrow 32px + 6px wrap gap = 38px), pointer-events
+   off, shown only in the scrollable direction. */
+.menu-dock-strip-wrap::before,
+.menu-dock-strip-wrap::after {
+  content: ''; position: absolute; top: 3px; bottom: 3px; width: 24px;
+  pointer-events: none; opacity: 0; transition: opacity .15s ease; z-index: 2;
+}
+.menu-dock-strip-wrap::before { left: 38px; background: linear-gradient(to right, var(--s-card), transparent); }
+.menu-dock-strip-wrap::after { right: 38px; background: linear-gradient(to left, var(--s-card), transparent); }
+.menu-dock-strip-wrap.can-left::before { opacity: 1; }
+.menu-dock-strip-wrap.can-right::after { opacity: 1; }
 .dock-tab {
-  flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px;
-  min-width: 118px; height: 102px; padding: 12px; cursor: pointer; position: relative;
-  border: 1px solid var(--s-line); border-radius: 14px;
+  flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px;
+  min-width: 94px; height: 80px; padding: 9px 8px; cursor: pointer; position: relative;
+  border: 1px solid var(--s-line); border-radius: 12px;
   background: color-mix(in srgb, var(--s-line) 22%, #fff); color: var(--s-ink);
   transition: background .16s ease, border-color .16s ease, color .16s ease, transform .1s ease, box-shadow .16s ease;
 }
 .dock-tab:hover { border-color: var(--brand); background: var(--s-card); }
 .dock-tab:active { transform: scale(.97); }
 .dock-tab-ic { color: var(--brand); display: inline-flex; }
-.dock-tab-label { font-size: 15px; font-weight: 600; white-space: nowrap; }
+.dock-tab-label { font-size: 14.5px; font-weight: 600; white-space: nowrap; }
 .dock-tab-count {
-  position: absolute; top: 7px; right: 7px; min-width: 25px; height: 25px; padding: 0 6px;
+  position: absolute; top: 6px; right: 6px; min-width: 24px; height: 24px; padding: 0 6px;
   display: grid; place-items: center; border-radius: 999px;
   font-size: 12.5px; font-weight: 800;
   background: #fff; color: var(--dark, #76263E); border: 1px solid var(--dark, #76263E);
@@ -1326,7 +1347,7 @@ body:has(.store-shell) { background: #F7F4EF; }
    (display:none) and the strip reclaims the width. */
 .dock-arrow {
   position: static; transform: none; flex: 0 0 auto;
-  width: 34px; height: 34px; border-radius: 50%; cursor: pointer;
+  width: 32px; height: 32px; border-radius: 50%; cursor: pointer;
   border: 1px solid var(--s-line); background: var(--s-card); color: var(--s-ink);
   font-size: 20px; line-height: 1; display: grid; place-items: center;
   box-shadow: var(--shadow-sm);
@@ -1347,18 +1368,18 @@ body:has(.store-shell) { background: #F7F4EF; }
 
 /* Landscape product cards: image left, content right, price bottom, add bottom-right. */
 .store-main .item {
-  min-height: 96px; align-items: stretch; padding: 10px 12px; border-radius: 14px; gap: 12px; position: relative;
+  min-height: 114px; align-items: center; padding: 12px; border-radius: 14px; gap: 12px; position: relative;
   transition: transform .14s ease, box-shadow .18s ease, border-color .16s ease;
 }
 .store-main .item .item-img,
 .store-main .item .item-noimg {
-  width: 40%; max-width: 120px; height: auto; min-height: 76px; align-self: stretch;
+  width: 40%; max-width: 120px; height: auto; min-height: 88px; align-self: stretch;
   object-fit: cover; border-radius: 10px;
 }
-.store-main .item-body { flex: 1; min-width: 0; display: flex; flex-direction: column; padding-right: 44px; }
+.store-main .item-body { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; }
 .store-main .item-name { font-size: 16px; }
-.store-main .item-price { margin-top: auto; }
-.store-main .plus { position: absolute; right: 12px; bottom: 12px; background: var(--brand); color: #fff; width: 38px; height: 38px; border-radius: 50%; box-shadow: var(--shadow-sm); }
+.store-main .item .item-price { margin-top: 6px; }
+.store-main .plus { position: static; align-self: center; margin-left: 6px; flex: 0 0 auto; background: var(--brand); color: #fff; width: 38px; height: 38px; border-radius: 50%; box-shadow: var(--shadow-sm); }
 .store-main .item.sold .plus { display: none; }
 /* Compact no-image cards (Tea etc.) — same card system, shorter, no image. */
 .store-main .items.noimg .item { min-height: 64px; padding: 12px 14px; }
@@ -1396,10 +1417,15 @@ body:has(.store-shell) { background: #F7F4EF; }
 .store-main .ordertype > .segmented .seg.active {
   background: var(--brand); border-color: var(--brand); color: #fff;
 }
-/* Row 2 — Now/Later sub-pill + Day/Time fields, transparent-on-card. */
+/* Row 2 — labelled When (Now/Later) + Day/Time fields, transparent-on-card.
+   Every field carries a top label (When / Day / Time) so the segments read as one
+   aligned row; align-items:flex-start keeps the labels — and thus the controls
+   below them — on a common baseline without adding row height. */
 .store-main .ordertype .when-row {
-  align-items: center; gap: 8px;
+  align-items: flex-start; gap: 8px;
 }
+.store-main .ordertype .when-field { flex: 0 0 auto; display: flex; flex-direction: column; gap: 5px; }
+.store-main .ordertype .when-row .sw { flex: 1 1 auto; min-width: 0; }
 .store-main .ordertype .when-seg {
   flex: 0 0 auto; min-width: 160px; min-height: 48px;
   background: color-mix(in srgb, var(--s-line) 28%, #fff);
@@ -1407,27 +1433,49 @@ body:has(.store-shell) { background: #F7F4EF; }
 }
 .store-main .ordertype .when-seg .seg { min-height: 38px; border-radius: 9px; }
 
-/* ── Cart: roomier item area + anchored footer ── */
+/* ── Cart: genuinely substantial — real rendered height, anchored footer ──
+   Flex column: head/foot fixed, list flexes & scrolls. With min-height 440 the
+   footer anchors to the bottom and there's real body height even with one item. */
 .store-cart .cart-panel { display: flex; flex-direction: column; }
-.store-cart .cart-panel-head { flex: none; }
+.store-cart .cart-panel-head { flex: none; padding: 18px 18px 14px; }
+.store-cart .cart-panel-head .context-pill {
+  background: var(--s-line); color: var(--s-ink); padding: 6px 12px; font-weight: 600;
+}
 .store-cart .cart-panel-list {
   flex: 1 1 auto; overflow-y: auto; min-height: 0;
-  display: block; gap: 0;
+  display: block; gap: 0; padding: 12px 18px;
 }
+/* Rebuilt populated item row: name+price head, sub lines, then stepper + labelled
+   Remove on their own row. Stacked block, hairline separators. */
 .store-cart .cart-panel-list .cart-line {
-  background: transparent; border: none; border-bottom: 1px solid var(--s-line);
-  border-radius: 0; padding: 14px 4px; gap: 10px;
+  display: block; background: transparent; border: none;
+  border-bottom: 1px solid var(--s-line); border-radius: 0; padding: 15px 0;
 }
 .store-cart .cart-panel-list .cart-line:last-child { border-bottom: none; }
-.store-cart .cart-panel-list .cart-line-name { font-size: 15px; font-weight: 600; line-height: 1.35; }
-.store-cart .cart-panel-list .cart-line-sub { font-size: 13px; color: var(--s-ink2); line-height: 1.4; }
-.store-cart .cart-panel-foot { flex: none; }
+.store-cart .cl-head { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
+.store-cart .cl-name { font-weight: 600; font-size: 15px; line-height: 1.35; color: var(--s-ink); }
+.store-cart .cl-price { font-weight: 700; white-space: nowrap; color: var(--s-ink); }
+.store-cart .cl-sub { font-size: 13px; color: var(--s-ink2); margin-top: 3px; line-height: 1.4; }
+.store-cart .cl-controls { display: flex; align-items: center; justify-content: space-between; margin-top: 12px; }
+.store-cart .cl-controls .stepper.sm button { width: 40px; height: 40px; font-size: 18px; }
+.store-cart .cl-controls .stepper.sm span { min-width: 36px; }
+.store-cart .cl-remove {
+  border: none; background: none; color: var(--s-ink2); font-size: 13px; font-weight: 600;
+  cursor: pointer; padding: 6px 8px; border-radius: 8px;
+}
+.store-cart .cl-remove:hover { color: var(--brand); background: color-mix(in srgb, var(--brand) 10%, transparent); }
+/* Empty state matches populated height (cup + copy centred over 440px). */
+.store-cart .cart-panel-empty {
+  flex: 1 1 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+}
+.store-cart .cart-empty-cup { color: color-mix(in srgb, var(--brand) 55%, var(--s-ink2)); opacity: .7; margin-bottom: 4px; }
+.store-cart .cart-panel-foot { flex: none; padding: 16px 18px 18px; }
 .store-cart .cart-panel-foot .btn.full { min-height: 52px; }
 
 /* ── Sticky cart offsets from --shell-h (desktop sidebar) ── */
 @media (min-width: 900px) {
   .cart-aside.store-cart { top: calc(var(--shell-h, 64px) + 16px); }
-  .store-cart .cart-panel { max-height: calc(100dvh - var(--shell-h, 64px) - 32px); }
+  .store-cart .cart-panel { min-height: 440px; max-height: calc(100dvh - var(--shell-h, 64px) - 32px); }
   .store-layout { padding: 14px 24px 44px; gap: 32px; }
   .store-layout .hero { padding-top: 0; }
 }

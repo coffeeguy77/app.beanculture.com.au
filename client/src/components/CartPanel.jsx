@@ -1,5 +1,6 @@
 import React from 'react';
 import { formatMoney } from '../api.js';
+import { MugIcon } from './icons.jsx';
 
 // Persistent cart shown as a sidebar on desktop / landscape-tablet layouts.
 // Mirrors CartView's content but stays visible beside the menu.
@@ -19,6 +20,7 @@ export default function CartPanel({ cart, currency, onQty, onRemove, onClear, di
 
       {cart.length === 0 ? (
         <div className="cart-panel-empty">
+          <span className="cart-empty-cup" aria-hidden="true"><MugIcon size={34} /></span>
           <div className="empty">Your order is empty.</div>
           <p className="muted" style={{ fontSize: 13 }}>Add items from the menu and they’ll appear here.</p>
         </div>
@@ -27,19 +29,19 @@ export default function CartPanel({ cart, currency, onQty, onRemove, onClear, di
           <ul className="cart-list cart-panel-list">
             {cart.map((c) => (
               <li key={c.key} className="cart-line">
-                <div className="cart-line-main">
-                  <div className="cart-line-name">{c.itemName}{c.variationName ? ` · ${c.variationName}` : ''}</div>
-                  {c.modifierNames?.length > 0 && <div className="cart-line-sub">{c.modifierNames.join(', ')}</div>}
-                  {c.note && <div className="cart-line-sub">“{c.note}”</div>}
+                <div className="cl-head">
+                  <span className="cl-name">{c.itemName}{c.variationName ? ` · ${c.variationName}` : ''}</span>
+                  <span className="cl-price">{formatMoney(c.unitPrice * c.quantity, currency)}</span>
                 </div>
-                <div className="cart-line-right">
+                {c.modifierNames?.length > 0 && <div className="cl-sub">{c.modifierNames.join(', ')}</div>}
+                {c.note && <div className="cl-sub">“{c.note}”</div>}
+                <div className="cl-controls">
                   <div className="stepper sm">
                     <button onClick={() => onQty(c.key, -1)} aria-label="Decrease">−</button>
                     <span>{c.quantity}</span>
                     <button onClick={() => onQty(c.key, 1)} aria-label="Increase">+</button>
                   </div>
-                  <div style={{ fontWeight: 700 }}>{formatMoney(c.unitPrice * c.quantity, currency)}</div>
-                  {onRemove && <button className="cart-remove" onClick={() => onRemove(c.key)} aria-label={`Remove ${c.itemName}`}>✕</button>}
+                  {onRemove && <button className="cl-remove" onClick={() => onRemove(c.key)} aria-label={`Remove ${c.itemName}`}>Remove</button>}
                 </div>
               </li>
             ))}
