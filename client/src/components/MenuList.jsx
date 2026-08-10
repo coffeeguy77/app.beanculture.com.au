@@ -10,7 +10,7 @@ function fromPrice(item) {
   return prices.length ? Math.min(...prices) : null;
 }
 
-export default function MenuList({ categories, currency, onPick, scrollTo, onScrolled, kitchenClosedCats }) {
+export default function MenuList({ categories, currency, onPick, scrollTo, onScrolled, kitchenClosedCats, kitchenClosedLabel }) {
   const kShut = new Set((kitchenClosedCats || []).map((c) => (c || '').toLowerCase()));
   useEffect(() => {
     if (scrollTo) {
@@ -31,7 +31,7 @@ export default function MenuList({ categories, currency, onPick, scrollTo, onScr
         const kitchenShut = kShut.has((cat.category || '').toLowerCase());
         return (
         <section key={cat.category}>
-          <h2 className="cat-title" id={slug(cat.category)}>{cat.category}{kitchenShut && <span className="cat-shut"> · kitchen closed</span>}</h2>
+          <h2 className="cat-title" id={slug(cat.category)}>{cat.category}{kitchenShut && <span className="cat-shut"> · {kitchenClosedLabel || 'kitchen closed'}</span>}</h2>
           {cat.banner && (() => {
             const target = (cat.items || []).find((i) => i.id === cat.banner.itemId) || null;
             return (

@@ -191,6 +191,11 @@ function withRuntime(base, nowOverride) {
       closesInMin: kitchenClosesInMin,
       categories: Array.isArray(s.kitchenCategories) ? s.kitchenCategories : [],
       hasHours: !!s.kitchenHoursOn,
+      // Kitchen's own weekly schedule (only meaningfully different from `weekly`
+      // above when hasHours is true) — the client needs this to work out
+      // whether made-to-order categories will be available at a scheduled
+      // ("Later") pickup time, not just right now.
+      weekly: kitchenWeekly,
     },
     timezone: base.timezone,
     weekly,

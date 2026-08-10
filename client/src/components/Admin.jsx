@@ -49,9 +49,14 @@ const InsightsIcon = svg(<>
 const BuildIcon = svg(<>
   <path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18v3h3l6.3-6.3a4 4 0 0 0 5.4-5.4l-2.7 2.7-2-2 2.7-2.7z" />
 </>);
+const CalendarIcon = svg(<>
+  <rect x="3.5" y="5" width="17" height="16" rx="2.5" /><path d="M3.5 9.5h17M8 3.5v3M16 3.5v3" />
+  <circle cx="8.5" cy="14" r="1.1" fill="currentColor" stroke="none" /><circle cx="12" cy="14" r="1.1" fill="currentColor" stroke="none" />
+</>);
 const TABS = [
   { id: 'store', label: 'Store', Icon: StoreIcon },
   { id: 'insights', label: 'Insights', Icon: InsightsIcon },
+  { id: 'reservations', label: 'Reservations', Icon: CalendarIcon },
   { id: 'menubuilder', label: 'Menu Builder', Icon: MenuIcon },
   { id: 'productbuilder', label: 'Product Builder', Icon: BuildIcon },
   { id: 'banners', label: 'Banners', Icon: BannerIcon },
@@ -959,7 +964,7 @@ export default function Admin({ onExit }) {
               <button key={t.id} className={`admin-tab ${tab === t.id ? 'on' : ''}`} onClick={() => setTab(t.id)} type="button" style={{ position: 'relative' }}>
                 <span style={{ position: 'relative', display: 'inline-flex' }}>
                   <t.Icon size={20} />
-                  {t.id === 'store' && pendingResvCount > 0 && (
+                  {t.id === 'reservations' && pendingResvCount > 0 && (
                     <span title={`${pendingResvCount} new reservation${pendingResvCount === 1 ? '' : 's'}`}
                       style={{ position: 'absolute', top: -2, right: -4, width: 9, height: 9, borderRadius: '50%', background: '#2ecc71', border: '1.5px solid #fff' }} />
                   )}
@@ -1048,87 +1053,6 @@ export default function Admin({ onExit }) {
                       {m.contact && <div className="muted" style={{ fontSize: 'var(--fs-sm)', margin: '2px 0' }}>{m.contact}</div>}
                       <div style={{ fontSize: 'var(--fs-md)', whiteSpace: 'pre-line' }}>{m.body}</div>
                       <button className="link" style={{ padding: 0, fontSize: 'var(--fs-base)' }} onClick={() => toggleHandled(m)}>{m.handled ? 'Mark unread' : 'Mark done'}</button>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="card" style={card}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div className="group-title" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
-                      Reservations
-                      {pendingResvCount > 0 && (
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: '#e6f6ec', color: '#1e824c', borderRadius: 999, padding: '2px 8px', fontSize: 'var(--fs-xs)', fontWeight: 600 }}>
-                          <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#2ecc71' }} /> {pendingResvCount} new
-                        </span>
-                      )}
-                    </div>
-                    <button type="button" className="btn ghost" style={{ padding: '6px 12px', fontSize: 'var(--fs-base)' }} onClick={loadReservations}>Refresh</button>
-                  </div>
-                  <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 4 }}>
-                    Table bookings from the app — loads automatically and refreshes every minute. Alerts: {resvChannels.sms ? 'SMS on' : 'SMS off'} · {resvChannels.email ? 'email on' : 'email off'}. Each booking also creates a $0 Square order so it prints + shows in Square.
-                  </p>
-
-                  <div style={{ marginTop: 4, marginBottom: 10, padding: 10, border: '1px solid var(--line)', borderRadius: 10 }}>
-                    <div style={{ fontWeight: 600, fontSize: 'var(--fs-sm)', marginBottom: 4 }}>Ticket printing</div>
-                    {s.reservationVariationId ? (
-                      <p className="muted" style={{ fontSize: 'var(--fs-sm)', margin: '0 0 8px' }}>
-                        ✓ Linked to a real catalog item — reservation tickets print through its category's routing, same as a normal order.{' '}
-                        <button type="button" className="link" style={{ color: '#c0392b' }} onClick={() => persistSettingsPatch({ reservationVariationId: '' })}>Unlink</button>
-                      </p>
-                    ) : (
-                      <p className="muted" style={{ fontSize: 'var(--fs-sm)', margin: '0 0 8px' }}>
-                        Not linked yet — reservations use a generic line item with no print category, which can silently fail to print. Link an existing "Table Reservation" item, or create one automatically in a category that already prints reliably (e.g. the same one your coffee or grab-and-go items use).
-                      </p>
-                    )}
-                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                      <button type="button" className="btn ghost" disabled={resvItemBusy} onClick={findReservationItem} style={{ padding: '6px 12px', fontSize: 'var(--fs-sm)' }}>
-                        {resvItemBusy ? 'Working…' : 'Find existing item'}
-                      </button>
-                      <select value={resvItemCatId} onChange={(e) => setResvItemCatId(e.target.value)}
-                        style={{ padding: '7px 8px', borderRadius: 8, border: '1px solid var(--line)', fontSize: 'var(--fs-sm)' }}>
-                        <option value="">— pick a category that already prints —</option>
-                        {sqCats.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                      </select>
-                      <button type="button" className="btn ghost" disabled={resvItemBusy || !resvItemCatId} onClick={createReservationItem} style={{ padding: '6px 12px', fontSize: 'var(--fs-sm)' }}>
-                        {resvItemBusy ? 'Working…' : 'Create automatically'}
-                      </button>
-                    </div>
-                    {resvItemResults && (
-                      <div style={{ marginTop: 8, display: 'grid', gap: 6 }}>
-                        {resvItemResults.length === 0 && <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>No matching item found — try Create automatically instead.</p>}
-                        {resvItemResults.map((it) => (
-                          <div key={it.id} style={{ fontSize: 'var(--fs-sm)' }}>
-                            <span style={{ fontWeight: 600 }}>{it.name}</span>{' '}
-                            {it.variations.length === 0 && <span className="muted">— no variations</span>}
-                            {it.variations.map((v) => (
-                              <button key={v.id} type="button" className="link" style={{ marginLeft: 8 }}
-                                onClick={() => persistSettingsPatch({ reservationVariationId: v.id })}>
-                                Use "{v.name || 'Regular'}"{v.price ? ` (${formatMoney(v.price.amount, v.price.currency)})` : ''}{v.sellable === false ? ' — not sellable, avoid' : ''}
-                              </button>
-                            ))}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  {resv === null && <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>Loading reservations…</p>}
-                  {resv && resv.length === 0 && <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>No reservations yet.</p>}
-                  {resv && resv.map((r) => (
-                    <div key={r.id} className="history-item" style={{ opacity: r.status === 'cancelled' ? 0.5 : 1 }}>
-                      <div className="history-top">
-                        <span><strong>{r.party} {r.party === 1 ? 'guest' : 'guests'}</strong> · {r.name || '—'}</span>
-                        <span className={`pill`} style={{ textTransform: 'capitalize', background: r.status === 'confirmed' ? '#e6f6ec' : r.status === 'seated' ? '#eef' : r.status === 'cancelled' ? '#fdecec' : '#f4eef1' }}>{r.status}</span>
-                      </div>
-                      <div className="muted" style={{ fontSize: 'var(--fs-base)', margin: '3px 0' }}>
-                        {r.reserveAt ? new Date(r.reserveAt).toLocaleString('en-AU', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : '—'} · {r.phone || ''}{r.email ? ` · ${r.email}` : ''}
-                      </div>
-                      {r.notes && <div style={{ fontSize: 'var(--fs-base)' }}>{r.notes}</div>}
-                      <div style={{ display: 'flex', gap: 12, marginTop: 4 }}>
-                        {['confirmed', 'seated', 'cancelled'].filter((st) => st !== r.status).map((st) => (
-                          <button key={st} className="link" style={{ padding: 0, fontSize: 'var(--fs-base)', textTransform: 'capitalize', color: st === 'cancelled' ? '#c0392b' : undefined }} onClick={() => setResvStatus(r, st)}>Mark {st}</button>
-                        ))}
-                      </div>
                     </div>
                   ))}
                 </div>
@@ -1350,6 +1274,93 @@ export default function Admin({ onExit }) {
                     </>
                   );
                 })()}
+              </>
+            )}
+
+            {/* ───────── RESERVATIONS ───────── */}
+            {tab === 'reservations' && (
+              <>
+                <div className="card" style={card}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div className="group-title" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+                      Reservations
+                      {pendingResvCount > 0 && (
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: '#e6f6ec', color: '#1e824c', borderRadius: 999, padding: '2px 8px', fontSize: 'var(--fs-xs)', fontWeight: 600 }}>
+                          <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#2ecc71' }} /> {pendingResvCount} new
+                        </span>
+                      )}
+                    </div>
+                    <button type="button" className="btn ghost" style={{ padding: '6px 12px', fontSize: 'var(--fs-base)' }} onClick={loadReservations}>Refresh</button>
+                  </div>
+                  <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 4 }}>
+                    Table bookings from the app — loads automatically and refreshes every minute. Alerts: {resvChannels.sms ? 'SMS on' : 'SMS off'} · {resvChannels.email ? 'email on' : 'email off'}. Each booking also creates a $0 Square order so it prints + shows in Square.
+                  </p>
+
+                  <div style={{ marginTop: 4, marginBottom: 10, padding: 10, border: '1px solid var(--line)', borderRadius: 10 }}>
+                    <div style={{ fontWeight: 600, fontSize: 'var(--fs-sm)', marginBottom: 4 }}>Ticket printing</div>
+                    {s.reservationVariationId ? (
+                      <p className="muted" style={{ fontSize: 'var(--fs-sm)', margin: '0 0 8px' }}>
+                        ✓ Linked to a real catalog item — reservation tickets print through its category's routing, same as a normal order.{' '}
+                        <button type="button" className="link" style={{ color: '#c0392b' }} onClick={() => persistSettingsPatch({ reservationVariationId: '' })}>Unlink</button>
+                      </p>
+                    ) : (
+                      <p className="muted" style={{ fontSize: 'var(--fs-sm)', margin: '0 0 8px' }}>
+                        Not linked yet — reservations use a generic line item with no print category, which can silently fail to print. Link an existing "Table Reservation" item, or create one automatically in a category that already prints reliably (e.g. the same one your coffee or grab-and-go items use).
+                      </p>
+                    )}
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                      <button type="button" className="btn ghost" disabled={resvItemBusy} onClick={findReservationItem} style={{ padding: '6px 12px', fontSize: 'var(--fs-sm)' }}>
+                        {resvItemBusy ? 'Working…' : 'Find existing item'}
+                      </button>
+                      <select value={resvItemCatId} onChange={(e) => setResvItemCatId(e.target.value)}
+                        style={{ padding: '7px 8px', borderRadius: 8, border: '1px solid var(--line)', fontSize: 'var(--fs-sm)' }}>
+                        <option value="">— pick a category that already prints —</option>
+                        {sqCats.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                      </select>
+                      <button type="button" className="btn ghost" disabled={resvItemBusy || !resvItemCatId} onClick={createReservationItem} style={{ padding: '6px 12px', fontSize: 'var(--fs-sm)' }}>
+                        {resvItemBusy ? 'Working…' : 'Create automatically'}
+                      </button>
+                    </div>
+                    {resvItemResults && (
+                      <div style={{ marginTop: 8, display: 'grid', gap: 6 }}>
+                        {resvItemResults.length === 0 && <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>No matching item found — try Create automatically instead.</p>}
+                        {resvItemResults.map((it) => (
+                          <div key={it.id} style={{ fontSize: 'var(--fs-sm)' }}>
+                            <span style={{ fontWeight: 600 }}>{it.name}</span>{' '}
+                            {it.variations.length === 0 && <span className="muted">— no variations</span>}
+                            {it.variations.map((v) => (
+                              <button key={v.id} type="button" className="link" style={{ marginLeft: 8 }}
+                                onClick={() => persistSettingsPatch({ reservationVariationId: v.id })}>
+                                Use "{v.name || 'Regular'}"{v.price ? ` (${formatMoney(v.price.amount, v.price.currency)})` : ''}{v.sellable === false ? ' — not sellable, avoid' : ''}
+                              </button>
+                            ))}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {resv === null && <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>Loading reservations…</p>}
+                  {resv && resv.length === 0 && <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>No reservations yet.</p>}
+                  {resv && resv.map((r) => (
+                    <div key={r.id} className="history-item" style={{ opacity: r.status === 'cancelled' ? 0.5 : 1 }}>
+                      <div className="history-top">
+                        <span><strong>{r.party} {r.party === 1 ? 'guest' : 'guests'}</strong> · {r.name || '—'}</span>
+                        <span className={`pill`} style={{ textTransform: 'capitalize', background: r.status === 'confirmed' ? '#e6f6ec' : r.status === 'seated' ? '#eef' : r.status === 'cancelled' ? '#fdecec' : '#f4eef1' }}>{r.status}</span>
+                      </div>
+                      <div className="muted" style={{ fontSize: 'var(--fs-base)', margin: '3px 0' }}>
+                        {r.reserveAt ? new Date(r.reserveAt).toLocaleString('en-AU', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : '—'} · {r.phone || ''}{r.email ? ` · ${r.email}` : ''}
+                      </div>
+                      {r.notes && <div style={{ fontSize: 'var(--fs-base)' }}>{r.notes}</div>}
+                      <div style={{ display: 'flex', gap: 12, marginTop: 4 }}>
+                        {['confirmed', 'seated', 'cancelled'].filter((st) => st !== r.status).map((st) => (
+                          <button key={st} className="link" style={{ padding: 0, fontSize: 'var(--fs-base)', textTransform: 'capitalize', color: st === 'cancelled' ? '#c0392b' : undefined }} onClick={() => setResvStatus(r, st)}>Mark {st}</button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
               </>
             )}
 

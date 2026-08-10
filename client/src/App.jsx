@@ -240,7 +240,52 @@ export default function App() {
   // Made-to-order categories are only unavailable when the store is OPEN but the
   // kitchen has shut (fridge items stay available). When the whole store is
   // closed, everything is pre-orderable for later, so nothing is disabled here.
-  const kitchenClosedCats = (storeOpen && kitchen && kitchen.open === false) ? (kitchen.categories || []) : [];
+  //
+  // For a SCHEDULED ("Later") takeaway pickup, "closed" must be evaluated at the
+  // chosen future time, not right now — otherwise you can book a 2:30pm pickup
+  // for a kitchen that closes at 2pm and still add Lunch items to the cart. When
+  // the owner has given the kitchen its own hours (kitchen.hasHours), we check
+  // the kitchen's weekly schedule against the picked date/time; without custom
+  // kitchen hours the kitchen always mirrors the store, and ScheduleWhen already
+  // only offers slots inside store hours, so no extra check is needed there.
+  const DAYS_SQ = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+  const fmt12 = (hhmm) => {
+    if (!hhmm) return '';
+    const [h, m] = hhmm.split(':').map(Number);
+    const ap = h >= 12 ? 'pm' : 'am';
+    let hh = h % 12; if (hh === 0) hh = 12;
+    return m ? `${hh}:${String(m).padStart(2, '0')}${ap}` : `${hh}${ap}`;
+  };
+  const dstrLocal = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const kitchenStatusAt = (weekly, ds, hhmm) => {
+    const [y, mo, d] = ds.split('-').map(Number);
+    const dow = new Date(y, mo - 1, d).getDay();
+    const periods = (weekly?.[DAYS_SQ[dow]] || []).filter((p) => p.startMin != null && p.endMin != null);
+    const [hh, mm] = hhmm.split(':').map(Number);
+    const minutes = hh * 60 + mm;
+    let openNow = false;
+    for (const p of periods) {
+      let end = p.endMin; if (end <= p.startMin) end += 24 * 60;
+      if (minutes >= p.startMin && minutes < end) { openNow = true; break; }
+    }
+    const last = periods[periods.length - 1];
+    return { open: openNow, closesLabel: last ? fmt12(last.end) : null };
+  };
+  const schedLater = dineIn === false && preWhen === 'later' && !!(preAt?.date && preAt?.time);
+  let kitchenClosedCats = [];
+  let kitchenClosedLabel = '';
+  if (storeOpen && kitchen && kitchen.hasHours && kitchen.weekly) {
+    const now = new Date();
+    const ds = schedLater ? preAt.date : dstrLocal(now);
+    const hhmm = schedLater ? preAt.time : `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const st = kitchenStatusAt(kitchen.weekly, ds, hhmm);
+    if (!st.open) {
+      kitchenClosedCats = kitchen.categories || [];
+      kitchenClosedLabel = st.closesLabel ? `Kitchen closes at ${st.closesLabel}` : 'Kitchen closed that day';
+    }
+  } else if (storeOpen && kitchen && !schedLater && kitchen.open === false) {
+    kitchenClosedCats = kitchen.categories || [];
+  }
 
   const cartCount = cart.reduce((n, c) => n + c.quantity, 0);
   const cartTotal = cart.reduce((n, c) => n + c.unitPrice * c.quantity, 0);
@@ -507,12 +552,16 @@ export default function App() {
             </div>
           );
         }
-        // Store open: nudge if the kitchen is about to close.
+        // Store open: nudge if the kitchen is about to close (within 30 min).
         const k = h.kitchen?.closesInMin;
-        if (k != null && k > 0 && k <= 60) {
+        if (k != null && k > 0 && k <= 30) {
+          const cats = (h.kitchen.categories || []).join(' & ');
+          const now = new Date();
+          const nowHHMM = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+          const closesLabel = h.kitchen.weekly ? kitchenStatusAt(h.kitchen.weekly, dstrLocal(now), nowHHMM).closesLabel : null;
           return (
             <div className="closed-banner kitchen-soon">
-              <span>🔥 Kitchen closes in {k} min{k === 1 ? '' : 's'} — order now!</span>
+              <span>🔥 Kitchen closes{closesLabel ? ` at ${closesLabel}` : ''} (in {k} min{k === 1 ? '' : 's'}){cats ? ` for ${cats}` : ''} — order now!</span>
               <button className="btn" onClick={scrollMenu}>Order now</button>
             </div>
           );
@@ -605,6 +654,7 @@ export default function App() {
               scrollTo={activeCat}
               onScrolled={() => setActiveCat(null)}
               kitchenClosedCats={kitchenClosedCats}
+              kitchenClosedLabel={kitchenClosedLabel}
             />
             <InstallButton />
           </div>
