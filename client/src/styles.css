@@ -1152,6 +1152,11 @@ img { max-width: 100%; }
 }
 /* Whole page ivory (fills the gutters beyond the centered shell on ultrawide). */
 body:has(.store-shell) { background: #F7F4EF; }
+/* CRITICAL: the base `.app` uses overflow-x:hidden, which turns the app into a
+   scroll container and breaks position:sticky for the header/dock/cart. `clip`
+   still hides horizontal overflow but does NOT establish a scroll container, so
+   sticky sticks to the viewport as intended. */
+.app.store-shell { overflow-x: clip; overflow-y: visible; }
 
 /* ── Sticky shell: site header + notification strip ── */
 .store-sticky {

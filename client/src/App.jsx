@@ -56,12 +56,15 @@ function iconFor(n) {
 function locationLabel(config) {
   const addr = config?.contact?.address || '';
   const parts = addr.split(',').map((s) => s.trim()).filter(Boolean);
-  if (parts.length >= 2) {
-    const seg = parts[1]
-      .replace(/\b\d{4}\b/, '')
-      .replace(/\b(ACT|NSW|VIC|QLD|SA|WA|TAS|NT)\b/i, '')
-      .trim();
-    if (seg) return seg;
+  // Prefer the suburb: the last comma-segment that has no street number, with any
+  // state code / postcode stripped (e.g. "U5, 47-49 Vicars St, Mitchell" → Mitchell).
+  const clean = (seg) => seg
+    .replace(/\b\d{4}\b/, '')
+    .replace(/\b(ACT|NSW|VIC|QLD|SA|WA|TAS|NT)\b/i, '')
+    .trim();
+  for (let i = parts.length - 1; i >= 0; i--) {
+    const seg = clean(parts[i]);
+    if (seg && !/\d/.test(seg)) return seg;
   }
   return config?.storeName || '';
 }
