@@ -546,25 +546,4 @@ async function getItemConfig(itemId) {
   return { id: obj.id, name: d.name || 'Item', image: imageId ? imgs.get(imageId) || null : null, variations, modifierGroups };
 }
 
-// TEMP debug helper: raw Square catalog item search by name, bypassing the
-// hasPricedVariation/ecom_visibility filters getAllProducts applies. Used once
-// to look up a newly-created internal-only item's variation id, then removed.
-async function debugSearchItemsByName(text) {
-  const data = await squareFetch('/v2/catalog/search-catalog-items', {
-    method: 'POST',
-    body: { text_filter: String(text || ''), limit: 20 },
-  });
-  return (data.items || []).map((obj) => ({
-    id: obj.id,
-    name: obj.item_data?.name,
-    categories: (obj.item_data?.categories || []).map((c) => c.id),
-    variations: (obj.item_data?.variations || []).map((v) => ({
-      id: v.id,
-      name: v.item_variation_data?.name,
-      sellable: v.item_variation_data?.sellable,
-      price: v.item_variation_data?.price_money,
-    })),
-  }));
-}
-
-module.exports = { getMenu, getFullMenu, getAllCategories, getAllProducts, getItemConfig, cleanName, debugSearchItemsByName };
+module.exports = { getMenu, getFullMenu, getAllCategories, getAllProducts, getItemConfig, cleanName };
