@@ -198,6 +198,16 @@ export default function Admin({ onExit }) {
     } catch (e) { setError(e.message); }
   }
   useEffect(() => { load(pass); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // Reservations: auto-load once signed in, then poll so a "new reservation"
+  // badge (and the list itself) stays current without anyone tapping Load.
+  useEffect(() => {
+    if (!data) return;
+    loadReservations();
+    const id = setInterval(loadReservations, 60000);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [!!data]);
+  const pendingResvCount = (resv || []).filter((r) => r.status === 'pending').length;
   // Fetch the full config (variations + modifiers) for any item used by a preset.
   useEffect(() => {
     const ids = [...new Set((s?.presets || []).map((p) => p.sourceItemId).filter(Boolean))];
@@ -946,8 +956,15 @@ export default function Admin({ onExit }) {
         <div className="admin-layout">
           <nav className="admin-tabs">
             {TABS.map((t) => (
-              <button key={t.id} className={`admin-tab ${tab === t.id ? 'on' : ''}`} onClick={() => setTab(t.id)} type="button">
-                <t.Icon size={20} /><span>{t.label}</span>
+              <button key={t.id} className={`admin-tab ${tab === t.id ? 'on' : ''}`} onClick={() => setTab(t.id)} type="button" style={{ position: 'relative' }}>
+                <span style={{ position: 'relative', display: 'inline-flex' }}>
+                  <t.Icon size={20} />
+                  {t.id === 'store' && pendingResvCount > 0 && (
+                    <span title={`${pendingResvCount} new reservation${pendingResvCount === 1 ? '' : 's'}`}
+                      style={{ position: 'absolute', top: -2, right: -4, width: 9, height: 9, borderRadius: '50%', background: '#2ecc71', border: '1.5px solid #fff' }} />
+                  )}
+                </span>
+                <span>{t.label}</span>
               </button>
             ))}
           </nav>
@@ -1037,11 +1054,18 @@ export default function Admin({ onExit }) {
 
                 <div className="card" style={card}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div className="group-title" style={{ margin: 0 }}>Reservations</div>
-                    <button type="button" className="btn ghost" style={{ padding: '6px 12px', fontSize: 'var(--fs-base)' }} onClick={loadReservations}>{resv === null ? 'Load' : 'Refresh'}</button>
+                    <div className="group-title" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+                      Reservations
+                      {pendingResvCount > 0 && (
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: '#e6f6ec', color: '#1e824c', borderRadius: 999, padding: '2px 8px', fontSize: 'var(--fs-xs)', fontWeight: 600 }}>
+                          <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#2ecc71' }} /> {pendingResvCount} new
+                        </span>
+                      )}
+                    </div>
+                    <button type="button" className="btn ghost" style={{ padding: '6px 12px', fontSize: 'var(--fs-base)' }} onClick={loadReservations}>Refresh</button>
                   </div>
                   <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 4 }}>
-                    Table bookings from the app. Alerts: {resvChannels.sms ? 'SMS on' : 'SMS off'} · {resvChannels.email ? 'email on' : 'email off'}. Each booking also creates a $0 Square order so it prints + shows in Square.
+                    Table bookings from the app — loads automatically and refreshes every minute. Alerts: {resvChannels.sms ? 'SMS on' : 'SMS off'} · {resvChannels.email ? 'email on' : 'email off'}. Each booking also creates a $0 Square order so it prints + shows in Square.
                   </p>
 
                   <div style={{ marginTop: 4, marginBottom: 10, padding: 10, border: '1px solid var(--line)', borderRadius: 10 }}>
@@ -1088,7 +1112,7 @@ export default function Admin({ onExit }) {
                     )}
                   </div>
 
-                  {resv === null && <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>Tap Load to see reservations.</p>}
+                  {resv === null && <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>Loading reservations…</p>}
                   {resv && resv.length === 0 && <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>No reservations yet.</p>}
                   {resv && resv.map((r) => (
                     <div key={r.id} className="history-item" style={{ opacity: r.status === 'cancelled' ? 0.5 : 1 }}>
