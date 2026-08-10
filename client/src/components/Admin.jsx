@@ -4,6 +4,7 @@ import { SlotIcon } from './icons.jsx';
 import IconPicker from './IconPicker.jsx';
 import HoursEditor from './HoursEditor.jsx';
 import { formatMoney, api } from '../api.js';
+import { BarChart, DonutChart } from './InsightsCharts.jsx';
 
 const LINK_TYPES = ['scroll', 'category', 'item', 'account', 'url', 'none'];
 // Run an async worker over a list with at most `limit` in flight at once.
@@ -33,6 +34,39 @@ function TopRow({ name, n, max }) {
     </div>
   );
 }
+function ClientRow({ c, cur, rank }) {
+  return (
+    <div className="client-row">
+      <span className="client-rank">{rank}</span>
+      <span className="client-name">{c.name}</span>
+      <span className="client-meta">
+        <div className="client-rev">{formatMoney(c.revenue, cur)}</div>
+        <div className="client-orders">{c.orders} order{c.orders === 1 ? '' : 's'}</div>
+      </span>
+    </div>
+  );
+}
+// Compact axis labels for money — $46,697.25 -> $46.7k, $850 -> $850.
+function compactMoney(cents, cur) {
+  const v = (cents || 0) / 100;
+  if (v >= 10000) return `$${Math.round(v / 1000)}k`;
+  if (v >= 1000) return `$${(v / 1000).toFixed(1)}k`;
+  return formatMoney(Math.round(v) * 100, cur);
+}
+const INSIGHTS_PERIODS = [
+  { d: 1, label: '1 Day' },
+  { d: 7, label: '7 Days' },
+  { d: 30, label: '30 Days' },
+  { d: 90, label: '90 Days' },
+  { d: 365, label: '365 Days' },
+];
+const FUNNEL_COLORS = [
+  'var(--brand)',
+  'var(--accent)',
+  'color-mix(in srgb, var(--brand) 65%, white)',
+  'color-mix(in srgb, var(--accent) 65%, white)',
+  'color-mix(in srgb, var(--brand) 45%, var(--accent))',
+];
 
 // ---- Tab icons (stroke) ----
 const svg = (paths) => (p) => (
@@ -143,7 +177,8 @@ export default function Admin({ onExit }) {
   const [qrSize, setQrSize] = useState(190);
   const [analytics, setAnalytics] = useState(null);
   const [dashboard, setDashboard] = useState(null); // real sales + signups
-  const [aDays, setADays] = useState(30);
+  const [aDays, setADays] = useState(1);
+  const [insightsLoading, setInsightsLoading] = useState(false);
   const [msgs, setMsgs] = useState(null);
   const [resv, setResv] = useState(null);
   const [resvChannels, setResvChannels] = useState({});
@@ -153,14 +188,25 @@ export default function Admin({ onExit }) {
   const [newClosure, setNewClosure] = useState({ date: '', annual: false, label: '' });
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
 
-  // Load analytics when the Insights tab is opened / period changes.
+  // Load analytics when the Insights tab is opened / period changes. The
+  // fastest range (Today) loads by default so numbers appear immediately;
+  // switching ranges afterwards keeps the last figures on screen (just a
+  // small "Updating…" pill) instead of blanking back to a spinner each time.
   useEffect(() => {
     if (tab !== 'insights') return;
-    setAnalytics(null);
-    fetch(`/api/admin/analytics?days=${aDays}&pass=${encodeURIComponent(pass)}`)
-      .then((r) => r.json()).then((d) => setAnalytics(d.analytics || { empty: true })).catch(() => setAnalytics({ error: true }));
-    setDashboard(null);
-    api.adminDashboard(pass, aDays).then(setDashboard).catch(() => setDashboard({ error: true }));
+    let cancelled = false;
+    setInsightsLoading(true);
+    Promise.all([
+      fetch(`/api/admin/analytics?days=${aDays}&pass=${encodeURIComponent(pass)}`)
+        .then((r) => r.json()).then((d) => d.analytics || { empty: true }).catch(() => ({ error: true })),
+      api.adminDashboard(pass, aDays).catch(() => ({ error: true })),
+    ]).then(([a, d]) => {
+      if (cancelled) return;
+      setAnalytics(a);
+      setDashboard(d);
+      setInsightsLoading(false);
+    });
+    return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, aDays]);
 
@@ -1169,13 +1215,16 @@ export default function Admin({ onExit }) {
             {/* ───────── INSIGHTS ───────── */}
             {tab === 'insights' && (
               <>
-                <div style={{ display: 'flex', gap: 8, marginBottom: 12, alignItems: 'center' }}>
-                  <span className="muted" style={{ fontSize: 'var(--fs-base)' }}>Last</span>
-                  {[7, 30, 90].map((d) => <button key={d} className={`chip ${aDays === d ? 'on' : ''}`} onClick={() => setADays(d)}>{d} days</button>)}
+                <div className="ins-head">
+                  <div className="ins-period">
+                    <span className="muted" style={{ fontSize: 'var(--fs-base)' }}>Last</span>
+                    {INSIGHTS_PERIODS.map((p) => <button key={p.d} className={`chip ${aDays === p.d ? 'on' : ''}`} onClick={() => setADays(p.d)}>{p.label}</button>)}
+                  </div>
+                  <span className={`ins-updating ${insightsLoading ? 'on' : ''}`}><i className="dot" /> Updating…</span>
                 </div>
 
                 {/* ── Real sales + signups (from Square) ── */}
-                {!dashboard && <div className="card" style={{ ...card, textAlign: 'center' }}><div className="spinner" /></div>}
+                {!dashboard && <div className="ins-card" style={{ textAlign: 'center' }}><div className="spinner" /></div>}
                 {dashboard && !dashboard.error && (() => {
                   const sl = dashboard.sales || {};
                   const su = dashboard.signups || {};
@@ -1183,9 +1232,8 @@ export default function Admin({ onExit }) {
                   const signupsOk = su && !su.error;
                   const cur = sl.currency || 'AUD';
                   const sDaily = (salesOk && sl.daily) || [];
-                  const maxRev = Math.max(1, ...sDaily.map((d) => d.revenue));
                   const gDaily = (signupsOk && su.daily) || [];
-                  const maxSign = Math.max(1, ...gDaily.map((d) => d.n));
+                  const topClients = (salesOk && sl.topClients) || [];
                   const tiles = [
                     salesOk && { label: 'Revenue', v: formatMoney(sl.revenue, cur) },
                     salesOk && { label: 'Orders', v: sl.orders },
@@ -1208,29 +1256,34 @@ export default function Admin({ onExit }) {
                         </div>
                       )}
                       {salesOk && (
-                        <div className="card" style={card}>
+                        <div className="ins-card">
                           <div className="group-title">Daily revenue</div>
-                          <div className="chart-bars">
-                            {sDaily.length === 0 && <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>No completed sales in this period.</span>}
-                            {sDaily.slice(-30).map((d, i) => (
-                              <div key={i} className="chart-col" title={`${d.day}: ${formatMoney(d.revenue, cur)} · ${d.orders} order${d.orders === 1 ? '' : 's'}`}>
-                                <div className="bar bar-buys" style={{ height: `${(d.revenue / maxRev) * 100}%` }} />
-                              </div>
-                            ))}
-                          </div>
+                          <BarChart
+                            data={sDaily.map((d) => ({ day: d.day, value: d.revenue, value2: null }))}
+                            color="var(--brand)"
+                            formatValue={(v) => formatMoney(v, cur)}
+                            formatAxis={(v) => compactMoney(v, cur)}
+                            emptyText="No completed sales in this period."
+                          />
                         </div>
                       )}
                       {signupsOk && (
-                        <div className="card" style={card}>
+                        <div className="ins-card">
                           <div className="group-title">New loyalty signups</div>
-                          <div className="chart-bars">
-                            {gDaily.length === 0 && <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>No new signups in this period.</span>}
-                            {gDaily.slice(-30).map((d, i) => (
-                              <div key={i} className="chart-col" title={`${d.day}: ${d.n} signup${d.n === 1 ? '' : 's'}`}>
-                                <div className="bar bar-signup" style={{ height: `${(d.n / maxSign) * 100}%` }} />
-                              </div>
-                            ))}
-                          </div>
+                          <BarChart
+                            data={gDaily.map((d) => ({ day: d.day, value: d.n }))}
+                            color="var(--accent)"
+                            formatValue={(v) => `${v} signup${v === 1 ? '' : 's'}`}
+                            formatAxis={(v) => String(v)}
+                            emptyText="No new signups in this period."
+                          />
+                        </div>
+                      )}
+                      {salesOk && topClients.length > 0 && (
+                        <div className="ins-card">
+                          <div className="group-title">Best clients</div>
+                          <p className="ins-card-sub">By spend in this period · guests are grouped by the name given at checkout</p>
+                          {topClients.map((cl, i) => <ClientRow key={cl.name + i} c={cl} cur={cur} rank={i + 1} />)}
                         </div>
                       )}
                       <div className="group-title" style={{ margin: '18px 0 8px' }}>App engagement</div>
@@ -1238,8 +1291,8 @@ export default function Admin({ onExit }) {
                   );
                 })()}
 
-                {!analytics && <div className="card" style={{ ...card, textAlign: 'center' }}><div className="spinner" /></div>}
-                {analytics && (analytics.error || analytics.empty) && <div className="card" style={card}><p className="muted" style={{ margin: 0 }}>No analytics yet — data appears as customers use the app.</p></div>}
+                {!analytics && <div className="ins-card" style={{ textAlign: 'center' }}><div className="spinner" /></div>}
+                {analytics && (analytics.error || analytics.empty) && <div className="ins-card"><p className="muted" style={{ margin: 0 }}>No analytics yet — data appears as customers use the app.</p></div>}
                 {analytics && !analytics.error && !analytics.empty && (() => {
                   const t = analytics.totals || {};
                   const conv = t.visitors ? Math.round((t.purchases / t.visitors) * 100) : 0;
@@ -1259,44 +1312,41 @@ export default function Admin({ onExit }) {
                     { label: 'Ordered', v: t.purchases },
                   ];
                   const daily = analytics.daily || [];
-                  const maxDaily = Math.max(1, ...daily.map((d) => Math.max(d.views, d.purchases)));
                   return (
                     <>
                       <div className="stat-tiles">
                         {tiles.map((x) => <div key={x.label} className="stat-tile"><div className="stat-v">{x.v}</div><div className="stat-l">{x.label}</div></div>)}
                       </div>
-                      <div className="card" style={card}>
+                      <div className="ins-card">
                         <div className="group-title">Daily visits &amp; orders</div>
-                        <div className="chart-bars">
-                          {daily.length === 0 && <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>No data yet.</span>}
-                          {daily.slice(-30).map((d, i) => (
-                            <div key={i} className="chart-col" title={`${d.day}: ${d.views} visits, ${d.purchases} orders`}>
-                              <div className="bar bar-views" style={{ height: `${(d.views / maxDaily) * 100}%` }} />
-                              <div className="bar bar-buys" style={{ height: `${(d.purchases / maxDaily) * 100}%` }} />
-                            </div>
-                          ))}
-                        </div>
-                        <div className="chart-legend"><span><i className="sw sw-views" /> Visits</span><span><i className="sw sw-buys" /> Orders</span></div>
+                        <BarChart
+                          data={daily.map((d) => ({ day: d.day, value: d.views, value2: d.purchases }))}
+                          color="var(--brand-soft)"
+                          color2="var(--brand)"
+                          formatValue={(v) => String(v)}
+                          formatAxis={(v) => String(v)}
+                          legend={[{ label: 'Visits', swatch: 'var(--brand-soft)' }, { label: 'Orders', swatch: 'var(--brand)' }]}
+                          emptyText="No data yet."
+                        />
                       </div>
-                      <div className="card" style={card}>
+                      <div className="ins-card">
                         <div className="group-title">Checkout funnel</div>
-                        {funnel.map((f) => {
-                          const pct = t.visitors ? Math.round((f.v / t.visitors) * 100) : 0;
-                          return (
-                            <div key={f.label} className="funnel-row">
-                              <div className="funnel-top"><span>{f.label}</span><span className="muted">{f.v} · {pct}%</span></div>
-                              <div className="funnel-track"><div className="funnel-fill" style={{ width: `${pct}%` }} /></div>
-                            </div>
-                          );
-                        })}
+                        <DonutChart
+                          segments={funnel.map((f, i) => ({
+                            label: f.label, value: f.v, color: FUNNEL_COLORS[i],
+                            pct: t.visitors ? Math.round((f.v / t.visitors) * 100) : 0,
+                          }))}
+                          centerValue={`${conv}%`}
+                          centerLabel="ordered"
+                        />
                       </div>
                       <div className="ins-two">
-                        <div className="card" style={card}>
+                        <div className="ins-card">
                           <div className="group-title">Most viewed</div>
                           {(analytics.topViewed || []).length === 0 && <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>No data yet.</p>}
                           {(analytics.topViewed || []).map((p) => <TopRow key={p.name} name={p.name} n={p.n} max={analytics.topViewed[0]?.n || 1} />)}
                         </div>
-                        <div className="card" style={card}>
+                        <div className="ins-card">
                           <div className="group-title">Most purchased</div>
                           {(analytics.topPurchased || []).length === 0 && <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>No data yet.</p>}
                           {(analytics.topPurchased || []).map((p) => <TopRow key={p.name} name={p.name} n={p.n} max={analytics.topPurchased[0]?.n || 1} />)}
