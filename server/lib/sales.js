@@ -70,19 +70,18 @@ async function salesSummary(days = 30) {
 // dropping the row.
 async function resolveClientNames(entries) {
   if (!entries.length) return [];
-  let customers = [];
+  let responses = {};
   try {
-    const data = await squareFetch('/v2/customers/batch-retrieve', {
+    const data = await squareFetch('/v2/customers/bulk-retrieve', {
       method: 'POST',
       body: { customer_ids: entries.map(([id]) => id) },
     });
-    customers = data.customers || data.responses || [];
+    responses = data.responses || {};
   } catch {
-    customers = [];
+    responses = {};
   }
-  const byId = new Map(customers.map((c) => [c.id, c]));
   return entries.map(([id, stats]) => {
-    const c = byId.get(id);
+    const c = responses[id]?.customer;
     const name = c ? [c.given_name, c.family_name].filter(Boolean).join(' ').trim() || c.company_name || c.nickname : '';
     return { name: name || `Customer #${id.slice(-6)}`, revenue: stats.revenue, orders: stats.orders };
   });
