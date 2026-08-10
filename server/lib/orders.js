@@ -187,6 +187,15 @@ async function getHistory(customerId, limit = 25) {
 
 // A $0 "Table reservation" order so the booking lands in Square + auto-prints on
 // the store's receipt/kitchen printer (no restaurant subscription needed).
+//
+// IMPORTANT: most Square printer routing only auto-prints items that belong to
+// a routed print category. A bare ad-hoc line item (no catalog_object_id) has
+// no category, so it can silently fail to print even though the order shows up
+// fine in the Square dashboard. If SQUARE_RESERVATION_VARIATION_ID is set (a
+// real, $0, catalog item — see server/.env.example), we reference that instead
+// so the ticket inherits its category's printer routing, same as normal orders.
+const RESERVATION_VARIATION_ID = (process.env.SQUARE_RESERVATION_VARIATION_ID || '').trim();
+
 async function createReservationOrder({ name, phone, partySize, at, notes }) {
   const when = at ? new Date(at) : null;
   const scheduled = when && when.getTime() > Date.now();
@@ -198,10 +207,13 @@ async function createReservationOrder({ name, phone, partySize, at, notes }) {
     schedule_type: scheduled ? 'SCHEDULED' : 'ASAP',
   };
   if (scheduled) pickup_details.pickup_at = when.toISOString();
+  const lineItem = RESERVATION_VARIATION_ID
+    ? { catalog_object_id: RESERVATION_VARIATION_ID, quantity: '1', note: detail }
+    : { name: 'Table reservation', quantity: '1', base_price_money: { amount: 0, currency: CURRENCY }, note: detail };
   const order = {
     location_id: LOCATION_ID,
     ticket_name: `RESERVATION · ${(name || 'Guest')} (${partySize || '?'})`.slice(0, 60),
-    line_items: [{ name: 'Table reservation', quantity: '1', base_price_money: { amount: 0, currency: CURRENCY }, note: detail }],
+    line_items: [lineItem],
     fulfillments: [{ type: 'PICKUP', state: 'PROPOSED', pickup_details }],
     note: detail,
     source: { name: 'Bean Culture App' },
