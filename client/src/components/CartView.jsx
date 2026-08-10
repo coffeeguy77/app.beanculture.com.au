@@ -1,11 +1,12 @@
 import React from 'react';
 import { formatMoney } from '../api.js';
 
-export default function CartView({ cart, currency, onQty, onRemove, onClear, dineIn, table, onCheckout, onBack }) {
+export default function CartView({ cart, currency, onQty, onRemove, onClear, dineIn, table, onCheckout, onBack, kitchenBanner }) {
   const total = cart.reduce((n, c) => n + c.unitPrice * c.quantity, 0);
   if (cart.length === 0) {
     return (
       <main className="page">
+        {kitchenBanner}
         <div className="empty">Your order is empty.</div>
         <button className="btn full" onClick={onBack}>Back to menu</button>
       </main>
@@ -14,6 +15,7 @@ export default function CartView({ cart, currency, onQty, onRemove, onClear, din
   return (
     <main className="page">
       <button className="link" onClick={onBack}>← Menu</button>
+      {kitchenBanner}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
         <h2>Your order</h2>
         {onClear && <button className="link cart-clear" onClick={onClear}>Clear</button>}

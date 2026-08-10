@@ -9,6 +9,7 @@ import MenuList from './components/MenuList.jsx';
 import ItemModal from './components/ItemModal.jsx';
 import CartView from './components/CartView.jsx';
 import CartPanel from './components/CartPanel.jsx';
+import KitchenClosingBanner from './components/KitchenClosingBanner.jsx';
 import Checkout from './components/Checkout.jsx';
 import Account from './components/Account.jsx';
 import ThemePicker from './components/ThemePicker.jsx';
@@ -116,11 +117,13 @@ export default function App() {
     api.getMenu().then(setMenu).catch((e) => setLoadErr(e.message));
   }, []);
 
-  // Auto-update: when the tab is re-shown, check the live build id and refresh
-  // config/menu. If a NEW deploy is live, reload once so nobody is stuck stale.
+  // Auto-update: check the live build id and refresh config/menu whenever the
+  // tab is re-shown, AND on a standing interval — a tab that's kept in the
+  // foreground the whole time (never backgrounded) would otherwise never see
+  // a new deploy's config (e.g. a newly-enabled feature chip) until reloaded
+  // by hand. If a NEW deploy is live, reload once so nobody is stuck stale.
   useEffect(() => {
-    const onVisible = () => {
-      if (document.visibilityState !== 'visible') return;
+    const checkForUpdate = () => {
       api.getConfig().then((cfg) => {
         if (buildRef.current && cfg.build && cfg.build !== buildRef.current) { window.location.reload(); return; }
         buildRef.current = cfg.build || buildRef.current;
@@ -128,8 +131,16 @@ export default function App() {
       }).catch(() => {});
       api.getMenu().then(setMenu).catch(() => {});
     };
+    const onVisible = () => { if (document.visibilityState === 'visible') checkForUpdate(); };
     document.addEventListener('visibilitychange', onVisible);
-    return () => document.removeEventListener('visibilitychange', onVisible);
+    const id = setInterval(checkForUpdate, 2 * 60 * 1000);
+    // Nudge the browser to look for a newer service worker (a no-op cache-wise
+    // today, but harmless, and helps anyone still on an older SW registration
+    // pick up the current one sooner).
+    if (navigator.serviceWorker?.getRegistrations) {
+      navigator.serviceWorker.getRegistrations().then((regs) => regs.forEach((r) => r.update?.())).catch(() => {});
+    }
+    return () => { document.removeEventListener('visibilitychange', onVisible); clearInterval(id); };
   }, []);
 
   // Admin route
@@ -271,6 +282,33 @@ export default function App() {
     const last = periods[periods.length - 1];
     return { open: openNow, closesLabel: last ? fmt12(last.end) : null };
   };
+  const mmToHHMM = (min) => `${String(Math.floor(min / 60) % 24).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`;
+  // Walk forward from (ds, hhmm) through the kitchen's weekly schedule to find
+  // when it next opens — a later period the same day, or the first period on
+  // the next day that actually has hours (so a closed day is skipped over,
+  // e.g. "reopens Monday at 7am" if Sunday has no kitchen hours at all).
+  const nextKitchenOpenLabel = (weekly, ds, hhmm) => {
+    const [y, mo, d] = ds.split('-').map(Number);
+    const base = new Date(y, mo - 1, d);
+    const [hh, mm] = hhmm.split(':').map(Number);
+    const minutesNow = hh * 60 + mm;
+    const todayPeriods = (weekly?.[DAYS_SQ[base.getDay()]] || [])
+      .filter((p) => p.startMin != null && p.endMin != null)
+      .sort((a, b) => a.startMin - b.startMin);
+    const laterToday = todayPeriods.find((p) => p.startMin > minutesNow);
+    if (laterToday) return `today at ${fmt12(mmToHHMM(laterToday.startMin))}`;
+    for (let i = 1; i <= 7; i++) {
+      const nd = new Date(base); nd.setDate(base.getDate() + i);
+      const periods = (weekly?.[DAYS_SQ[nd.getDay()]] || [])
+        .filter((p) => p.startMin != null && p.endMin != null)
+        .sort((a, b) => a.startMin - b.startMin);
+      if (periods.length) {
+        const dayLabel = i === 1 ? 'tomorrow' : nd.toLocaleDateString('en-AU', { weekday: 'long' });
+        return `${dayLabel} at ${fmt12(mmToHHMM(periods[0].startMin))}`;
+      }
+    }
+    return null;
+  };
   const schedLater = dineIn === false && preWhen === 'later' && !!(preAt?.date && preAt?.time);
   let kitchenClosedCats = [];
   let kitchenClosedLabel = '';
@@ -281,10 +319,24 @@ export default function App() {
     const st = kitchenStatusAt(kitchen.weekly, ds, hhmm);
     if (!st.open) {
       kitchenClosedCats = kitchen.categories || [];
-      kitchenClosedLabel = st.closesLabel ? `Kitchen closes at ${st.closesLabel}` : 'Kitchen closed that day';
+      const reopen = nextKitchenOpenLabel(kitchen.weekly, ds, hhmm);
+      const closedAt = st.closesLabel ? `Kitchen closed at ${st.closesLabel}` : 'Kitchen closed';
+      kitchenClosedLabel = reopen ? `${closedAt} — reopens ${reopen}` : closedAt;
     }
   } else if (storeOpen && kitchen && !schedLater && kitchen.open === false) {
     kitchenClosedCats = kitchen.categories || [];
+    kitchenClosedLabel = 'Kitchen closed';
+  }
+  const kitchenClosedSet = new Set((kitchenClosedCats || []).map((c) => (c || '').toLowerCase()));
+  // Real-time (not scheduled-time) "closes at" label for the kitchen, used by
+  // the closing-soon nudges (top banner + cart sidebar) which are always about
+  // right now, unlike kitchenClosedLabel above which can reflect a future
+  // scheduled pickup time.
+  let kitchenSoonLabel = null;
+  if (kitchen && kitchen.weekly) {
+    const now = new Date();
+    const nowHHMM = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    kitchenSoonLabel = kitchenStatusAt(kitchen.weekly, dstrLocal(now), nowHHMM).closesLabel;
   }
 
   const cartCount = cart.reduce((n, c) => n + c.quantity, 0);
@@ -555,15 +607,16 @@ export default function App() {
         // Store open: nudge if the kitchen is about to close (within 30 min).
         const k = h.kitchen?.closesInMin;
         if (k != null && k > 0 && k <= 30) {
-          const cats = (h.kitchen.categories || []).join(' & ');
           const now = new Date();
           const nowHHMM = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
           const closesLabel = h.kitchen.weekly ? kitchenStatusAt(h.kitchen.weekly, dstrLocal(now), nowHHMM).closesLabel : null;
           return (
-            <div className="closed-banner kitchen-soon">
-              <span>🔥 Kitchen closes{closesLabel ? ` at ${closesLabel}` : ''} (in {k} min{k === 1 ? '' : 's'}){cats ? ` for ${cats}` : ''} — order now!</span>
-              <button className="btn" onClick={scrollMenu}>Order now</button>
-            </div>
+            <KitchenClosingBanner
+              closesInMin={k}
+              closesLabel={closesLabel}
+              categories={h.kitchen.categories}
+              onOrderNow={scrollMenu}
+            />
           );
         }
         return null;
@@ -603,12 +656,21 @@ export default function App() {
                 else if (link.type === 'item' && link.value) {
                   // Open the product directly (e.g. a "steak sandwich" banner → its
                   // item card), scanning every category for the matching id.
-                  let found = null;
+                  let found = null; let foundCat = null;
                   for (const c of (menu.categories || [])) {
                     const it = (c.items || []).find((x) => x.id === link.value);
-                    if (it) { found = it; break; }
+                    if (it) { found = it; foundCat = c.category; break; }
                   }
-                  if (found) setActiveItem(found);
+                  // A hero banner can point at an item whose category is sold out
+                  // or currently kitchen-closed — don't let the banner bypass that;
+                  // jump to the (now visibly unavailable) category instead of
+                  // opening an Add-to-cart modal for something you can't actually buy.
+                  const shut = found && (found.soldOut || kitchenClosedSet.has((foundCat || '').toLowerCase()));
+                  if (found && !shut) setActiveItem(found);
+                  else if (found) {
+                    setActiveCat(foundCat);
+                    const el = document.querySelector('.menu'); if (el) el.scrollIntoView({ behavior: 'smooth' });
+                  }
                   else { const el = document.querySelector('.menu'); if (el) el.scrollIntoView({ behavior: 'smooth' }); }
                 }
                 else if (link.type === 'account') setView('account');
@@ -662,12 +724,23 @@ export default function App() {
             {view === 'checkout' ? (
               <div className="aside-checkout">{checkoutEl}</div>
             ) : (
-              <CartPanel
-                cart={cart} currency={currency} onQty={updateQty}
-                onRemove={removeItem} onClear={clearCart}
-                dineIn={dineIn} table={table}
-                onCheckout={() => setView('checkout')}
-              />
+              <>
+                {storeOpen && kitchen?.closesInMin != null && kitchen.closesInMin > 0 && kitchen.closesInMin <= 30 && (
+                  <KitchenClosingBanner
+                    className="kitchen-soon-cart"
+                    closesInMin={kitchen.closesInMin}
+                    closesLabel={kitchenSoonLabel}
+                    categories={kitchen.categories}
+                    onOrderNow={() => { const el = document.querySelector('.menu'); if (el) el.scrollIntoView({ behavior: 'smooth' }); }}
+                  />
+                )}
+                <CartPanel
+                  cart={cart} currency={currency} onQty={updateQty}
+                  onRemove={removeItem} onClear={clearCart}
+                  dineIn={dineIn} table={table}
+                  onCheckout={() => setView('checkout')}
+                />
+              </>
             )}
           </aside>
         </div>
@@ -679,6 +752,14 @@ export default function App() {
           onRemove={removeItem} onClear={clearCart}
           dineIn={dineIn} table={table}
           onCheckout={() => setView('checkout')} onBack={() => setView('home')}
+          kitchenBanner={storeOpen && kitchen?.closesInMin != null && kitchen.closesInMin > 0 && kitchen.closesInMin <= 30 ? (
+            <KitchenClosingBanner
+              className="kitchen-soon-cart"
+              closesInMin={kitchen.closesInMin}
+              closesLabel={kitchenSoonLabel}
+              categories={kitchen.categories}
+            />
+          ) : null}
         />
       )}
 

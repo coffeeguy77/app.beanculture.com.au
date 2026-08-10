@@ -31,12 +31,18 @@ export default function MenuList({ categories, currency, onPick, scrollTo, onScr
         const kitchenShut = kShut.has((cat.category || '').toLowerCase());
         return (
         <section key={cat.category}>
-          <h2 className="cat-title" id={slug(cat.category)}>{cat.category}{kitchenShut && <span className="cat-shut"> · {kitchenClosedLabel || 'kitchen closed'}</span>}</h2>
+          <h2 className="cat-title" id={slug(cat.category)}>{cat.category}</h2>
+          {kitchenShut && (
+            <div className="kitchen-closed-banner">🍳 {kitchenClosedLabel || 'Kitchen closed'}</div>
+          )}
           {cat.banner && (() => {
             const target = (cat.items || []).find((i) => i.id === cat.banner.itemId) || null;
+            const bannerShut = kitchenShut || (target && target.soldOut);
             return (
-              <button type="button" className={`feature-banner ${cat.banner.hideText ? 'no-text' : ''}`} onClick={() => target && !target.soldOut && onPick(target)}
+              <button type="button" className={`feature-banner ${cat.banner.hideText ? 'no-text' : ''} ${bannerShut ? 'shut' : ''}`}
+                onClick={() => target && !bannerShut && onPick(target)}
                 style={cat.banner.image ? { backgroundImage: `url(${imgUrl(cat.banner.image, 900)})` } : undefined}>
+                {bannerShut && <span className="sold-tag kitchen-tag">{target && target.soldOut ? 'Sold out' : 'Kitchen closed'}</span>}
                 {!cat.banner.hideText && (
                   <span className="feature-banner-body">
                     {cat.banner.title && <span className="feature-banner-title">{cat.banner.title}</span>}
@@ -58,7 +64,7 @@ export default function MenuList({ categories, currency, onPick, scrollTo, onScr
                   onClick={() => !unavailable && onPick(item)}
                   type="button"
                 >
-                  {item.soldOut ? <span className="sold-tag">Sold out</span> : kitchenShut && <span className="sold-tag">Kitchen closed</span>}
+                  {item.soldOut ? <span className="sold-tag">Sold out</span> : kitchenShut && <span className="sold-tag kitchen-tag">Kitchen closed</span>}
                   {showImages && (item.image ? (
                     <img className="item-img" src={imgUrl(item.image, 240)} alt="" loading="lazy" decoding="async" />
                   ) : (

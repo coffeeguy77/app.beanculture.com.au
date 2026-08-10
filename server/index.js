@@ -40,6 +40,10 @@ const BUILD_ID = process.env.RAILWAY_GIT_COMMIT_SHA || process.env.RAILWAY_DEPLO
 
 // ---- Public config: Square SDK ids + storefront settings + hours snapshot ----
 app.get('/api/config', async (_req, res) => {
+  // Never let a browser, proxy, or CDN cache this — it drives live flags like
+  // `reservations` (tied to DB health) and the build id the client polls to
+  // detect a new deploy; a cached stale response would silently hide features.
+  res.setHeader('Cache-Control', 'no-store');
   const settings = getSettings();
   let hoursStatus = null;
   try {
@@ -89,6 +93,7 @@ app.get('/api/config', async (_req, res) => {
 let menuCache = { data: null, at: 0 };
 const MENU_TTL_MS = Number(process.env.MENU_TTL_MS || 45_000);
 app.get('/api/menu', async (_req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
   try {
     const now = Date.now();
     if (menuCache.data && now - menuCache.at < MENU_TTL_MS) return res.json(menuCache.data);
