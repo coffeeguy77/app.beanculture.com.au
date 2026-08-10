@@ -25,7 +25,7 @@ export default function OrderTypeBar({ dineIn, setDineIn, table, setTable, lock,
           Takeaway
         </button>
         {onReserve && (
-          <button className="seg" onClick={onReserve} type="button">Reservations</button>
+          <button className="seg" onClick={onReserve} type="button">Reserve a table</button>
         )}
       </div>
       {dineIn === null && <p className="muted" style={{ fontSize: 12, margin: 0 }}>Choose dine in or takeaway to continue.</p>}
@@ -35,8 +35,8 @@ export default function OrderTypeBar({ dineIn, setDineIn, table, setTable, lock,
       {dineIn === false && setWhen && (() => {
         const effWhen = storeOpen ? when : 'later';
         return (
-          <>
-            <div className="segmented">
+          <div className="when-row">
+            <div className="segmented when-seg">
               <button className={effWhen === 'now' ? 'seg active' : 'seg'} disabled={!storeOpen}
                 onClick={() => storeOpen && setWhen('now')} type="button"
                 style={!storeOpen ? { opacity: 0.45, cursor: 'not-allowed' } : undefined}>Now</button>
@@ -47,7 +47,7 @@ export default function OrderTypeBar({ dineIn, setDineIn, table, setTable, lock,
                 onDate={(d) => setAt({ ...(at || {}), date: d })}
                 onTime={(t) => setAt({ ...(at || {}), time: t })} />
             )}
-          </>
+          </div>
         );
       })()}
     </section>

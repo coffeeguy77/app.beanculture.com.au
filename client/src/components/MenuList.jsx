@@ -61,6 +61,7 @@ export default function MenuList({ categories, currency, onPick, scrollTo, onScr
                   className={`item ${unavailable ? 'sold' : ''}`}
                   onClick={() => !unavailable && onPick(item)}
                   type="button"
+                  aria-label={`Add ${item.name}`}
                 >
                   {item.soldOut ? <span className="sold-tag">Sold out</span> : kitchenShut && <span className="sold-tag">Kitchen closed</span>}
                   {showImages && (item.image ? (

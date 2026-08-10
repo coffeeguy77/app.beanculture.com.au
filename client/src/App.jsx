@@ -51,6 +51,24 @@ function iconFor(n) {
   return 'drink';
 }
 
+// Build a short human summary of a scheduled "later" pickup time, e.g.
+// "Tue 11 Aug, 8:00am", from the existing preAt {date:'YYYY-MM-DD', time:'HH:MM'}.
+function fmtWhen(at) {
+  if (!at?.date) return '';
+  const [y, mo, d] = at.date.split('-').map(Number);
+  const dt = new Date(y, mo - 1, d);
+  const WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const MO = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  let time = '';
+  if (at.time) {
+    const [hh, mm] = at.time.split(':').map(Number);
+    const ap = hh >= 12 ? 'pm' : 'am';
+    let h = hh % 12; if (h === 0) h = 12;
+    time = `${h}:${String(mm).padStart(2, '0')}${ap}`;
+  }
+  return `${WD[dt.getDay()]} ${d} ${MO[mo - 1]}${time ? `, ${time}` : ''}`;
+}
+
 // Display-only location label for the header (NOT a store switcher). Tries to
 // pull a suburb out of the contact address, else falls back to the store name.
 function locationLabel(config) {
@@ -780,6 +798,9 @@ export default function App() {
                 cart={cart} currency={currency} onQty={updateQty}
                 onRemove={removeItem} onClear={clearCart}
                 dineIn={dineIn} table={table}
+                summary={dineIn
+                  ? `Dine in · Table ${table || '—'}`
+                  : (preWhen === 'later' ? `Takeaway · ${fmtWhen(preAt)}` : 'Takeaway')}
                 onCheckout={() => setView('checkout')}
               />
             )}

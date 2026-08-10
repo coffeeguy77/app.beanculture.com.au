@@ -3,10 +3,9 @@ import { formatMoney } from '../api.js';
 
 // Persistent cart shown as a sidebar on desktop / landscape-tablet layouts.
 // Mirrors CartView's content but stays visible beside the menu.
-export default function CartPanel({ cart, currency, onQty, onRemove, onClear, dineIn, table, onCheckout, unavailableKeys }) {
+export default function CartPanel({ cart, currency, onQty, onRemove, onClear, dineIn, table, onCheckout, summary }) {
   const total = cart.reduce((n, c) => n + c.unitPrice * c.quantity, 0);
   const count = cart.reduce((n, c) => n + c.quantity, 0);
-  const hasUnavailable = cart.some((c) => unavailableKeys?.has(c.key));
 
   return (
     <div className="cart-panel">
@@ -15,7 +14,7 @@ export default function CartPanel({ cart, currency, onQty, onRemove, onClear, di
           <h2>Your order</h2>
           {cart.length > 0 && onClear && <button className="link cart-clear" onClick={onClear}>Clear</button>}
         </div>
-        <span className="context-pill">{dineIn ? `Dine in · Table ${table || '—'}` : 'Takeaway'}</span>
+        <span className="context-pill">{summary || (dineIn ? `Dine in · Table ${table || '—'}` : 'Takeaway')}</span>
       </div>
 
       {cart.length === 0 ? (
@@ -26,39 +25,30 @@ export default function CartPanel({ cart, currency, onQty, onRemove, onClear, di
       ) : (
         <>
           <ul className="cart-list cart-panel-list">
-            {cart.map((c) => {
-              const unavailable = unavailableKeys?.has(c.key);
-              return (
-              <li key={c.key} className={`cart-line ${unavailable ? 'unavailable' : ''}`}>
+            {cart.map((c) => (
+              <li key={c.key} className="cart-line">
                 <div className="cart-line-main">
                   <div className="cart-line-name">{c.itemName}{c.variationName ? ` · ${c.variationName}` : ''}</div>
                   {c.modifierNames?.length > 0 && <div className="cart-line-sub">{c.modifierNames.join(', ')}</div>}
                   {c.note && <div className="cart-line-sub">“{c.note}”</div>}
-                  {unavailable && <div className="cart-line-warn">Kitchen closed — remove to check out</div>}
                 </div>
                 <div className="cart-line-right">
-                  {unavailable ? (
+                  <div className="stepper sm">
+                    <button onClick={() => onQty(c.key, -1)} aria-label="Decrease">−</button>
                     <span>{c.quantity}</span>
-                  ) : (
-                    <div className="stepper sm">
-                      <button onClick={() => onQty(c.key, -1)} aria-label="Decrease">−</button>
-                      <span>{c.quantity}</span>
-                      <button onClick={() => onQty(c.key, 1)} aria-label="Increase">+</button>
-                    </div>
-                  )}
+                    <button onClick={() => onQty(c.key, 1)} aria-label="Increase">+</button>
+                  </div>
                   <div style={{ fontWeight: 700 }}>{formatMoney(c.unitPrice * c.quantity, currency)}</div>
                   {onRemove && <button className="cart-remove" onClick={() => onRemove(c.key)} aria-label={`Remove ${c.itemName}`}>✕</button>}
                 </div>
               </li>
-              );
-            })}
+            ))}
           </ul>
           <div className="cart-panel-foot">
-            {hasUnavailable && <p className="cart-unavailable-note">Remove the unavailable item{cart.filter((c) => unavailableKeys?.has(c.key)).length > 1 ? 's' : ''} above to check out.</p>}
             <div className="totals">
               <div className="row grand"><span>Total</span><span>{formatMoney(total, currency)}</span></div>
             </div>
-            <button className="btn full" disabled={hasUnavailable} onClick={onCheckout}>
+            <button className="btn full" onClick={onCheckout}>
               Go to payment · {count} {count === 1 ? 'item' : 'items'}
             </button>
           </div>
