@@ -10,7 +10,7 @@ function fromPrice(item) {
   return prices.length ? Math.min(...prices) : null;
 }
 
-export default function MenuList({ categories, currency, onPick, scrollTo, onScrolled, kitchenClosedCats, kitchenClosedLabel }) {
+export default function MenuList({ categories, currency, onPick, scrollTo, onScrolled, kitchenClosedCats }) {
   const kShut = new Set((kitchenClosedCats || []).map((c) => (c || '').toLowerCase()));
   useEffect(() => {
     if (scrollTo) {
@@ -29,20 +29,18 @@ export default function MenuList({ categories, currency, onPick, scrollTo, onScr
       {categories.map((cat) => {
         const showImages = cat.showImages !== false;
         const kitchenShut = kShut.has((cat.category || '').toLowerCase());
+        const count = (cat.items || []).length;
         return (
-        <section key={cat.category}>
-          <h2 className="cat-title" id={slug(cat.category)}>{cat.category}</h2>
-          {kitchenShut && (
-            <div className="kitchen-closed-banner">🍳 {kitchenClosedLabel || 'Kitchen closed'}</div>
-          )}
+        <section key={cat.category} data-cat={cat.category}>
+          <div className="cat-head">
+            <h2 className="cat-title" id={slug(cat.category)}>{cat.category}{kitchenShut && <span className="cat-shut"> · kitchen closed</span>}</h2>
+            {count > 0 && <span className="cat-count">{count} {count === 1 ? 'item' : 'items'}</span>}
+          </div>
           {cat.banner && (() => {
             const target = (cat.items || []).find((i) => i.id === cat.banner.itemId) || null;
-            const bannerShut = kitchenShut || (target && target.soldOut);
             return (
-              <button type="button" className={`feature-banner ${cat.banner.hideText ? 'no-text' : ''} ${bannerShut ? 'shut' : ''}`}
-                onClick={() => target && !bannerShut && onPick({ ...target, category: cat.category })}
+              <button type="button" className={`feature-banner ${cat.banner.hideText ? 'no-text' : ''}`} onClick={() => target && !target.soldOut && onPick(target)}
                 style={cat.banner.image ? { backgroundImage: `url(${imgUrl(cat.banner.image, 900)})` } : undefined}>
-                {bannerShut && <span className="sold-tag kitchen-tag">{target && target.soldOut ? 'Sold out' : 'Kitchen closed'}</span>}
                 {!cat.banner.hideText && (
                   <span className="feature-banner-body">
                     {cat.banner.title && <span className="feature-banner-title">{cat.banner.title}</span>}
@@ -61,10 +59,10 @@ export default function MenuList({ categories, currency, onPick, scrollTo, onScr
                 <button
                   key={item.id}
                   className={`item ${unavailable ? 'sold' : ''}`}
-                  onClick={() => !unavailable && onPick({ ...item, category: cat.category })}
+                  onClick={() => !unavailable && onPick(item)}
                   type="button"
                 >
-                  {item.soldOut ? <span className="sold-tag">Sold out</span> : kitchenShut && <span className="sold-tag kitchen-tag">Kitchen closed</span>}
+                  {item.soldOut ? <span className="sold-tag">Sold out</span> : kitchenShut && <span className="sold-tag">Kitchen closed</span>}
                   {showImages && (item.image ? (
                     <img className="item-img" src={imgUrl(item.image, 240)} alt="" loading="lazy" decoding="async" />
                   ) : (

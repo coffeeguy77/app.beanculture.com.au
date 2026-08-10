@@ -4,12 +4,11 @@ import { applyTheme } from './theme.js';
 import { getUser, setUser as saveUser, getSavedTheme, setSavedTheme, getSeasonOptOut, setSeasonOptOut, getStoredOrder, setStoredOrder } from './store.js';
 import HeroSlider from './components/HeroSlider.jsx';
 import OrderTypeBar from './components/OrderTypeBar.jsx';
-import CategoryNav from './components/CategoryNav.jsx';
+import MenuDock from './components/MenuDock.jsx';
 import MenuList from './components/MenuList.jsx';
 import ItemModal from './components/ItemModal.jsx';
 import CartView from './components/CartView.jsx';
 import CartPanel from './components/CartPanel.jsx';
-import KitchenClosingBanner from './components/KitchenClosingBanner.jsx';
 import Checkout from './components/Checkout.jsx';
 import Account from './components/Account.jsx';
 import ThemePicker from './components/ThemePicker.jsx';
@@ -34,6 +33,86 @@ function readTable() {
   const p = new URLSearchParams(window.location.search);
   const t = p.get('table') || p.get('t');
   return t ? t.trim() : '';
+}
+
+// Category name → icon name, shared by the footer dock and the "Browse menu"
+// category dock so both use one consistent mapping.
+function iconFor(n) {
+  const s = (n || '').toLowerCase();
+  if (s.includes('coffee')) return 'cup';
+  if (s.includes('tea')) return 'tea';
+  if (s.includes('cold')) return 'can';
+  if (s.includes('shake')) return 'shake';
+  if (s.includes('smooth')) return 'smoothie';
+  if (s.includes('cake') || s.includes('pastr')) return 'bag';
+  if (s.includes('ice')) return 'ice';
+  if (s.includes('lunch') || s.includes('breakfast') || s.includes('food') || s.includes('wrap') || s.includes('burger') || s.includes('all day')) return 'burger';
+  if (s.includes('bean') || s.includes('bag')) return 'bean';
+  return 'drink';
+}
+
+// Display-only location label for the header (NOT a store switcher). Tries to
+// pull a suburb out of the contact address, else falls back to the store name.
+function locationLabel(config) {
+  const addr = config?.contact?.address || '';
+  const parts = addr.split(',').map((s) => s.trim()).filter(Boolean);
+  if (parts.length >= 2) {
+    const seg = parts[1]
+      .replace(/\b\d{4}\b/, '')
+      .replace(/\b(ACT|NSW|VIC|QLD|SA|WA|TAS|NT)\b/i, '')
+      .trim();
+    if (seg) return seg;
+  }
+  return config?.storeName || '';
+}
+
+// Slim, self-contained operational notice strip that lives inside the sticky
+// shell. Shows ONE notice at a time; rotates through several every ~6s (unless
+// reduced-motion) with compact ‹ › controls and per-notice dismissal.
+function SiteNotice({ notices }) {
+  const [dismissed, setDismissed] = useState(() => new Set());
+  const [idx, setIdx] = useState(0);
+  const list = (notices || []).filter((n) => !dismissed.has(n.id));
+
+  useEffect(() => { if (idx >= list.length) setIdx(0); }, [list.length, idx]);
+
+  useEffect(() => {
+    if (list.length <= 1) return;
+    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const t = setInterval(() => setIdx((i) => (i + 1) % list.length), 6000);
+    return () => clearInterval(t);
+  }, [list.length]);
+
+  if (!list.length) return null;
+  const n = list[Math.min(idx, list.length - 1)];
+
+  return (
+    <div className={`site-notice site-notice--${n.type || 'informational'}`} role="status">
+      {list.length > 1 && (
+        <button className="notice-nav" onClick={() => setIdx((i) => (i - 1 + list.length) % list.length)} aria-label="Previous notice" type="button">‹</button>
+      )}
+      <div className="notice-live" aria-live="polite">
+        <div className="notice-body">
+          {n.icon && <span className="notice-ic" aria-hidden="true">{n.icon}</span>}
+          <span className="notice-text">{n.text}</span>
+          {n.cta && (
+            <button className="notice-cta" onClick={n.cta.onClick} type="button">{n.cta.label}</button>
+          )}
+        </div>
+      </div>
+      {list.length > 1 && (
+        <div className="notice-dots" aria-hidden="true">
+          {list.map((_, i) => <span key={i} className={i === Math.min(idx, list.length - 1) ? 'on' : ''} />)}
+        </div>
+      )}
+      {list.length > 1 && (
+        <button className="notice-nav" onClick={() => setIdx((i) => (i + 1) % list.length)} aria-label="Next notice" type="button">›</button>
+      )}
+      {n.dismissible && (
+        <button className="notice-dismiss" onClick={() => setDismissed((s) => new Set(s).add(n.id))} aria-label="Dismiss notice" type="button">✕</button>
+      )}
+    </div>
+  );
 }
 
 // Wide layout = desktop + landscape tablet (persistent side cart).
@@ -96,8 +175,17 @@ export default function App() {
   const [name, setName] = useState(user?.name || stored?.name || '');
   const [cart, setCart] = useState(() => stored?.cart || []);
   const [query, setQuery] = useState('');
-  const [activeCat, setActiveCat] = useState(null);
+  const [activeCat, setActiveCat] = useState(null); // one-shot scroll target for MenuList
+  const [spyCat, setSpyCat] = useState(null); // persistent "current section" for the dock highlight
   const [activeGroup, setActiveGroup] = useState(null); // category names shown in 'single' layout
+
+  // Sticky-shell measuring + header scroll state. Downstream sticky offsets read
+  // the CSS vars --shell-h (shell height) and --dock-h (category dock height) so
+  // nothing hardcodes a pixel offset.
+  const shellRef = useRef(null);
+  const [shellH, setShellH] = useState(0);
+  const [dockH, setDockH] = useState(0);
+  const [scrolled, setScrolled] = useState(false);
 
   const buildRef = useRef(null); // live build id, to detect a new deploy
   // Load config + menu; apply theme (saved user theme wins over store default).
@@ -117,13 +205,11 @@ export default function App() {
     api.getMenu().then(setMenu).catch((e) => setLoadErr(e.message));
   }, []);
 
-  // Auto-update: check the live build id and refresh config/menu whenever the
-  // tab is re-shown, AND on a standing interval — a tab that's kept in the
-  // foreground the whole time (never backgrounded) would otherwise never see
-  // a new deploy's config (e.g. a newly-enabled feature chip) until reloaded
-  // by hand. If a NEW deploy is live, reload once so nobody is stuck stale.
+  // Auto-update: when the tab is re-shown, check the live build id and refresh
+  // config/menu. If a NEW deploy is live, reload once so nobody is stuck stale.
   useEffect(() => {
-    const checkForUpdate = () => {
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible') return;
       api.getConfig().then((cfg) => {
         if (buildRef.current && cfg.build && cfg.build !== buildRef.current) { window.location.reload(); return; }
         buildRef.current = cfg.build || buildRef.current;
@@ -131,16 +217,8 @@ export default function App() {
       }).catch(() => {});
       api.getMenu().then(setMenu).catch(() => {});
     };
-    const onVisible = () => { if (document.visibilityState === 'visible') checkForUpdate(); };
     document.addEventListener('visibilitychange', onVisible);
-    const id = setInterval(checkForUpdate, 2 * 60 * 1000);
-    // Nudge the browser to look for a newer service worker (a no-op cache-wise
-    // today, but harmless, and helps anyone still on an older SW registration
-    // pick up the current one sooner).
-    if (navigator.serviceWorker?.getRegistrations) {
-      navigator.serviceWorker.getRegistrations().then((regs) => regs.forEach((r) => r.update?.())).catch(() => {});
-    }
-    return () => { document.removeEventListener('visibilitychange', onVisible); clearInterval(id); };
+    return () => document.removeEventListener('visibilitychange', onVisible);
   }, []);
 
   // Admin route
@@ -219,19 +297,6 @@ export default function App() {
   // any footer-on section not in a group gets its own button (icon by name).
   const footerSlots = useMemo(() => {
     if (!menu) return [];
-    const iconFor = (n) => {
-      const s = (n || '').toLowerCase();
-      if (s.includes('coffee')) return 'cup';
-      if (s.includes('tea')) return 'tea';
-      if (s.includes('cold')) return 'can';
-      if (s.includes('shake')) return 'shake';
-      if (s.includes('smooth')) return 'smoothie';
-      if (s.includes('cake') || s.includes('pastr')) return 'bag';
-      if (s.includes('ice')) return 'ice';
-      if (s.includes('lunch') || s.includes('breakfast') || s.includes('food') || s.includes('wrap') || s.includes('burger') || s.includes('all day')) return 'burger';
-      if (s.includes('bean') || s.includes('bag')) return 'bean';
-      return 'drink';
-    };
     const live = menu.categories.filter((c) => c.footerNav === true);
     const liveNames = new Set(live.map((c) => c.category.toLowerCase()));
     const grouped = new Set();
@@ -251,99 +316,7 @@ export default function App() {
   // Made-to-order categories are only unavailable when the store is OPEN but the
   // kitchen has shut (fridge items stay available). When the whole store is
   // closed, everything is pre-orderable for later, so nothing is disabled here.
-  //
-  // For a SCHEDULED ("Later") takeaway pickup, "closed" must be evaluated at the
-  // chosen future time, not right now — otherwise you can book a 2:30pm pickup
-  // for a kitchen that closes at 2pm and still add Lunch items to the cart. When
-  // the owner has given the kitchen its own hours (kitchen.hasHours), we check
-  // the kitchen's weekly schedule against the picked date/time; without custom
-  // kitchen hours the kitchen always mirrors the store, and ScheduleWhen already
-  // only offers slots inside store hours, so no extra check is needed there.
-  const DAYS_SQ = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
-  const fmt12 = (hhmm) => {
-    if (!hhmm) return '';
-    const [h, m] = hhmm.split(':').map(Number);
-    const ap = h >= 12 ? 'pm' : 'am';
-    let hh = h % 12; if (hh === 0) hh = 12;
-    return m ? `${hh}:${String(m).padStart(2, '0')}${ap}` : `${hh}${ap}`;
-  };
-  const dstrLocal = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  const kitchenStatusAt = (weekly, ds, hhmm) => {
-    const [y, mo, d] = ds.split('-').map(Number);
-    const dow = new Date(y, mo - 1, d).getDay();
-    const periods = (weekly?.[DAYS_SQ[dow]] || []).filter((p) => p.startMin != null && p.endMin != null);
-    const [hh, mm] = hhmm.split(':').map(Number);
-    const minutes = hh * 60 + mm;
-    let openNow = false;
-    for (const p of periods) {
-      let end = p.endMin; if (end <= p.startMin) end += 24 * 60;
-      if (minutes >= p.startMin && minutes < end) { openNow = true; break; }
-    }
-    const last = periods[periods.length - 1];
-    return { open: openNow, closesLabel: last ? fmt12(last.end) : null };
-  };
-  const mmToHHMM = (min) => `${String(Math.floor(min / 60) % 24).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`;
-  // Walk forward from (ds, hhmm) through the kitchen's weekly schedule to find
-  // when it next opens — a later period the same day, or the first period on
-  // the next day that actually has hours (so a closed day is skipped over,
-  // e.g. "reopens Monday at 7am" if Sunday has no kitchen hours at all).
-  const nextKitchenOpenLabel = (weekly, ds, hhmm) => {
-    const [y, mo, d] = ds.split('-').map(Number);
-    const base = new Date(y, mo - 1, d);
-    const [hh, mm] = hhmm.split(':').map(Number);
-    const minutesNow = hh * 60 + mm;
-    const todayPeriods = (weekly?.[DAYS_SQ[base.getDay()]] || [])
-      .filter((p) => p.startMin != null && p.endMin != null)
-      .sort((a, b) => a.startMin - b.startMin);
-    const laterToday = todayPeriods.find((p) => p.startMin > minutesNow);
-    if (laterToday) return `today at ${fmt12(mmToHHMM(laterToday.startMin))}`;
-    for (let i = 1; i <= 7; i++) {
-      const nd = new Date(base); nd.setDate(base.getDate() + i);
-      const periods = (weekly?.[DAYS_SQ[nd.getDay()]] || [])
-        .filter((p) => p.startMin != null && p.endMin != null)
-        .sort((a, b) => a.startMin - b.startMin);
-      if (periods.length) {
-        const dayLabel = i === 1 ? 'tomorrow' : nd.toLocaleDateString('en-AU', { weekday: 'long' });
-        return `${dayLabel} at ${fmt12(mmToHHMM(periods[0].startMin))}`;
-      }
-    }
-    return null;
-  };
-  const schedLater = dineIn === false && preWhen === 'later' && !!(preAt?.date && preAt?.time);
-  let kitchenClosedCats = [];
-  let kitchenClosedLabel = '';
-  if (storeOpen && kitchen && kitchen.hasHours && kitchen.weekly) {
-    const now = new Date();
-    const ds = schedLater ? preAt.date : dstrLocal(now);
-    const hhmm = schedLater ? preAt.time : `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-    const st = kitchenStatusAt(kitchen.weekly, ds, hhmm);
-    if (!st.open) {
-      kitchenClosedCats = kitchen.categories || [];
-      const reopen = nextKitchenOpenLabel(kitchen.weekly, ds, hhmm);
-      const closedAt = st.closesLabel ? `Kitchen closed at ${st.closesLabel}` : 'Kitchen closed';
-      kitchenClosedLabel = reopen ? `${closedAt} — reopens ${reopen}` : closedAt;
-    }
-  } else if (storeOpen && kitchen && !schedLater && kitchen.open === false) {
-    kitchenClosedCats = kitchen.categories || [];
-    kitchenClosedLabel = 'Kitchen closed';
-  }
-  const kitchenClosedSet = new Set((kitchenClosedCats || []).map((c) => (c || '').toLowerCase()));
-  // If the kitchen closes while an item sits in the cart (e.g. mid-shop), flag
-  // it as unavailable and block checkout until it's removed — never silently
-  // let a customer pay for something the kitchen can no longer make.
-  const cartUnavailableKeys = new Set(
-    cart.filter((c) => c.category && kitchenClosedSet.has(String(c.category).toLowerCase())).map((c) => c.key)
-  );
-  // Real-time (not scheduled-time) "closes at" label for the kitchen, used by
-  // the closing-soon nudges (top banner + cart sidebar) which are always about
-  // right now, unlike kitchenClosedLabel above which can reflect a future
-  // scheduled pickup time.
-  let kitchenSoonLabel = null;
-  if (kitchen && kitchen.weekly) {
-    const now = new Date();
-    const nowHHMM = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-    kitchenSoonLabel = kitchenStatusAt(kitchen.weekly, dstrLocal(now), nowHHMM).closesLabel;
-  }
+  const kitchenClosedCats = (storeOpen && kitchen && kitchen.open === false) ? (kitchen.categories || []) : [];
 
   const cartCount = cart.reduce((n, c) => n + c.quantity, 0);
   const cartTotal = cart.reduce((n, c) => n + c.unitPrice * c.quantity, 0);
@@ -479,6 +452,66 @@ export default function App() {
     return menu.categories;
   }, [menu, query, layoutMode, activeGroup]);
 
+  // Header shadow only after the page has scrolled past a small threshold. One
+  // passive listener that flips a boolean at the crossing — no per-pixel setState.
+  useEffect(() => {
+    let last = false;
+    const onScroll = () => { const s = window.scrollY > 6; if (s !== last) { last = s; setScrolled(s); } };
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
+  // Measure the sticky shell height into --shell-h (grows with a tall closed
+  // notice). ResizeObserver picks up notice-strip height changes automatically.
+  useEffect(() => {
+    const root = document.documentElement;
+    const shell = shellRef.current;
+    if (!shell) { root.style.setProperty('--shell-h', '0px'); return; }
+    const measure = () => {
+      const h = Math.round(shell.getBoundingClientRect().height);
+      setShellH(h);
+      root.style.setProperty('--shell-h', h + 'px');
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(shell);
+    return () => ro.disconnect();
+  }, [config, menu, view]);
+
+  // Measure the category dock height into --dock-h for section scroll offsets.
+  useEffect(() => {
+    const root = document.documentElement;
+    const dock = document.querySelector('.menu-dock-wrap');
+    if (!dock) { root.style.setProperty('--dock-h', '0px'); setDockH(0); return; }
+    const measure = () => {
+      const h = Math.round(dock.getBoundingClientRect().height);
+      setDockH(h);
+      root.style.setProperty('--dock-h', h + 'px');
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(dock);
+    return () => ro.disconnect();
+  }, [view, wide, query, layoutMode, filteredMenu]);
+
+  // Scroll-spy: as menu sections cross the sticky offset, highlight the dock tab.
+  // A single trip-line IntersectionObserver — no unthrottled scroll handler.
+  // Only in the multi-section (default) layout, not single-group mode.
+  useEffect(() => {
+    const inLayout = view === 'home' || (wide && view === 'checkout');
+    if (!inLayout || query || layoutMode === 'single') return;
+    const sections = [...document.querySelectorAll('.menu section[data-cat]')];
+    if (!sections.length) return;
+    const offset = shellH + dockH + 8;
+    const io = new IntersectionObserver(
+      (entries) => { entries.forEach((e) => { if (e.isIntersecting) setSpyCat(e.target.getAttribute('data-cat')); }); },
+      { rootMargin: `-${offset}px 0px -${Math.max(0, window.innerHeight - offset - 4)}px 0px`, threshold: 0 }
+    );
+    sections.forEach((s) => io.observe(s));
+    return () => io.disconnect();
+  }, [view, wide, query, layoutMode, filteredMenu, shellH, dockH]);
+
   if (loadErr && !config) {
     return (
       <div className="app">
@@ -571,51 +604,99 @@ export default function App() {
     ? [{ id: 'season-banner', ...seasonBanner }, ...(config.hero || [])]
     : (config.hero || []);
 
+  // "Browse menu" dock data — real categories, live item counts, icon by name.
+  const dockCategories = menu.categories
+    .filter((c) => c.topNav !== false)
+    .map((c) => ({ name: c.category, count: (c.items || []).length, iconName: iconFor(c.category) }));
+  const dockActive = layoutMode === 'single'
+    ? (activeGroup && activeGroup.length === 1 ? activeGroup[0] : null)
+    : (spyCat || activeCat);
+  // Picking a category: single-layout swaps the shown group; default layout
+  // scroll-spies + scrolls to the section (activeCat drives MenuList's scroll).
+  const pickCategory = (cat) => {
+    setQuery('');
+    if (layoutMode === 'single') setActiveGroup([cat]);
+    else { setSpyCat(cat); setActiveCat(cat); }
+  };
+  // Primary-nav "Coffee" → first coffee-ish category, only if one exists.
+  const coffeeCat = menu.categories.find((c) => (c.category || '').toLowerCase().includes('coffee') && c.topNav !== false) || null;
+  const goMenu = () => { setView('home'); setQuery(''); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+  const locLabel = locationLabel(config);
+  const navActive = (key) => {
+    if (key === 'menu') return view === 'home';
+    if (key === 'coffee') return view === 'home' && !!coffeeCat && dockActive === coffeeCat.category;
+    if (key === 'store') return view === 'store';
+    return false;
+  };
+
+  // Operational notices for the sticky strip — built from existing hours/kitchen/
+  // announcement logic, urgent/operational before promotional.
+  const nHours = config.hours || {};
+  const nLabel = nHours.nextOpen?.label;
+  const scrollMenu = () => { const el = document.querySelector('.menu'); if (el) el.scrollIntoView({ behavior: 'smooth' }); };
+  const notices = [];
+  if (!storeOpen) {
+    if (preorder) {
+      notices.push({
+        id: 'closed', type: 'urgent', icon: '●',
+        text: `We’re closed${nLabel ? ` — we reopen ${nLabel}` : ''}. Pre-order now — we’ll start it when we open.`,
+        cta: { label: 'Pre-order now', onClick: () => { setView('home'); setDineIn(false); setPreWhen('later'); scrollMenu(); } },
+      });
+    } else {
+      notices.push({ id: 'closed', type: 'urgent', icon: '●', text: `We’re closed right now${nLabel ? ` — we reopen ${nLabel}` : ''}.` });
+    }
+  } else {
+    const k = nHours.kitchen?.closesInMin;
+    if (k != null && k > 0 && k <= 60) {
+      notices.push({
+        id: 'kitchen', type: 'warning', icon: '🔥',
+        text: `Kitchen closes in ${k} min${k === 1 ? '' : 's'} — order now.`,
+        cta: { label: 'Order now', onClick: () => { setView('home'); scrollMenu(); } },
+      });
+    }
+  }
+  if (config.announcement) notices.push({ id: 'announce', type: 'promotional', text: config.announcement, dismissible: true });
+
   return (
-    <div className={`app${(view === 'store' || view === 'reserve' || (!wide && view === 'checkout')) ? ' app-flush' : ''}`}>
+    <div className={`app store-shell${(view === 'store' || view === 'reserve' || (!wide && view === 'checkout')) ? ' app-flush' : ''}`}>
       {activeTheme?.effects && <SeasonalEffects effects={activeTheme.effects} />}
       {activeTheme?.id && activeTheme?.decor?.perimeter && (
         <SeasonalPerimeter id={activeTheme.id} decor={activeTheme.decor} />
       )}
-      <header className="topbar">
-        <button className="logo-wrap" onClick={() => { setView('home'); setActiveCat(null); }} aria-label="Home">
-          {config.logoUrl ? <img src={imgUrl(config.logoUrl, 400)} alt={config.storeName || 'Home'} className="topbar-logo" fetchpriority="high" /> : <Logo />}
-        </button>
-        <div className="icon-row">
-          <button className="iconbtn" title="About / contact" aria-label="Store info" onClick={() => setView('store')}><StoreIcon size={22} /></button>
-          <button className="iconbtn" title="Theme" aria-label="Theme" onClick={() => setShowTheme(true)}><ThemeIcon size={22} /></button>
-          <button className="iconbtn" title="Account" aria-label={user ? 'Account' : 'Sign in'} onClick={() => setView('account')}>
-            <AccountIcon size={26} />
-          </button>
-        </div>
-      </header>
 
-      {config.announcement ? <div className="announce">{config.announcement}</div> : null}
-      {(() => {
-        const h = config.hours || {};
-        const label = h.nextOpen?.label;
-        const scrollMenu = () => { const el = document.querySelector('.menu'); if (el) el.scrollIntoView({ behavior: 'smooth' }); };
-        if (!storeOpen) {
-          if (preorder) {
-            return (
-              <div className="closed-banner preorder-banner">
-                <span>We’re closed{label ? ` — we reopen ${label}` : ''}. Pre-order now — we’ll start it when we open.</span>
-                <button className="btn" onClick={() => { setDineIn(false); setPreWhen('later'); scrollMenu(); }}>Pre-order now</button>
+      <div ref={shellRef} className={`store-sticky${scrolled ? ' is-scrolled' : ''}`}>
+        <header className="site-header">
+          <div className="site-header-inner">
+            <button className="logo-wrap sh-logo" onClick={goMenu} aria-label="Home">
+              {config.logoUrl ? <img src={imgUrl(config.logoUrl, 400)} alt={config.storeName || 'Home'} className="topbar-logo" fetchpriority="high" /> : <Logo />}
+            </button>
+            <nav className="site-nav" aria-label="Primary">
+              <button type="button" className={`site-nav-link${navActive('menu') ? ' on' : ''}`} onClick={goMenu}>Menu</button>
+              {coffeeCat && (
+                <button type="button" className={`site-nav-link${navActive('coffee') ? ' on' : ''}`} onClick={() => { setView('home'); pickCategory(coffeeCat.category); }}>Coffee</button>
+              )}
+              <button type="button" className={`site-nav-link${navActive('store') ? ' on' : ''}`} onClick={() => setView('store')}>Our story</button>
+              <button type="button" className={`site-nav-link${view === 'store' ? ' on' : ''}`} onClick={() => setView('store')}>Visit</button>
+            </nav>
+            <div className="site-header-right">
+              {locLabel && (
+                <span className="site-loc" title="Our location">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 21s-6.5-5.6-6.5-10A6.5 6.5 0 0 1 18.5 11c0 4.4-6.5 10-6.5 10Z" /><circle cx="12" cy="11" r="2.3" /></svg>
+                  <span>{locLabel}</span>
+                </span>
+              )}
+              <div className="icon-row">
+                <button className="iconbtn" title="About / contact" aria-label="Store info" onClick={() => setView('store')}><StoreIcon size={22} /></button>
+                <button className="iconbtn" title="Theme" aria-label="Theme" onClick={() => setShowTheme(true)}><ThemeIcon size={22} /></button>
+                <button className="iconbtn" title="Account" aria-label={user ? 'Account' : 'Sign in'} onClick={() => setView('account')}>
+                  <AccountIcon size={26} />
+                </button>
               </div>
-            );
-          }
-          return (
-            <div className="closed-banner">
-              <span>We’re closed right now{label ? ` — we reopen ${label}` : ''}.</span>
             </div>
-          );
-        }
-        // Kitchen-closing-soon nudge now lives only under "Your order" in the
-        // cart (see KitchenClosingBanner usages below) — the top of the page
-        // already carries the announcement bar, so it doesn't need a second
-        // message up here too, and it was leaking onto the Reservations page.
-        return null;
-      })()}
+          </div>
+        </header>
+        {notices.length > 0 && <SiteNotice notices={notices} />}
+      </div>
 
       {view === 'account' && (
         <Account
@@ -638,8 +719,8 @@ export default function App() {
       )}
 
       {showLayout && (
-        <div className="layout">
-          <div className="main-col">
+        <div className="layout store-layout">
+          <div className="main-col store-main">
             <HeroSlider
               hero={heroSlides}
               ratio={config.heroRatio}
@@ -651,21 +732,12 @@ export default function App() {
                 else if (link.type === 'item' && link.value) {
                   // Open the product directly (e.g. a "steak sandwich" banner → its
                   // item card), scanning every category for the matching id.
-                  let found = null; let foundCat = null;
+                  let found = null;
                   for (const c of (menu.categories || [])) {
                     const it = (c.items || []).find((x) => x.id === link.value);
-                    if (it) { found = it; foundCat = c.category; break; }
+                    if (it) { found = it; break; }
                   }
-                  // A hero banner can point at an item whose category is sold out
-                  // or currently kitchen-closed — don't let the banner bypass that;
-                  // jump to the (now visibly unavailable) category instead of
-                  // opening an Add-to-cart modal for something you can't actually buy.
-                  const shut = found && (found.soldOut || kitchenClosedSet.has((foundCat || '').toLowerCase()));
-                  if (found && !shut) setActiveItem({ ...found, category: foundCat });
-                  else if (found) {
-                    setActiveCat(foundCat);
-                    const el = document.querySelector('.menu'); if (el) el.scrollIntoView({ behavior: 'smooth' });
-                  }
+                  if (found) setActiveItem(found);
                   else { const el = document.querySelector('.menu'); if (el) el.scrollIntoView({ behavior: 'smooth' }); }
                 }
                 else if (link.type === 'account') setView('account');
@@ -685,17 +757,7 @@ export default function App() {
               <input placeholder="Search the menu…" value={query} onChange={(e) => setQuery(e.target.value)} />
             </div>
             {!query && (
-              <CategoryNav
-                variant={config?.topMenuStyle || 'stacked'}
-                categories={menu.categories.filter((c) => c.topNav !== false).map((c) => c.category)}
-                active={layoutMode === 'single' ? (activeGroup && activeGroup.length === 1 ? activeGroup[0] : null) : activeCat}
-                onPick={(cat) => {
-                  // Category chips are sticky, so just swap the list below — don't
-                  // yank the page to the top.
-                  if (layoutMode === 'single') setActiveGroup([cat]);
-                  else setActiveCat(cat);
-                }}
-              />
+              <MenuDock categories={dockCategories} active={dockActive} onPick={pickCategory} />
             )}
             <MenuList
               categories={filteredMenu}
@@ -704,32 +766,19 @@ export default function App() {
               scrollTo={activeCat}
               onScrolled={() => setActiveCat(null)}
               kitchenClosedCats={kitchenClosedCats}
-              kitchenClosedLabel={kitchenClosedLabel}
             />
             <InstallButton />
           </div>
-          <aside className={`cart-aside${view === 'checkout' ? ' is-checkout' : ''}`}>
+          <aside className={`cart-aside store-cart${view === 'checkout' ? ' is-checkout' : ''}`}>
             {view === 'checkout' ? (
               <div className="aside-checkout">{checkoutEl}</div>
             ) : (
-              <>
-                <CartPanel
-                  cart={cart} currency={currency} onQty={updateQty}
-                  onRemove={removeItem} onClear={clearCart}
-                  dineIn={dineIn} table={table}
-                  unavailableKeys={cartUnavailableKeys}
-                  onCheckout={() => setView('checkout')}
-                />
-                {storeOpen && kitchen?.closesInMin != null && kitchen.closesInMin > 0 && kitchen.closesInMin <= 30 && (
-                  <KitchenClosingBanner
-                    className="kitchen-soon-cart"
-                    closesInMin={kitchen.closesInMin}
-                    closesLabel={kitchenSoonLabel}
-                    categories={kitchen.categories}
-                    onOrderNow={() => { const el = document.querySelector('.menu'); if (el) el.scrollIntoView({ behavior: 'smooth' }); }}
-                  />
-                )}
-              </>
+              <CartPanel
+                cart={cart} currency={currency} onQty={updateQty}
+                onRemove={removeItem} onClear={clearCart}
+                dineIn={dineIn} table={table}
+                onCheckout={() => setView('checkout')}
+              />
             )}
           </aside>
         </div>
@@ -740,16 +789,7 @@ export default function App() {
           cart={cart} currency={currency} onQty={updateQty}
           onRemove={removeItem} onClear={clearCart}
           dineIn={dineIn} table={table}
-          unavailableKeys={cartUnavailableKeys}
           onCheckout={() => setView('checkout')} onBack={() => setView('home')}
-          kitchenBanner={storeOpen && kitchen?.closesInMin != null && kitchen.closesInMin > 0 && kitchen.closesInMin <= 30 ? (
-            <KitchenClosingBanner
-              className="kitchen-soon-cart"
-              closesInMin={kitchen.closesInMin}
-              closesLabel={kitchenSoonLabel}
-              categories={kitchen.categories}
-            />
-          ) : null}
         />
       )}
 
