@@ -503,17 +503,6 @@ app.post('/api/admin/reservations/status', async (req, res) => {
 // item that reservation orders are placed against (see server/lib/orders.js
 // createReservationOrder). Lets the owner self-serve this instead of it being
 // a manual, API-console-only setup step. ----
-app.get('/api/admin/_debug-settings-key', (req, res) => {
-  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
-  const s = getSettings();
-  res.json({
-    hasKey: Object.prototype.hasOwnProperty.call(s, 'reservationVariationId'),
-    value: s.reservationVariationId,
-    totalKeys: Object.keys(s).length,
-    keysSample: Object.keys(s).slice(0, 5),
-    buildId: BUILD_ID,
-  });
-});
 app.get('/api/admin/reservation-item/search', async (req, res) => {
   if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
   try {
