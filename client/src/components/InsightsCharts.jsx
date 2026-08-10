@@ -27,12 +27,17 @@ export function BarChart({
 
   const n = data.length;
   const max = Math.max(1, ...data.map((d) => Math.max(d.value || 0, d.value2 || 0)));
-  const w = Math.max(n * 24, 240);
-  const padL = 40, padB = 22, padT = 14;
+  // Fixed viewBox width (NOT tied to bar count) — with preserveAspectRatio
+  // "none" the SVG stretches to fill its container, and if the viewBox width
+  // scaled with a small n it would stretch text glyphs horizontally into an
+  // unreadable smear. A fixed width close to the card's real rendered width
+  // keeps that stretch factor near 1x regardless of how many bars there are.
+  const w = 640;
+  const padL = 42, padB = 22, padT = 22;
   const plotH = height - padT - padB;
   const gridLines = 4;
   const gap = (w - padL) / n;
-  const barW = Math.max(3, gap * 0.55);
+  const barW = Math.min(46, Math.max(3, gap * 0.55));
   const showLabels = n <= 9;
   const labelEvery = n <= 8 ? 1 : n <= 16 ? 2 : n <= 40 ? Math.ceil(n / 8) : Math.ceil(n / 6);
 
@@ -66,7 +71,7 @@ export function BarChart({
               <rect x={x} y={y} width={barW} height={bh} rx={2.5} fill={color} opacity={active ? 1 : 0.9} className="ins-bar" />
               {active && <rect x={x} y={y} width={barW} height={bh} rx={2.5} fill={color} className="ins-bar-active" />}
               {showLabels && (
-                <text x={x + barW / 2} y={y - 5} textAnchor="middle" className="ins-bar-label">{formatValue(d.value)}</text>
+                <text x={x + barW / 2} y={Math.max(11, y - 7)} textAnchor="middle" className="ins-bar-label">{formatValue(d.value)}</text>
               )}
               {i % labelEvery === 0 && (
                 <text x={x + barW / 2} y={height - 4} textAnchor="middle" className="ins-x-label">{formatDay(d.day)}</text>
