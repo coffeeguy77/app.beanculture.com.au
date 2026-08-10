@@ -62,8 +62,13 @@ const TABS = [
   { id: 'theme', label: 'Theme', Icon: ThemeIcon2 },
 ];
 
+// Passcode is remembered across refreshes (until Sign out) so the admin isn't
+// booted back to the login screen every time the page reloads.
+const ADMIN_PASS_KEY = 'bc_admin_pass';
+const loadSavedPass = () => { try { return localStorage.getItem(ADMIN_PASS_KEY) || ''; } catch { return ''; } };
+
 export default function Admin({ onExit }) {
-  const [pass, setPass] = useState('');
+  const [pass, setPass] = useState(loadSavedPass);
   const [needPass, setNeedPass] = useState(false);
   const [data, setData] = useState(null);
   const [s, setS] = useState(null); // editable settings
@@ -169,11 +174,12 @@ export default function Admin({ onExit }) {
     setError('');
     try {
       const res = await fetch(`/api/admin/overview?pass=${encodeURIComponent(p || '')}`);
-      if (res.status === 401) { setNeedPass(true); return; }
+      if (res.status === 401) { setNeedPass(true); try { localStorage.removeItem(ADMIN_PASS_KEY); } catch {} return; }
       const d = await res.json();
       setData(d);
       setS(JSON.parse(JSON.stringify(d.settings)));
       setNeedPass(false);
+      try { localStorage.setItem(ADMIN_PASS_KEY, p || ''); } catch {}
       try {
         const cr = await fetch(`/api/admin/catalog?pass=${encodeURIComponent(p || '')}`);
         if (cr.ok) { const cd = await cr.json(); setAdminCat(cd.categories || []); }
@@ -188,7 +194,7 @@ export default function Admin({ onExit }) {
       } catch {}
     } catch (e) { setError(e.message); }
   }
-  useEffect(() => { load(''); }, []);
+  useEffect(() => { load(pass); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   // Fetch the full config (variations + modifiers) for any item used by a preset.
   useEffect(() => {
     const ids = [...new Set((s?.presets || []).map((p) => p.sourceItemId).filter(Boolean))];
@@ -855,6 +861,14 @@ export default function Admin({ onExit }) {
     finally { setSaving(false); setTimeout(() => setSavedMsg(''), 5000); }
   }
 
+  const signOut = () => {
+    try { localStorage.removeItem(ADMIN_PASS_KEY); } catch {}
+    setPass('');
+    setData(null);
+    setS(null);
+    setNeedPass(true);
+  };
+
   if (needPass) {
     return (
       <div className="app"><main className="page">
@@ -878,9 +892,10 @@ export default function Admin({ onExit }) {
         <div className="admin-head">
           <button className="link" onClick={onExit}>← Store</button>
           <h2 style={{ margin: 0, fontFamily: 'Georgia, serif' }}>Control panel</h2>
-          {!data.dbEnabled
-            ? <span className="muted" style={{ fontSize: 'var(--fs-xs)' }}>⚠ DB off — changes won’t persist</span>
-            : <span style={{ width: 60 }} />}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            {!data.dbEnabled && <span className="muted" style={{ fontSize: 'var(--fs-xs)' }}>⚠ DB off — changes won’t persist</span>}
+            <button className="link" onClick={signOut} style={{ fontSize: 'var(--fs-xs)' }}>Sign out</button>
+          </div>
         </div>
 
         <div className="admin-layout">
