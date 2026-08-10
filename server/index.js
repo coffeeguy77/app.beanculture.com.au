@@ -577,6 +577,17 @@ app.get('/api/admin/products', async (req, res) => {
   }
 });
 
+// TEMP debug: raw Square item search by name (bypasses the normal filters).
+// Remove after use.
+app.get('/api/admin/_debug-search', async (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    res.json({ items: await catalog.debugSearchItemsByName(req.query.q || '') });
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+
 // ---- Admin: one item's full config (variations + modifiers) for the builder ----
 app.get('/api/admin/item-config', async (req, res) => {
   if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
