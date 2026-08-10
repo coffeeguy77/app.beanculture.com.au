@@ -794,7 +794,7 @@ img { max-width: 100%; }
     max-height: calc(100dvh - 96px); overflow: hidden;
   }
   .cart-panel-head { padding: 18px 18px 12px; border-bottom: 1px solid var(--line); }
-  .cart-panel-head h2 { margin: 0 0 10px; font-family: Georgia, serif; font-size: 28px; }
+  .cart-panel-head h2 { margin: 0 0 10px; font-family: var(--font-serif); letter-spacing: -0.01em; font-size: 28px; }
   .cart-panel-head .context-pill { margin: 0; white-space: normal; line-height: 1.4; }
   .cart-panel-list { padding: 12px 18px; margin: 0; overflow-y: auto; flex: 1 1 auto; }
   .cart-panel-list .cart-line { padding: 14px 12px; }
@@ -1151,6 +1151,10 @@ img { max-width: 100%; }
 .store-shell {
   --s-bg: #F7F4EF; --s-card: #FFFFFF; --s-ink: #211A17; --s-ink2: #766D67; --s-line: #EAE4DC; --dark: #76263E;
   --z-content: 1; --z-cart: 20; --z-dock: 30; --z-header: 40; --z-modal: 60;
+  /* Editorial type pairing: Fraunces (serif headings) + DM Sans (UI/body). Loaded
+     from Google Fonts in index.html; scoped here so admin/other pages are unaffected. */
+  --font-serif: 'Fraunces', Georgia, 'Times New Roman', serif;
+  --font-sans: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   /* Neutral surfaces/text go premium; brand/accent stay theme-driven. */
   --bg: var(--s-bg);
   --surface: var(--s-card);
@@ -1162,7 +1166,18 @@ img { max-width: 100%; }
   --shadow-sm: 0 1px 2px rgba(33,26,23,.04), 0 6px 18px rgba(33,26,23,.04);
   background: var(--s-bg);
   color: var(--s-ink);
+  font-family: var(--font-sans);
 }
+/* Body/UI text inside the storefront uses DM Sans; editorial headings use
+   Fraunces with slightly tighter tracking for its optical sizing. */
+.store-shell,
+.store-shell input,
+.store-shell select,
+.store-shell textarea,
+.store-shell button { font-family: var(--font-sans); }
+.store-shell .serif,
+.store-main .cat-title,
+.cart-panel-head h2 { font-family: var(--font-serif); letter-spacing: -0.01em; }
 /* Whole page ivory (fills the gutters beyond the centered shell on ultrawide). */
 body:has(.store-shell) { background: #F7F4EF; }
 /* CRITICAL: the base `.app` uses overflow-x:hidden, which turns the app into a
@@ -1265,16 +1280,16 @@ body:has(.store-shell) { background: #F7F4EF; }
 /* ONE unified white surface holding the label + tiles + arrows. */
 .menu-dock {
   background: var(--s-card); border: 1px solid var(--s-line); border-radius: 16px;
-  box-shadow: var(--shadow-sm); padding: 10px 12px;
+  box-shadow: var(--shadow-sm); padding: 12px 14px;
   display: flex; align-items: stretch; gap: 12px;
 }
 .menu-dock-eyebrow {
-  flex: 0 0 auto; width: 112px; display: flex; align-items: center;
-  font-size: 12px; font-weight: 800; letter-spacing: 1.4px; line-height: 1.25;
+  flex: 0 0 auto; width: 124px; display: flex; align-items: center;
+  font-size: 12.5px; font-weight: 800; letter-spacing: 1.4px; line-height: 1.25;
   text-transform: uppercase; color: var(--dark, #76263E);
   border-right: 1px solid var(--s-line); padding-right: 12px;
 }
-.menu-dock-strip-wrap { position: relative; flex: 1 1 auto; min-width: 0; display: flex; align-items: center; }
+.menu-dock-strip-wrap { position: relative; flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 6px; }
 /* overflow lives ONLY on the inner strip, never on the sticky wrapper, so
    date/time popovers above are never clipped. */
 .menu-dock-strip {
@@ -1283,20 +1298,20 @@ body:has(.store-shell) { background: #F7F4EF; }
 }
 .menu-dock-strip::-webkit-scrollbar { display: none; }
 .dock-tab {
-  flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
-  min-width: 100px; height: 86px; padding: 11px; cursor: pointer; position: relative;
-  border: 1px solid var(--s-line); border-radius: 12px;
+  flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px;
+  min-width: 118px; height: 102px; padding: 12px; cursor: pointer; position: relative;
+  border: 1px solid var(--s-line); border-radius: 14px;
   background: color-mix(in srgb, var(--s-line) 22%, #fff); color: var(--s-ink);
   transition: background .16s ease, border-color .16s ease, color .16s ease, transform .1s ease, box-shadow .16s ease;
 }
 .dock-tab:hover { border-color: var(--brand); background: var(--s-card); }
 .dock-tab:active { transform: scale(.97); }
 .dock-tab-ic { color: var(--brand); display: inline-flex; }
-.dock-tab-label { font-size: 14px; font-weight: 600; white-space: nowrap; }
+.dock-tab-label { font-size: 15px; font-weight: 600; white-space: nowrap; }
 .dock-tab-count {
-  position: absolute; top: 6px; right: 6px; min-width: 23px; height: 23px; padding: 0 6px;
+  position: absolute; top: 7px; right: 7px; min-width: 25px; height: 25px; padding: 0 6px;
   display: grid; place-items: center; border-radius: 999px;
-  font-size: 12px; font-weight: 800;
+  font-size: 12.5px; font-weight: 800;
   background: #fff; color: var(--dark, #76263E); border: 1px solid var(--dark, #76263E);
   box-shadow: var(--shadow-sm);
 }
@@ -1306,17 +1321,18 @@ body:has(.store-shell) { background: #F7F4EF; }
 }
 .dock-tab.on .dock-tab-ic { color: #fff; }
 .dock-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* In-flow flex controls beside the strip — they occupy their own space and never
+   overlap the first/last tile. When the strip doesn't overflow they collapse
+   (display:none) and the strip reclaims the width. */
 .dock-arrow {
-  position: absolute; top: 50%; transform: translateY(-50%); z-index: 3;
-  width: 32px; height: 32px; border-radius: 50%; cursor: pointer;
+  position: static; transform: none; flex: 0 0 auto;
+  width: 34px; height: 34px; border-radius: 50%; cursor: pointer;
   border: 1px solid var(--s-line); background: var(--s-card); color: var(--s-ink);
   font-size: 20px; line-height: 1; display: grid; place-items: center;
-  box-shadow: var(--shadow);
+  box-shadow: var(--shadow-sm);
 }
 .dock-arrow:hover { border-color: var(--brand); color: var(--brand); }
 .dock-arrow:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.dock-arrow.left { left: -4px; }
-.dock-arrow.right { right: -4px; }
 .dock-arrow.hide { display: none; }
 
 /* ── Premium menu cards ── */
@@ -1331,21 +1347,21 @@ body:has(.store-shell) { background: #F7F4EF; }
 
 /* Landscape product cards: image left, content right, price bottom, add bottom-right. */
 .store-main .item {
-  min-height: 116px; align-items: stretch; padding: 12px; border-radius: 14px; gap: 12px; position: relative;
+  min-height: 96px; align-items: stretch; padding: 10px 12px; border-radius: 14px; gap: 12px; position: relative;
   transition: transform .14s ease, box-shadow .18s ease, border-color .16s ease;
 }
 .store-main .item .item-img,
 .store-main .item .item-noimg {
-  width: 44%; max-width: 132px; height: auto; min-height: 92px; align-self: stretch;
+  width: 40%; max-width: 120px; height: auto; min-height: 76px; align-self: stretch;
   object-fit: cover; border-radius: 10px;
 }
 .store-main .item-body { flex: 1; min-width: 0; display: flex; flex-direction: column; padding-right: 44px; }
 .store-main .item-name { font-size: 16px; }
 .store-main .item-price { margin-top: auto; }
-.store-main .plus { position: absolute; right: 12px; bottom: 12px; background: var(--brand); color: #fff; width: 38px; height: 38px; box-shadow: var(--shadow-sm); }
+.store-main .plus { position: absolute; right: 12px; bottom: 12px; background: var(--brand); color: #fff; width: 38px; height: 38px; border-radius: 50%; box-shadow: var(--shadow-sm); }
 .store-main .item.sold .plus { display: none; }
 /* Compact no-image cards (Tea etc.) — same card system, shorter, no image. */
-.store-main .items.noimg .item { min-height: 76px; }
+.store-main .items.noimg .item { min-height: 64px; padding: 12px 14px; }
 @media (hover: hover) {
   .store-main .item:not(.sold):hover { transform: translateY(-3px); box-shadow: var(--shadow); border-color: color-mix(in srgb, var(--brand) 30%, var(--s-line)); }
 }
@@ -1358,6 +1374,55 @@ body:has(.store-shell) { background: #F7F4EF; }
 @media (min-width: 900px) {
   .store-main .items { grid-template-columns: repeat(3, 1fr); gap: 14px; }
 }
+
+/* ── Scheduling: ONE unified white control surface ──
+   Both the fulfilment row and the Now/Later + Day/Time row sit inside one
+   premium card so they read as a single control. Rows are transparent-on-card,
+   each ~48px tall with matching borders/radii. Logic untouched (App/OrderTypeBar). */
+.store-main .ordertype {
+  background: var(--s-card); border: 1px solid var(--s-line); border-radius: 16px;
+  box-shadow: var(--shadow-sm); padding: 10px; margin: 12px 0;
+  display: flex; flex-direction: column; gap: 8px;
+}
+/* Row 1 — fulfilment segmented (direct child, not the nested Now/Later pill). */
+.store-main .ordertype > .segmented {
+  background: transparent; padding: 0; gap: 8px; border-radius: 0;
+}
+.store-main .ordertype > .segmented .seg {
+  flex: 1; border: 1px solid var(--s-line); border-radius: 12px;
+  background: var(--s-card); color: var(--s-ink2);
+  min-height: 48px; padding: 12px 8px; font-size: 14px; font-weight: 700;
+}
+.store-main .ordertype > .segmented .seg.active {
+  background: var(--brand); border-color: var(--brand); color: #fff;
+}
+/* Row 2 — Now/Later sub-pill + Day/Time fields, transparent-on-card. */
+.store-main .ordertype .when-row {
+  align-items: center; gap: 8px;
+}
+.store-main .ordertype .when-seg {
+  flex: 0 0 auto; min-width: 160px; min-height: 48px;
+  background: color-mix(in srgb, var(--s-line) 28%, #fff);
+  border: 1px solid var(--s-line); border-radius: 12px; padding: 4px;
+}
+.store-main .ordertype .when-seg .seg { min-height: 38px; border-radius: 9px; }
+
+/* ── Cart: roomier item area + anchored footer ── */
+.store-cart .cart-panel { display: flex; flex-direction: column; }
+.store-cart .cart-panel-head { flex: none; }
+.store-cart .cart-panel-list {
+  flex: 1 1 auto; overflow-y: auto; min-height: 0;
+  display: block; gap: 0;
+}
+.store-cart .cart-panel-list .cart-line {
+  background: transparent; border: none; border-bottom: 1px solid var(--s-line);
+  border-radius: 0; padding: 14px 4px; gap: 10px;
+}
+.store-cart .cart-panel-list .cart-line:last-child { border-bottom: none; }
+.store-cart .cart-panel-list .cart-line-name { font-size: 15px; font-weight: 600; line-height: 1.35; }
+.store-cart .cart-panel-list .cart-line-sub { font-size: 13px; color: var(--s-ink2); line-height: 1.4; }
+.store-cart .cart-panel-foot { flex: none; }
+.store-cart .cart-panel-foot .btn.full { min-height: 52px; }
 
 /* ── Sticky cart offsets from --shell-h (desktop sidebar) ── */
 @media (min-width: 900px) {

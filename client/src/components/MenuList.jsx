@@ -55,6 +55,14 @@ export default function MenuList({ categories, currency, onPick, scrollTo, onScr
               const from = fromPrice(item);
               const multi = item.variations.length > 1;
               const unavailable = item.soldOut || kitchenShut;
+              // Only show short, human descriptions on the card. Technical Square
+              // composition copy (e.g. "Origin Composition: 50% Brazil | …") and
+              // any long blurb never fit cleanly, so hide it here — the full text
+              // still shows in the item modal.
+              const cardDesc = item.description
+                && !/origin composition/i.test(item.description)
+                && item.description.length <= 70
+                ? item.description : null;
               return (
                 <button
                   key={item.id}
@@ -71,7 +79,7 @@ export default function MenuList({ categories, currency, onPick, scrollTo, onScr
                   ))}
                   <div className="item-body">
                     <div className="item-name">{item.name}</div>
-                    {item.description && <div className="item-desc">{item.description}</div>}
+                    {cardDesc && <div className="item-desc">{cardDesc}</div>}
                     <div className="item-price">{multi ? 'from ' : ''}{formatMoney(from, currency)}</div>
                   </div>
                   {!unavailable && <span className="plus">+</span>}

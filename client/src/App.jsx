@@ -218,13 +218,22 @@ export default function App() {
         const active = resolveTheme(cfg);
         applyTheme(active);
         setActiveTheme(active);
-        if (cfg.layoutMode === 'single' && cfg.footer && cfg.footer[0]) {
-          setActiveGroup(cfg.footer[0].categories);
-        }
       })
       .catch((e) => setLoadErr(e.message));
     api.getMenu().then(setMenu).catch((e) => setLoadErr(e.message));
   }, []);
+
+  // Single-layout default: activate the FIRST top-nav category (e.g. Coffee) so
+  // its dock tile renders active on load showing its real live count, and the
+  // Coffee items are what's shown. Config + menu load separately, so this waits
+  // for the menu and only seeds when no group has been chosen yet.
+  useEffect(() => {
+    if (!menu || !config) return;
+    if ((config.layoutMode || 'onepage') !== 'single') return;
+    if (activeGroup && activeGroup.length) return;
+    const first = menu.categories.find((c) => c.topNav !== false);
+    if (first) setActiveGroup([first.category]);
+  }, [menu, config, activeGroup]);
 
   // Auto-update: when the tab is re-shown, check the live build id and refresh
   // config/menu. If a NEW deploy is live, reload once so nobody is stuck stale.
