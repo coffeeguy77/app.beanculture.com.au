@@ -179,6 +179,27 @@ function withRuntime(base, nowOverride) {
     }
   }
 
+  // Minutes since the store last closed (the most recent period end at or before
+  // now), used to anchor the closed/pre-order progress bar to a REAL interval so
+  // it survives page refresh. Scans backward over the weekly schedule (skipping
+  // closure dates); all arithmetic is store-local minutes so it is tz-safe and
+  // handles overnight/weekend/holiday gaps via the day offset. null if unknown.
+  let closedSinceMin = null;
+  if (!open) {
+    for (let i = 0; i < 9; i++) {
+      const dd = ((dow - i) % 7 + 7) % 7;
+      const date = addDays(td.full, -i);
+      if (isClosedDate(closures, date)) continue;
+      let bestEnd = null;
+      for (const p of (weekly[DAYS[dd]] || [])) {
+        if (p.endMin == null) continue;
+        const endAbs = -i * 1440 + p.endMin; // minutes relative to today-00:00
+        if (endAbs <= minutes && (bestEnd == null || endAbs > bestEnd)) bestEnd = endAbs;
+      }
+      if (bestEnd != null) { closedSinceMin = minutes - bestEnd; break; }
+    }
+  }
+
   return {
     open,
     canOrderNow,
@@ -186,6 +207,7 @@ function withRuntime(base, nowOverride) {
     orderingDisabled,
     closesAt,
     nextOpen,
+    closedSinceMin,
     kitchen: {
       open: kitchenOpen,
       closesInMin: kitchenClosesInMin,

@@ -117,6 +117,7 @@ function SiteNotice({ notices }) {
       <div className="site-notice site-notice--reopen site-notice--kitchen" role="status">
         <KitchenClosingCountdown
           minutes={n.minsUntil}
+          elapsedMin={n.elapsedMin}
           windowMin={n.minsUntil}
           eyebrow="We’re closed"
           subLabel={n.reopenLabel ? `We reopen ${n.reopenLabel}` : 'Reopening soon'}
@@ -134,6 +135,7 @@ function SiteNotice({ notices }) {
       <div className={`site-notice site-notice--${n.type || 'warning'} site-notice--kitchen`} role="status">
         <KitchenClosingCountdown
           closesInMin={n.closesInMin}
+          windowMin={30}
           closesLabel={n.closesLabel}
           categories={n.categories}
           onOrderNow={n.cta?.onClick}
@@ -782,6 +784,7 @@ export default function App() {
         id: 'closed', type: 'urgent', icon: '●',
         reopen: true,
         minsUntil: no?.minsUntil,
+        elapsedMin: nHours.closedSinceMin,
         reopenLabel: no?.label,
         text: `We’re closed${nLabel ? ` — we reopen ${nLabel}` : ''}. Pre-order now — we’ll start it when we open.`,
         cta: { label: 'Pre-order now', onClick: () => { setView('home'); setDineIn(false); setPreWhen('later'); scrollToOrderType(); } },
@@ -827,11 +830,6 @@ export default function App() {
             <button type="button" className={`site-nav-link${view === 'store' ? ' on' : ''}`} onClick={() => setView('store')}>Visit</button>
           </nav>
           <div className="site-header-right">
-            {locLabel && (
-              <button type="button" className="site-loc" aria-label={`Current store: ${locLabel}`} title={locLabel}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 21s-6.5-5.6-6.5-10A6.5 6.5 0 0 1 18.5 11c0 4.4-6.5 10-6.5 10Z" /><circle cx="12" cy="11" r="2.3" /></svg>
-              </button>
-            )}
             <div className="icon-row">
               <button className="iconbtn" title="About / contact" aria-label="Store info" onClick={() => setView('store')}><StoreIcon size={22} /></button>
               <button className="iconbtn" title="Theme" aria-label="Theme" onClick={() => setShowTheme(true)}><ThemeIcon size={22} /></button>

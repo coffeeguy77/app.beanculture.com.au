@@ -1313,7 +1313,7 @@ body:has(.store-shell) { background: #F7F4EF; }
   border-bottom: 1px solid transparent;
   transition: box-shadow .2s ease, border-color .2s ease;
 }
-.site-header.is-scrolled { border-bottom-color: var(--s-line); box-shadow: 0 6px 24px rgba(33,26,23,.07); }
+.site-header.is-scrolled { border-bottom-color: transparent; box-shadow: none; }
 .hours-bar {
   position: sticky; top: var(--header-h, 84px); z-index: calc(var(--z-header, 40) - 1);
   background: color-mix(in srgb, var(--s-bg) 90%, #fff);
@@ -1496,10 +1496,11 @@ body:has(.store-shell) { background: #F7F4EF; }
 .menu-dock-wrap {
   position: sticky; top: var(--shell-h, 64px); z-index: var(--z-dock, 30);
   background: var(--s-bg); padding: 10px 0 8px; margin: 2px 0 2px;
-  transition: box-shadow .2s ease, border-color .2s ease;
-  border-bottom: 1px solid transparent;
 }
-.menu-dock-wrap.is-stuck { box-shadow: 0 10px 22px rgba(33,26,23,.06); border-bottom-color: var(--s-line); }
+/* No separator/shadow beneath the sticky dock — the wrapper paints the page
+   gradient and the ivory dock card carries its own edge; a bottom border here
+   read as a stray white line spanning the column while products scrolled. */
+.menu-dock-wrap, .menu-dock-wrap.is-stuck { border-bottom: none; box-shadow: none; }
 /* ONE unified white surface holding the label + tiles + arrows. */
 .menu-dock {
   background: var(--s-card); border: 1px solid var(--s-line); border-radius: 16px;
@@ -1625,11 +1626,15 @@ body:has(.store-shell) { background: #F7F4EF; }
 .store-main .ordertype > .segmented .seg {
   flex: 1; border: 1px solid var(--s-line); border-radius: 12px;
   background: var(--s-card); color: var(--s-ink2);
-  min-height: 48px; padding: 12px 8px; font-size: 14px; font-weight: 700;
+  min-height: 48px; padding: 12px 8px; font-size: 15px; font-weight: 600;
 }
 .store-main .ordertype > .segmented .seg.active {
-  background: var(--brand); border-color: var(--brand); color: #fff;
+  background: var(--brand); border-color: var(--brand); color: #fff; font-weight: 700;
 }
+/* All interactive scheduling controls share the Date/Time value size (15px). The
+   tiny "When/Day/Time" field labels stay secondary (unchanged). */
+.store-main .ordertype .when-seg .seg { font-size: 15px; font-weight: 600; }
+.store-main .ordertype .when-seg .seg.active { font-weight: 700; }
 /* Row 2 — labelled When (Now/Later) + Day/Time fields, transparent-on-card.
    Every field carries a top label (When / Day / Time) so the segments read as one
    aligned row; align-items:flex-start keeps the labels — and thus the controls
@@ -1776,6 +1781,14 @@ body:has(.store-shell) { background: #F7F4EF; }
   --dark: var(--bc-plum-raised);
   --shadow: var(--bc-shadow-raised);
   --shadow-sm: var(--bc-shadow-card);
+  /* Semantic control/progress tokens (per-theme overridable). Espresso Plum
+     values; a future preset replaces these to re-skin scheduling + progress. */
+  --control-border: #d9a0ad;
+  --control-border-hover: #c77f91;
+  --control-border-focus: #d94e78;
+  --progress-track: rgba(244, 226, 229, 0.28);
+  --progress-fill-start: #9e2753;
+  --progress-fill-end: #ef7385;
 
   background: transparent;
 }
@@ -1803,10 +1816,10 @@ body:has(.store-shell) { background: var(--bc-canvas-deep, #160f12); }
   backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
   border-bottom: 1px solid transparent;
 }
-.site-header.is-scrolled {
-  border-bottom-color: rgba(232, 182, 92, .20);
-  box-shadow: 0 8px 26px rgba(10, 5, 8, .40);
-}
+/* The header sits directly on the continuous page gradient — no separator or
+   shadow, and no tone change between static and sticky states. Only the active
+   "Menu" nav underline remains. */
+.site-header, .site-header.is-scrolled { border-bottom: none; box-shadow: none; }
 .hours-bar {
   background: var(--bc-canvas-gradient); background-attachment: fixed;
 }
@@ -1859,8 +1872,8 @@ body:has(.store-shell) { background: var(--bc-canvas-deep, #160f12); }
 .kc-cta:hover, .kc-mcta:hover { filter: brightness(1.05); background: var(--bc-champagne-soft); }
 .kc-cta:focus-visible, .kc-mcta:focus-visible { outline-color: var(--bc-champagne); }
 /* Thicker, fully-rounded progress: subdued champagne track, berry→coral fill. */
-.kc-progress { background: rgba(232,182,92,.16); }
-.kc-progress-fill { background: linear-gradient(90deg, var(--bc-berry), var(--bc-coral)); }
+.kc-progress { background: var(--progress-track); }
+.kc-progress-fill { background: linear-gradient(90deg, var(--progress-fill-start), var(--progress-fill-end)); }
 
 /* ── Promotional banner: unchanged artwork, refined frame only ── */
 .hero-slide { border: 1px solid rgba(201, 137, 152, .35); }
@@ -1889,9 +1902,14 @@ body:has(.store-shell) { background: var(--bc-canvas-deep, #160f12); }
 }
 .store-main .search input:focus { box-shadow: var(--bc-focus-ring); }
 
-/* ── Ordering / scheduling panel ── */
-.store-main .ordertype { border-color: var(--bc-border-rose); }
-.store-main .segmented .seg { border-color: var(--bc-border-rose); background: var(--bc-blush); }
+/* ── Ordering / scheduling panel: subtle blush stroke (not gold), soft shadow ── */
+.store-main .ordertype {
+  border: 1px solid var(--control-border); box-shadow: var(--bc-shadow-card);
+}
+.store-main .ordertype:focus-within { border-color: var(--control-border-hover); }
+.store-main .segmented .seg { border-color: var(--control-border); background: var(--bc-blush); }
+.store-main .segmented .seg:hover { border-color: var(--control-border-hover); }
+.store-main .segmented .seg.active { border-color: var(--bc-berry); }
 .store-main .segmented .seg.active { background: var(--bc-berry); border-color: var(--bc-berry); color: #fff; }
 
 /* ── Product cards ── */
@@ -1943,7 +1961,6 @@ body:has(.store-shell) { background: var(--bc-canvas-deep, #160f12); }
    highlight, on top of each surface's own radius. */
 .store-shell .bc-gold-frame,
 .store-main .hero-slide,
-.store-main .ordertype,
 .store-main .search input,
 .menu-dock,
 .store-cart .cart-panel,

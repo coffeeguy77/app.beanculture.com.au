@@ -10,25 +10,41 @@ import { ClockIcon } from './icons.jsx';
 // `windowMin` is the size of the countdown window the notice appears within
 // (SiteNotice currently only surfaces this once <=60 min remain) -- used
 // only to size the progress bar, not to gate visibility.
-export default function KitchenClosingCountdown({ closesInMin, minutes, closesLabel, categories, windowMin = 60, onOrderNow, eyebrow = 'Kitchen closing', heading, subLabel, sub2, ctaLabel = 'Order now' }) {
-  const [target, setTarget] = useState(null);
+export default function KitchenClosingCountdown({ closesInMin, minutes, elapsedMin, closesLabel, categories, windowMin = 60, onOrderNow, eyebrow = 'Kitchen closing', heading, subLabel, sub2, ctaLabel = 'Order now' }) {
+  // Absolute window {start,end} in epoch ms — anchored to Date.now() + the
+  // server-provided offsets ONCE, so the countdown AND the progress bar are
+  // both derived from real timestamps and survive a page refresh (on reload the
+  // offsets shrink but Date.now() grows by the same amount, so start/end resolve
+  // to the same absolute instants). Progress is never based on time-since-mount.
+  const [win, setWin] = useState(null);
   const [now, setNow] = useState(() => Date.now());
 
   const mins = minutes != null ? minutes : closesInMin;
 
   useEffect(() => {
-    setTarget(mins != null ? Date.now() + mins * 60000 : null);
-    setNow(Date.now());
-  }, [mins]);
+    if (mins == null) { setWin(null); return; }
+    const t = Date.now();
+    const end = t + mins * 60000;
+    // windowStart: real elapsed offset if given (closed interval), else derive
+    // from the fixed window size (kitchen = final `windowMin` minutes).
+    const start = elapsedMin != null ? (t - elapsedMin * 60000) : (end - windowMin * 60000);
+    setWin({ start, end });
+    setNow(t);
+  }, [mins, elapsedMin, windowMin]);
 
   useEffect(() => {
-    if (target == null) return undefined;
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, [target]);
+    if (!win) return undefined;
+    const tick = () => setNow(Date.now());
+    const id = setInterval(tick, 1000);
+    // Recompute immediately on tab re-show / device wake so a backgrounded tab
+    // doesn't display a stale countdown/progress.
+    const onVis = () => { if (document.visibilityState === 'visible') tick(); };
+    document.addEventListener('visibilitychange', onVis);
+    return () => { clearInterval(id); document.removeEventListener('visibilitychange', onVis); };
+  }, [win]);
 
-  if (target == null) return null;
-  const msLeft = Math.max(0, target - now);
+  if (!win) return null;
+  const msLeft = Math.max(0, win.end - now);
   const totalSec = Math.floor(msLeft / 1000);
   const days = Math.floor(totalSec / 86400);
   const hrs = Math.floor((totalSec % 86400) / 3600);
@@ -36,8 +52,9 @@ export default function KitchenClosingCountdown({ closesInMin, minutes, closesLa
   const sec = totalSec % 60;
   const pad = (n) => String(n).padStart(2, '0');
 
-  const windowSec = Math.max(1, windowMin * 60);
-  const progress = Math.min(1, Math.max(0, 1 - totalSec / windowSec));
+  // Real elapsed-through-the-interval progress from absolute timestamps.
+  const span = Math.max(1, win.end - win.start);
+  const progress = Math.min(1, Math.max(0, (now - win.start) / span));
 
   const catList = (categories || []).filter(Boolean);
   const catText = catList.length ? catList.join(', ') : 'the kitchen menu';
