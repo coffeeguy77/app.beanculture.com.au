@@ -14,24 +14,16 @@ export default function MenuList({ categories, currency, onPick, scrollTo, onScr
   const kShut = new Set((kitchenClosedCats || []).map((c) => (c || '').toLowerCase()));
   useEffect(() => {
     if (!scrollTo) return;
-    // Jump so the chosen category's TITLE sits just below the sticky stack.
-    // Use an INSTANT jump (not smooth): a smooth animation gets interrupted by
-    // the section's feature-banner/product images loading mid-scroll, leaving
-    // the page short of the title. We also re-apply once after a short delay to
-    // correct for any late reflow (images finishing) above the title.
+    // Bring the chosen category's TITLE just below the sticky stack. Use the
+    // native scrollIntoView with the title's scroll-margin-top (set in CSS to
+    // header/shell + dock height) — it lands correctly even while the section's
+    // images are still loading, unlike a manual window.scrollTo which clamps to
+    // the (briefly shorter) page height. Instant so it isn't interrupted.
     const run = () => {
       const el = document.getElementById(slug(scrollTo));
-      if (!el) return;
-      const cs = getComputedStyle(document.documentElement);
-      const px = (v) => parseInt(cs.getPropertyValue(v), 10) || 0;
-      const isMobile = window.matchMedia('(max-width: 767px)').matches;
-      const stickyTop = isMobile ? px('--header-h') : px('--shell-h');
-      const offset = stickyTop + px('--dock-h') + 12;
-      const y = el.getBoundingClientRect().top + window.scrollY - offset;
-      window.scrollTo({ top: Math.max(0, y), behavior: 'auto' });
+      if (el) el.scrollIntoView({ block: 'start', behavior: 'auto' });
     };
-    // Let the newly-shown category content lay out, jump, then correct once.
-    requestAnimationFrame(() => requestAnimationFrame(() => { run(); setTimeout(run, 200); }));
+    requestAnimationFrame(() => requestAnimationFrame(() => { run(); setTimeout(run, 220); }));
     onScrolled && onScrolled();
   }, [scrollTo]);
 
