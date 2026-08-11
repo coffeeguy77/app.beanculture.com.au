@@ -798,10 +798,40 @@ export default function App() {
   // customer picks by hand from the appearance menu changes colours only — it
   // never injects the banner (so nobody sees "Merry Christmas" in April just
   // because they tried the Christmas look).
-  const seasonBanner = config?.activeSeasonalTheme?.banner || null;
+  // The event whose date window is ACTIVE right now (server-computed), or an
+  // admin/dev preview override. Banner + animated effects are gated on THIS —
+  // never on a palette the customer hand-picked out of season. So a manual
+  // Christmas-in-April shows Christmas colours but no banner and no snow.
+  const previewSeasonalId = readPreview();
+  const eventSeasonal = (previewSeasonalId && previewSeasonalId !== 'off'
+    ? (config.seasonalThemes || []).find((x) => x.id === previewSeasonalId)
+    : null) || config?.activeSeasonalTheme || null;
+  const seasonBanner = eventSeasonal?.banner || null;
   const heroSlides = seasonBanner
     ? [{ id: 'season-banner', ...seasonBanner }, ...(config.hero || [])]
     : (config.hero || []);
+  // Resolve the active event's decorative-effect config (schema v2), with a
+  // back-compat fallback that maps a pre-v2 record's old effect flags to a
+  // preset so saved data never breaks.
+  const prefersReducedMotion = typeof window !== 'undefined' && window.matchMedia
+    && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const legacyEffectPreset = (s) => {
+    const e = s.effects || {};
+    if (e.snow) return 'christmas'; if (e.hearts) return 'valentines';
+    if (e.confetti) return s.id === 'lunarnewyear' ? 'lunarnewyear' : 'newyear';
+    if (e.petals) return s.id; // botanical → the event's own preset
+    return s.id;
+  };
+  const eventEffect = (() => {
+    const s = eventSeasonal;
+    if (!s) return null;
+    const ec = s.effectsConfig;
+    if (ec && ec.effectsEnabled === false) return null;
+    if (ec && ec.effectsEnabled) return { preset: ec.effectPreset || s.id, intensity: ec.intensity || 'standard' };
+    // Pre-v2 record: derive from old flags (only if any were set).
+    const legacy = s.effects && Object.values(s.effects).some(Boolean);
+    return legacy ? { preset: legacyEffectPreset(s), intensity: 'standard' } : null;
+  })();
 
   // "Browse menu" dock data — real categories, live item counts, icon by name.
   const dockCategories = menu.categories
@@ -886,8 +916,15 @@ export default function App() {
 
   return (
     <div className={`app store-shell${(view === 'store' || view === 'reserve' || (!wide && view === 'checkout')) ? ' app-flush' : ''}`}>
-      {activeTheme?.effects && <SeasonalEffects effects={activeTheme.effects} />}
-      {activeTheme?.id && activeTheme?.decor?.perimeter && (
+      {eventEffect && (
+        <SeasonalEffects
+          preset={eventEffect.preset}
+          intensity={eventEffect.intensity}
+          active
+          reducedMotion={prefersReducedMotion}
+        />
+      )}
+      {eventSeasonal?.id && activeTheme?.id === eventSeasonal.id && activeTheme?.decor?.perimeter && (
         <SeasonalPerimeter id={activeTheme.id} decor={activeTheme.decor} />
       )}
 
@@ -1079,6 +1116,7 @@ export default function App() {
         <ThemePicker
           presets={STOREFRONT_THEMES}
           seasonal={config.seasonalThemes || []}
+          activeSeasonalId={config?.activeSeasonalTheme?.id || null}
           currentId={getStoredThemeBlob()?.id || 'espresso-plum'}
           onApply={updateTheme}
           onApplySeasonal={(s) => {

@@ -1954,11 +1954,27 @@ export default function Admin({ onExit }) {
                                 <input type="color" value={(t.theme && t.theme[k]) || '#000000'} onChange={(e) => updSeasonalTheme(i, k, e.target.value)} style={{ width: 30, height: 24, border: 'none', background: 'none' }} /></label>
                             ))}
                           </div>
-                          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 8, fontSize: 'var(--fs-sm)' }} className="muted">
-                            {['snow', 'hearts', 'petals', 'confetti'].map((fx) => (
-                              <label key={fx} style={{ ...row }}><input type="checkbox" checked={!!(t.effects && t.effects[fx])} onChange={(e) => updSeasonal(i, { effects: { ...(t.effects || {}), [fx]: e.target.checked } })} /> {fx}</label>
-                            ))}
-                          </div>
+                          {(() => {
+                            // Event-aware effect controls (schema v2). Back-compat:
+                            // derive from old snow/hearts/petals/confetti flags when
+                            // no effectsConfig exists yet, so saved data never breaks.
+                            const legacyOn = !!(t.effects && Object.values(t.effects).some(Boolean));
+                            const ec = t.effectsConfig || { effectsEnabled: legacyOn, effectPreset: t.id, intensity: 'standard' };
+                            const setEc = (patch) => updSeasonal(i, { effectsConfig: { ...ec, ...patch } });
+                            return (
+                              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 8, alignItems: 'center', fontSize: 'var(--fs-sm)' }} className="muted">
+                                <label style={{ ...row }}><input type="checkbox" checked={ec.effectsEnabled !== false} onChange={(e) => setEc({ effectsEnabled: e.target.checked })} /> Animated effect</label>
+                                <label style={{ ...row }}>Intensity
+                                  <select value={ec.intensity || 'standard'} onChange={(e) => setEc({ intensity: e.target.value })} style={{ padding: '4px 8px', borderRadius: 8, border: '1px solid var(--line)', marginLeft: 6 }}>
+                                    <option value="subtle">Subtle</option>
+                                    <option value="standard">Standard</option>
+                                    <option value="celebratory">Celebratory</option>
+                                  </select>
+                                </label>
+                                <span style={{ fontSize: 'var(--fs-xs)' }}>Effect: {ec.effectPreset || t.id} · shows only during the event dates</span>
+                              </div>
+                            );
+                          })()}
                           <div style={{ marginTop: 10, borderTop: '1px solid var(--line)', paddingTop: 8 }}>
                             <div className="muted" style={{ fontSize: 'var(--fs-xs)', marginBottom: 4 }}>Banner (shown #1 while active)</div>
                             {img && <img src={img} alt="" style={{ width: '100%', borderRadius: 8, marginBottom: 6 }} />}

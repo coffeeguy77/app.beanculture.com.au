@@ -254,11 +254,85 @@ export const STOREFRONT_THEMES = [
   },
 ];
 
-// Map a legacy seasonal theme ({ bg, surface, ink, brand, accent }) onto a
-// preset core so buildTokens/applyStoreTheme can re-skin the storefront palette
-// with it. The OLD applyTheme still layers this theme's --season-* decorations
-// and data-season effects on top — this only drives the base --t-* palette.
+// Convert a rich seasonal palette (the 32 semantic tokens authored per event)
+// into the logical override map buildTokens() understands, deriving only the
+// handful the palette doesn't specify. Explicit palette values win verbatim, so
+// the remastered seasonal look renders exactly as authored across every
+// component that reads a --t-* token.
+function paletteOverrides(p) {
+  const focus = p.focus || p.accent;
+  const shadow = p.shadowColor || 'rgba(10,6,10,.40)';
+  const gradient =
+    `radial-gradient(circle at 18% 4%, ${rgbaFrom(p.canvasGlow || p.primary, 0.20)}, transparent 32%), ` +
+    `radial-gradient(circle at 82% 30%, ${p.glowColor || rgbaFrom(p.canvasEnd, 0.28)}, transparent 42%), ` +
+    `linear-gradient(180deg, ${p.canvasStart} 0%, ${p.canvasMid} 46%, ${p.canvasEnd} 100%)`;
+  // Readable on-canvas link: brighten primary until it reads on the dark canvas.
+  let linkOnDark = mix(p.primary, '#ffffff', 0.34);
+  let guard = 0;
+  while (luminance(linkOnDark) < 0.5 && guard++ < 6) linkOnDark = lighten(linkOnDark, 0.16);
+  return {
+    canvasStart: p.canvasStart, canvasMid: p.canvasMid, canvasEnd: p.canvasEnd,
+    plum: mix(p.canvasEnd, p.primary, 0.35),
+    primaryDeep: p.primaryPressed || mix(p.primary, p.canvasEnd, 0.4),
+    primary: p.primary,
+    primaryHover: p.primaryHover || mix(p.primary, '#ffffff', 0.12),
+    primaryBright: mix(p.primary, '#ffffff', 0.28),
+    accent: p.accent,
+    accentStrong: p.accentStrong || mix(p.accent, '#ffffff', 0.22),
+    surface: p.surface,
+    surfaceRaised: p.surfaceRaised || mix(p.surface, '#ffffff', 0.5),
+    surfaceTint: p.surfaceTint || mix(p.surface, p.primary, 0.08),
+    surfaceTintStrong: mix(p.surface, p.primary, 0.16),
+    text: p.text,
+    textMuted: p.textMuted || mix(p.text, p.surface, 0.42),
+    textOnDark: p.textOnDark,
+    textOnDarkMuted: p.textOnDarkMuted,
+    headingOnDark: p.textOnDark,
+    linkOnDark,
+    border: p.border,
+    borderAccent: p.borderAccent || p.accent,
+    controlBorder: p.controlBorder || mix(p.primary, p.surface, 0.55),
+    controlBorderHover: mix(p.primary, p.surface, 0.4),
+    controlBorderFocus: p.primary,
+    progressTrack: p.progressTrack,
+    progressStart: p.progressFillStart || p.primary,
+    progressEnd: p.progressFillEnd || p.accent,
+    shadowCard: `0 2px 4px ${shadow}, 0 12px 28px ${shadow}`,
+    shadowRaised: `0 4px 10px ${shadow}, 0 22px 48px ${shadow}`,
+    focusRing: `0 0 0 3px ${rgbaFrom(focus, 0.5)}`,
+    canvasGradient: gradient,
+    heroBorder: p.heroBorder || p.borderAccent || p.accent,
+    heroGlow: p.heroGlow || rgbaFrom(p.accent, 0.18),
+    illustration: p.cartIllustration || p.primary,
+    textOnPrimary: p.textOnPrimary || readableInk(p.primary),
+    // Semantic status tokens (new): validation + success states.
+    success: p.success, warning: p.warning, danger: p.danger,
+    checkoutError: p.danger || '#b9385d',
+  };
+}
+
+// Map a seasonal theme onto a preset core so buildTokens/applyStoreTheme can
+// re-skin the storefront with it. Remastered themes carry a full `palette` (the
+// 32 semantic tokens) which is mapped precisely; legacy themes without a palette
+// fall back to deriving from the old 4-colour { bg, surface, brand, accent }.
 export function seasonalAsPreset(s) {
+  if (s && s.palette) {
+    const p = s.palette;
+    return {
+      id: s.id,
+      name: s.name,
+      collection: 'seasonal',
+      canvasStart: p.canvasStart,
+      canvasMid: p.canvasMid,
+      canvasEnd: p.canvasEnd,
+      canvasGlow: p.canvasGlow,
+      surface: p.surface,
+      primary: p.primary,
+      accent: p.accent,
+      text: p.text,
+      overrides: paletteOverrides(p),
+    };
+  }
   const bg = s.bg || '#211218';
   const surface = s.surface || '#fff9f3';
   return {

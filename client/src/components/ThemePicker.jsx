@@ -11,10 +11,17 @@ const GROUPS = [
   { key: 'soft', label: 'Soft & Expressive' },
 ];
 
+// Small effect-type glyph per seasonal preset (id-keyed).
+const EFFECT_ICON = {
+  christmas: '❄', newyear: '✨', australiaday: '🍃', lunarnewyear: '🏮',
+  valentines: '🌹', stpatricks: '☘', easter: '🌸', anzac: '🌺',
+  mothersday: '💐', floriade: '🌷', fathersday: '☕', halloween: '🦇',
+};
+
 // One preview card. `core` carries the handful of colours we preview from
 // (gradient stops + surface/primary/accent); works for both presets and the
-// seasonal adapter shape below.
-function ThemeCard({ name, core, selected, onClick }) {
+// seasonal adapter shape below. `effectIcon`/`eventActive` are seasonal-only.
+function ThemeCard({ name, core, selected, onClick, effectIcon, eventActive }) {
   return (
     <button
       type="button"
@@ -30,6 +37,8 @@ function ThemeCard({ name, core, selected, onClick }) {
           <span className="theme-card-btn" style={{ background: core.primary }} />
           <span className="theme-card-dot" style={{ background: core.accent }} />
         </span>
+        {effectIcon && <span className="theme-card-fx" aria-hidden="true">{effectIcon}</span>}
+        {eventActive && <span className="theme-card-live">● Event active</span>}
         {selected && <span className="theme-card-check" aria-hidden="true">✓</span>}
       </div>
       <span className="theme-card-name">{name}</span>
@@ -37,19 +46,24 @@ function ThemeCard({ name, core, selected, onClick }) {
   );
 }
 
-export default function ThemePicker({ presets, seasonal, currentId, onApply, onApplySeasonal, onReset, onClose }) {
+export default function ThemePicker({ presets, seasonal, currentId, activeSeasonalId, onApply, onApplySeasonal, onReset, onClose }) {
   const list = presets || [];
   const presetCore = (p) => ({
     start: p.canvasStart, end: p.canvasEnd, surface: p.surface, primary: p.primary, accent: p.accent,
   });
-  // Legacy seasonal theme → the same preview shape.
-  const seasonalCore = (s) => ({
-    start: s.bg || '#211218',
-    end: (s.season && s.season.cardBg) || s.accent || s.bg || '#211218',
-    surface: s.surface || '#fff9f3',
-    primary: s.brand || s.accent,
-    accent: s.accent || s.brand,
-  });
+  // Seasonal theme → the same preview shape. Remastered themes carry the full
+  // `palette`; preview the real canvas gradient + surface + primary + accent.
+  const seasonalCore = (s) => {
+    const p = s.palette;
+    if (p) return { start: p.canvasStart, end: p.canvasEnd, surface: p.surface, primary: p.primary, accent: p.accent };
+    return {
+      start: s.bg || '#211218',
+      end: (s.season && s.season.cardBg) || s.accent || s.bg || '#211218',
+      surface: s.surface || '#fff9f3',
+      primary: s.brand || s.accent,
+      accent: s.accent || s.brand,
+    };
+  };
 
   return (
     <div className="backdrop" onClick={onClose}>
@@ -90,6 +104,8 @@ export default function ThemePicker({ presets, seasonal, currentId, onApply, onA
                     name={s.name}
                     core={seasonalCore(s)}
                     selected={s.id === currentId}
+                    effectIcon={EFFECT_ICON[(s.effectsConfig && s.effectsConfig.effectPreset) || s.id]}
+                    eventActive={s.id === activeSeasonalId}
                     onClick={() => onApplySeasonal(s)}
                   />
                 ))}
@@ -98,7 +114,7 @@ export default function ThemePicker({ presets, seasonal, currentId, onApply, onA
           )}
 
           <p className="muted" style={{ margin: 0, fontSize: 12.5 }}>
-            Every look re-skins the whole storefront. Event looks change the colours only — event banners still appear only during the event itself.
+            Event banners and animated effects appear only during the configured event dates. The colour scheme can be used at any time.
           </p>
 
           <button className="btn ghost full" onClick={() => { onReset(); onClose(); }}>Use store theme</button>

@@ -834,6 +834,16 @@ img { max-width: 100%; }
   background: var(--accent); color: #1c1216; font-size: 13px; font-weight: 800;
   display: grid; place-items: center; box-shadow: 0 1px 4px rgba(0,0,0,.3);
 }
+.theme-card-fx {
+  position: absolute; top: 8px; left: 8px; width: 22px; height: 22px; border-radius: 50%;
+  background: rgba(0,0,0,.32); color: #fff; font-size: 12px; line-height: 22px; text-align: center;
+  backdrop-filter: blur(2px);
+}
+.theme-card-live {
+  position: absolute; left: 8px; bottom: 8px; font-size: 10px; font-weight: 800; letter-spacing: .02em;
+  color: #fff; background: rgba(20,120,70,.92); padding: 2px 7px; border-radius: 999px;
+  box-shadow: 0 1px 4px rgba(0,0,0,.3);
+}
 .theme-card-name { padding: 8px 12px 10px; font-size: 13px; font-weight: 600; color: var(--surface-text, var(--ink)); }
 
 /* States */
@@ -851,6 +861,13 @@ img { max-width: 100%; }
 @media (max-width: 600px) { .logo-wrap img, .logo-wrap svg { height: 54px; } }
 
 /* ── Seasonal effects (decorative, non-interactive) ── */
+/* Canvas-based seasonal effects layer (SeasonalEffects.jsx). Fixed, behind
+   dialogs/sheets (z 55 < backdrop 60), never intercepts input, never adds
+   scroll. The static-glow variant is used under prefers-reduced-motion. */
+.fx-canvas { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 55; }
+.fx-glow { position: fixed; inset: 0; pointer-events: none; z-index: 55; opacity: .9; }
+@media print { .fx-canvas, .fx-glow, .fx { display: none !important; } }
+
 .fx { position: fixed; inset: 0; width: 100vw; left: 0; pointer-events: none; z-index: 55; overflow: hidden; }
 
 .fx-snow { position: absolute; inset: 0; }
@@ -1791,6 +1808,11 @@ body:has(.store-shell) { background: #F7F4EF; }
   --bc-text-light-muted: var(--t-text-on-dark-muted, #d9c9c5);
   --bc-border-light: var(--t-border, #ddc2bd);
   --bc-border-rose: var(--t-border-accent, #c98998);
+  /* Semantic status tokens (validation / success / warning). Per-theme
+     overridable; Espresso Plum fallbacks keep the 8 permanent presets sane. */
+  --bc-success: var(--t-success, #4f8069);
+  --bc-warning: var(--t-warning, #d8a93b);
+  --bc-danger: var(--t-danger, #c1263c);
   --bc-shadow-card: var(--t-shadow-card, 0 2px 4px rgba(15,6,10,.16), 0 12px 28px rgba(15,6,10,.22));
   --bc-shadow-raised: var(--t-shadow-raised, 0 4px 10px rgba(15,6,10,.20), 0 22px 48px rgba(15,6,10,.30));
   --bc-focus-ring: var(--t-focus-ring, 0 0 0 3px rgba(232,182,92,.42));
