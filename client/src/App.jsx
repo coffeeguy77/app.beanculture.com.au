@@ -119,8 +119,8 @@ function SiteNotice({ notices }) {
           minutes={n.minsUntil}
           windowMin={n.minsUntil}
           eyebrow="We’re closed"
-          subLabel={n.reopenLabel ? `Reopens ${n.reopenLabel}` : 'Reopening soon'}
-          heading={n.reopenLabel ? `Reopens ${n.reopenLabel}` : 'Reopening soon'}
+          subLabel={n.reopenLabel ? `We reopen ${n.reopenLabel}` : 'Reopening soon'}
+          heading={n.reopenLabel ? `We reopen ${n.reopenLabel}` : 'Reopening soon'}
           sub2="Pre-order now — we’ll have it ready when we open"
           ctaLabel="Pre-order now"
           onOrderNow={n.cta?.onClick}
@@ -238,7 +238,8 @@ export default function App() {
   // Sticky-shell measuring + header scroll state. Downstream sticky offsets read
   // the CSS vars --shell-h (shell height) and --dock-h (category dock height) so
   // nothing hardcodes a pixel offset.
-  const shellRef = useRef(null);
+  const headerRef = useRef(null);
+  const hoursRef = useRef(null);
   const [shellH, setShellH] = useState(0);
   const [dockH, setDockH] = useState(0);
   const [scrolled, setScrolled] = useState(false);
@@ -575,21 +576,30 @@ export default function App() {
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
-  // Measure the sticky shell height into --shell-h (grows with a tall closed
-  // notice). ResizeObserver picks up notice-strip height changes automatically.
+  // Measure the two independent sticky bands — header + hours — into their own
+  // CSS vars and their sum into --shell-h. Both are direct children of the page
+  // so each sticks to the viewport; downstream offsets (dock top, cart top,
+  // section scroll-margin) read --shell-h. A ResizeObserver on each element
+  // picks up height changes (tall closed notice, rotating strip); a window
+  // resize listener catches reflow that doesn't resize the elements themselves.
   useEffect(() => {
     const root = document.documentElement;
-    const shell = shellRef.current;
-    if (!shell) { root.style.setProperty('--shell-h', '0px'); return; }
     const measure = () => {
-      const h = Math.round(shell.getBoundingClientRect().height);
-      setShellH(h);
-      root.style.setProperty('--shell-h', h + 'px');
+      const header = headerRef.current;
+      const hours = hoursRef.current;
+      const hh = header ? Math.round(header.getBoundingClientRect().height) : 0;
+      const oh = hours ? Math.round(hours.getBoundingClientRect().height) : 0;
+      root.style.setProperty('--header-h', hh + 'px');
+      root.style.setProperty('--hours-h', oh + 'px');
+      root.style.setProperty('--shell-h', (hh + oh) + 'px');
+      setShellH(hh + oh);
     };
     measure();
     const ro = new ResizeObserver(measure);
-    ro.observe(shell);
-    return () => ro.disconnect();
+    if (headerRef.current) ro.observe(headerRef.current);
+    if (hoursRef.current) ro.observe(hoursRef.current);
+    window.addEventListener('resize', measure);
+    return () => { ro.disconnect(); window.removeEventListener('resize', measure); };
   }, [config, menu, view]);
 
   // Measure the category dock height into --dock-h for section scroll offsets.
@@ -749,6 +759,14 @@ export default function App() {
   const nHours = config.hours || {};
   const nLabel = nHours.nextOpen?.label;
   const scrollMenu = () => { const el = document.querySelector('.menu'); if (el) el.scrollIntoView({ behavior: 'smooth' }); };
+  // Pre-order CTA lands the customer on the fulfilment row (Dine in / Takeaway /
+  // Reserve) just under the sticky stack — not the search box or the dock.
+  const scrollToOrderType = () => {
+    const el = document.querySelector('.ordertype');
+    if (!el) return;
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    el.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
+  };
   const notices = [];
   if (!storeOpen) {
     if (preorder) {
@@ -759,7 +777,7 @@ export default function App() {
         minsUntil: no?.minsUntil,
         reopenLabel: no?.label,
         text: `We’re closed${nLabel ? ` — we reopen ${nLabel}` : ''}. Pre-order now — we’ll start it when we open.`,
-        cta: { label: 'Pre-order now', onClick: () => { setView('home'); setDineIn(false); setPreWhen('later'); scrollMenu(); } },
+        cta: { label: 'Pre-order now', onClick: () => { setView('home'); setDineIn(false); setPreWhen('later'); scrollToOrderType(); } },
       });
     } else {
       notices.push({ id: 'closed', type: 'urgent', icon: '●', text: `We’re closed right now${nLabel ? ` — we reopen ${nLabel}` : ''}.` });
@@ -788,39 +806,40 @@ export default function App() {
         <SeasonalPerimeter id={activeTheme.id} decor={activeTheme.decor} />
       )}
 
-      <div ref={shellRef} className={`store-sticky${scrolled ? ' is-scrolled' : ''}`}>
-        <header className="site-header">
-          <div className="site-header-inner">
-            <button className="logo-wrap sh-logo" onClick={goMenu} aria-label="Home">
-              {config.logoUrl ? <img src={imgUrl(config.logoUrl, 400)} alt={config.storeName || 'Home'} className="topbar-logo" fetchpriority="high" /> : <Logo />}
-            </button>
-            <nav className="site-nav" aria-label="Primary">
-              <button type="button" className={`site-nav-link${navActive('menu') ? ' on' : ''}`} onClick={goMenu}>Menu</button>
-              {coffeeCat && (
-                <button type="button" className="site-nav-link" onClick={() => { setView('home'); pickCategory(coffeeCat.category); }}>Coffee</button>
-              )}
-              <button type="button" className={`site-nav-link${navActive('store') ? ' on' : ''}`} onClick={() => setView('store')}>Our story</button>
-              <button type="button" className={`site-nav-link${view === 'store' ? ' on' : ''}`} onClick={() => setView('store')}>Visit</button>
-            </nav>
-            <div className="site-header-right">
-              {locLabel && (
-                <span className="site-loc" title="Our location">
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 21s-6.5-5.6-6.5-10A6.5 6.5 0 0 1 18.5 11c0 4.4-6.5 10-6.5 10Z" /><circle cx="12" cy="11" r="2.3" /></svg>
-                  <span>{locLabel}</span>
-                </span>
-              )}
-              <div className="icon-row">
-                <button className="iconbtn" title="About / contact" aria-label="Store info" onClick={() => setView('store')}><StoreIcon size={22} /></button>
-                <button className="iconbtn" title="Theme" aria-label="Theme" onClick={() => setShowTheme(true)}><ThemeIcon size={22} /></button>
-                <button className="iconbtn" title="Account" aria-label={user ? 'Account' : 'Sign in'} onClick={() => setView('account')}>
-                  <AccountIcon size={26} />
-                </button>
-              </div>
+      <header ref={headerRef} className={`site-header${scrolled ? ' is-scrolled' : ''}`}>
+        <div className="site-header-inner">
+          <button className="logo-wrap sh-logo" onClick={goMenu} aria-label="Home">
+            {config.logoUrl ? <img src={imgUrl(config.logoUrl, 400)} alt={config.storeName || 'Home'} className="topbar-logo" fetchpriority="high" /> : <Logo />}
+          </button>
+          <nav className="site-nav" aria-label="Primary">
+            <button type="button" className={`site-nav-link${navActive('menu') ? ' on' : ''}`} onClick={goMenu}>Menu</button>
+            {coffeeCat && (
+              <button type="button" className="site-nav-link" onClick={() => { setView('home'); pickCategory(coffeeCat.category); }}>Coffee</button>
+            )}
+            <button type="button" className={`site-nav-link${navActive('store') ? ' on' : ''}`} onClick={() => setView('store')}>Our story</button>
+            <button type="button" className={`site-nav-link${view === 'store' ? ' on' : ''}`} onClick={() => setView('store')}>Visit</button>
+          </nav>
+          <div className="site-header-right">
+            {locLabel && (
+              <button type="button" className="site-loc" aria-label={`Current store: ${locLabel}`} title={locLabel}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 21s-6.5-5.6-6.5-10A6.5 6.5 0 0 1 18.5 11c0 4.4-6.5 10-6.5 10Z" /><circle cx="12" cy="11" r="2.3" /></svg>
+              </button>
+            )}
+            <div className="icon-row">
+              <button className="iconbtn" title="About / contact" aria-label="Store info" onClick={() => setView('store')}><StoreIcon size={22} /></button>
+              <button className="iconbtn" title="Theme" aria-label="Theme" onClick={() => setShowTheme(true)}><ThemeIcon size={22} /></button>
+              <button className="iconbtn" title="Account" aria-label={user ? 'Account' : 'Sign in'} onClick={() => setView('account')}>
+                <AccountIcon size={26} />
+              </button>
             </div>
           </div>
-        </header>
-        {notices.length > 0 && <SiteNotice notices={notices} />}
-      </div>
+        </div>
+      </header>
+      {notices.length > 0 && (
+        <div ref={hoursRef} className="hours-bar">
+          <div className="hours-inner"><SiteNotice notices={notices} /></div>
+        </div>
+      )}
 
       {view === 'account' && (
         <Account

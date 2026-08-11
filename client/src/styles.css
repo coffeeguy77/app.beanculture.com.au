@@ -1302,22 +1302,30 @@ body:has(.store-shell) { background: #F7F4EF; }
    sticky sticks to the viewport as intended. */
 .app.store-shell { overflow-x: clip; overflow-y: visible; }
 
-/* ── Sticky shell: site header + notification strip ── */
-.store-sticky {
+/* ── Two independent sticky bands: site header + hours strip. Both are DIRECT
+   children of the page so their containing block is the viewport and they stay
+   stuck while scrolling; the category dock sticks third, below their combined
+   height (--shell-h = --header-h + --hours-h). ── */
+.site-header {
   position: sticky; top: 0; z-index: var(--z-header, 40);
   background: color-mix(in srgb, var(--s-bg) 90%, #fff);
   backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
   border-bottom: 1px solid transparent;
   transition: box-shadow .2s ease, border-color .2s ease;
 }
-.store-sticky.is-scrolled { border-bottom-color: var(--s-line); box-shadow: 0 6px 24px rgba(33,26,23,.07); }
+.site-header.is-scrolled { border-bottom-color: var(--s-line); box-shadow: 0 6px 24px rgba(33,26,23,.07); }
+.hours-bar {
+  position: sticky; top: var(--header-h, 84px); z-index: calc(var(--z-header, 40) - 1);
+  background: color-mix(in srgb, var(--s-bg) 90%, #fff);
+}
+.hours-inner { max-width: 1440px; margin: 0 auto; padding: 6px 24px 0; }
 
 .site-header-inner {
   display: flex; align-items: center; gap: 16px;
-  height: 64px; max-width: 1440px; margin: 0 auto; padding: 0 20px;
+  height: 84px; max-width: 1440px; margin: 0 auto; padding: 0 20px;
 }
 .sh-logo { flex: 0 0 auto; }
-.site-header .logo-wrap img, .site-header .logo-wrap svg { height: 36px; }
+.site-header .logo-wrap img, .site-header .logo-wrap svg { height: 56px; width: auto; }
 
 .site-nav { flex: 1 1 auto; display: flex; justify-content: center; align-items: center; gap: 2px; min-width: 0; }
 .site-nav-link {
@@ -1335,9 +1343,15 @@ body:has(.store-shell) { background: #F7F4EF; }
 .site-nav-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 .site-header-right { flex: 0 0 auto; display: flex; align-items: center; gap: 14px; }
-.site-loc { display: inline-flex; align-items: center; gap: 6px; font-size: 13.5px; font-weight: 600; color: var(--s-ink2); max-width: 180px; }
-.site-loc svg { color: var(--brand); flex: none; }
-.site-loc span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Location: pin-only circular utility control (matches .iconbtn geometry). The
+   suburb name is exposed as aria-label + title tooltip, not visible text. */
+.site-loc {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 40px; height: 40px; border-radius: 50%; flex: none; cursor: pointer;
+  border: 1px solid var(--s-line); background: var(--s-card); color: var(--brand);
+}
+.site-loc svg { color: inherit; flex: none; }
+.site-loc:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .site-header .iconbtn { width: 40px; height: 40px; }
 .site-header .icon-row { gap: 6px; }
 
@@ -1391,25 +1405,29 @@ body:has(.store-shell) { background: #F7F4EF; }
 .kc-digits { display: flex; align-items: stretch; gap: 8px; }
 .kc-digit {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
-  min-width: 52px; padding: 6px 10px; border-radius: 10px;
+  min-width: 48px; padding: 6px 10px; border-radius: 10px;
   background: color-mix(in srgb, var(--dark, #76263E) 9%, #fff);
 }
-.kc-digit-n { font-family: var(--font-serif, Georgia, serif); font-size: 22px; font-weight: 700; color: var(--dark, #76263E); line-height: 1.1; }
-.kc-digit-l { font-size: 9.5px; font-weight: 800; letter-spacing: .6px; color: color-mix(in srgb, var(--dark, #76263E) 65%, var(--s-ink2, #766D67)); margin-top: 2px; }
+.kc-digit-n { font-family: var(--font-serif, Georgia, serif); font-size: 22px; font-weight: 800; color: var(--dark, #76263E); line-height: 1.1; }
+.kc-digit-l { font-size: 10px; font-weight: 800; letter-spacing: .5px; color: color-mix(in srgb, var(--dark, #76263E) 60%, var(--s-ink2, #766D67)); margin-top: 2px; }
 .kc-cta {
   border: none; cursor: pointer; background: var(--dark, #76263E); color: #fff;
-  font-weight: 700; font-size: 13.5px; padding: 11px 20px; border-radius: 12px; white-space: nowrap;
-  transition: filter .15s ease;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 14px; min-height: 50px; padding: 0 22px; border-radius: 12px; white-space: nowrap;
+  transition: filter .15s ease, transform .1s ease;
 }
 .kc-cta:hover { filter: brightness(1.08); }
+.kc-cta:active { transform: translateY(1px); }
 .kc-cta:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.kc-cta-full { width: 100%; padding: 13px 20px; }
-.kc-progress { height: 4px; background: color-mix(in srgb, var(--dark, #76263E) 10%, #FBF0DE); overflow: hidden; }
-.kc-progress-fill { height: 100%; background: var(--brand); transition: width 1s linear; }
+.kc-cta-full { width: 100%; }
+.kc-progress { height: 7px; border-radius: 999px; background: color-mix(in srgb, var(--dark, #76263E) 10%, #FBF0DE); overflow: hidden; }
+.kc-progress-fill { height: 100%; border-radius: 999px; background: var(--brand); transition: width 1s linear; }
 
-/* Desktop: wide inline banner. */
-.kc-desktop { background: linear-gradient(135deg, #FDF3E2, #FBEEDC); }
-.kc-row { display: flex; align-items: center; gap: 16px; padding: 14px 20px; max-width: 1440px; margin: 0 auto; }
+/* Desktop: wide inline banner. Rounded panel; the progress bar is clipped flush
+   to the bottom edge (overflow:hidden respects the 16px corner radius). */
+.kc-desktop { position: relative; overflow: hidden; border-radius: 16px; background: linear-gradient(135deg, #FDF3E2, #FBEEDC); }
+.kc-row { display: flex; align-items: center; gap: 16px; padding: 14px 20px; }
+.kc-desktop .kc-progress { position: absolute; left: 0; right: 0; bottom: 0; border-radius: 0; }
 .kc-icon { flex: none; color: var(--dark, #76263E); display: inline-flex; }
 .kc-label { flex: none; }
 .kc-eyebrow { font-size: 13px; font-weight: 800; letter-spacing: .4px; color: var(--dark, #76263E); }
@@ -1441,8 +1459,10 @@ body:has(.store-shell) { background: #F7F4EF; }
 .kc-msub { font-size: 12px; color: color-mix(in srgb, var(--dark, #76263E) 70%, var(--s-ink2, #766D67)); }
 .kc-mcta {
   margin-left: auto; border: none; cursor: pointer; background: var(--dark, #76263E); color: #fff;
-  font-weight: 700; font-size: 11.5px; padding: 6px 12px; border-radius: 999px;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 12.5px; min-height: 44px; padding: 0 16px; border-radius: 999px;
 }
+.kc-mcta:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .kc-mobile .kc-progress { margin: 8px -14px 0; }
 
 @media (min-width: 700px) {
@@ -1468,6 +1488,8 @@ body:has(.store-shell) { background: #F7F4EF; }
 .store-main .search input::placeholder { font-size: 14.5px; }
 .store-main .search input:focus { outline: 2px solid var(--accent); border-color: transparent; }
 .store-main .cat-title { scroll-margin-top: calc(var(--shell-h, 64px) + var(--dock-h, 0px) + 12px); }
+/* Pre-order CTA target: the fulfilment row lands just below the sticky stack. */
+.store-main .ordertype { scroll-margin-top: calc(var(--shell-h, 130px) + 14px); }
 
 /* ── Category dock ("Browse menu") ── */
 .dock-sentinel { height: 1px; }
@@ -1691,15 +1713,16 @@ body:has(.store-shell) { background: #F7F4EF; }
   .site-loc { display: none; }
 }
 @media (max-width: 600px) {
-  .site-header-inner { height: 56px; padding: 0 14px; gap: 10px; }
-  .site-header .logo-wrap img, .site-header .logo-wrap svg { height: 32px; }
+  .site-header-inner { height: 64px; padding: 0 14px; gap: 10px; }
+  .site-header .logo-wrap img, .site-header .logo-wrap svg { height: 40px; width: auto; }
   .site-header .iconbtn { width: 36px; height: 36px; }
+  .hours-inner { padding: 6px 14px 0; }
   .site-notice { padding: 8px 14px; font-size: 13px; }
   .menu-dock-eyebrow { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .store-sticky, .menu-dock-wrap, .store-main .item, .dock-tab, .site-nav-link { transition: none; }
+  .site-header, .menu-dock-wrap, .store-main .item, .dock-tab, .site-nav-link { transition: none; }
   .menu-dock-strip { scroll-behavior: auto; }
 }
 
@@ -1771,14 +1794,21 @@ body:has(.store-shell) { background: var(--bc-canvas-deep, #160f12); }
 /* ── Header: dark premium surface. Nav/logo/location text no longer sits on
    a light bg, so it needs its own explicit colours instead of the inherited
    --s-ink2/--s-ink defaults. ── */
-.store-sticky {
-  background: color-mix(in srgb, #211218 42%, transparent);
-  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
-  border-bottom-color: transparent;
+/* The header + hours strip paint the SAME fixed page gradient so they read as a
+   continuous canvas (no flat band) yet stay opaque enough that hero imagery does
+   not bleed through while scrolling. The fixed attachment keeps them pixel-
+   continuous with the page's fixed ::before layer. */
+.site-header {
+  background: var(--bc-canvas-gradient); background-attachment: fixed;
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  border-bottom: 1px solid transparent;
 }
-.store-sticky.is-scrolled {
-  border-bottom-color: rgba(232, 182, 92, .18);
-  box-shadow: 0 8px 26px rgba(10, 5, 8, .45);
+.site-header.is-scrolled {
+  border-bottom-color: rgba(232, 182, 92, .20);
+  box-shadow: 0 8px 26px rgba(10, 5, 8, .40);
+}
+.hours-bar {
+  background: var(--bc-canvas-gradient); background-attachment: fixed;
 }
 .site-header .logo-wrap { color: var(--bc-champagne); }
 .site-nav-link { color: var(--bc-text-light-muted); }
@@ -1786,8 +1816,12 @@ body:has(.store-shell) { background: var(--bc-canvas-deep, #160f12); }
 .site-nav-link.on { color: var(--bc-raspberry); }
 .site-nav-link.on::after { background: var(--bc-raspberry); }
 .site-nav-link:focus-visible { outline-color: var(--bc-champagne); }
-.site-loc { color: var(--bc-text-light-muted); }
+.site-loc {
+  background: var(--bc-canvas-raised); border-color: rgba(232,182,92,.35); color: var(--bc-champagne);
+}
+.site-loc:hover { border-color: var(--bc-champagne); }
 .site-loc svg { color: var(--bc-champagne); }
+.site-loc:focus-visible { outline: 2px solid var(--bc-champagne); outline-offset: 2px; }
 .site-header .iconbtn {
   background: var(--bc-canvas-raised); border-color: rgba(232,182,92,.35); color: var(--bc-text-light);
 }
@@ -1805,16 +1839,28 @@ body:has(.store-shell) { background: var(--bc-canvas-deep, #160f12); }
   --dark: var(--bc-champagne-soft);
   background: linear-gradient(160deg, var(--bc-canvas-raised), var(--bc-plum));
 }
-.kc-desktop { border-top: 1px solid rgba(232,182,92,.25); }
-.kc-tablet { border-color: rgba(232,182,92,.3); box-shadow: var(--bc-shadow-card); }
-.kc-digit { background: var(--bc-blush); }
+.kc-tablet { border-radius: 16px; box-shadow: var(--bc-shadow-card); }
+/* White operational copy on the deep-plum panel (overrides the local --dark
+   champagne remap for these text rows). */
+.site-notice--kitchen .kc-eyebrow { font-size: 18px; font-weight: 700; color: #fff; letter-spacing: .3px; }
+.site-notice--kitchen .kc-sub { font-size: 15.5px; font-weight: 600; color: var(--bc-text-light); margin-top: 2px; }
+.site-notice--kitchen .kc-heading { color: #fff; }
+.site-notice--kitchen .kc-sub2 { color: var(--bc-text-light); }
+.site-notice--kitchen .kc-icon { color: var(--bc-champagne); }
+/* Ivory timer cells with champagne edge + burgundy numerals. */
+.kc-digit {
+  background: var(--bc-ivory);
+  border: 1px solid color-mix(in srgb, var(--bc-champagne) 45%, var(--bc-border-light));
+  box-shadow: var(--bc-shadow-card);
+}
 .kc-digit-n { color: var(--bc-berry); }
-.kc-digit-l { color: color-mix(in srgb, var(--bc-berry) 65%, var(--bc-text-muted)); }
+.kc-digit-l { color: color-mix(in srgb, var(--bc-berry) 60%, var(--bc-text-muted)); }
 .kc-cta, .kc-mcta { background: var(--bc-champagne); color: var(--bc-text-dark); }
 .kc-cta:hover, .kc-mcta:hover { filter: brightness(1.05); background: var(--bc-champagne-soft); }
 .kc-cta:focus-visible, .kc-mcta:focus-visible { outline-color: var(--bc-champagne); }
-.kc-progress { background: rgba(255,255,255,.16); }
-.kc-progress-fill { background: linear-gradient(90deg, var(--bc-raspberry), var(--bc-champagne)); }
+/* Thicker, fully-rounded progress: subdued champagne track, berry→coral fill. */
+.kc-progress { background: rgba(232,182,92,.16); }
+.kc-progress-fill { background: linear-gradient(90deg, var(--bc-berry), var(--bc-coral)); }
 
 /* ── Promotional banner: unchanged artwork, refined frame only ── */
 .hero-slide { border: 1px solid rgba(201, 137, 152, .35); }
@@ -1828,6 +1874,10 @@ body:has(.store-shell) { background: var(--bc-canvas-deep, #160f12); }
 /* ── Category dock: inactive-tile blush/rose-clay refinement, active-tile
    champagne count badge (the surface itself already inherits --s-card/
    --s-line/--dark from the remap above and needed no separate change). ── */
+/* The sticky dock wrapper paints the continuous fixed gradient (not a flat
+   espresso band) so only the page canvas shows around the ivory dock card, and
+   menu content never bleeds through when the dock is stuck. */
+.menu-dock-wrap { background: var(--bc-canvas-gradient); background-attachment: fixed; }
 .dock-tab { background: var(--bc-blush); border-color: var(--bc-border-rose); }
 .dock-tab:hover { background: var(--bc-blush-strong); border-color: var(--bc-raspberry); }
 .dock-tab.on .dock-tab-count { background: var(--bc-champagne); color: var(--bc-text-dark); border-color: var(--bc-champagne); }
@@ -1902,4 +1952,9 @@ body:has(.store-shell) { background: var(--bc-canvas-deep, #160f12); }
 .sheet.item-sheet {
   border: 1px solid color-mix(in srgb, var(--bc-champagne) 60%, var(--bc-border-rose));
   box-shadow: var(--bc-shadow-card), inset 0 0 0 1px rgba(232, 182, 92, .16);
+}
+/* Countdown panels get an extra berry inner highlight along the top edge. */
+.site-notice--kitchen .kc-desktop,
+.site-notice--kitchen .kc-tablet {
+  box-shadow: var(--bc-shadow-card), inset 0 0 0 1px rgba(232, 182, 92, .16), inset 0 1px 0 rgba(213, 78, 120, .18);
 }

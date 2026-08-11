@@ -54,7 +54,7 @@ export default function KitchenClosingCountdown({ closesInMin, minutes, closesLa
       {/* Desktop: wide inline banner. */}
       <div className="kc kc-desktop">
         <div className="kc-row">
-          <span className="kc-icon"><ClockIcon size={52} /></span>
+          <span className="kc-icon"><ClockIcon size={32} /></span>
           <div className="kc-label">
             <div className="kc-eyebrow">{eyebrow}</div>
             {(subLabel != null ? subLabel : (closesLabel && `Order before ${closesLabel}`)) && (
