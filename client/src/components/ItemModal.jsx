@@ -31,7 +31,21 @@ function parseDescription(text) {
     else if (facts.length === 0) introLines.push(line);
     else facts[facts.length - 1].value += ' ' + line;
   }
-  return { intro: introLines.join(' '), facts };
+  let intro = introLines.join(' ');
+
+  // Square doesn't always give Tasting Notes its own line -- some items run
+  // it straight into the surrounding paragraph. Fall back to a looser inline
+  // scan (label can appear mid-paragraph, right after a sentence boundary)
+  // so the pill treatment still shows up on real-world data, and strip the
+  // matched span out of the intro so it isn't shown twice.
+  if (!facts.some((f) => /tasting notes/i.test(f.label))) {
+    const m = intro.match(/Tasting Notes:\s*([^.]+)\.?/i);
+    if (m) {
+      facts.push({ label: 'Tasting Notes', value: m[1].trim() });
+      intro = (intro.slice(0, m.index) + intro.slice(m.index + m[0].length)).replace(/\s+/g, ' ').trim();
+    }
+  }
+  return { intro, facts };
 }
 
 export default function ItemModal({ item, currency, onClose, onAdd }) {
@@ -98,7 +112,7 @@ export default function ItemModal({ item, currency, onClose, onAdd }) {
   const tastingFact = facts.find((f) => /tasting notes/i.test(f.label));
   const otherFacts = facts.filter((f) => f !== originFact && f !== tastingFact);
   const originList = originFact ? originFact.value.split(',').map((s) => s.trim()).filter(Boolean) : [];
-  const tastingList = tastingFact ? tastingFact.value.split(',').map((s) => s.trim()).filter(Boolean) : [];
+  const tastingList = tastingFact ? tastingFact.value.split(',').map((s) => s.trim().replace(/^and\s+/i, '')).filter(Boolean) : [];
 
   const minPrice = Math.min(...item.variations.map((v) => v.price ?? Infinity));
 
