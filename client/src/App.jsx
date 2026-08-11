@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { api, formatMoney, imgUrl } from './api.js';
 import { applyTheme } from './theme.js';
-import { getUser, setUser as saveUser, getSavedTheme, setSavedTheme, getSeasonOptOut, setSeasonOptOut, getStoredOrder, setStoredOrder, getFavorites, saveFavorites } from './store.js';
+import { STOREFRONT_THEMES, resolvePreset, applyStoreTheme, presetSwatch, buildTokens, seasonalAsPreset } from './themes.js';
+import { getUser, setUser as saveUser, getSavedTheme, setSavedTheme, getSeasonOptOut, setSeasonOptOut, getStoredOrder, setStoredOrder, getFavorites, saveFavorites, getStoredThemeBlob, saveStoredTheme } from './store.js';
 import HeroSlider from './components/HeroSlider.jsx';
 import OrderTypeBar from './components/OrderTypeBar.jsx';
 import MenuDock from './components/MenuDock.jsx';
@@ -257,8 +258,10 @@ export default function App() {
       .then((cfg) => {
         setConfig(cfg);
         buildRef.current = cfg.build || null;
-        const active = resolveTheme(cfg);
-        applyTheme(active);
+        // The storefront PALETTE is driven by the token engine (applyStoreTheme);
+        // the returned object (a seasonal theme or null) still feeds activeTheme
+        // for its --season-* decor + effects/perimeter overlays.
+        const active = applyThemeForLoad(cfg);
         setActiveTheme(active);
       })
       .catch((e) => setLoadErr(e.message));
@@ -484,43 +487,67 @@ export default function App() {
   const cartCount = cart.reduce((n, c) => n + c.quantity, 0);
   const cartTotal = cart.reduce((n, c) => n + c.unitPrice * c.quantity, 0);
 
-  // Theme priority: admin preview → auto seasonal (unless opted out) → saved → default.
-  // Seasonal is ephemeral and never overwrites the saved user theme.
-  function resolveTheme(cfg) {
+  // Apply the storefront theme on load with this precedence, returning the theme
+  // object that should drive activeTheme (seasonal effects/perimeter) or null:
+  //   preview (?season=/​?themePreview=) → auto seasonal (unless opted out) →
+  //   saved permanent/seasonal blob → store default preset → espresso fallback.
+  // The PALETTE always flows through applyStoreTheme (the --t-* token engine); a
+  // seasonal ALSO gets the legacy applyTheme() so its --season-*/data-season
+  // decorations render on top.
+  function applyThemeForLoad(cfg) {
     const previewId = readPreview();
-    if (previewId === 'off') return cfg.theme;
-    if (previewId) {
+    // Admin/dev preview forces a seasonal palette + decor regardless of date.
+    if (previewId && previewId !== 'off') {
       const s = (cfg.seasonalThemes || []).find((x) => x.id === previewId);
-      if (s) return s;
+      if (s) { applyTheme(s); applyStoreTheme(seasonalAsPreset(s)); return s; }
     }
-    if (!getSeasonOptOut() && cfg.activeSeasonalTheme) return cfg.activeSeasonalTheme;
-    const saved = getSavedTheme();
-    if (saved) {
-      // A saved seasonal choice always uses the CURRENT server definition, so
-      // colour/decoration updates propagate (the saved copy can be stale).
-      if (saved.id) {
-        const cur = (cfg.seasonalThemes || []).find((x) => x.id === saved.id);
-        return cur || saved;
-      }
-      return saved;
+    // (a) Auto seasonal, unless the customer opted out or forced it off.
+    if (previewId !== 'off' && !getSeasonOptOut() && cfg.activeSeasonalTheme) {
+      applyTheme(cfg.activeSeasonalTheme);
+      applyStoreTheme(seasonalAsPreset(cfg.activeSeasonalTheme));
+      return cfg.activeSeasonalTheme;
     }
-    return cfg.theme;
+    // (b) A saved store-theme blob (the source of truth for a manual pick).
+    const blob = getStoredThemeBlob();
+    if (blob && blob.id) {
+      // A hand-picked seasonal palette keeps its decor (but never its banner).
+      const seasonal = (cfg.seasonalThemes || []).find((x) => x.id === blob.id);
+      if (seasonal) { applyTheme(seasonal); applyStoreTheme(seasonalAsPreset(seasonal)); return seasonal; }
+      document.documentElement.removeAttribute('data-season');
+      applyStoreTheme(resolvePreset(blob.id));
+      return null;
+    }
+    // (c) Store default preset (espresso fallback is inherent in the CSS).
+    document.documentElement.removeAttribute('data-season');
+    applyStoreTheme(resolvePreset(cfg.defaultThemeId || 'espresso-plum'));
+    return null;
   }
 
-  function updateTheme(t) {
-    const seasonal = !!(t.id && t.season);
-    setSavedTheme(t); // a manual pick persists across refresh
-    setSeasonOptOut(!seasonal); // choosing a non-seasonal theme opts out of the auto seasonal skin
-    applyTheme(t);
-    setActiveTheme(t);
+  // Picking one of the 8 permanent presets: re-skin via the token engine, drop
+  // any seasonal decor/effects, and persist the blob (source of truth on reload).
+  function updateTheme(preset) {
+    applyStoreTheme(preset);
+    document.documentElement.removeAttribute('data-season');
+    setActiveTheme(null);
+    saveStoredTheme({ id: preset.id, v: 1, ts: Date.now(), explicit: true, tokens: buildTokens(preset) });
+    setSavedTheme(null); // clear any legacy custom-colour override
+    setSeasonOptOut(true); // a manual permanent pick isn't overridden by auto-seasonal
   }
+  // "Use store theme": clear every override and re-apply the store default (or the
+  // in-window auto seasonal), matching the load precedence.
   function resetTheme() {
+    saveStoredTheme(null);
     setSavedTheme(null);
     setSeasonOptOut(false);
-    const a = (config && (config.activeSeasonalTheme || config.theme)) || null;
-    if (a) {
-      applyTheme(a);
-      setActiveTheme(a);
+    if (!config) return;
+    if (!getSeasonOptOut() && config.activeSeasonalTheme) {
+      applyTheme(config.activeSeasonalTheme);
+      applyStoreTheme(seasonalAsPreset(config.activeSeasonalTheme));
+      setActiveTheme(config.activeSeasonalTheme);
+    } else {
+      document.documentElement.removeAttribute('data-season');
+      applyStoreTheme(resolvePreset(config.defaultThemeId || 'espresso-plum'));
+      setActiveTheme(null);
     }
   }
   function onSignIn(u) {
@@ -1050,8 +1077,23 @@ export default function App() {
       )}
       {showTheme && (
         <ThemePicker
-          presets={config.themePresets || []} seasonal={config.seasonalThemes || []} baseTheme={config.theme}
-          current={getSavedTheme()} onApply={updateTheme} onReset={resetTheme} onClose={() => setShowTheme(false)}
+          presets={STOREFRONT_THEMES}
+          seasonal={config.seasonalThemes || []}
+          currentId={getStoredThemeBlob()?.id || 'espresso-plum'}
+          onApply={updateTheme}
+          onApplySeasonal={(s) => {
+            // A hand-picked seasonal palette re-skins + keeps decor, and persists
+            // as the blob — but NEVER injects its banner (hero only prepends the
+            // server date-gated config.activeSeasonalTheme.banner).
+            applyTheme(s);
+            applyStoreTheme(seasonalAsPreset(s));
+            setActiveTheme(s);
+            saveStoredTheme({ id: s.id, v: 1, ts: Date.now(), explicit: true, tokens: buildTokens(seasonalAsPreset(s)) });
+            setSavedTheme(null);
+            setSeasonOptOut(true);
+          }}
+          onReset={resetTheme}
+          onClose={() => setShowTheme(false)}
         />
       )}
 

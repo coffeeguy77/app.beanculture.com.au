@@ -4,6 +4,10 @@
 const USER_KEY = 'bc_user';
 const THEME_KEY = 'bc_theme';
 const OPTOUT_KEY = 'bc_season_optout';
+// Storefront theme engine: one stable key holds the whole versioned blob
+// ({ id, v, ts, explicit, tokens }) so the pre-paint inline script in index.html
+// can read the saved tokens and re-skin :root before React boots (no flash).
+const STORE_THEME_KEY = 'bean-culture-theme';
 const CART_KEY = 'bc_cart';
 const CART_TTL = 12 * 60 * 60 * 1000; // keep a saved order for 12 hours
 
@@ -54,6 +58,16 @@ export function setSavedTheme(t) {
     if (t) localStorage.setItem(THEME_KEY, JSON.stringify(t));
     else localStorage.removeItem(THEME_KEY);
   } catch {}
+}
+
+// Storefront theme engine persistence (see STORE_THEME_KEY above). One versioned
+// blob under one stable key — the source of truth for a permanent preset pick on
+// reload, and what the index.html pre-paint script reads to avoid a theme flash.
+export function getStoredThemeBlob() {
+  try { return JSON.parse(localStorage.getItem(STORE_THEME_KEY) || 'null'); } catch { return null; }
+}
+export function saveStoredTheme(blob) {
+  try { if (blob) localStorage.setItem(STORE_THEME_KEY, JSON.stringify(blob)); else localStorage.removeItem(STORE_THEME_KEY); } catch {}
 }
 
 // Favourite orders, namespaced by signed-in user id so different accounts on one

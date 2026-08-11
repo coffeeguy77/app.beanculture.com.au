@@ -24,6 +24,16 @@
   </head>
   <body>
     <div id="root"></div>
+    <!-- Pre-paint theme seed: if the customer saved a storefront theme, write its
+         --t-* tokens onto :root BEFORE the app boots. Because .store-shell reads
+         var(--t-*, <espresso-fallback>), this re-skins instantly with no flash of
+         the default look. Nothing saved → the Espresso Plum fallbacks render. -->
+    <script>
+      try {
+        var b = JSON.parse(localStorage.getItem('bean-culture-theme'));
+        if (b && b.tokens) { var r = document.documentElement; for (var k in b.tokens) { r.style.setProperty(k, b.tokens[k]); } }
+      } catch (e) {}
+    </script>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

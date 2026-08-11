@@ -2,30 +2,34 @@
 // missing tokens (surface/line/muted/ink-on-accent) from the base colours so a
 // user only needs to pick brand / accent / background.
 
-function hexToRgb(hex) {
+export function hexToRgb(hex) {
   const h = hex.replace('#', '');
   const n = h.length === 3 ? h.split('').map((c) => c + c).join('') : h;
   const int = parseInt(n, 16);
   return { r: (int >> 16) & 255, g: (int >> 8) & 255, b: int & 255 };
 }
-function rgbToHex(r, g, b) {
+export function rgbToHex(r, g, b) {
   const c = (v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0');
   return `#${c(r)}${c(g)}${c(b)}`;
 }
-function luminance(hex) {
+export function luminance(hex) {
   const { r, g, b } = hexToRgb(hex);
   return (0.299 * r + 0.587 * g + 0.114 * b) / 255;
 }
-function mix(a, b, t) {
+export function mix(a, b, t) {
   const A = hexToRgb(a);
   const B = hexToRgb(b);
   return rgbToHex(A.r + (B.r - A.r) * t, A.g + (B.g - A.g) * t, A.b + (B.b - A.b) * t);
+}
+// Blend toward white by t (0..1). Convenience wrapper over mix().
+export function lighten(hex, t) {
+  return mix(hex, '#ffffff', t);
 }
 export function rgbaFrom(hex, alpha) {
   const { r, g, b } = hexToRgb(hex);
   return `rgba(${r},${g},${b},${alpha})`;
 }
-function readableInk(bg) {
+export function readableInk(bg) {
   return luminance(bg) > 0.55 ? '#2b2126' : '#ffffff';
 }
 

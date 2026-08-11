@@ -1,83 +1,107 @@
-import React, { useState } from 'react';
+import React from 'react';
 
-export default function ThemePicker({ presets, seasonal, baseTheme, current, onApply, onReset, onClose }) {
-  const start = current || baseTheme;
-  const [brand, setBrand] = useState(start.brand || '#b5566e');
-  const [accent, setAccent] = useState(start.accent || '#d1547a');
-  const [bg, setBg] = useState(start.bg || '#fdf1f4');
-  const [ink, setInk] = useState(start.ink || '#3b2b30');
+// Storefront appearance picker. Presents the 8 permanent presets as preview
+// CARDS grouped by collection, then any server seasonal/event looks, then a
+// "Use store theme" reset. Each card previews the page gradient, a light surface
+// chip, a primary button chip and an accent dot — no gender labels anywhere.
 
-  function apply(next) {
-    const t = { brand, accent, bg, ink, ...next };
-    if (next?.brand !== undefined) setBrand(next.brand);
-    if (next?.accent !== undefined) setAccent(next.accent);
-    if (next?.bg !== undefined) setBg(next.bg);
-    if (next?.ink !== undefined) setInk(next.ink);
-    onApply(t);
-  }
+const GROUPS = [
+  { key: 'universal', label: 'Universal' },
+  { key: 'bold', label: 'Bold & Rich' },
+  { key: 'soft', label: 'Soft & Expressive' },
+];
+
+// One preview card. `core` carries the handful of colours we preview from
+// (gradient stops + surface/primary/accent); works for both presets and the
+// seasonal adapter shape below.
+function ThemeCard({ name, core, selected, onClick }) {
+  return (
+    <button
+      type="button"
+      className={`theme-card${selected ? ' is-selected' : ''}`}
+      onClick={onClick}
+      aria-pressed={selected}
+    >
+      <div
+        className="theme-card-preview"
+        style={{ background: `linear-gradient(135deg, ${core.start}, ${core.end})` }}
+      >
+        <span className="theme-card-surface" style={{ background: core.surface }}>
+          <span className="theme-card-btn" style={{ background: core.primary }} />
+          <span className="theme-card-dot" style={{ background: core.accent }} />
+        </span>
+        {selected && <span className="theme-card-check" aria-hidden="true">✓</span>}
+      </div>
+      <span className="theme-card-name">{name}</span>
+    </button>
+  );
+}
+
+export default function ThemePicker({ presets, seasonal, currentId, onApply, onApplySeasonal, onReset, onClose }) {
+  const list = presets || [];
+  const presetCore = (p) => ({
+    start: p.canvasStart, end: p.canvasEnd, surface: p.surface, primary: p.primary, accent: p.accent,
+  });
+  // Legacy seasonal theme → the same preview shape.
+  const seasonalCore = (s) => ({
+    start: s.bg || '#211218',
+    end: (s.season && s.season.cardBg) || s.accent || s.bg || '#211218',
+    surface: s.surface || '#fff9f3',
+    primary: s.brand || s.accent,
+    accent: s.accent || s.brand,
+  });
 
   return (
     <div className="backdrop" onClick={onClose}>
       <div className="sheet" onClick={(e) => e.stopPropagation()}>
         <button className="sheet-close" onClick={onClose}>×</button>
         <div className="sheet-body">
-          <h2>Make it yours</h2>
-          <p className="muted" style={{ margin: 0 }}>Pick a look — it’s saved on this device and loads next time.</p>
+          <h2>Bean Culture Collection</h2>
+          <p className="muted" style={{ margin: 0 }}>Pick a look — saved on this device, loads next time.</p>
 
-          <div className="swatches">
-            {presets.map((p) => (
-              <div key={p.name} className="swatch" onClick={() => apply({ brand: p.brand, accent: p.accent, bg: p.bg, ink: p.ink })}>
-                <div className="dots">
-                  <i style={{ background: p.bg, border: '1px solid #0001' }} />
-                  <i style={{ background: p.brand }} />
-                  <i style={{ background: p.accent }} />
+          {GROUPS.map((g) => {
+            const items = list.filter((p) => p.collection === g.key);
+            if (!items.length) return null;
+            return (
+              <div key={g.key}>
+                <div className="group-title">{g.label}</div>
+                <div className="theme-grid">
+                  {items.map((p) => (
+                    <ThemeCard
+                      key={p.id}
+                      name={p.name}
+                      core={presetCore(p)}
+                      selected={p.id === currentId}
+                      onClick={() => onApply(p)}
+                    />
+                  ))}
                 </div>
-                {p.name}
               </div>
-            ))}
-          </div>
+            );
+          })}
 
           {seasonal && seasonal.length > 0 && (
             <div>
-              <div className="group-title" style={{ marginTop: 4 }}>Seasonal · festive</div>
-              <div className="swatches">
+              <div className="group-title">Seasonal &amp; Events</div>
+              <div className="theme-grid">
                 {seasonal.map((s) => (
-                  <div
+                  <ThemeCard
                     key={s.id}
-                    className="swatch"
-                    onClick={() => onApply({ ...s })}
-                  >
-                    <div
-                      style={{
-                        height: 46, borderRadius: 9, marginBottom: 8, overflow: 'hidden',
-                        display: 'grid', placeItems: 'center',
-                        background: `radial-gradient(circle at 50% 0%, rgba(24,120,78,0.5), transparent 60%), ${s.bg}`,
-                      }}
-                    >
-                      <div
-                        style={{
-                          width: '72%', height: 22, borderRadius: 6,
-                          background: (s.season && s.season.cardBg) || s.accent,
-                          border: `1.5px solid ${(s.season && s.season.gold) || '#D8A93B'}`,
-                        }}
-                      />
-                    </div>
-                    {s.name}
-                  </div>
+                    name={s.name}
+                    core={seasonalCore(s)}
+                    selected={s.id === currentId}
+                    onClick={() => onApplySeasonal(s)}
+                  />
                 ))}
               </div>
             </div>
           )}
 
-          <div className="group">
-            <div className="group-title">Customise</div>
-            <div className="color-row"><span>Brand</span><input type="color" value={brand} onChange={(e) => apply({ brand: e.target.value })} /></div>
-            <div className="color-row"><span>Buttons</span><input type="color" value={accent} onChange={(e) => apply({ accent: e.target.value })} /></div>
-            <div className="color-row"><span>Background</span><input type="color" value={bg} onChange={(e) => apply({ bg: e.target.value })} /></div>
-            <div className="color-row"><span>Text</span><input type="color" value={ink} onChange={(e) => apply({ ink: e.target.value })} /></div>
-          </div>
+          <p className="muted" style={{ margin: 0, fontSize: 12.5 }}>
+            Every look re-skins the whole storefront. Event looks change the colours only — event banners still appear only during the event itself.
+          </p>
 
-          <button className="btn ghost full" onClick={() => { onReset(); onClose(); }}>Reset to Bean Culture</button>
+          <button className="btn ghost full" onClick={() => { onReset(); onClose(); }}>Use store theme</button>
           <button className="btn full" onClick={onClose}>Done</button>
         </div>
       </div>

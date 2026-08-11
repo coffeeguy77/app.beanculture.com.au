@@ -812,6 +812,30 @@ img { max-width: 100%; }
 .color-row { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-top: 1px solid var(--line); }
 .color-row input[type=color] { width: 44px; height: 34px; border: none; background: none; }
 
+/* Storefront theme picker — larger preview cards, 2-up, grouped by collection.
+   Lives inside the light .sheet surface, so text uses the surface ink tokens. */
+.theme-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.theme-card {
+  border: 2px solid var(--line); border-radius: 14px; padding: 0; overflow: hidden;
+  background: var(--surface); cursor: pointer; text-align: left; display: flex;
+  flex-direction: column; transition: border-color .15s ease, box-shadow .15s ease;
+}
+.theme-card:hover { border-color: var(--accent); }
+.theme-card.is-selected { border-color: var(--accent); box-shadow: inset 0 0 0 2px var(--accent); }
+.theme-card-preview { position: relative; height: 76px; display: flex; align-items: center; padding: 0 12px; }
+.theme-card-surface {
+  display: inline-flex; align-items: center; gap: 8px; padding: 8px 10px;
+  border-radius: 9px; box-shadow: 0 2px 6px rgba(0,0,0,.22);
+}
+.theme-card-btn { width: 30px; height: 12px; border-radius: 6px; display: inline-block; }
+.theme-card-dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
+.theme-card-check {
+  position: absolute; top: 8px; right: 8px; width: 22px; height: 22px; border-radius: 50%;
+  background: var(--accent); color: #1c1216; font-size: 13px; font-weight: 800;
+  display: grid; place-items: center; box-shadow: 0 1px 4px rgba(0,0,0,.3);
+}
+.theme-card-name { padding: 8px 12px 10px; font-size: 13px; font-weight: 600; color: var(--surface-text, var(--ink)); }
+
 /* States */
 .center-screen { min-height: 80vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 24px; text-align: center; }
 .spinner { width: 34px; height: 34px; border: 3px solid var(--line); border-top-color: var(--brand); border-radius: 50%; animation: spin 0.8s linear infinite; }
@@ -1742,34 +1766,38 @@ body:has(.store-shell) { background: #F7F4EF; }
    carries that class) is untouched.
    ═══════════════════════════════════════════════════════════════════════════ */
 .store-shell {
-  /* Palette */
-  --bc-canvas-deep: #160f12;
-  --bc-canvas: #211218;
-  --bc-canvas-raised: #321421;
-  --bc-plum: #431426;
-  --bc-plum-raised: #56162f;
-  --bc-berry: #9e2753;
-  --bc-raspberry: #d94e78;
-  --bc-coral: #ef7385;
-  --bc-champagne: #e8b65c;
-  --bc-champagne-soft: #f2d28e;
-  --bc-ivory: #fff9f3;
-  --bc-ivory-raised: #fffdf9;
-  --bc-blush: #f4e2e5;
-  --bc-blush-strong: #ecd1d7;
-  --bc-text-dark: #241816;
-  --bc-text-muted: #75645f;
-  --bc-text-light: #fff8f1;
-  --bc-text-light-muted: #d9c9c5;
-  --bc-border-light: #ddc2bd;
-  --bc-border-rose: #c98998;
-  --bc-shadow-card: 0 2px 4px rgba(15,6,10,.16), 0 12px 28px rgba(15,6,10,.22);
-  --bc-shadow-raised: 0 4px 10px rgba(15,6,10,.20), 0 22px 48px rgba(15,6,10,.30);
-  --bc-focus-ring: 0 0 0 3px rgba(232,182,92,.42);
-  --bc-canvas-gradient:
+  /* Palette. Every value now reads from a per-theme --t-* token whose FALLBACK
+     is the exact Espresso Plum hex, so with no --t-* set (default state) the
+     storefront renders pixel-identical to before. A resolved preset (see
+     themes.js / applyStoreTheme) sets the --t-* namespace on :root and every
+     surface below re-skins with zero rule changes. */
+  --bc-canvas-deep: var(--t-canvas-end, #160f12);
+  --bc-canvas: var(--t-canvas-mid, #211218);
+  --bc-canvas-raised: var(--t-canvas-start, #321421);
+  --bc-plum: var(--t-plum, #431426);
+  --bc-plum-raised: var(--t-primary-deep, #56162f);
+  --bc-berry: var(--t-primary, #9e2753);
+  --bc-raspberry: var(--t-primary-hover, #d94e78);
+  --bc-coral: var(--t-primary-bright, #ef7385);
+  --bc-champagne: var(--t-accent, #e8b65c);
+  --bc-champagne-soft: var(--t-accent-strong, #f2d28e);
+  --bc-ivory: var(--t-surface, #fff9f3);
+  --bc-ivory-raised: var(--t-surface-raised, #fffdf9);
+  --bc-blush: var(--t-surface-tint, #f4e2e5);
+  --bc-blush-strong: var(--t-surface-tint-strong, #ecd1d7);
+  --bc-text-dark: var(--t-text, #241816);
+  --bc-text-muted: var(--t-text-muted, #75645f);
+  --bc-text-light: var(--t-text-on-dark, #fff8f1);
+  --bc-text-light-muted: var(--t-text-on-dark-muted, #d9c9c5);
+  --bc-border-light: var(--t-border, #ddc2bd);
+  --bc-border-rose: var(--t-border-accent, #c98998);
+  --bc-shadow-card: var(--t-shadow-card, 0 2px 4px rgba(15,6,10,.16), 0 12px 28px rgba(15,6,10,.22));
+  --bc-shadow-raised: var(--t-shadow-raised, 0 4px 10px rgba(15,6,10,.20), 0 22px 48px rgba(15,6,10,.30));
+  --bc-focus-ring: var(--t-focus-ring, 0 0 0 3px rgba(232,182,92,.42));
+  --bc-canvas-gradient: var(--t-canvas-gradient,
     radial-gradient(circle at 18% 4%, rgba(158,39,83,.20), transparent 32%),
     radial-gradient(circle at 82% 30%, rgba(67,20,38,.28), transparent 38%),
-    linear-gradient(180deg, #321421 0%, #211218 46%, #160f12 100%);
+    linear-gradient(180deg, #321421 0%, #211218 46%, #160f12 100%));
 
   /* Remap the pre-existing semantic aliases (already threaded through the
      whole premium-storefront section above) onto the new palette. --s-bg
@@ -1786,12 +1814,12 @@ body:has(.store-shell) { background: #F7F4EF; }
   --shadow-sm: var(--bc-shadow-card);
   /* Semantic control/progress tokens (per-theme overridable). Espresso Plum
      values; a future preset replaces these to re-skin scheduling + progress. */
-  --control-border: #d9a0ad;
-  --control-border-hover: #c77f91;
-  --control-border-focus: #d94e78;
-  --progress-track: rgba(244, 226, 229, 0.28);
-  --progress-fill-start: #9e2753;
-  --progress-fill-end: #ef7385;
+  --control-border: var(--t-control-border, #d9a0ad);
+  --control-border-hover: var(--t-control-border-hover, #c77f91);
+  --control-border-focus: var(--t-control-border-focus, #d94e78);
+  --progress-track: var(--t-progress-track, rgba(244, 226, 229, 0.28));
+  --progress-fill-start: var(--t-progress-start, #9e2753);
+  --progress-fill-end: var(--t-progress-end, #ef7385);
 
   /* ONE shared mobile edge inset — every page section lines up to this. */
   --mobile-page-gutter: 16px;
@@ -1800,25 +1828,25 @@ body:has(.store-shell) { background: #F7F4EF; }
      mobile checkout is a LIGHT surface floating on the dark canvas, so its
      text/fields resolve to accessible dark-on-light regardless of theme. */
   --checkout-surface: var(--bc-ivory);
-  --checkout-surface-raised: #fffdf9;
+  --checkout-surface-raised: var(--t-surface-raised, #fffdf9);
   --checkout-text: var(--bc-text-dark);
   --checkout-text-muted: var(--bc-text-muted);
   --checkout-border: var(--bc-border-light);
-  --checkout-field-bg: #fff;
+  --checkout-field-bg: var(--t-checkout-field-bg, #fff);
   --checkout-primary: var(--bc-berry);
-  --checkout-primary-text: #fff;
+  --checkout-primary-text: var(--t-checkout-primary-text, #fff);
   --checkout-focus: var(--bc-champagne);
-  --checkout-error: #b9385d;
+  --checkout-error: var(--t-checkout-error, #b9385d);
   --checkout-success: var(--bc-success, #4f8069);
 
   /* Semantic content-text tokens. Text that sits directly ON the dark plum
      canvas (headings, lede/body, on-canvas links) resolves through these so a
      future theme can re-skin the storefront by overriding the token values
      alone — no rule changes. Espresso Plum values below. */
-  --text-on-dark: #fff8f1;
-  --text-on-dark-muted: #d9c9c5;
-  --heading-on-dark: #fff8f1;
-  --link-on-dark: #ef7385;
+  --text-on-dark: var(--t-text-on-dark, #fff8f1);
+  --text-on-dark-muted: var(--t-text-on-dark-muted, #d9c9c5);
+  --heading-on-dark: var(--t-heading-on-dark, #fff8f1);
+  --link-on-dark: var(--t-link-on-dark, #ef7385);
   /* Light-card surface aliases → existing premium surface tokens, so the same
      "surface vs canvas" split is theme-overridable. Value-only, no behaviour. */
   --surface: var(--s-card);
@@ -1834,10 +1862,10 @@ body:has(.store-shell) { background: var(--bc-canvas-deep, #160f12); }
    longer looks like a separate coloured panel over flat gutters. */
 .store-shell::before {
   content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none;
-  background:
+  background: var(--t-canvas-gradient,
     radial-gradient(circle at 18% 4%, rgba(158,39,83,.20), transparent 32%),
     radial-gradient(circle at 82% 30%, rgba(67,20,38,.28), transparent 38%),
-    linear-gradient(180deg, #321421 0%, #211218 46%, #160f12 100%);
+    linear-gradient(180deg, #321421 0%, #211218 46%, #160f12 100%));
 }
 
 /* ── Header: dark premium surface. Nav/logo/location text no longer sits on
@@ -1926,7 +1954,7 @@ body:has(.store-shell) { background: var(--bc-canvas-deep, #160f12); }
 .kc-progress-fill { background: linear-gradient(90deg, var(--progress-fill-start), var(--progress-fill-end)); }
 
 /* ── Promotional banner: unchanged artwork, refined frame only ── */
-.hero-slide { border: 1px solid rgba(201, 137, 152, .35); }
+.hero-slide { border: 1px solid var(--t-hero-border, rgba(201, 137, 152, .35)); }
 
 /* ── Product-section heading sits directly on the dark canvas ── */
 .store-main .cat-head .cat-title { color: var(--bc-champagne-soft); }

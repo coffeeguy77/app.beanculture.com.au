@@ -18,9 +18,9 @@ export default function CartEmptyIllustration({ height = 140 }) {
     >
       <defs>
         <style>{`
-          .cec-cup { fill: var(--brand); }
+          .cec-cup { fill: var(--t-illustration, var(--brand)); }
           .cec-cup-hi { fill: var(--surface); }
-          .cec-leaf { fill: color-mix(in srgb, var(--brand) 42%, white); }
+          .cec-leaf { fill: color-mix(in srgb, var(--t-illustration, var(--brand)) 42%, #fff); }
         `}</style>
       </defs>
       <g id="Cup">
