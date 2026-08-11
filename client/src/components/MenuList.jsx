@@ -14,17 +14,23 @@ export default function MenuList({ categories, currency, onPick, scrollTo, onScr
   const kShut = new Set((kitchenClosedCats || []).map((c) => (c || '').toLowerCase()));
   useEffect(() => {
     if (!scrollTo) return;
-    // Bring the chosen category's TITLE just below the sticky stack. Use the
-    // native scrollIntoView with the title's scroll-margin-top (set in CSS to
-    // header/shell + dock height) — it lands correctly even while the section's
-    // images are still loading, unlike a manual window.scrollTo which clamps to
-    // the (briefly shorter) page height. Instant so it isn't interrupted.
+    // Bring the chosen category's TITLE just below the sticky stack, via native
+    // scrollIntoView + the title's scroll-margin-top (CSS = header/shell + dock
+    // height). Re-run a few times over ~500ms because switching category swaps
+    // the section and its feature-banner/product images change the page height
+    // as they load — a single early jump lands short. After each jump, nudge the
+    // scroll ±1px to force position:sticky to repaint (Chrome leaves the sticky
+    // header/dock mis-painted until the next real scroll event).
+    let tries = 0;
     const run = () => {
       const el = document.getElementById(slug(scrollTo));
       if (el) el.scrollIntoView({ block: 'start', behavior: 'auto' });
+      window.scrollBy(0, -1); window.scrollBy(0, 1);
     };
-    requestAnimationFrame(() => requestAnimationFrame(() => { run(); setTimeout(run, 220); }));
+    requestAnimationFrame(() => requestAnimationFrame(run));
+    const id = setInterval(() => { run(); if (++tries >= 3) clearInterval(id); }, 160);
     onScrolled && onScrolled();
+    return () => clearInterval(id);
   }, [scrollTo]);
 
   if (!categories || categories.length === 0) {
