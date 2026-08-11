@@ -52,7 +52,7 @@ export default function KitchenClosingCountdown({ closesInMin, closesLabel, cate
       {/* Desktop: wide inline banner. */}
       <div className="kc kc-desktop">
         <div className="kc-row">
-          <span className="kc-icon"><ClockIcon size={26} /></span>
+          <span className="kc-icon"><ClockIcon size={52} /></span>
           <div className="kc-label">
             <div className="kc-eyebrow">Kitchen closing</div>
             {closesLabel && <div className="kc-sub">Order before {closesLabel}</div>}
@@ -88,7 +88,7 @@ export default function KitchenClosingCountdown({ closesInMin, closesLabel, cate
       {/* Mobile: compact two-row bar. */}
       <div className="kc kc-mobile">
         <div className="kc-mrow">
-          <span className="kc-icon-sm"><ClockIcon size={17} /></span>
+          <span className="kc-icon-sm"><ClockIcon size={34} /></span>
           <span className="kc-meyebrow">Kitchen closing</span>
           <span className="kc-mtime">{pad(min)}:{pad(sec)}</span>
         </div>

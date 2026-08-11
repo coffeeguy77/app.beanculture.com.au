@@ -74,7 +74,7 @@ export default function MenuList({ categories, currency, onPick, scrollTo, onScr
                   type="button"
                   aria-label={`Add ${item.name}`}
                 >
-                  {item.soldOut ? <span className="sold-tag">Sold out</span> : kitchenShut && <span className="sold-tag">Kitchen closed</span>}
+                  {item.soldOut ? <span className="sold-tag">Sold out</span> : kitchenShut && <span className="sold-tag sold-tag-kitchen">Kitchen closed</span>}
                   {showImages && (item.image ? (
                     <img className="item-img" src={imgUrl(item.image, 240)} alt="" loading="lazy" decoding="async" />
                   ) : (
