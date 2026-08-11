@@ -1877,6 +1877,20 @@ body:has(.store-shell) { background: var(--bc-canvas-deep, #160f12); }
 .site-header .iconbtn:hover { border-color: var(--bc-champagne); }
 .site-header .iconbtn:focus-visible { outline: 2px solid var(--bc-champagne); outline-offset: 2px; }
 
+/* Favourites heart — champagne utility control next to the logo, with a small
+   champagne count badge (matches the mobile cart badge). */
+.fav-headerbtn { position: relative; overflow: visible; flex: 0 0 auto; }
+.site-header .fav-headerbtn { color: var(--bc-champagne); }
+.site-header .fav-headerbtn:hover { color: var(--bc-champagne); }
+.fav-count {
+  position: absolute; top: -5px; right: -5px;
+  min-width: 18px; height: 18px; padding: 0 4px;
+  display: grid; place-items: center; border-radius: 999px;
+  background: var(--bc-champagne); color: var(--bc-text-dark);
+  font-size: 11px; font-weight: 800; line-height: 1;
+  border: 1.5px solid var(--bc-canvas); box-shadow: var(--bc-shadow-card);
+}
+
 /* ── Kitchen countdown: raised midnight-plum chrome bridges the dark page
    shell and the lighter controls below it. --dark is re-pointed to a light
    champagne tone *inside* this component only (via inheritance), so every
@@ -2053,6 +2067,44 @@ body:has(.store-shell) { background: var(--bc-canvas-deep, #160f12); }
 .store-shell .reserve-title { color: var(--heading-on-dark); }
 .store-shell .reserve-lede { color: var(--text-on-dark-muted); }
 .store-shell .reserve-points li { color: var(--text-on-dark); }
+/* Mobile/tablet cart PAGE sits directly on the dark canvas. The "Your order"
+   heading is nested inside a flex row (not a direct child of .page), so the
+   general .page:not(.checkout-page) > h2 rule can't reach it — scope by the
+   explicit .cart-page class. The .cart-line item cards stay light (dark ink). */
+.store-shell .cart-page h2,
+.store-shell .cart-page .totals .row.grand { color: var(--heading-on-dark); }
+.store-shell .cart-page .totals .row { color: var(--text-on-dark-muted); }
+.store-shell .cart-page > .link,
+.store-shell .cart-page .cart-clear { color: var(--link-on-dark); }
+.store-shell .cart-page .empty { color: var(--text-on-dark-muted); }
+
+/* ── Favourites view: on-canvas heading/back link stay light (handled by the
+   .page:not(.checkout-page) rules); the cards below are explicit LIGHT surfaces
+   so their content reads dark-on-light. ── */
+.store-shell .favorites-page .fav-title { color: var(--heading-on-dark); }
+.fav-list { display: flex; flex-direction: column; gap: 14px; margin-top: 16px; }
+.store-shell .fav-card {
+  background: var(--s-card); border: 1px solid var(--s-line);
+  box-shadow: var(--bc-shadow-card); gap: 8px;
+}
+.fav-card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.fav-name { font-weight: 800; font-size: 16px; color: var(--s-ink); }
+.fav-total { font-weight: 800; color: var(--s-ink); white-space: nowrap; }
+.fav-items { font-size: 13.5px; color: var(--s-ink2); line-height: 1.4; }
+.fav-actions { display: flex; gap: 10px; margin-top: 6px; flex-wrap: wrap; }
+.fav-actions .fav-order { flex: 1 1 auto; }
+.fav-actions .btn { font-size: 13.5px; padding: 10px 14px; }
+/* Empty state on the dark canvas. */
+.fav-empty { text-align: center; padding: 40px 16px; max-width: 440px; margin: 24px auto 0; }
+.fav-empty-ic { color: var(--bc-champagne); display: flex; justify-content: center; margin-bottom: 12px; }
+.store-shell .fav-empty-text { color: var(--text-on-dark-muted); font-size: 15px; line-height: 1.5; margin-bottom: 18px; }
+
+/* Account past-order "Save as favourite" pill (light card → dark ink). */
+.oc-fav { display: inline-flex; align-items: center; gap: 6px; }
+.oc-fav svg { flex: none; }
+.oc-fav.is-saved { color: var(--bc-berry); opacity: 1; }
+.oc-fav:disabled { cursor: default; }
+
 /* Check circles → light blush surface with a berry tick (was brand-on-canvas). */
 .store-shell .rp-ic { background: var(--bc-blush); color: var(--bc-berry); }
 

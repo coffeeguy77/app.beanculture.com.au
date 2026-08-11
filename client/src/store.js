@@ -56,6 +56,17 @@ export function setSavedTheme(t) {
   } catch {}
 }
 
+// Favourite orders, namespaced by signed-in user id so different accounts on one
+// device stay separate (fallback 'guest'). We only ever store line items — never
+// a table number or fulfilment choice (those must be chosen fresh each order).
+const FAV_KEY = (uid) => `bc_favs_${uid || 'guest'}`;
+export function getFavorites(uid) {
+  try { return JSON.parse(localStorage.getItem(FAV_KEY(uid)) || '[]'); } catch { return []; }
+}
+export function saveFavorites(uid, arr) {
+  try { localStorage.setItem(FAV_KEY(uid), JSON.stringify(arr || [])); } catch {}
+}
+
 // Whether the customer has opted out of the auto seasonal theme.
 export function getSeasonOptOut() {
   try {

@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { api, formatMoney } from '../api.js';
 import GiftCards from './GiftCards.jsx';
 import InstallButton from './InstallButton.jsx';
+import { HeartIcon } from './icons.jsx';
 
 /* ── little stroke icons (match the store page line style) ───────────────── */
 const Ico = ({ children, size = 19 }) => (
@@ -51,7 +52,7 @@ function statePill(state) {
 }
 const fmtDate = (iso) => iso ? new Date(iso).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
 
-export default function Account({ user, currency, config, onSignIn, onSignOut, onReorder, onBack }) {
+export default function Account({ user, currency, config, onSignIn, onSignOut, onReorder, onFavorite, onBack }) {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [busy, setBusy] = useState(false);
@@ -66,6 +67,7 @@ export default function Account({ user, currency, config, onSignIn, onSignOut, o
   const [filter, setFilter] = useState('all');       // all | open | completed
   const [visible, setVisible] = useState(6);
   const [detail, setDetail] = useState(null);        // order shown in the detail modal
+  const [savedFavs, setSavedFavs] = useState(() => new Set()); // order ids just saved to favourites
 
   useEffect(() => {
     if (user?.phone) api.getLoyalty(user.phone).then(setLoyalty).catch(() => {});
@@ -164,6 +166,12 @@ export default function Account({ user, currency, config, onSignIn, onSignOut, o
     const m = orderMeta(o);
     const pill = statePill(o.state);
     const canReorder = onReorder && (o.items || []).some((li) => li.variationId);
+    const canFav = onFavorite && (o.items || []).some((li) => li.variationId);
+    const saved = savedFavs.has(o.id);
+    const saveFav = () => {
+      const ok = onFavorite(o);
+      if (ok) setSavedFavs((s) => new Set(s).add(o.id));
+    };
     return (
       <div className="order-card">
         <div className="oc-top">
@@ -176,6 +184,11 @@ export default function Account({ user, currency, config, onSignIn, onSignOut, o
         </div>
         <div className="oc-actions">
           <button className="btn ghost oc-again" disabled={!canReorder} onClick={() => canReorder && onReorder(o)}>↻ Order again</button>
+          {canFav && (
+            <button className={`btn ghost oc-fav${saved ? ' is-saved' : ''}`} onClick={saveFav} disabled={saved}>
+              <HeartIcon size={16} filled={saved} /> {saved ? 'Saved to favourites' : 'Save as favourite'}
+            </button>
+          )}
           <button className="btn ghost oc-details" onClick={() => setDetail(o)}>View details ›</button>
         </div>
       </div>

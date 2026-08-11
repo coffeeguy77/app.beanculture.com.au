@@ -6,7 +6,7 @@ export default function CartView({ cart, currency, onQty, onRemove, onClear, din
   const hasUnavailable = cart.some((c) => unavailableKeys?.has(c.key));
   if (cart.length === 0) {
     return (
-      <main className="page">
+      <main className="page cart-page">
         {kitchenBanner}
         <div className="empty">Your order is empty.</div>
         <button className="btn full" onClick={onBack}>Back to menu</button>
@@ -14,7 +14,7 @@ export default function CartView({ cart, currency, onQty, onRemove, onClear, din
     );
   }
   return (
-    <main className="page">
+    <main className="page cart-page">
       <button className="link" onClick={onBack}>← Menu</button>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
         <h2>Your order</h2>

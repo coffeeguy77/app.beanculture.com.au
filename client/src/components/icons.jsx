@@ -78,6 +78,15 @@ export function CartIcon({ size = 22 }) {
   );
 }
 
+// Heart (favourites) — outlined; fill via the `filled` prop.
+export function HeartIcon({ size = 22, filled = false }) {
+  return (
+    <svg {...base(size)} fill={filled ? 'currentColor' : 'none'}>
+      <path d="M12 20.5S3.5 14.8 3.5 9.2A4.7 4.7 0 0 1 12 6.4a4.7 4.7 0 0 1 8.5 2.8c0 5.6-8.5 11.3-8.5 11.3z" />
+    </svg>
+  );
+}
+
 // Takeaway coffee cup → Coffee
 export function CupIcon({ size = 30 }) {
   return (

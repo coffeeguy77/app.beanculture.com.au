@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { api, formatMoney, imgUrl } from './api.js';
 import { applyTheme } from './theme.js';
-import { getUser, setUser as saveUser, getSavedTheme, setSavedTheme, getSeasonOptOut, setSeasonOptOut, getStoredOrder, setStoredOrder } from './store.js';
+import { getUser, setUser as saveUser, getSavedTheme, setSavedTheme, getSeasonOptOut, setSeasonOptOut, getStoredOrder, setStoredOrder, getFavorites, saveFavorites } from './store.js';
 import HeroSlider from './components/HeroSlider.jsx';
 import OrderTypeBar from './components/OrderTypeBar.jsx';
 import MenuDock from './components/MenuDock.jsx';
@@ -17,7 +17,8 @@ import Admin from './components/Admin.jsx';
 import Logo from './components/Logo.jsx';
 import SeasonalEffects from './components/SeasonalEffects.jsx';
 import SeasonalPerimeter from './components/SeasonalPerimeter.jsx';
-import { AccountIcon, ThemeIcon, StoreIcon, SlotIcon, CartIcon } from './components/icons.jsx';
+import { AccountIcon, ThemeIcon, StoreIcon, SlotIcon, CartIcon, HeartIcon } from './components/icons.jsx';
+import Favorites from './components/Favorites.jsx';
 import StorePage from './components/StorePage.jsx';
 import ReservationForm from './components/ReservationForm.jsx';
 import InstallButton from './components/InstallButton.jsx';
@@ -242,6 +243,9 @@ export default function App() {
   // nothing hardcodes a pixel offset.
   const headerRef = useRef(null);
   const hoursRef = useRef(null);
+  // Footer dock cycling: repeated presses of the SAME slot step through its
+  // categories (e.g. an "All Day" slot = [Breakfast, Lunch]).
+  const footerCycle = useRef({ slot: -1, idx: 0 });
   const [shellH, setShellH] = useState(0);
   const [dockH, setDockH] = useState(0);
   const [scrolled, setScrolled] = useState(false);
@@ -311,6 +315,48 @@ export default function App() {
     if (view === 'checkout' && prevView.current !== 'checkout') track('checkout');
     prevView.current = view;
   }, [view]);
+
+  // ── Favourite orders (localStorage, namespaced per signed-in user) ──────
+  const uid = user?.id || user?.customerId || null;
+  const [favorites, setFavorites] = useState(() => getFavorites(uid));
+  // Reload the correct list when the signed-in user changes.
+  useEffect(() => { setFavorites(getFavorites(uid)); }, [uid]);
+  function persistFavs(next) { setFavorites(next); saveFavorites(uid, next); }
+  const favId = () => String(Date.now()) + Math.random().toString(36).slice(2, 6);
+  // Build cart-shaped line items from a past order, exactly like reorder() does —
+  // we only ever keep the items, never a table/fulfilment choice.
+  function favItemsFrom(order) {
+    return (order.items || []).filter((it) => it.variationId).map((it) => ({
+      variationId: it.variationId, itemName: it.name, variationName: it.variation || '',
+      modifierIds: it.modifierIds || [], modifierNames: it.modifierNames || [],
+      unitPrice: it.unitPrice || 0, quantity: Number(it.quantity) || 1, note: '',
+    }));
+  }
+  function addFavorite(order, name) {
+    const items = favItemsFrom(order);
+    if (!items.length) return false;
+    persistFavs([{ id: favId(), name: (name && name.trim()) || 'My order', items, createdAt: Date.now() }, ...favorites]);
+    track('favorite_add');
+    return true;
+  }
+  function removeFavorite(id) { persistFavs(favorites.filter((f) => f.id !== id)); }
+  function renameFavorite(id, name) {
+    persistFavs(favorites.map((f) => (f.id === id ? { ...f, name: name.trim() || f.name } : f)));
+  }
+  // Load a favourite into the cart and drop the customer into the cart so they
+  // choose Dine in / Takeaway + pay. Never auto-select a table — force a fresh
+  // fulfilment choice (matches reorder's setDineIn(null)).
+  function orderFavorite(fav) {
+    if (!fav.items?.length) return;
+    setCart(fav.items.map((it) => ({
+      ...it,
+      key: `${it.variationId}:${(it.modifierIds || []).join(',')}:fav${Math.random().toString(36).slice(2, 5)}`,
+    })));
+    setDineIn(null); setTable(''); setTableLock(0);
+    setView(wide ? 'home' : 'cart');
+    track('favorite_order');
+    window.scrollTo({ top: 0 });
+  }
 
   // Reorder a past order: reload its items; force a fresh Dine in / Takeaway
   // choice (their table may have changed since).
@@ -741,7 +787,8 @@ export default function App() {
   // scroll-spies + scrolls to the section (activeCat drives MenuList's scroll).
   const pickCategory = (cat) => {
     setQuery('');
-    if (layoutMode === 'single') setActiveGroup([cat]);
+    footerCycle.current = { slot: -1, idx: 0 }; // a dock/search pick resets footer cycling
+    if (layoutMode === 'single') { setActiveGroup([cat]); setActiveCat(cat); }
     else { setSpyCat(cat); setActiveCat(cat); }
   };
   // Primary-nav "Coffee" → first coffee-ish category, only if one exists.
@@ -822,6 +869,16 @@ export default function App() {
           <button className="logo-wrap sh-logo" onClick={goMenu} aria-label="Home">
             {config.logoUrl ? <img src={imgUrl(config.logoUrl, 400)} alt={config.storeName || 'Home'} className="topbar-logo" fetchpriority="high" /> : <Logo />}
           </button>
+          <button
+            type="button"
+            className="iconbtn fav-headerbtn"
+            aria-label={`Favourites${favorites.length ? `, ${favorites.length}` : ''}`}
+            title="Favourites"
+            onClick={() => setView('favorites')}
+          >
+            <HeartIcon size={20} />
+            {favorites.length > 0 && <span className="fav-count" aria-hidden="true">{favorites.length > 9 ? '9+' : favorites.length}</span>}
+          </button>
           <nav className="site-nav" aria-label="Primary">
             <button type="button" className={`site-nav-link${navActive('menu') ? ' on' : ''}`} onClick={goMenu}>Menu</button>
             {coffeeCat && (
@@ -867,7 +924,26 @@ export default function App() {
           onSignIn={onSignIn}
           onSignOut={onSignOut}
           onReorder={reorder}
+          onFavorite={(order) => {
+            const name = window.prompt('Name this favourite (so you recognise it later)', 'My usual');
+            if (name === null) return;
+            const ok = addFavorite(order, name);
+            if (!ok) window.alert('This order has no reorderable items.');
+            return ok;
+          }}
           onBack={() => setView('home')}
+        />
+      )}
+
+      {view === 'favorites' && (
+        <Favorites
+          favorites={favorites}
+          currency={currency}
+          onOrder={orderFavorite}
+          onRemove={removeFavorite}
+          onRename={renameFavorite}
+          onBack={() => setView('home')}
+          onExploreMenu={() => setView('account')}
         />
       )}
 
@@ -1000,8 +1076,16 @@ export default function App() {
                 className={`navitem ${activeSlot ? 'on' : ''}`}
                 onClick={() => {
                   setQuery('');
-                  if (layoutMode === 'single') { setActiveGroup(slot.cats); setView('home'); scrollToMenu(); }
-                  else { setView('home'); setActiveCat(slot.cats[0]); }
+                  if (layoutMode === 'single') {
+                    // Same icon pressed again → advance to the next category in
+                    // this slot; a different icon → start at its first category.
+                    const same = footerCycle.current.slot === i;
+                    const idx = same ? (footerCycle.current.idx + 1) % slot.cats.length : 0;
+                    footerCycle.current = { slot: i, idx };
+                    setActiveGroup(slot.cats);
+                    setView('home');
+                    setActiveCat(slot.cats[idx]); // scrolls to that category's title
+                  } else { setView('home'); setActiveCat(slot.cats[0]); }
                 }}
                 aria-label={slot.label}
               >

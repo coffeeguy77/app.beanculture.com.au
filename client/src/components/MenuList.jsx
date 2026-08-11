@@ -13,11 +13,22 @@ function fromPrice(item) {
 export default function MenuList({ categories, currency, onPick, scrollTo, onScrolled, kitchenClosedCats }) {
   const kShut = new Set((kitchenClosedCats || []).map((c) => (c || '').toLowerCase()));
   useEffect(() => {
-    if (scrollTo) {
+    if (!scrollTo) return;
+    const run = () => {
       const el = document.getElementById(slug(scrollTo));
-      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      onScrolled && onScrolled();
-    }
+      if (!el) return;
+      const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const cs = getComputedStyle(document.documentElement);
+      const px = (v) => parseInt(cs.getPropertyValue(v), 10) || 0;
+      const isMobile = window.matchMedia('(max-width: 767px)').matches;
+      const stickyTop = isMobile ? px('--header-h') : px('--shell-h');
+      const offset = stickyTop + px('--dock-h') + 12;
+      const y = el.getBoundingClientRect().top + window.scrollY - offset;
+      window.scrollTo({ top: Math.max(0, y), behavior: reduce ? 'auto' : 'smooth' });
+    };
+    // Let the newly-shown category content lay out before measuring.
+    requestAnimationFrame(() => requestAnimationFrame(run));
+    onScrolled && onScrolled();
   }, [scrollTo]);
 
   if (!categories || categories.length === 0) {
