@@ -5,6 +5,35 @@ function makeKey(item, variationId, modifierIds, note) {
   return [item.id, variationId, [...modifierIds].sort().join(','), note].join('|');
 }
 
+// Square descriptions arrive as a run-on paragraph with known coffee labels
+// (Origin, Tasting Notes, Process, ...) broken onto their own lines server-side
+// (see formatDescription in catalog.js). We split that back into an intro
+// paragraph plus a label->value fact list, then pull Origin and Tasting Notes
+// out for special treatment (an inline origin line + pill badges) -- anything
+// else (Process, Roast Profile, etc.) still renders, just as plain fact rows,
+// so no information from Square is ever dropped. Items without any of these
+// labels (food, retail, simple drinks) just get their intro text -- nothing
+// coffee-specific is assumed to exist.
+const KNOWN_LABELS = [
+  'Origin Composition', 'Origin', 'Process', 'Harvest', 'Cup Profile', 'Tasting Notes',
+  'Roast Profile', 'Suggested Brewing', 'Milk-based drinks', 'Milk-based', 'Body',
+  'Sweetness', 'Acidity', 'Finish', 'Development', 'Style', 'Target', 'Espresso', 'Filter',
+];
+function parseDescription(text) {
+  if (!text) return { intro: '', facts: [] };
+  const lines = String(text).split('\n').map((l) => l.trim()).filter(Boolean);
+  const introLines = [];
+  const facts = [];
+  for (const line of lines) {
+    const m = line.match(/^([A-Za-z][A-Za-z \-/]*):\s*(.+)$/);
+    const known = m && KNOWN_LABELS.some((l) => l.toLowerCase() === m[1].trim().toLowerCase());
+    if (known) facts.push({ label: m[1].trim(), value: m[2].trim() });
+    else if (facts.length === 0) introLines.push(line);
+    else facts[facts.length - 1].value += ' ' + line;
+  }
+  return { intro: introLines.join(' '), facts };
+}
+
 export default function ItemModal({ item, currency, onClose, onAdd }) {
   const firstAvail = item.variations.find((v) => !v.soldOut) || item.variations[0];
   const [variationId, setVariationId] = useState(firstAvail?.id);
@@ -40,7 +69,7 @@ export default function ItemModal({ item, currency, onClose, onAdd }) {
     });
   }
 
-  // Groups the customer hasn't satisfied yet (min selections not met) — used
+  // Groups the customer hasn't satisfied yet (min selections not met) -- used
   // to block Add-to-cart and to flag the offending group inline.
   const unmetGroups = (item.modifierGroups || []).filter((group) => {
     const need = group.min || 0;
@@ -64,6 +93,29 @@ export default function ItemModal({ item, currency, onClose, onAdd }) {
 
   const unitPrice = (variation?.price || 0) + modifierPrice;
 
+  const { intro, facts } = useMemo(() => parseDescription(item.description), [item.description]);
+  const originFact = facts.find((f) => /^origin/i.test(f.label));
+  const tastingFact = facts.find((f) => /tasting notes/i.test(f.label));
+  const otherFacts = facts.filter((f) => f !== originFact && f !== tastingFact);
+  const originList = originFact ? originFact.value.split(',').map((s) => s.trim()).filter(Boolean) : [];
+  const tastingList = tastingFact ? tastingFact.value.split(',').map((s) => s.trim()).filter(Boolean) : [];
+
+  const minPrice = Math.min(...item.variations.map((v) => v.price ?? Infinity));
+
+  // Persistent footer summary: variation + up to two configured picks, so the
+  // customer always sees roughly what they're about to add without the footer
+  // wrapping onto multiple lines.
+  const summaryParts = [];
+  if (item.variations.length > 1 && variation) summaryParts.push(variation.name || item.name);
+  for (const group of item.modifierGroups || []) {
+    if (summaryParts.length >= 3) break;
+    const chosen = selected[group.id];
+    if (!chosen || chosen.size === 0) continue;
+    const names = group.modifiers.filter((m) => chosen.has(m.id)).map((m) => m.name);
+    if (names.length) summaryParts.push(names.join(' + '));
+  }
+  const footerSummary = summaryParts.join(' · ');
+
   function handleAdd() {
     // Locked modifiers (from a preset) are always applied and hidden; their
     // price is already baked into the variation price, so only add their ids.
@@ -81,77 +133,131 @@ export default function ItemModal({ item, currency, onClose, onAdd }) {
     });
   }
 
+  let sectionNum = 0;
+
   return (
-    <div className="backdrop" onClick={onClose}>
-      <div className="sheet" onClick={(e) => e.stopPropagation()}>
-        <button className="sheet-close" onClick={onClose}>×</button>
-        {item.image && <img className="sheet-img" src={imgUrl(item.image, 720)} alt="" decoding="async" />}
-        <div className="sheet-body">
-          <h2>{item.name}</h2>
-          {item.description && <p className="muted itemdesc-full">{item.description}</p>}
+    <div className="backdrop item-backdrop" onClick={onClose}>
+      <div className="sheet item-sheet" onClick={(e) => e.stopPropagation()}>
+        <button className="sheet-close" onClick={onClose} aria-label="Close">×</button>
 
-          {item.variations.length > 1 && (
-            <div className="group">
-              <div className="group-title">Choose one</div>
-              {item.variations.map((v) => (
-                <label key={v.id} className={`opt ${v.soldOut ? 'disabled' : ''}`}>
-                  <input type="radio" name="variation" disabled={v.soldOut}
-                    checked={variationId === v.id} onChange={() => setVariationId(v.id)} />
-                  <span className="opt-name">{v.name || item.name}{v.soldOut ? ' — sold out' : ''}</span>
-                  <span className="opt-price">{formatMoney(v.price, currency)}</span>
-                </label>
-              ))}
+        <div className="sheet-main">
+          <div className="sheet-left">
+            {item.image
+              ? <img className="sheet-img" src={imgUrl(item.image, 720)} alt="" decoding="async" />
+              : <div className="sheet-img sheet-img-ph" aria-hidden="true" />}
+            <div className="sheet-left-body">
+              {item.category && <div className="sheet-eyebrow">{item.category}</div>}
+              <h2>{item.name}</h2>
+              {Number.isFinite(minPrice) && <div className="sheet-from-price">From {formatMoney(minPrice, currency)}</div>}
+              {intro && <p className="sheet-desc">{intro}</p>}
+              {originList.length > 0 && <p className="sheet-origin">{originList.join(' · ')}</p>}
+              {tastingList.length > 0 && (
+                <div className="sheet-tasting">
+                  <div className="sheet-tasting-label">Tasting notes</div>
+                  <div className="sheet-tasting-pills">
+                    {tastingList.map((t) => <span key={t} className="tasting-pill">{t}</span>)}
+                  </div>
+                </div>
+              )}
+              {otherFacts.length > 0 && (
+                <dl className="sheet-facts">
+                  {otherFacts.map((f) => (
+                    <div key={f.label} className="sheet-fact">
+                      <dt>{f.label}</dt>
+                      <dd>{f.value}</dd>
+                    </div>
+                  ))}
+                </dl>
+              )}
             </div>
-          )}
-
-          {(item.modifierGroups || []).map((group) => {
-            const required = (group.min || 0) > 0;
-            const have = (selected[group.id]?.size) || 0;
-            const unmet = required && have < group.min;
-            return (
-            <div key={group.id} className="group">
-              <div className="group-title">
-                {group.name}
-                {group.selectionType === 'SINGLE' ? ' · choose one' : group.max > 0 ? ` · up to ${group.max}` : ''}
-                {required && <span className="group-required"> · required</span>}
-              </div>
-              <div className="opt-pills">
-                {group.modifiers.map((mod) => {
-                  const chosen = (selected[group.id] || new Set()).has(mod.id);
-                  return (
-                    <button key={mod.id} type="button" className={`opt-pill ${chosen ? 'on' : ''}`}
-                      onClick={() => toggleModifier(group, mod)}>
-                      <span className="opt-name">{mod.name}</span>
-                      {mod.price > 0 && <span className="opt-price">+{formatMoney(mod.price, currency)}</span>}
-                    </button>
-                  );
-                })}
-              </div>
-              {unmet && <p className="group-warn">Select at least {group.min === 1 ? 'one' : group.min}</p>}
-            </div>
-            );
-          })}
-
-          <label className="field">
-            <span>Notes (optional)</span>
-            <textarea className="notes-input" rows={2} value={note} onChange={(e) => setNote(e.target.value)} />
-          </label>
-
-          {unmetGroups.length > 0 && (
-            <p className="group-warn" style={{ marginTop: -4 }}>
-              Please choose {unmetGroups.map((g) => g.name).join(', ')} before adding to your order.
-            </p>
-          )}
-          <div className="qty-row">
-            <div className="stepper">
-              <button onClick={() => setQty((q) => Math.max(1, q - 1))}>−</button>
-              <span>{qty}</span>
-              <button onClick={() => setQty((q) => q + 1)}>+</button>
-            </div>
-            <button className="btn" onClick={handleAdd} disabled={unmetGroups.length > 0}>
-              Add · {formatMoney(unitPrice * qty, currency)}
-            </button>
           </div>
+
+          <div className="sheet-right">
+            <div className="sheet-right-head">
+              <h3>Customise your {(item.name || 'item').toLowerCase()}</h3>
+              <p>Choose your options and make it yours.</p>
+            </div>
+
+            {item.variations.length > 1 && (() => {
+              sectionNum += 1;
+              return (
+                <div className="cgroup">
+                  <div className="cgroup-title">
+                    <span className="cgroup-num">{sectionNum}</span>
+                    <span className="cgroup-name">Choose a size</span>
+                    <span className="cgroup-req">Required</span>
+                  </div>
+                  <div className="cgroup-grid">
+                    {item.variations.map((v) => (
+                      <button type="button" key={v.id} disabled={v.soldOut}
+                        className={`ccard ${variationId === v.id ? 'on' : ''} ${v.soldOut ? 'disabled' : ''}`}
+                        onClick={() => setVariationId(v.id)}>
+                        {variationId === v.id && <span className="ccard-check">✓</span>}
+                        <span className="ccard-name">{v.name || item.name}{v.soldOut ? ' — Sold out' : ''}</span>
+                        <span className="ccard-price">{formatMoney(v.price, currency)}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+
+            {(item.modifierGroups || []).map((group) => {
+              sectionNum += 1;
+              const num = sectionNum;
+              const required = (group.min || 0) > 0;
+              const have = (selected[group.id]?.size) || 0;
+              const unmet = required && have < group.min;
+              const hint = group.selectionType === 'SINGLE'
+                ? 'Choose one'
+                : group.max > 0 ? `Choose up to ${group.max}` : 'Choose one or more';
+              return (
+                <div key={group.id} className="cgroup">
+                  <div className="cgroup-title">
+                    <span className="cgroup-num">{num}</span>
+                    <span className="cgroup-name">{group.name}</span>
+                    {required ? <span className="cgroup-req">Required</span> : <span className="cgroup-hint">{hint}</span>}
+                  </div>
+                  <div className="cgroup-grid">
+                    {group.modifiers.map((mod) => {
+                      const chosen = (selected[group.id] || new Set()).has(mod.id);
+                      return (
+                        <button type="button" key={mod.id} className={`ccard ${chosen ? 'on' : ''}`}
+                          onClick={() => toggleModifier(group, mod)}>
+                          {chosen && <span className="ccard-check">✓</span>}
+                          <span className="ccard-name">{mod.name}</span>
+                          {mod.price > 0 && <span className="ccard-price">+{formatMoney(mod.price, currency)}</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {unmet && <p className="cgroup-warn">Select at least {group.min === 1 ? 'one' : group.min}</p>}
+                </div>
+              );
+            })}
+
+            <label className="field sheet-notes">
+              <span>Notes (optional)</span>
+              <textarea className="notes-input" rows={2} value={note} onChange={(e) => setNote(e.target.value)} />
+            </label>
+          </div>
+        </div>
+
+        <div className="sheet-footer">
+          <div className="stepper">
+            <button onClick={() => setQty((q) => Math.max(1, q - 1))} aria-label="Decrease quantity">−</button>
+            <span>{qty}</span>
+            <button onClick={() => setQty((q) => q + 1)} aria-label="Increase quantity">+</button>
+          </div>
+          <div className="sheet-footer-mid">
+            {footerSummary && <span className="sheet-footer-summary">{footerSummary}</span>}
+            {unmetGroups.length > 0 && (
+              <span className="sheet-footer-warn">Choose {unmetGroups.map((g) => g.name).join(', ')}</span>
+            )}
+          </div>
+          <button className="btn sheet-footer-add" onClick={handleAdd} disabled={unmetGroups.length > 0}>
+            Add to order · {formatMoney(unitPrice * qty, currency)}
+          </button>
         </div>
       </div>
     </div>
