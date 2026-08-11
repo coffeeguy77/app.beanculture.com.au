@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { api, formatMoney } from '../api.js';
 import GiftCards from './GiftCards.jsx';
+import InstallButton from './InstallButton.jsx';
 
 /* ── little stroke icons (match the store page line style) ───────────────── */
 const Ico = ({ children, size = 19 }) => (
@@ -277,6 +278,13 @@ export default function Account({ user, currency, config, onSignIn, onSignOut, o
 
           {RewardsCard}
           {GiftCard}
+
+          {/* Mobile-only: Add-to-Home-Screen lives here (moved out of the menu
+              page). Hidden on desktop/tablet via CSS; InstallButton self-hides
+              when already installed or unavailable. */}
+          <div className="acct-install">
+            <InstallButton />
+          </div>
         </aside>
 
         {/* Main */}

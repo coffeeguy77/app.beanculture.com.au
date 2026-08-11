@@ -67,6 +67,17 @@ export function AccountIcon({ size = 26 }) {
   );
 }
 
+// Shopping cart (mobile header cart button)
+export function CartIcon({ size = 22 }) {
+  return (
+    <svg {...base(size)}>
+      <circle cx="9.5" cy="19.5" r="1.3" />
+      <circle cx="17" cy="19.5" r="1.3" />
+      <path d="M3 4.5h2.2l2.1 10.4a1.5 1.5 0 0 0 1.47 1.2h7.94a1.5 1.5 0 0 0 1.47-1.18L20 7.5H6" />
+    </svg>
+  );
+}
+
 // Takeaway coffee cup → Coffee
 export function CupIcon({ size = 30 }) {
   return (

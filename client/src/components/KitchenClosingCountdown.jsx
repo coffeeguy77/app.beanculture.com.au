@@ -108,14 +108,23 @@ export default function KitchenClosingCountdown({ closesInMin, minutes, elapsedM
         {onOrderNow && <button type="button" className="kc-cta kc-cta-full" onClick={onOrderNow}>{ctaLabel}</button>}
       </div>
 
-      {/* Mobile: compact two-row bar. */}
+      {/* Mobile: premium two-row card. Row 1 = status + full countdown (Days/
+          Hrs/Min/Sec so an 8-hour closure never collapses to just MM:SS); Row 2
+          = reopen line + CTA; progress bar spans below. */}
       <div className="kc kc-mobile">
-        <div className="kc-mrow">
-          <span className="kc-icon-sm"><ClockIcon size={34} /></span>
+        <div className="kc-mrow kc-mrow-top">
+          <span className="kc-icon-sm"><ClockIcon size={26} /></span>
           <span className="kc-meyebrow">{eyebrow}</span>
-          <span className="kc-mtime">{pad(min)}:{pad(sec)}</span>
+          <div className="kc-mdigits">
+            {digits.map((d) => (
+              <div className="kc-mdigit" key={d.label}>
+                <span className="kc-mdigit-n">{pad(d.v)}</span>
+                <span className="kc-mdigit-l">{d.label.toUpperCase()}</span>
+              </div>
+            ))}
+          </div>
         </div>
-        <div className="kc-mrow">
+        <div className="kc-mrow kc-mrow-bot">
           {(subLabel != null ? subLabel : (closesLabel && `Order before ${closesLabel}`)) && (
             <span className="kc-msub">{subLabel != null ? subLabel : `Order before ${closesLabel}`}</span>
           )}

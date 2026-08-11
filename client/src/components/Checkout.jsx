@@ -285,7 +285,7 @@ export default function Checkout({ config, cart, currency, onQty, dineIn, setDin
     : (couponFree ? 'Place order' : `Pay ${formatMoney(payTotal, currency)}`);
 
   return (
-    <main className="page">
+    <main className="page checkout-page">
       <button className="link" onClick={onBack}>← Order</button>
       <h2>Checkout</h2>
 

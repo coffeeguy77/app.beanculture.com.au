@@ -17,7 +17,7 @@ import Admin from './components/Admin.jsx';
 import Logo from './components/Logo.jsx';
 import SeasonalEffects from './components/SeasonalEffects.jsx';
 import SeasonalPerimeter from './components/SeasonalPerimeter.jsx';
-import { AccountIcon, ThemeIcon, StoreIcon, SlotIcon } from './components/icons.jsx';
+import { AccountIcon, ThemeIcon, StoreIcon, SlotIcon, CartIcon } from './components/icons.jsx';
 import StorePage from './components/StorePage.jsx';
 import ReservationForm from './components/ReservationForm.jsx';
 import InstallButton from './components/InstallButton.jsx';
@@ -351,6 +351,7 @@ export default function App() {
   const layoutMode = config?.layoutMode || 'onepage';
   const xmas = activeTheme?.id === 'christmas';
   const wide = useMediaQuery('(min-width: 900px)'); // desktop + landscape tablet
+  const isMobile = useMediaQuery('(max-width: 767px)'); // phones only (tablet 768-899 unchanged)
 
   // On wide layouts the cart lives in the sidebar — no separate cart page.
   useEffect(() => {
@@ -833,9 +834,21 @@ export default function App() {
             <div className="icon-row">
               <button className="iconbtn" title="About / contact" aria-label="Store info" onClick={() => setView('store')}><StoreIcon size={22} /></button>
               <button className="iconbtn" title="Theme" aria-label="Theme" onClick={() => setShowTheme(true)}><ThemeIcon size={22} /></button>
+              {isMobile && (
+                <button
+                  className="iconbtn cart-iconbtn"
+                  title="Cart"
+                  aria-label={cartCount > 0 ? `Cart, ${cartCount} item${cartCount === 1 ? '' : 's'}` : 'Cart, empty'}
+                  onClick={() => setView('cart')}
+                >
+                  <CartIcon size={22} />
+                  {cartCount > 0 && <span className="cart-badge" aria-hidden="true">{cartCount > 9 ? '9+' : cartCount}</span>}
+                </button>
+              )}
               <button className="iconbtn" title="Account" aria-label={user ? 'Account' : 'Sign in'} onClick={() => setView('account')}>
                 <AccountIcon size={26} />
               </button>
+              {isMobile && <span className="sr-only" aria-live="polite">{cartCount > 0 ? `${cartCount} item${cartCount === 1 ? '' : 's'} in cart` : 'Cart empty'}</span>}
             </div>
           </div>
         </div>
@@ -924,7 +937,7 @@ export default function App() {
               onScrolled={() => setActiveCat(null)}
               kitchenClosedCats={kitchenClosedCats}
             />
-            <InstallButton />
+            {!isMobile && <InstallButton />}
           </div>
           <aside className={`cart-aside store-cart${view === 'checkout' ? ' is-checkout' : ''}`}>
             {view === 'checkout' ? (

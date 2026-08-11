@@ -1790,6 +1790,24 @@ body:has(.store-shell) { background: #F7F4EF; }
   --progress-fill-start: #9e2753;
   --progress-fill-end: #ef7385;
 
+  /* ONE shared mobile edge inset — every page section lines up to this. */
+  --mobile-page-gutter: 16px;
+
+  /* Semantic checkout tokens (Espresso Plum values, theme-overridable). The
+     mobile checkout is a LIGHT surface floating on the dark canvas, so its
+     text/fields resolve to accessible dark-on-light regardless of theme. */
+  --checkout-surface: var(--bc-ivory);
+  --checkout-surface-raised: #fffdf9;
+  --checkout-text: var(--bc-text-dark);
+  --checkout-text-muted: var(--bc-text-muted);
+  --checkout-border: var(--bc-border-light);
+  --checkout-field-bg: #fff;
+  --checkout-primary: var(--bc-berry);
+  --checkout-primary-text: #fff;
+  --checkout-focus: var(--bc-champagne);
+  --checkout-error: #b9385d;
+  --checkout-success: var(--bc-success, #4f8069);
+
   background: transparent;
 }
 body:has(.store-shell) { background: var(--bc-canvas-deep, #160f12); }
@@ -1974,4 +1992,286 @@ body:has(.store-shell) { background: var(--bc-canvas-deep, #160f12); }
 .site-notice--kitchen .kc-desktop,
 .site-notice--kitchen .kc-tablet {
   box-shadow: var(--bc-shadow-card), inset 0 0 0 1px rgba(232, 182, 92, .16), inset 0 1px 0 rgba(213, 78, 120, .18);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   MOBILE (≤767px) COORDINATED SYSTEM
+   Placed last so these win on source order for phones. Everything visual/layout
+   below lives INSIDE @media (max-width:767px) so tablet (768–899) and desktop
+   (≥900) are untouched. The only non-media rules are (a) a global .sr-only
+   helper and (b) DARK-CANVAS CONTRAST fixes — colour-only bug fixes for text
+   that sat on the espresso-plum canvas using the wrong (dark) token; they carry
+   no layout change and legitimately benefit desktop too.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Visually-hidden live-region helper (used by the mobile cart announcer). */
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}
+
+/* ── Dark-canvas contrast fixes (all widths; colour-only) ──
+   Text sitting DIRECTLY on the page canvas must use the light tokens, not the
+   dark card-ink it was inheriting via --ink/--muted. */
+.store-shell .store-bio { color: var(--bc-text-light); }
+.store-shell .acct-welcome h1 { color: var(--bc-text-light); }
+.store-shell .acct-welcome p { color: var(--bc-text-light-muted); }
+/* Standalone on-canvas pages (mobile/tablet cart page + sign-in). The checkout
+   light card (.checkout-page) is excluded — it keeps dark-on-light. */
+.store-shell .page:not(.checkout-page) > h2 { color: var(--bc-text-light); }
+.store-shell .page:not(.checkout-page) > p.muted { color: var(--bc-text-light-muted); }
+.store-shell .page:not(.checkout-page) .field > span { color: var(--bc-text-light-muted); }
+.store-shell .page:not(.checkout-page) .totals .row { color: var(--bc-text-light-muted); }
+.store-shell .page:not(.checkout-page) .totals .row.grand {
+  color: var(--bc-text-light); border-top-color: rgba(232, 182, 92, .30);
+}
+
+/* Add-to-Home-Screen action inside the Account sheet is mobile-only. */
+.acct-install { display: none; }
+
+@media (max-width: 767px) {
+  /* ── 1. ONE shared page gutter — every section lines up to the same edges ── */
+  .store-shell .hours-inner {
+    padding-left: var(--mobile-page-gutter); padding-right: var(--mobile-page-gutter);
+  }
+  .store-main .hero {
+    padding-left: var(--mobile-page-gutter); padding-right: var(--mobile-page-gutter);
+  }
+  .store-main .search {
+    padding-left: var(--mobile-page-gutter); padding-right: var(--mobile-page-gutter);
+  }
+  .store-main .menu {
+    padding-left: var(--mobile-page-gutter); padding-right: var(--mobile-page-gutter);
+  }
+  .store-main .cat-head { margin-left: 0; margin-right: 0; }
+  .menu-dock-wrap {
+    padding-left: var(--mobile-page-gutter); padding-right: var(--mobile-page-gutter);
+  }
+  /* Fulfilment / scheduling panel was full-bleed — inset it to the one gutter. */
+  .store-main .ordertype {
+    width: calc(100% - (var(--mobile-page-gutter) * 2));
+    max-width: none; margin-inline: auto; box-sizing: border-box;
+  }
+
+  /* ── 2. Hours / kitchen-countdown panel — premium card, one gutter, Days/Hrs ── */
+  /* The existing kc breakpoint is 700px, so 700–767 (large phones) would show
+     the tablet card. Force the mobile card as the ONLY countdown ≤767 so it
+     never double-renders; 768+ keeps the tablet card untouched. */
+  .site-notice--kitchen .kc-tablet,
+  .site-notice--kitchen .kc-desktop { display: none; }
+  .site-notice--kitchen .kc-mobile {
+    display: block; box-sizing: border-box; width: 100%;
+    margin: 8px 0 10px; padding: 18px; border-radius: 16px;
+    background: linear-gradient(160deg, var(--bc-canvas-raised), var(--bc-plum));
+    border: 1px solid color-mix(in srgb, var(--bc-champagne) 40%, var(--bc-border-rose));
+    box-shadow: var(--bc-shadow-card), inset 0 1px 0 rgba(232, 182, 92, .16);
+  }
+  .kc-mobile .kc-mrow { display: flex; align-items: center; gap: 6px; padding: 0; }
+  .kc-mobile .kc-mrow-top { margin-bottom: 12px; }
+  .kc-mobile .kc-mrow-bot { margin-top: 0; }
+  .kc-mobile .kc-icon-sm { flex: none; color: var(--bc-champagne); }
+  .kc-mobile .kc-meyebrow {
+    flex: 1 1 auto; min-width: 0; font-size: 17px; font-weight: 700;
+    color: #fff; letter-spacing: .2px; line-height: 1.15;
+  }
+  .kc-mobile .kc-mdigits { flex: none; display: flex; gap: 4px; }
+  .kc-mobile .kc-mdigit {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    min-width: 34px; padding: 4px 5px; border-radius: 9px;
+    background: var(--bc-ivory);
+    border: 1px solid color-mix(in srgb, var(--bc-champagne) 45%, var(--bc-border-light));
+    box-shadow: var(--bc-shadow-card);
+  }
+  .kc-mobile .kc-mdigit-n {
+    font-family: var(--font-serif, Georgia, serif); font-size: 21px; font-weight: 800;
+    color: var(--bc-berry); line-height: 1.05;
+  }
+  .kc-mobile .kc-mdigit-l {
+    font-size: 8px; font-weight: 800; letter-spacing: .3px; margin-top: 2px;
+    color: color-mix(in srgb, var(--bc-berry) 60%, var(--bc-text-muted));
+  }
+  .kc-mobile .kc-msub {
+    flex: 1 1 auto; min-width: 0; font-size: 15px; font-weight: 600;
+    color: var(--bc-text-light); line-height: 1.3;
+  }
+  .kc-mobile .kc-mcta {
+    flex: none; margin-left: auto; background: var(--bc-champagne); color: var(--bc-text-dark);
+    font-size: 15px; font-weight: 700; min-height: 44px; padding: 0 18px;
+    border-radius: 999px; white-space: nowrap;
+  }
+  .kc-mobile .kc-progress {
+    margin: 14px 0 0; height: 7px; background: var(--progress-track);
+  }
+  .kc-mobile .kc-progress-fill {
+    background: linear-gradient(90deg, var(--progress-fill-start), var(--progress-fill-end));
+  }
+  /* iPhone SE / very narrow: shrink cells a touch so the title never collides. */
+  @media (max-width: 359px) {
+    .kc-mobile .kc-mdigit { min-width: 30px; padding: 4px 4px; }
+    .kc-mobile .kc-mdigit-n { font-size: 18px; }
+  }
+
+  /* ── 3. Fulfilment & scheduling grids ── */
+  .store-main .ordertype > .segmented { min-width: 0; }
+  .store-main .ordertype > .segmented .seg { min-width: 0; }
+  .store-main .ordertype > .segmented.three {
+    display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px;
+  }
+  .store-main .ordertype > .segmented.three .seg {
+    white-space: normal; line-height: 1.2; font-size: 15px; padding: 8px 6px;
+  }
+  /* When Later: Now/Later on its own line, then Day/Time as a 2-col grid. */
+  .store-main .ordertype .when-row {
+    display: grid; grid-template-columns: 1fr; gap: 8px; align-items: start;
+  }
+  .store-main .ordertype .when-field { width: 100%; }
+  .store-main .ordertype .when-seg { width: 100%; min-width: 0; }
+  .store-main .ordertype .when-row .sw { width: 100%; min-width: 0; }
+  .store-main .ordertype .when-row .sw-row {
+    display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 0.85fr); gap: 8px;
+  }
+  /* Now: compact immediate-pickup note (mobile only; hidden elsewhere). */
+  .when-now-note { display: none; }
+  .store-main .ordertype .when-now-note {
+    display: block; margin: 0; font-size: 13px; font-weight: 500; color: var(--s-ink2);
+  }
+
+  /* ── 4. Browse-Menu dock: no arrows, native scroll, centred title ── */
+  .menu-dock { flex-direction: column; align-items: stretch; gap: 8px; }
+  .menu-dock-eyebrow {
+    display: block; width: auto; text-align: center;
+    border-right: none; padding: 2px 0; font-size: 13px; letter-spacing: 1.4px;
+  }
+  .menu-dock .dock-arrow { display: none; }
+  .menu-dock-strip {
+    overflow-x: auto; -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x proximity; scrollbar-width: none;
+    scroll-padding-left: 2px;
+  }
+  .menu-dock-strip::-webkit-scrollbar { display: none; }
+  .menu-dock-strip .dock-tab { scroll-snap-align: start; }
+
+  /* ── 5. Remove the mobile floating "View order" bar (header cart replaces it) ── */
+  .store-shell .cartbar { display: none; }
+
+  /* ── 6. Header cart icon + quantity badge ── */
+  .site-header .cart-iconbtn { position: relative; overflow: visible; }
+  .cart-badge {
+    position: absolute; top: -5px; right: -5px;
+    min-width: 18px; height: 18px; padding: 0 4px;
+    display: grid; place-items: center; border-radius: 999px;
+    background: var(--bc-champagne); color: var(--bc-text-dark);
+    font-size: 11px; font-weight: 800; line-height: 1;
+    border: 1.5px solid var(--bc-canvas); box-shadow: var(--bc-shadow-card);
+  }
+
+  /* ── 7. Bottom category nav safe-area + page-bottom clearance ── */
+  .app.store-shell:not(.app-flush) {
+    padding-bottom: calc(118px + env(safe-area-inset-bottom));
+  }
+  .store-shell .bottomnav.catbar {
+    padding-bottom: calc(5px + env(safe-area-inset-bottom));
+  }
+
+  /* ── 8. Add-to-Home-Screen inside Account (moved off the menu page) ── */
+  .install-cta { /* menu-page instance already gated off in JSX on mobile */ }
+  .acct-install { display: block; margin-top: 4px; padding-top: 12px; border-top: 1px solid rgba(232, 182, 92, .18); }
+  .store-shell .account-page {
+    padding-bottom: calc(96px + env(safe-area-inset-bottom));
+  }
+
+  /* ── 11/12. Header sizing + top safe-area (notch) ── */
+  .store-shell .site-header { padding-top: env(safe-area-inset-top); }
+  .site-header-inner { gap: 8px; }
+  .site-header-right { margin-left: auto; gap: 8px; }
+  .site-header .icon-row { gap: 6px; }
+
+  /* ── 9. Mobile checkout — a light surface floating on the dark canvas ── */
+  .store-shell .checkout-page {
+    background: var(--checkout-surface); color: var(--checkout-text);
+    border: 1px solid var(--checkout-border); border-radius: 22px;
+    box-shadow: var(--bc-shadow-card); box-sizing: border-box;
+    padding: 16px;
+    margin: 12px var(--mobile-page-gutter) calc(24px + env(safe-area-inset-bottom));
+  }
+  .store-shell .checkout-page > h2,
+  .store-shell .checkout-page h3,
+  .store-shell .checkout-page .group-title,
+  .store-shell .checkout-page .co-line-name {
+    color: var(--checkout-text);
+  }
+  .store-shell .checkout-page .group { border-top-color: var(--checkout-border); }
+  .store-shell .checkout-page .co-line-sub,
+  .store-shell .checkout-page .secure-note { color: var(--checkout-text-muted); }
+  /* Fields */
+  .store-shell .checkout-page .field input,
+  .store-shell .checkout-page .field textarea {
+    background: var(--checkout-field-bg); color: var(--checkout-text);
+    border: 1px solid var(--checkout-border); border-radius: 12px;
+    min-height: 48px; font-size: 16px;
+    scroll-margin-top: calc(var(--shell-h, 120px) + 12px);
+  }
+  .store-shell .checkout-page .field input::placeholder,
+  .store-shell .checkout-page .field textarea::placeholder { color: var(--checkout-text-muted); }
+  .store-shell .checkout-page .field input:focus,
+  .store-shell .checkout-page .field textarea:focus {
+    outline: none; border-color: var(--checkout-focus);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--checkout-focus) 45%, transparent);
+  }
+  /* Segmented controls: dark inactive labels, primary-filled active segment. */
+  .store-shell .checkout-page .segmented {
+    background: color-mix(in srgb, var(--checkout-border) 30%, #fff);
+    border-radius: 14px; padding: 4px; gap: 4px;
+  }
+  .store-shell .checkout-page .segmented .seg {
+    flex: 1; min-height: 48px; border-radius: 10px; border: none;
+    background: transparent; color: var(--checkout-text); font-weight: 600;
+  }
+  .store-shell .checkout-page .segmented .seg.active {
+    background: var(--checkout-primary); color: var(--checkout-primary-text);
+    box-shadow: var(--bc-shadow-card); font-weight: 700;
+  }
+  .store-shell .checkout-page .segmented .seg:disabled {
+    color: color-mix(in srgb, var(--checkout-text) 42%, transparent);
+  }
+  .store-shell .checkout-page .segmented .seg:focus-visible {
+    outline: 2px solid var(--checkout-focus); outline-offset: 2px;
+  }
+  /* Order summary — nested raised card, high-contrast product names. */
+  .store-shell .checkout-page .co-order {
+    background: var(--checkout-surface-raised);
+    border: 1px solid var(--checkout-border); border-radius: 14px; padding: 2px 12px;
+  }
+  .store-shell .checkout-page .co-line { border-bottom-color: var(--checkout-border); }
+  .store-shell .checkout-page .co-line-name { font-weight: 700; }
+  .store-shell .checkout-page .stepper { border-color: var(--checkout-border); }
+  .store-shell .checkout-page .stepper button {
+    background: color-mix(in srgb, var(--checkout-primary) 12%, #fff); color: var(--checkout-primary);
+  }
+  /* Payment option rows + Square card + error card sit on the light surface. */
+  .store-shell .checkout-page .reward {
+    background: var(--checkout-surface-raised); border-color: var(--checkout-border);
+    color: var(--checkout-text);
+  }
+  .store-shell .checkout-page .card-box {
+    background: var(--checkout-field-bg); border-color: var(--checkout-border);
+  }
+  .store-shell .checkout-page .card {
+    background: var(--checkout-surface-raised); border-color: var(--checkout-border);
+  }
+  /* Totals + primary action. */
+  .store-shell .checkout-page .totals .row { color: var(--checkout-text-muted); }
+  .store-shell .checkout-page .totals .row.grand {
+    color: var(--checkout-text); border-top-color: var(--checkout-border);
+  }
+  .store-shell .checkout-page .btn.full {
+    width: 100%; min-height: 52px;
+    background: var(--checkout-primary); color: var(--checkout-primary-text);
+    margin-bottom: calc(4px + env(safe-area-inset-bottom));
+  }
+  .store-shell .checkout-page .btn.full:disabled { opacity: .55; }
+  .store-shell .checkout-page .btn.ghost.full {
+    background: transparent; color: var(--checkout-primary);
+    border: 1.5px solid var(--checkout-primary);
+  }
 }

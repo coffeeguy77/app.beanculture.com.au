@@ -50,6 +50,9 @@ export default function OrderTypeBar({ dineIn, setDineIn, table, setTable, lock,
                 onDate={(d) => setAt({ ...(at || {}), date: d })}
                 onTime={(t) => setAt({ ...(at || {}), time: t })} />
             )}
+            {effWhen === 'now' && (
+              <p className="when-now-note">Ordering for immediate pickup</p>
+            )}
           </div>
         );
       })()}
