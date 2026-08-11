@@ -126,7 +126,11 @@ export default function MenuDock({ categories, active, onPick }) {
       <div ref={sentRef} className="dock-sentinel" aria-hidden="true" />
       <div className={`menu-dock-wrap${stuck ? ' is-stuck' : ''}`}>
         <div className="menu-dock">
-          <span className="menu-dock-eyebrow">Browse menu</span>
+          <span className="menu-dock-eyebrow">
+            <span className="dock-eyebrow-arrow" aria-hidden="true">←</span>
+            <span className="dock-eyebrow-text">Browse the menu</span>
+            <span className="dock-eyebrow-arrow" aria-hidden="true">→</span>
+          </span>
           <button
             type="button"
             className="dock-arrow"

@@ -1513,6 +1513,9 @@ body:has(.store-shell) { background: #F7F4EF; }
   text-transform: uppercase; color: var(--dark, #76263E);
   border-right: 1px solid var(--s-line); padding-right: 12px;
 }
+/* Decorative arrows flank the eyebrow on mobile only; hidden ≥768px so the
+   desktop/tablet eyebrow reads plainly as "Browse the menu". */
+.dock-eyebrow-arrow { display: none; }
 /* Central scroll viewport — the ONLY overflow surface. Arrows sit outside it as
    their own flex columns, so no tile can ever slide under an arrow. Overflow
    lives here, never on the sticky wrapper, so date/time popovers above the dock
@@ -1808,6 +1811,21 @@ body:has(.store-shell) { background: #F7F4EF; }
   --checkout-error: #b9385d;
   --checkout-success: var(--bc-success, #4f8069);
 
+  /* Semantic content-text tokens. Text that sits directly ON the dark plum
+     canvas (headings, lede/body, on-canvas links) resolves through these so a
+     future theme can re-skin the storefront by overriding the token values
+     alone — no rule changes. Espresso Plum values below. */
+  --text-on-dark: #fff8f1;
+  --text-on-dark-muted: #d9c9c5;
+  --heading-on-dark: #fff8f1;
+  --link-on-dark: #ef7385;
+  /* Light-card surface aliases → existing premium surface tokens, so the same
+     "surface vs canvas" split is theme-overridable. Value-only, no behaviour. */
+  --surface: var(--s-card);
+  --surface-text: var(--s-ink);
+  --surface-text-muted: var(--s-ink2);
+  --border-soft: var(--s-line);
+
   background: transparent;
 }
 body:has(.store-shell) { background: var(--bc-canvas-deep, #160f12); }
@@ -2025,15 +2043,40 @@ body:has(.store-shell) { background: var(--bc-canvas-deep, #160f12); }
 .store-shell .page:not(.checkout-page) .totals .row.grand {
   color: var(--bc-text-light); border-top-color: rgba(232, 182, 92, .30);
 }
+/* On-canvas back links (← Menu) keep the theme accent, light enough on plum. */
+.store-shell .reserve-back,
+.store-shell .store-back,
+.store-shell .acct-back,
+.store-shell .page:not(.checkout-page) > .link { color: var(--link-on-dark); }
+/* Reserve-a-table intro sits directly on the dark canvas (the FORM + hours are
+   light cards and keep their dark ink). Recolour only the on-canvas copy. */
+.store-shell .reserve-title { color: var(--heading-on-dark); }
+.store-shell .reserve-lede { color: var(--text-on-dark-muted); }
+.store-shell .reserve-points li { color: var(--text-on-dark); }
+/* Check circles → light blush surface with a berry tick (was brand-on-canvas). */
+.store-shell .rp-ic { background: var(--bc-blush); color: var(--bc-berry); }
 
 /* Add-to-Home-Screen action inside the Account sheet is mobile-only. */
 .acct-install { display: none; }
 
 @media (max-width: 767px) {
   /* ── 1. ONE shared page gutter — every section lines up to the same edges ── */
-  .store-shell .hours-inner {
-    padding-left: var(--mobile-page-gutter); padding-right: var(--mobile-page-gutter);
+  /* Hours/timer strip is IN-FLOW on mobile: it scrolls away with the hero
+     instead of pinning (desktop keeps its sticky gradient band, untouched
+     outside this media query). No fixed gradient, no blur, no backing band —
+     the only visible surface is the rounded .kc-mobile card on the page. */
+  .store-shell .hours-bar {
+    position: static; top: auto;
+    background: none;
+    backdrop-filter: none; -webkit-backdrop-filter: none;
   }
+  .store-shell .hours-inner {
+    background: none;
+    padding: 12px var(--mobile-page-gutter) 0;
+  }
+  /* Neutralise the notice container's own surface so no square band peeks out
+     behind the rounded countdown card (peach --warning / plum --urgent etc.). */
+  .store-shell .site-notice--kitchen { background: none; border-top: none; }
   .store-main .hero {
     padding-left: var(--mobile-page-gutter); padding-right: var(--mobile-page-gutter);
   }
@@ -2046,6 +2089,13 @@ body:has(.store-shell) { background: var(--bc-canvas-deep, #160f12); }
   .store-main .cat-head { margin-left: 0; margin-right: 0; }
   .menu-dock-wrap {
     padding-left: var(--mobile-page-gutter); padding-right: var(--mobile-page-gutter);
+    /* Hours strip is in-flow on mobile, so the dock pins directly beneath the
+       sticky header (NOT --shell-h). z stays --z-dock (30) < header (40). */
+    top: var(--header-h, 64px);
+  }
+  /* Category scroll lands below header + dock only (no hours offset on mobile). */
+  .store-main .cat-title {
+    scroll-margin-top: calc(var(--header-h, 64px) + var(--dock-h, 0px) + 12px);
   }
   /* Fulfilment / scheduling panel was full-bleed — inset it to the one gutter. */
   .store-main .ordertype {
@@ -2136,11 +2186,26 @@ body:has(.store-shell) { background: var(--bc-canvas-deep, #160f12); }
     display: block; margin: 0; font-size: 13px; font-weight: 500; color: var(--s-ink2);
   }
 
-  /* ── 4. Browse-Menu dock: no arrows, native scroll, centred title ── */
+  /* ── 4. Browse-Menu dock: no arrow buttons, native scroll, centred title
+     with decorative "← Browse the menu →" arrows. ── */
   .menu-dock { flex-direction: column; align-items: stretch; gap: 8px; }
   .menu-dock-eyebrow {
-    display: block; width: auto; text-align: center;
-    border-right: none; padding: 2px 0; font-size: 13px; letter-spacing: 1.4px;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    width: auto; text-align: center; white-space: nowrap;
+    border-right: none; padding: 2px 0;
+    font-size: 13.5px; font-weight: 700; letter-spacing: .8px;
+  }
+  .dock-eyebrow-text { white-space: nowrap; }
+  /* Non-interactive glyphs (native touch scroll is the only rail nav) — lighter
+     than the title so they read as decoration, not controls. */
+  .dock-eyebrow-arrow {
+    display: inline-block; flex: none; font-size: 15px; line-height: 1;
+    font-weight: 600; letter-spacing: 0;
+    color: color-mix(in srgb, currentColor 55%, transparent);
+  }
+  /* iPhone SE / very narrow: tighten so "← Browse the menu →" never wraps. */
+  @media (max-width: 340px) {
+    .menu-dock-eyebrow { gap: 6px; letter-spacing: .3px; font-size: 13px; }
   }
   .menu-dock .dock-arrow { display: none; }
   .menu-dock-strip {

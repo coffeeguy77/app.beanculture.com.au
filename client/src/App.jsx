@@ -853,7 +853,7 @@ export default function App() {
           </div>
         </div>
       </header>
-      {notices.length > 0 && (
+      {notices.length > 0 && (view === 'home' || !isMobile) && (
         <div ref={hoursRef} className="hours-bar">
           <div className="hours-inner"><SiteNotice notices={notices} /></div>
         </div>
