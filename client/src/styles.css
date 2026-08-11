@@ -329,8 +329,8 @@ img { max-width: 100%; }
    scroll. Footer (qty + summary + Add) stays pinned outside both, always
    visible. On mobile the two columns stack into one scrolling flow and only
    the footer stays pinned -- see the base (no media query) rules below. */
-.item-backdrop { align-items: center; }
-.item-sheet {
+.backdrop.item-backdrop { align-items: center; }
+.sheet.item-sheet {
   width: min(1040px, calc(100% - 24px));
   max-width: 1040px;
   max-height: 92vh;
@@ -408,7 +408,7 @@ img { max-width: 100%; }
 .item-sheet .sheet-close { top: 14px; right: 14px; background: var(--surface); box-shadow: var(--shadow-sm); }
 
 @media (min-width: 720px) {
-  .item-sheet { max-height: 84vh; }
+  .sheet.item-sheet { max-height: 84vh; }
   .item-sheet .sheet-main { display: flex; flex-direction: row; overflow: hidden; }
   .item-sheet .sheet-left {
     flex: 0 0 380px; width: 380px; overflow-y: auto; border-right: 1px solid var(--line);
