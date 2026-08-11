@@ -37,6 +37,16 @@ export function StoreIcon({ size = 22 }) {
   );
 }
 
+// Clock (kitchen-closing countdown)
+export function ClockIcon({ size = 22 }) {
+  return (
+    <svg {...base(size)}>
+      <circle cx="12" cy="12" r="8.25" />
+      <path d="M12 7.5V12l3 2" />
+    </svg>
+  );
+}
+
 // Coffee mug (item image fallback)
 export function MugIcon({ size = 30 }) {
   return (

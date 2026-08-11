@@ -7,6 +7,7 @@ import OrderTypeBar from './components/OrderTypeBar.jsx';
 import MenuDock from './components/MenuDock.jsx';
 import MenuList from './components/MenuList.jsx';
 import ItemModal from './components/ItemModal.jsx';
+import KitchenClosingCountdown from './components/KitchenClosingCountdown.jsx';
 import CartView from './components/CartView.jsx';
 import CartPanel from './components/CartPanel.jsx';
 import Checkout from './components/Checkout.jsx';
@@ -106,6 +107,23 @@ function SiteNotice({ notices }) {
 
   if (!list.length) return null;
   const n = list[Math.min(idx, list.length - 1)];
+
+  // The kitchen-closing notice gets its own rich countdown widget (numbered
+  // digits + progress bar) instead of the generic icon/text row -- it's
+  // self-contained (own CTA), so the rotation arrows/dots are hidden while
+  // it's showing rather than overlapping a taller, multi-row layout.
+  if (n.id === 'kitchen') {
+    return (
+      <div className={`site-notice site-notice--${n.type || 'warning'} site-notice--kitchen`} role="status">
+        <KitchenClosingCountdown
+          closesInMin={n.closesInMin}
+          closesLabel={n.closesLabel}
+          categories={n.categories}
+          onOrderNow={n.cta?.onClick}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className={`site-notice site-notice--${n.type || 'informational'}`} role="status">
@@ -728,9 +746,14 @@ export default function App() {
   } else {
     const k = nHours.kitchen?.closesInMin;
     if (k != null && k > 0 && k <= 60) {
+      const closeAt = new Date(Date.now() + k * 60000);
+      const closesLabel = fmt12(`${String(closeAt.getHours()).padStart(2, '0')}:${String(closeAt.getMinutes()).padStart(2, '0')}`);
       notices.push({
         id: 'kitchen', type: 'warning', icon: '🔥',
         text: `Kitchen closes in ${k} min${k === 1 ? '' : 's'} — order now.`,
+        closesInMin: k,
+        closesLabel,
+        categories: nHours.kitchen?.categories || [],
         cta: { label: 'Order now', onClick: () => { setView('home'); scrollMenu(); } },
       });
     }
