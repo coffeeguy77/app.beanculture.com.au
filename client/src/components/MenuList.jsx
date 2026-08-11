@@ -14,20 +14,24 @@ export default function MenuList({ categories, currency, onPick, scrollTo, onScr
   const kShut = new Set((kitchenClosedCats || []).map((c) => (c || '').toLowerCase()));
   useEffect(() => {
     if (!scrollTo) return;
+    // Jump so the chosen category's TITLE sits just below the sticky stack.
+    // Use an INSTANT jump (not smooth): a smooth animation gets interrupted by
+    // the section's feature-banner/product images loading mid-scroll, leaving
+    // the page short of the title. We also re-apply once after a short delay to
+    // correct for any late reflow (images finishing) above the title.
     const run = () => {
       const el = document.getElementById(slug(scrollTo));
       if (!el) return;
-      const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
       const cs = getComputedStyle(document.documentElement);
       const px = (v) => parseInt(cs.getPropertyValue(v), 10) || 0;
       const isMobile = window.matchMedia('(max-width: 767px)').matches;
       const stickyTop = isMobile ? px('--header-h') : px('--shell-h');
       const offset = stickyTop + px('--dock-h') + 12;
       const y = el.getBoundingClientRect().top + window.scrollY - offset;
-      window.scrollTo({ top: Math.max(0, y), behavior: reduce ? 'auto' : 'smooth' });
+      window.scrollTo({ top: Math.max(0, y), behavior: 'auto' });
     };
-    // Let the newly-shown category content lay out before measuring.
-    requestAnimationFrame(() => requestAnimationFrame(run));
+    // Let the newly-shown category content lay out, jump, then correct once.
+    requestAnimationFrame(() => requestAnimationFrame(() => { run(); setTimeout(run, 200); }));
     onScrolled && onScrolled();
   }, [scrollTo]);
 
