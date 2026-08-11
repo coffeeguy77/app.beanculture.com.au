@@ -1702,3 +1702,178 @@ body:has(.store-shell) { background: #F7F4EF; }
   .store-sticky, .menu-dock-wrap, .store-main .item, .dock-tab, .site-nav-link { transition: none; }
   .menu-dock-strip { scroll-behavior: auto; }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PREMIUM DARK CANVAS — layered espresso-plum outer environment, ivory
+   operational surfaces still floating on top. This section ONLY remaps
+   tokens/adds overrides; it changes no markup, no layout, no JS logic.
+   Everything here is scoped under .store-shell so the Admin UI (which never
+   carries that class) is untouched.
+   ═══════════════════════════════════════════════════════════════════════════ */
+.store-shell {
+  /* Palette */
+  --bc-canvas-deep: #160f12;
+  --bc-canvas: #211218;
+  --bc-canvas-raised: #321421;
+  --bc-plum: #431426;
+  --bc-plum-raised: #56162f;
+  --bc-berry: #9e2753;
+  --bc-raspberry: #d94e78;
+  --bc-coral: #ef7385;
+  --bc-champagne: #e8b65c;
+  --bc-champagne-soft: #f2d28e;
+  --bc-ivory: #fff9f3;
+  --bc-ivory-raised: #fffdf9;
+  --bc-blush: #f4e2e5;
+  --bc-blush-strong: #ecd1d7;
+  --bc-text-dark: #241816;
+  --bc-text-muted: #75645f;
+  --bc-text-light: #fff8f1;
+  --bc-text-light-muted: #d9c9c5;
+  --bc-border-light: #ddc2bd;
+  --bc-border-rose: #c98998;
+  --bc-shadow-card: 0 2px 4px rgba(15,6,10,.16), 0 12px 28px rgba(15,6,10,.22);
+  --bc-shadow-raised: 0 4px 10px rgba(15,6,10,.20), 0 22px 48px rgba(15,6,10,.30);
+  --bc-focus-ring: 0 0 0 3px rgba(232,182,92,.42);
+  --bc-canvas-gradient:
+    radial-gradient(circle at 18% 4%, rgba(158,39,83,.20), transparent 32%),
+    radial-gradient(circle at 82% 30%, rgba(67,20,38,.28), transparent 38%),
+    linear-gradient(180deg, #321421 0%, #211218 46%, #160f12 100%);
+
+  /* Remap the pre-existing semantic aliases (already threaded through the
+     whole premium-storefront section above) onto the new palette. --s-bg
+     stays a FLAT colour, never the gradient itself — color-mix() calls
+     elsewhere in this file need a solid <color>, not a multi-layer
+     background-image. The gradient is applied separately, below. */
+  --s-bg: var(--bc-canvas);
+  --s-card: var(--bc-ivory);
+  --s-ink: var(--bc-text-dark);
+  --s-ink2: var(--bc-text-muted);
+  --s-line: var(--bc-border-light);
+  --dark: var(--bc-plum-raised);
+  --shadow: var(--bc-shadow-raised);
+  --shadow-sm: var(--bc-shadow-card);
+
+  background-color: var(--s-bg);
+  background-image: var(--bc-canvas-gradient);
+}
+body:has(.store-shell) { background: var(--bc-canvas-deep, #160f12); }
+
+/* ── Header: dark premium surface. Nav/logo/location text no longer sits on
+   a light bg, so it needs its own explicit colours instead of the inherited
+   --s-ink2/--s-ink defaults. ── */
+.store-sticky {
+  background: color-mix(in srgb, var(--s-bg) 88%, black);
+  border-bottom-color: transparent;
+}
+.store-sticky.is-scrolled {
+  border-bottom-color: rgba(232, 182, 92, .18);
+  box-shadow: 0 8px 26px rgba(10, 5, 8, .45);
+}
+.site-header .logo-wrap { color: var(--bc-champagne); }
+.site-nav-link { color: var(--bc-text-light-muted); }
+.site-nav-link:hover { color: var(--bc-text-light); background: rgba(255,255,255,.07); }
+.site-nav-link.on { color: var(--bc-raspberry); }
+.site-nav-link.on::after { background: var(--bc-raspberry); }
+.site-nav-link:focus-visible { outline-color: var(--bc-champagne); }
+.site-loc { color: var(--bc-text-light-muted); }
+.site-loc svg { color: var(--bc-champagne); }
+.site-header .iconbtn {
+  background: var(--bc-canvas-raised); border-color: rgba(232,182,92,.35); color: var(--bc-text-light);
+}
+.site-header .iconbtn:hover { border-color: var(--bc-champagne); }
+.site-header .iconbtn:focus-visible { outline: 2px solid var(--bc-champagne); outline-offset: 2px; }
+
+/* ── Kitchen countdown: raised midnight-plum chrome bridges the dark page
+   shell and the lighter controls below it. --dark is re-pointed to a light
+   champagne tone *inside* this component only (via inheritance), so every
+   pre-existing var(--dark) text rule above (icon/eyebrow/sub/heading/mtime)
+   reads correctly without touching each one individually. The digit cells
+   and CTA sit on their own light surfaces, so they get explicit colours
+   that intentionally do NOT follow that local --dark remap. ── */
+.kc-desktop, .kc-tablet, .kc-mobile {
+  --dark: var(--bc-champagne-soft);
+  background: linear-gradient(160deg, var(--bc-canvas-raised), var(--bc-plum));
+}
+.kc-desktop { border-top: 1px solid rgba(232,182,92,.25); }
+.kc-tablet { border-color: rgba(232,182,92,.3); box-shadow: var(--bc-shadow-card); }
+.kc-digit { background: var(--bc-blush); }
+.kc-digit-n { color: var(--bc-berry); }
+.kc-digit-l { color: color-mix(in srgb, var(--bc-berry) 65%, var(--bc-text-muted)); }
+.kc-cta, .kc-mcta { background: var(--bc-champagne); color: var(--bc-text-dark); }
+.kc-cta:hover, .kc-mcta:hover { filter: brightness(1.05); background: var(--bc-champagne-soft); }
+.kc-cta:focus-visible, .kc-mcta:focus-visible { outline-color: var(--bc-champagne); }
+.kc-progress { background: rgba(255,255,255,.16); }
+.kc-progress-fill { background: linear-gradient(90deg, var(--bc-raspberry), var(--bc-champagne)); }
+
+/* ── Promotional banner: unchanged artwork, refined frame only ── */
+.hero-slide { border: 1px solid rgba(201, 137, 152, .35); }
+
+/* ── Product-section heading sits directly on the dark canvas ── */
+.store-main .cat-head .cat-title { color: var(--bc-champagne-soft); }
+.store-main .cat-count { color: var(--bc-text-light-muted); }
+.cat-shut { color: var(--bc-coral); }
+.empty { color: var(--bc-text-light-muted); }
+
+/* ── Category dock: inactive-tile blush/rose-clay refinement, active-tile
+   champagne count badge (the surface itself already inherits --s-card/
+   --s-line/--dark from the remap above and needed no separate change). ── */
+.dock-tab { background: var(--bc-blush); border-color: var(--bc-border-rose); }
+.dock-tab:hover { background: var(--bc-blush-strong); border-color: var(--bc-raspberry); }
+.dock-tab.on .dock-tab-count { background: var(--bc-champagne); color: var(--bc-text-dark); border-color: var(--bc-champagne); }
+
+/* ── Search icon (storefront-only, scoped to the existing override block) ── */
+.store-main .search input {
+  border-color: var(--bc-border-rose);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' fill='none' stroke='%23d94e78' stroke-width='2' viewBox='0 0 24 24'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='M21 21l-4.3-4.3'/%3E%3C/svg%3E");
+}
+.store-main .search input:focus { box-shadow: var(--bc-focus-ring); }
+
+/* ── Ordering / scheduling panel ── */
+.store-main .ordertype { border-color: var(--bc-border-rose); }
+.store-main .segmented .seg { border-color: var(--bc-border-rose); background: var(--bc-blush); }
+.store-main .segmented .seg.active { background: var(--bc-berry); border-color: var(--bc-berry); color: #fff; }
+
+/* ── Product cards ── */
+.store-main .item { border-color: var(--bc-border-light); }
+.store-main .item:not(.sold):hover { border-color: var(--bc-raspberry); }
+.item-price { color: var(--bc-raspberry); }
+
+/* ── Full-height cart ── */
+.store-cart .cart-panel { border-color: var(--bc-border-light); }
+.cart-panel-head h2 { color: var(--bc-plum-raised); }
+.store-cart .cart-panel-head .context-pill { background: var(--bc-blush); color: var(--bc-berry); }
+.store-cart .cl-price { color: var(--bc-raspberry); }
+.store-cart .cl-controls .stepper.sm button { background: var(--bc-blush); color: var(--bc-berry); }
+.store-cart .cart-panel-foot { border-top: 1px solid var(--bc-champagne-soft); }
+.store-cart .cart-panel-foot .btn.full:not(:disabled) { background: var(--bc-berry); color: #fff; }
+
+/* ── Product customisation modal ── */
+.backdrop { background: rgba(22, 15, 18, .68); }
+.item-sheet { border: 1px solid var(--bc-border-light); box-shadow: var(--bc-shadow-raised); }
+.item-sheet .sheet-left { background: var(--bc-blush); }
+.item-sheet h2 { color: var(--bc-plum-raised); }
+.ccard.on { border-color: var(--bc-berry); background: var(--bc-blush-strong); box-shadow: 0 0 0 1px var(--bc-berry) inset; }
+.sheet-footer-add { background: var(--bc-berry); }
+.sheet-footer-add:disabled { background: var(--bc-blush-strong); color: var(--bc-text-muted); }
+.ccard:focus-visible, .field input:focus, .field textarea:focus { outline-color: var(--bc-champagne); }
+
+/* ── Add-to-home-screen action: premium secondary control on the dark
+   canvas, not a weak pale outline. ── */
+.install-cta .btn.ghost {
+  background: transparent; border: 1.5px solid var(--bc-champagne); color: var(--bc-text-light);
+}
+.install-cta .btn.ghost:hover { background: rgba(217, 78, 120, .16); border-color: var(--bc-raspberry); }
+.install-cta .btn.ghost:focus-visible { outline: 2px solid var(--bc-champagne); outline-offset: 2px; }
+.install-cta .muted { color: var(--bc-text-light-muted); }
+
+/* ── Mobile floating "View order" bar + bottom category nav also sit
+   directly on the dark canvas (they auto-inherit the new --bg alias, which
+   is why their text needs explicit light colours here). ── */
+.store-shell .cartbar { background: linear-gradient(135deg, var(--bc-plum-raised), var(--bc-berry)); box-shadow: var(--bc-shadow-raised); }
+.store-shell .cartbar .badge { background: var(--bc-champagne); color: var(--bc-text-dark); }
+.store-shell .bottomnav { border-top-color: rgba(232,182,92,.18); }
+.store-shell .navitem { color: var(--bc-text-light-muted); }
+.store-shell .navitem.on { color: var(--bc-raspberry); }
+.store-shell .catbar .navitem { color: var(--bc-champagne); }
+.store-shell .catbar .navlabel { color: var(--bc-text-light-muted); }
