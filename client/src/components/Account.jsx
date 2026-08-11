@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { api, formatMoney } from '../api.js';
 import GiftCards from './GiftCards.jsx';
 import InstallButton from './InstallButton.jsx';
-import { HeartIcon } from './icons.jsx';
+import { HeartIcon, ThemeIcon } from './icons.jsx';
 
 /* ── little stroke icons (match the store page line style) ───────────────── */
 const Ico = ({ children, size = 19 }) => (
@@ -52,7 +52,7 @@ function statePill(state) {
 }
 const fmtDate = (iso) => iso ? new Date(iso).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
 
-export default function Account({ user, currency, config, onSignIn, onSignOut, onReorder, onFavorite, onBack }) {
+export default function Account({ user, currency, config, onSignIn, onSignOut, onReorder, onFavorite, onTheme, onBack }) {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [busy, setBusy] = useState(false);
@@ -291,17 +291,17 @@ export default function Account({ user, currency, config, onSignIn, onSignOut, o
 
           {RewardsCard}
           {GiftCard}
-
-          {/* Mobile-only: Add-to-Home-Screen lives here (moved out of the menu
-              page). Hidden on desktop/tablet via CSS; InstallButton self-hides
-              when already installed or unavailable. */}
-          <div className="acct-install">
-            <InstallButton />
-          </div>
         </aside>
 
         {/* Main */}
         <div className="acct-main">
+          {/* Mobile-only: Themes lives in the account menu (the header theme
+              icon is hidden on mobile), sitting just above Order history. */}
+          {onTheme && (
+            <button type="button" className="acct-themes-mobile" onClick={onTheme}>
+              <ThemeIcon size={20} /> <span>Themes</span>
+            </button>
+          )}
           {section === 'account' && (
             <>
               <header className="acct-welcome">
@@ -319,6 +319,13 @@ export default function Account({ user, currency, config, onSignIn, onSignOut, o
             </>
           )}
           {section === 'gifts' && GiftSection}
+        </div>
+
+        {/* Mobile-only: Add-to-Home-Screen at the very bottom of the page.
+            Hidden on desktop/tablet via CSS; InstallButton self-hides when
+            already installed or unavailable. */}
+        <div className="acct-install">
+          <InstallButton />
         </div>
       </div>
 

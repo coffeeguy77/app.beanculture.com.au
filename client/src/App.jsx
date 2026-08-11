@@ -890,7 +890,7 @@ export default function App() {
           <div className="site-header-right">
             <div className="icon-row">
               <button className="iconbtn" title="About / contact" aria-label="Store info" onClick={() => setView('store')}><StoreIcon size={22} /></button>
-              <button className="iconbtn" title="Theme" aria-label="Theme" onClick={() => setShowTheme(true)}><ThemeIcon size={22} /></button>
+              <button className="iconbtn theme-headerbtn" title="Theme" aria-label="Theme" onClick={() => setShowTheme(true)}><ThemeIcon size={22} /></button>
               {isMobile && (
                 <button
                   className="iconbtn cart-iconbtn"
@@ -931,6 +931,7 @@ export default function App() {
             if (!ok) window.alert('This order has no reorderable items.');
             return ok;
           }}
+          onTheme={() => setShowTheme(true)}
           onBack={() => setView('home')}
         />
       )}

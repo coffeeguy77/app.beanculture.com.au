@@ -2111,6 +2111,22 @@ body:has(.store-shell) { background: var(--bc-canvas-deep, #160f12); }
 /* Add-to-Home-Screen action inside the Account sheet is mobile-only. */
 .acct-install { display: none; }
 
+/* "Themes" lives in the mobile Account menu (above Order history); the header
+   theme icon moves here on mobile. Styled as a light card button so its text is
+   readable on the dark account canvas. Desktop/tablet keep the header icon. */
+.acct-themes-mobile { display: none; }
+@media (max-width: 767px) {
+  .theme-headerbtn { display: none; }
+  .acct-themes-mobile {
+    display: flex; align-items: center; gap: 12px; width: 100%;
+    background: var(--surface); border: 1px solid var(--line); border-radius: 18px;
+    box-shadow: var(--shadow-sm); padding: 16px 18px;
+    font-family: inherit; font-size: 16px; font-weight: 700; color: var(--ink); cursor: pointer;
+  }
+  .acct-themes-mobile svg { color: var(--brand); flex: none; }
+  .acct-themes-mobile:active { transform: scale(0.995); }
+}
+
 @media (max-width: 767px) {
   /* ── 1. ONE shared page gutter — every section lines up to the same edges ── */
   /* Hours/timer strip is IN-FLOW on mobile: it scrolls away with the hero
