@@ -762,10 +762,17 @@ export default function App() {
   // Pre-order CTA lands the customer on the fulfilment row (Dine in / Takeaway /
   // Reserve) just under the sticky stack — not the search box or the dock.
   const scrollToOrderType = () => {
+    // Scroll the WINDOW (not element.scrollIntoView): scrollIntoView + sticky
+    // siblings leaves the sticky header mis-painted until the next scroll event
+    // in some browsers, so compute the target manually and use window.scrollTo,
+    // which recomputes the sticky stack correctly. Offset by the measured
+    // header+hours height (--shell-h) so the fulfilment row lands just below it.
     const el = document.querySelector('.ordertype');
     if (!el) return;
     const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    el.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
+    const shellH = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--shell-h'), 10) || 130;
+    const y = el.getBoundingClientRect().top + window.scrollY - shellH - 14;
+    window.scrollTo({ top: Math.max(0, y), behavior: reduce ? 'auto' : 'smooth' });
   };
   const notices = [];
   if (!storeOpen) {
