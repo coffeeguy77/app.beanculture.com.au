@@ -174,7 +174,7 @@ function withRuntime(base, nowOverride) {
       .sort((a, b) => a.startMin - b.startMin)[0];
     if (upcoming) {
       const rel = i === 0 ? 'today' : i === 1 ? 'tomorrow' : FULL_DAYS[d];
-      nextOpen = { day: DAYS[d], time: upcoming.start, date, label: `${rel} at ${fmt12(upcoming.start)}` };
+      nextOpen = { day: DAYS[d], time: upcoming.start, date, label: `${rel} at ${fmt12(upcoming.start)}`, minsUntil: i * 1440 + upcoming.startMin - minutes };
       break;
     }
   }

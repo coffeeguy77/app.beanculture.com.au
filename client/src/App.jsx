@@ -112,6 +112,23 @@ function SiteNotice({ notices }) {
   // digits + progress bar) instead of the generic icon/text row -- it's
   // self-contained (own CTA), so the rotation arrows/dots are hidden while
   // it's showing rather than overlapping a taller, multi-row layout.
+  if (n.reopen && n.minsUntil != null) {
+    return (
+      <div className="site-notice site-notice--reopen site-notice--kitchen" role="status">
+        <KitchenClosingCountdown
+          minutes={n.minsUntil}
+          windowMin={n.minsUntil}
+          eyebrow="We’re closed"
+          subLabel={n.reopenLabel ? `Reopens ${n.reopenLabel}` : 'Reopening soon'}
+          heading={n.reopenLabel ? `Reopens ${n.reopenLabel}` : 'Reopening soon'}
+          sub2="Pre-order now — we’ll have it ready when we open"
+          ctaLabel="Pre-order now"
+          onOrderNow={n.cta?.onClick}
+        />
+      </div>
+    );
+  }
+
   if (n.id === 'kitchen') {
     return (
       <div className={`site-notice site-notice--${n.type || 'warning'} site-notice--kitchen`} role="status">
@@ -735,8 +752,12 @@ export default function App() {
   const notices = [];
   if (!storeOpen) {
     if (preorder) {
+      const no = nHours.nextOpen;
       notices.push({
         id: 'closed', type: 'urgent', icon: '●',
+        reopen: true,
+        minsUntil: no?.minsUntil,
+        reopenLabel: no?.label,
         text: `We’re closed${nLabel ? ` — we reopen ${nLabel}` : ''}. Pre-order now — we’ll start it when we open.`,
         cta: { label: 'Pre-order now', onClick: () => { setView('home'); setDineIn(false); setPreWhen('later'); scrollMenu(); } },
       });

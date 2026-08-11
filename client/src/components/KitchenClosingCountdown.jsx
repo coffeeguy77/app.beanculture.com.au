@@ -10,14 +10,16 @@ import { ClockIcon } from './icons.jsx';
 // `windowMin` is the size of the countdown window the notice appears within
 // (SiteNotice currently only surfaces this once <=60 min remain) -- used
 // only to size the progress bar, not to gate visibility.
-export default function KitchenClosingCountdown({ closesInMin, closesLabel, categories, windowMin = 60, onOrderNow }) {
+export default function KitchenClosingCountdown({ closesInMin, minutes, closesLabel, categories, windowMin = 60, onOrderNow, eyebrow = 'Kitchen closing', heading, subLabel, sub2, ctaLabel = 'Order now' }) {
   const [target, setTarget] = useState(null);
   const [now, setNow] = useState(() => Date.now());
 
+  const mins = minutes != null ? minutes : closesInMin;
+
   useEffect(() => {
-    setTarget(closesInMin != null ? Date.now() + closesInMin * 60000 : null);
+    setTarget(mins != null ? Date.now() + mins * 60000 : null);
     setNow(Date.now());
-  }, [closesInMin]);
+  }, [mins]);
 
   useEffect(() => {
     if (target == null) return undefined;
@@ -54,8 +56,10 @@ export default function KitchenClosingCountdown({ closesInMin, closesLabel, cate
         <div className="kc-row">
           <span className="kc-icon"><ClockIcon size={52} /></span>
           <div className="kc-label">
-            <div className="kc-eyebrow">Kitchen closing</div>
-            {closesLabel && <div className="kc-sub">Order before {closesLabel}</div>}
+            <div className="kc-eyebrow">{eyebrow}</div>
+            {(subLabel != null ? subLabel : (closesLabel && `Order before ${closesLabel}`)) && (
+              <div className="kc-sub">{subLabel != null ? subLabel : `Order before ${closesLabel}`}</div>
+            )}
           </div>
           <div className="kc-digits">
             {digits.map((d) => (
@@ -65,15 +69,17 @@ export default function KitchenClosingCountdown({ closesInMin, closesLabel, cate
               </div>
             ))}
           </div>
-          {onOrderNow && <button type="button" className="kc-cta" onClick={onOrderNow}>Order now</button>}
+          {onOrderNow && <button type="button" className="kc-cta" onClick={onOrderNow}>{ctaLabel}</button>}
         </div>
         <div className="kc-progress"><div className="kc-progress-fill" style={{ width: `${progress * 100}%` }} /></div>
       </div>
 
       {/* Tablet: standalone centred card. */}
       <div className="kc kc-tablet">
-        {closesLabel && <h3 className="kc-heading">Kitchen closes at {closesLabel}</h3>}
-        <p className="kc-sub2">Order now from {catText}</p>
+        {(heading != null ? heading : (closesLabel && `Kitchen closes at ${closesLabel}`)) && (
+          <h3 className="kc-heading">{heading != null ? heading : `Kitchen closes at ${closesLabel}`}</h3>
+        )}
+        <p className="kc-sub2">{sub2 != null ? sub2 : `Order now from ${catText}`}</p>
         <div className="kc-digits">
           {digits.map((d) => (
             <div className="kc-digit" key={d.label}>
@@ -82,19 +88,21 @@ export default function KitchenClosingCountdown({ closesInMin, closesLabel, cate
             </div>
           ))}
         </div>
-        {onOrderNow && <button type="button" className="kc-cta kc-cta-full" onClick={onOrderNow}>Order now</button>}
+        {onOrderNow && <button type="button" className="kc-cta kc-cta-full" onClick={onOrderNow}>{ctaLabel}</button>}
       </div>
 
       {/* Mobile: compact two-row bar. */}
       <div className="kc kc-mobile">
         <div className="kc-mrow">
           <span className="kc-icon-sm"><ClockIcon size={34} /></span>
-          <span className="kc-meyebrow">Kitchen closing</span>
+          <span className="kc-meyebrow">{eyebrow}</span>
           <span className="kc-mtime">{pad(min)}:{pad(sec)}</span>
         </div>
         <div className="kc-mrow">
-          {closesLabel && <span className="kc-msub">Order before {closesLabel}</span>}
-          {onOrderNow && <button type="button" className="kc-mcta" onClick={onOrderNow}>Order now</button>}
+          {(subLabel != null ? subLabel : (closesLabel && `Order before ${closesLabel}`)) && (
+            <span className="kc-msub">{subLabel != null ? subLabel : `Order before ${closesLabel}`}</span>
+          )}
+          {onOrderNow && <button type="button" className="kc-mcta" onClick={onOrderNow}>{ctaLabel}</button>}
         </div>
         <div className="kc-progress"><div className="kc-progress-fill" style={{ width: `${progress * 100}%` }} /></div>
       </div>

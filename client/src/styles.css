@@ -1754,16 +1754,26 @@ body:has(.store-shell) { background: #F7F4EF; }
   --shadow: var(--bc-shadow-raised);
   --shadow-sm: var(--bc-shadow-card);
 
-  background-color: var(--s-bg);
-  background-image: var(--bc-canvas-gradient);
+  background: transparent;
 }
 body:has(.store-shell) { background: var(--bc-canvas-deep, #160f12); }
+/* ONE seamless full-viewport gradient behind everything (gutters + header +
+   content all share it), painted by a fixed pseudo so the centred .app no
+   longer looks like a separate coloured panel over flat gutters. */
+.store-shell::before {
+  content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  background:
+    radial-gradient(circle at 18% 4%, rgba(158,39,83,.20), transparent 32%),
+    radial-gradient(circle at 82% 30%, rgba(67,20,38,.28), transparent 38%),
+    linear-gradient(180deg, #321421 0%, #211218 46%, #160f12 100%);
+}
 
 /* ── Header: dark premium surface. Nav/logo/location text no longer sits on
    a light bg, so it needs its own explicit colours instead of the inherited
    --s-ink2/--s-ink defaults. ── */
 .store-sticky {
-  background: color-mix(in srgb, var(--s-bg) 88%, black);
+  background: color-mix(in srgb, #211218 42%, transparent);
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
   border-bottom-color: transparent;
 }
 .store-sticky.is-scrolled {
@@ -1846,6 +1856,7 @@ body:has(.store-shell) { background: var(--bc-canvas-deep, #160f12); }
 .store-cart .cl-price { color: var(--bc-raspberry); }
 .store-cart .cl-controls .stepper.sm button { background: var(--bc-blush); color: var(--bc-berry); }
 .store-cart .cart-panel-foot { border-top: 1px solid var(--bc-champagne-soft); }
+.store-cart .cart-panel-foot .totals .row.grand { border-top: none; padding-top: 0; margin-top: 0; }
 .store-cart .cart-panel-foot .btn.full:not(:disabled) { background: var(--bc-berry); color: #fff; }
 
 /* ── Product customisation modal ── */
@@ -1877,3 +1888,18 @@ body:has(.store-shell) { background: var(--bc-canvas-deep, #160f12); }
 .store-shell .navitem.on { color: var(--bc-raspberry); }
 .store-shell .catbar .navitem { color: var(--bc-champagne); }
 .store-shell .catbar .navlabel { color: var(--bc-text-light-muted); }
+
+/* Reusable premium gold "glass" edge — champagne hairline outline + soft inner
+   highlight, on top of each surface's own radius. */
+.store-shell .bc-gold-frame,
+.store-main .hero-slide,
+.store-main .ordertype,
+.store-main .search input,
+.menu-dock,
+.store-cart .cart-panel,
+.site-notice--kitchen .kc-desktop,
+.site-notice--kitchen .kc-tablet,
+.sheet.item-sheet {
+  border: 1px solid color-mix(in srgb, var(--bc-champagne) 60%, var(--bc-border-rose));
+  box-shadow: var(--bc-shadow-card), inset 0 0 0 1px rgba(232, 182, 92, .16);
+}
