@@ -440,7 +440,7 @@ const EFFECT_PRESETS = [
   },
   {
     id: 'eff-hearts', name: 'Hearts', slug: 'hearts', builtIn: true, enabled: true, frontendSelectable: true,
-    version: 1, renderer: 'canvas-particles', description: 'Soft rose and blush hearts drifting diagonally.',
+    version: 2, renderer: 'canvas-particles', description: 'Soft rose and blush hearts drifting diagonally.',
     assets: [{ assetId: 'heart-outline', weight: 60 }, { assetId: 'heart-filled', weight: 40 }],
     motion: { directionDegrees: 160, speedMin: 16, speedMax: 38, driftMin: -6, driftMax: 14, sway: 0.5, rotationMin: -20, rotationMax: 20, rotationSpeedMin: -10, rotationSpeedMax: 10, lifetimeMin: 7, lifetimeMax: 13 },
     emission: { density: 1.3, spawnRate: 1, maxParticlesDesktop: 42, maxParticlesMobile: 20, spawnArea: 'top', burstOnLoad: false, burstCount: 0 },
@@ -455,7 +455,7 @@ const EFFECT_PRESETS = [
   },
   {
     id: 'eff-petals', name: 'Petals', slug: 'petals', builtIn: true, enabled: true, frontendSelectable: true,
-    version: 1, renderer: 'canvas-particles', description: 'Tumbling botanical petals, diagonal fall.',
+    version: 2, renderer: 'canvas-particles', description: 'Tumbling botanical petals, diagonal fall.',
     assets: [{ assetId: 'petal-round', weight: 40 }, { assetId: 'petal-curved', weight: 35 }, { assetId: 'tulip-petal', weight: 25 }],
     motion: { directionDegrees: 160, speedMin: 16, speedMax: 42, driftMin: -10, driftMax: 16, sway: 0.7, rotationMin: 0, rotationMax: 360, rotationSpeedMin: -30, rotationSpeedMax: 30, lifetimeMin: 7, lifetimeMax: 15 },
     emission: { density: 1.4, spawnRate: 1, maxParticlesDesktop: 46, maxParticlesMobile: 22, spawnArea: 'top', burstOnLoad: false, burstCount: 0 },
@@ -470,7 +470,7 @@ const EFFECT_PRESETS = [
   },
   {
     id: 'eff-sparkles', name: 'Sparkles', slug: 'sparkles', builtIn: true, enabled: true, frontendSelectable: true,
-    version: 1, renderer: 'canvas-particles', description: 'Slow-fading points of light, low density.',
+    version: 2, renderer: 'canvas-particles', description: 'Slow-fading points of light, low density.',
     assets: [{ assetId: 'sparkle', weight: 50 }, { assetId: 'star', weight: 30 }, { assetId: 'soft-snow-dot', weight: 20 }],
     motion: { directionDegrees: 180, speedMin: 6, speedMax: 18, driftMin: -6, driftMax: 6, sway: 0.4, rotationMin: 0, rotationMax: 360, rotationSpeedMin: -8, rotationSpeedMax: 8, lifetimeMin: 5, lifetimeMax: 10 },
     emission: { density: 0.9, spawnRate: 1, maxParticlesDesktop: 28, maxParticlesMobile: 13, spawnArea: 'viewport', burstOnLoad: false, burstCount: 0 },
@@ -485,7 +485,7 @@ const EFFECT_PRESETS = [
   },
   {
     id: 'eff-confetti', name: 'Confetti', slug: 'confetti', builtIn: true, enabled: true, frontendSelectable: true,
-    version: 1, renderer: 'canvas-particles', description: 'Initial burst plus a light continuous fall.',
+    version: 2, renderer: 'canvas-particles', description: 'Initial burst plus a light continuous fall.',
     assets: [{ assetId: 'confetti-strip', weight: 40 }, { assetId: 'confetti-circle', weight: 35 }, { assetId: 'confetti-diamond', weight: 25 }],
     motion: { directionDegrees: 180, speedMin: 40, speedMax: 90, driftMin: -20, driftMax: 20, sway: 0.5, rotationMin: 0, rotationMax: 360, rotationSpeedMin: -60, rotationSpeedMax: 60, lifetimeMin: 3, lifetimeMax: 6 },
     emission: { density: 0.75, spawnRate: 1, maxParticlesDesktop: 32, maxParticlesMobile: 15, spawnArea: 'top', burstOnLoad: true, burstCount: 55 },
@@ -500,7 +500,7 @@ const EFFECT_PRESETS = [
   },
   {
     id: 'eff-clover', name: 'Clover', slug: 'clover', builtIn: true, enabled: true, frontendSelectable: false,
-    version: 1, renderer: 'canvas-particles', description: 'Gentle falling clover, green with occasional gold.',
+    version: 2, renderer: 'canvas-particles', description: 'Gentle falling clover, green with occasional gold.',
     assets: [{ assetId: 'clover', weight: 100 }],
     motion: { directionDegrees: 170, speedMin: 14, speedMax: 32, driftMin: -6, driftMax: 10, sway: 0.5, rotationMin: -15, rotationMax: 15, rotationSpeedMin: -8, rotationSpeedMax: 8, lifetimeMin: 7, lifetimeMax: 14 },
     emission: { density: 0.8, spawnRate: 1, maxParticlesDesktop: 26, maxParticlesMobile: 12, spawnArea: 'top', burstOnLoad: false, burstCount: 0 },
@@ -515,7 +515,7 @@ const EFFECT_PRESETS = [
   },
   {
     id: 'eff-eucalyptus', name: 'Eucalyptus', slug: 'eucalyptus', builtIn: true, enabled: true, frontendSelectable: false,
-    version: 1, renderer: 'canvas-particles', description: 'Slow diagonal sage-green leaves.',
+    version: 2, renderer: 'canvas-particles', description: 'Slow diagonal sage-green leaves.',
     assets: [{ assetId: 'eucalyptus', weight: 100 }],
     motion: { directionDegrees: 155, speedMin: 12, speedMax: 30, driftMin: -8, driftMax: 12, sway: 0.6, rotationMin: 0, rotationMax: 360, rotationSpeedMin: -12, rotationSpeedMax: 12, lifetimeMin: 8, lifetimeMax: 16 },
     emission: { density: 0.9, spawnRate: 1, maxParticlesDesktop: 30, maxParticlesMobile: 14, spawnArea: 'top', burstOnLoad: false, burstCount: 0 },
@@ -530,7 +530,7 @@ const EFFECT_PRESETS = [
   },
   {
     id: 'eff-bats', name: 'Bats', slug: 'bats', builtIn: true, enabled: true, frontendSelectable: false,
-    version: 1, renderer: 'canvas-particles', description: 'Restrained silhouettes, low count, no storm.',
+    version: 2, renderer: 'canvas-particles', description: 'Restrained silhouettes, low count, no storm.',
     assets: [{ assetId: 'bat', weight: 100 }],
     motion: { directionDegrees: 100, speedMin: 30, speedMax: 60, driftMin: -14, driftMax: 14, sway: 0.9, rotationMin: 0, rotationMax: 0, rotationSpeedMin: 0, rotationSpeedMax: 0, lifetimeMin: 6, lifetimeMax: 12 },
     emission: { density: 0.55, spawnRate: 1, maxParticlesDesktop: 12, maxParticlesMobile: 6, spawnArea: 'edges', burstOnLoad: false, burstCount: 0 },
@@ -545,7 +545,7 @@ const EFFECT_PRESETS = [
   },
   {
     id: 'eff-embers', name: 'Embers', slug: 'embers', builtIn: true, enabled: true, frontendSelectable: false,
-    version: 1, renderer: 'canvas-particles', description: 'Amber sparks drifting upward, variable glow.',
+    version: 2, renderer: 'canvas-particles', description: 'Amber sparks drifting upward, variable glow.',
     assets: [{ assetId: 'ember', weight: 70 }, { assetId: 'soft-snow-dot', weight: 30 }],
     motion: { directionDegrees: 0, speedMin: 14, speedMax: 34, driftMin: -8, driftMax: 8, sway: 0.5, rotationMin: 0, rotationMax: 0, rotationSpeedMin: 0, rotationSpeedMax: 0, lifetimeMin: 4, lifetimeMax: 9 },
     emission: { density: 0.75, spawnRate: 1, maxParticlesDesktop: 28, maxParticlesMobile: 13, spawnArea: 'top', burstOnLoad: false, burstCount: 0 },
@@ -560,7 +560,7 @@ const EFFECT_PRESETS = [
   },
   {
     id: 'eff-lunar-celebration', name: 'Lunar Celebration', slug: 'lunar-celebration', builtIn: true, enabled: true, frontendSelectable: false,
-    version: 1, renderer: 'canvas-particles', description: 'Embers with a short confetti flourish (combined preset — one render loop).',
+    version: 2, renderer: 'canvas-particles', description: 'Embers with a short confetti flourish (combined preset — one render loop).',
     assets: [{ assetId: 'ember', weight: 55 }, { assetId: 'confetti-circle', weight: 25 }, { assetId: 'confetti-strip', weight: 20 }],
     motion: { directionDegrees: 0, speedMin: 16, speedMax: 38, driftMin: -10, driftMax: 10, sway: 0.5, rotationMin: 0, rotationMax: 360, rotationSpeedMin: -20, rotationSpeedMax: 20, lifetimeMin: 4, lifetimeMax: 9 },
     emission: { density: 0.75, spawnRate: 1, maxParticlesDesktop: 30, maxParticlesMobile: 14, spawnArea: 'top', burstOnLoad: true, burstCount: 36 },
@@ -575,7 +575,7 @@ const EFFECT_PRESETS = [
   },
   {
     id: 'eff-halloween-atmosphere', name: 'Halloween Atmosphere', slug: 'halloween-atmosphere', builtIn: true, enabled: true, frontendSelectable: false,
-    version: 1, renderer: 'canvas-particles', description: 'Bats with low-density embers (combined preset — one render loop).',
+    version: 2, renderer: 'canvas-particles', description: 'Bats with low-density embers (combined preset — one render loop).',
     assets: [{ assetId: 'bat', weight: 50 }, { assetId: 'ember', weight: 50 }],
     motion: { directionDegrees: 95, speedMin: 20, speedMax: 50, driftMin: -12, driftMax: 12, sway: 0.7, rotationMin: 0, rotationMax: 0, rotationSpeedMin: 0, rotationSpeedMax: 0, lifetimeMin: 5, lifetimeMax: 10 },
     emission: { density: 0.55, spawnRate: 1, maxParticlesDesktop: 18, maxParticlesMobile: 8, spawnArea: 'edges', burstOnLoad: false, burstCount: 0 },
@@ -674,7 +674,25 @@ function reconcileEffects(settings) {
   const savedById = new Map(saved.map((e) => [e.id, e]));
   const out = EFFECT_PRESETS.map((def) => {
     const ov = savedById.get(def.id);
-    return ov ? deepMerge(def, ov) : def;
+    if (!ov) return def;
+    // The admin panel's Save action currently persists a full snapshot of
+    // every preset (not just the one edited), so a saved override can go
+    // stale the moment we ship improved built-in tuning underneath it — the
+    // old snapshot's emission/appearance/motion values would otherwise
+    // silently shadow the new defaults forever. Each built-in preset carries
+    // a `version`; when the saved snapshot predates the current built-in
+    // version we treat its tuning as stale and take the fresh default,
+    // while still honouring genuine admin toggles (enabled /
+    // frontendSelectable) carried in that same snapshot. A saved preset
+    // whose version is current (e.g. re-saved after an admin's own edit)
+    // continues to deep-merge normally, so real customisation still sticks.
+    if ((ov.version || 0) < def.version) {
+      const fresh = { ...def };
+      if (ov.enabled !== undefined) fresh.enabled = ov.enabled;
+      if (ov.frontendSelectable !== undefined) fresh.frontendSelectable = ov.frontendSelectable;
+      return fresh;
+    }
+    return deepMerge(def, ov);
   });
   for (const e of saved) {
     if (e && e.id && !BUILTIN_EFFECT_IDS.has(e.id)) out.push(e);
