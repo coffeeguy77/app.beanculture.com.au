@@ -230,7 +230,9 @@ export default function ItemModal({ item, currency, onClose, onAdd }) {
                   <div className="cgroup-title">
                     <span className="cgroup-num">{num}</span>
                     <span className="cgroup-name">{group.name}</span>
-                    {required ? <span className="cgroup-req">Required</span> : <span className="cgroup-hint">{hint}</span>}
+                    {required
+                      ? <span className="cgroup-req">Required</span>
+                      : group.selectionType !== 'SINGLE' && <span className="cgroup-hint">{hint}</span>}
                   </div>
                   <div className="cgroup-grid">
                     {group.modifiers.map((mod) => {

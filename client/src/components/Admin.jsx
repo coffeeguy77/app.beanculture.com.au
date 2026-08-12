@@ -433,6 +433,45 @@ export default function Admin({ onExit }) {
       if (Object.keys(g).length) groups[groupId] = g; else delete groups[groupId];
       return { ...p, groups };
     }));
+  // ---- bulk show/hide + per-heading "Required" helpers for the preset modifier editor ----
+  // A group counts as "all shown" once every one of its modifiers has some
+  // state other than hidden (optional/default/locked all count as visible).
+  const groupAllShown = (p, g) => (g.modifiers || []).length > 0 && g.modifiers.every((m) => !!(p.groups?.[g.id]?.[m.id]));
+  const presetAllShown = (p, cfg) => (cfg.modifierGroups || []).length > 0 && (cfg.modifierGroups || []).every((g) => groupAllShown(p, g));
+  // Show-all only turns on modifiers that are currently hidden (anything
+  // already Default/Locked keeps its state); hide-all clears the group/preset
+  // entirely so every modifier goes back to Hide.
+  const setGroupShowAll = (presetId, g, show) =>
+    setPresets(presets.map((p) => {
+      if (p.id !== presetId) return p;
+      const groups = { ...(p.groups || {}) };
+      if (!show) { delete groups[g.id]; return { ...p, groups }; }
+      const gc = { ...(groups[g.id] || {}) };
+      for (const m of g.modifiers || []) if (!gc[m.id]) gc[m.id] = 'optional';
+      groups[g.id] = gc;
+      return { ...p, groups };
+    }));
+  const setPresetShowAll = (presetId, cfg, show) =>
+    setPresets(presets.map((p) => {
+      if (p.id !== presetId) return p;
+      if (!show) return { ...p, groups: {} };
+      const groups = { ...(p.groups || {}) };
+      for (const g of cfg.modifierGroups || []) {
+        const gc = { ...(groups[g.id] || {}) };
+        for (const m of g.modifiers || []) if (!gc[m.id]) gc[m.id] = 'optional';
+        groups[g.id] = gc;
+      }
+      return { ...p, groups };
+    }));
+  // Which headings force the customer to pick at least one option — overrides
+  // Square's own modifier-list minimum for this preset only (server: catalog.js).
+  const toggleGroupRequired = (presetId, groupId) =>
+    setPresets(presets.map((p) => {
+      if (p.id !== presetId) return p;
+      const cur = Array.isArray(p.requiredGroups) ? p.requiredGroups : [];
+      const next = cur.includes(groupId) ? cur.filter((id) => id !== groupId) : [...cur, groupId];
+      return { ...p, requiredGroups: next };
+    }));
   // ---- generic drag-and-drop reordering (works alongside the ↑/↓ buttons) ----
   const reorderArray = (arr, from, to) => { const a = [...arr]; const [x] = a.splice(from, 1); a.splice(to, 0, x); return a; };
   const dragHandle = (list, index) => ({
@@ -1551,10 +1590,29 @@ export default function Admin({ onExit }) {
                                   </label>
                                 </div>
                                 {renderSectionChips(p.section, (n) => updPreset(p.id, { section: n }))}
+                                {(cfg.modifierGroups || []).length > 0 && (
+                                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 'var(--fs-sm)', cursor: 'pointer' }}
+                                    title="Show every option in every heading below (untick to hide all)">
+                                    <input type="checkbox" checked={presetAllShown(p, cfg)} onChange={(e) => setPresetShowAll(p.id, cfg, e.target.checked)} />
+                                    <strong>Select all options</strong>
+                                  </label>
+                                )}
                                 {(cfg.modifierGroups || []).map((g) => (
                                   <div key={g.id} style={{ border: '1px solid var(--line)', borderRadius: 10, padding: 8 }}>
-                                    <div style={{ fontWeight: 600, fontSize: 'var(--fs-base)', marginBottom: 6 }}>{g.name}
-                                      <span className="muted" style={{ fontWeight: 400 }}>{g.selectionType === 'SINGLE' ? ' · choose one' : g.max > 0 ? ` · up to ${g.max}` : ''}</span>
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 6 }}>
+                                      <div style={{ fontWeight: 600, fontSize: 'var(--fs-base)' }}>{g.name}
+                                        <span className="muted" style={{ fontWeight: 400 }}>{g.selectionType === 'SINGLE' ? ' · choose one' : g.max > 0 ? ` · up to ${g.max}` : ''}</span>
+                                      </div>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 'var(--fs-sm)' }}>
+                                        <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }} title="Show every option in this heading">
+                                          <input type="checkbox" checked={groupAllShown(p, g)} onChange={(e) => setGroupShowAll(p.id, g, e.target.checked)} />
+                                          Show all
+                                        </label>
+                                        <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }} title="Customer must pick at least one option in this heading">
+                                          <input type="checkbox" checked={(p.requiredGroups || []).includes(g.id)} onChange={() => toggleGroupRequired(p.id, g.id)} />
+                                          Required
+                                        </label>
+                                      </div>
                                     </div>
                                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                                       {g.modifiers.map((m) => {
