@@ -427,7 +427,7 @@ const EFFECT_PRESETS = [
       { assetId: 'snowflake-3', weight: 20 }, { assetId: 'soft-snow-dot', weight: 20 },
     ],
     motion: { directionDegrees: 180, speedMin: 18, speedMax: 46, driftMin: -10, driftMax: 10, sway: 0.6, rotationMin: 0, rotationMax: 360, rotationSpeedMin: -15, rotationSpeedMax: 15, lifetimeMin: 8, lifetimeMax: 16 },
-    emission: { density: 1, spawnRate: 1, maxParticlesDesktop: 30, maxParticlesMobile: 12, spawnArea: 'top', burstOnLoad: false, burstCount: 0 },
+    emission: { density: 1.3, spawnRate: 1, maxParticlesDesktop: 60, maxParticlesMobile: 26, spawnArea: 'top', burstOnLoad: false, burstCount: 0 },
     appearance: {
       sizeMin: 10, sizeMax: 22, opacityMin: 0.45, opacityMax: 0.9,
       colorMode: 'palette', colors: ['#FFFFFF', '#F7FBFF', '#DDEEFF', '#F4E5C1'],
@@ -443,9 +443,9 @@ const EFFECT_PRESETS = [
     version: 1, renderer: 'canvas-particles', description: 'Soft rose and blush hearts drifting diagonally.',
     assets: [{ assetId: 'heart-outline', weight: 60 }, { assetId: 'heart-filled', weight: 40 }],
     motion: { directionDegrees: 160, speedMin: 16, speedMax: 38, driftMin: -6, driftMax: 14, sway: 0.5, rotationMin: -20, rotationMax: 20, rotationSpeedMin: -10, rotationSpeedMax: 10, lifetimeMin: 7, lifetimeMax: 13 },
-    emission: { density: 0.7, spawnRate: 1, maxParticlesDesktop: 20, maxParticlesMobile: 9, spawnArea: 'top', burstOnLoad: false, burstCount: 0 },
+    emission: { density: 1.3, spawnRate: 1, maxParticlesDesktop: 42, maxParticlesMobile: 20, spawnArea: 'top', burstOnLoad: false, burstCount: 0 },
     appearance: {
-      sizeMin: 12, sizeMax: 24, opacityMin: 0.5, opacityMax: 0.9,
+      sizeMin: 13, sizeMax: 28, opacityMin: 0.55, opacityMax: 0.95,
       colorMode: 'palette', colors: ['#F1A8C1', '#E76591', '#FFD2DF'],
       renderMode: 'random', fillPercentage: 40, strokePercentage: 30, mixedPercentage: 30,
       strokeWidthMin: 2, strokeWidthMax: 3, glowEnabled: true, glowColorMode: 'inherit', glowColors: [], glowBlurMin: 3, glowBlurMax: 7, glowOpacity: 0.5, glowPercentage: 20,
@@ -458,9 +458,9 @@ const EFFECT_PRESETS = [
     version: 1, renderer: 'canvas-particles', description: 'Tumbling botanical petals, diagonal fall.',
     assets: [{ assetId: 'petal-round', weight: 40 }, { assetId: 'petal-curved', weight: 35 }, { assetId: 'tulip-petal', weight: 25 }],
     motion: { directionDegrees: 160, speedMin: 16, speedMax: 42, driftMin: -10, driftMax: 16, sway: 0.7, rotationMin: 0, rotationMax: 360, rotationSpeedMin: -30, rotationSpeedMax: 30, lifetimeMin: 7, lifetimeMax: 15 },
-    emission: { density: 0.9, spawnRate: 1, maxParticlesDesktop: 22, maxParticlesMobile: 10, spawnArea: 'top', burstOnLoad: false, burstCount: 0 },
+    emission: { density: 1.4, spawnRate: 1, maxParticlesDesktop: 46, maxParticlesMobile: 22, spawnArea: 'top', burstOnLoad: false, burstCount: 0 },
     appearance: {
-      sizeMin: 10, sizeMax: 26, opacityMin: 0.5, opacityMax: 0.92,
+      sizeMin: 11, sizeMax: 30, opacityMin: 0.55, opacityMax: 0.95,
       colorMode: 'palette', colors: ['#E8AFC8', '#F2CE72', '#F5D0BE'],
       renderMode: 'fill', fillPercentage: 100, strokePercentage: 0, mixedPercentage: 0,
       strokeWidthMin: 1.5, strokeWidthMax: 2, glowEnabled: false, glowColorMode: 'inherit', glowColors: [], glowBlurMin: 2, glowBlurMax: 5, glowOpacity: 0.4, glowPercentage: 0,
@@ -473,7 +473,7 @@ const EFFECT_PRESETS = [
     version: 1, renderer: 'canvas-particles', description: 'Slow-fading points of light, low density.',
     assets: [{ assetId: 'sparkle', weight: 50 }, { assetId: 'star', weight: 30 }, { assetId: 'soft-snow-dot', weight: 20 }],
     motion: { directionDegrees: 180, speedMin: 6, speedMax: 18, driftMin: -6, driftMax: 6, sway: 0.4, rotationMin: 0, rotationMax: 360, rotationSpeedMin: -8, rotationSpeedMax: 8, lifetimeMin: 5, lifetimeMax: 10 },
-    emission: { density: 0.55, spawnRate: 1, maxParticlesDesktop: 16, maxParticlesMobile: 7, spawnArea: 'viewport', burstOnLoad: false, burstCount: 0 },
+    emission: { density: 0.9, spawnRate: 1, maxParticlesDesktop: 28, maxParticlesMobile: 13, spawnArea: 'viewport', burstOnLoad: false, burstCount: 0 },
     appearance: {
       sizeMin: 6, sizeMax: 16, opacityMin: 0.2, opacityMax: 0.95,
       colorMode: 'palette', colors: ['#FFF7DA', '#FFE9A8', '#FFFFFF'],
@@ -488,7 +488,7 @@ const EFFECT_PRESETS = [
     version: 1, renderer: 'canvas-particles', description: 'Initial burst plus a light continuous fall.',
     assets: [{ assetId: 'confetti-strip', weight: 40 }, { assetId: 'confetti-circle', weight: 35 }, { assetId: 'confetti-diamond', weight: 25 }],
     motion: { directionDegrees: 180, speedMin: 40, speedMax: 90, driftMin: -20, driftMax: 20, sway: 0.5, rotationMin: 0, rotationMax: 360, rotationSpeedMin: -60, rotationSpeedMax: 60, lifetimeMin: 3, lifetimeMax: 6 },
-    emission: { density: 0.4, spawnRate: 1, maxParticlesDesktop: 18, maxParticlesMobile: 8, spawnArea: 'top', burstOnLoad: true, burstCount: 40 },
+    emission: { density: 0.75, spawnRate: 1, maxParticlesDesktop: 32, maxParticlesMobile: 15, spawnArea: 'top', burstOnLoad: true, burstCount: 55 },
     appearance: {
       sizeMin: 8, sizeMax: 16, opacityMin: 0.7, opacityMax: 1,
       colorMode: 'palette', colors: ['#F2D66C', '#FFF0A3', '#B88A20', '#E4536B', '#5AA9E6'],
@@ -503,7 +503,7 @@ const EFFECT_PRESETS = [
     version: 1, renderer: 'canvas-particles', description: 'Gentle falling clover, green with occasional gold.',
     assets: [{ assetId: 'clover', weight: 100 }],
     motion: { directionDegrees: 170, speedMin: 14, speedMax: 32, driftMin: -6, driftMax: 10, sway: 0.5, rotationMin: -15, rotationMax: 15, rotationSpeedMin: -8, rotationSpeedMax: 8, lifetimeMin: 7, lifetimeMax: 14 },
-    emission: { density: 0.5, spawnRate: 1, maxParticlesDesktop: 16, maxParticlesMobile: 7, spawnArea: 'top', burstOnLoad: false, burstCount: 0 },
+    emission: { density: 0.8, spawnRate: 1, maxParticlesDesktop: 26, maxParticlesMobile: 12, spawnArea: 'top', burstOnLoad: false, burstCount: 0 },
     appearance: {
       sizeMin: 10, sizeMax: 20, opacityMin: 0.5, opacityMax: 0.9,
       colorMode: 'palette', colors: ['#20A05A', '#16864A', '#DFC248'],
@@ -518,7 +518,7 @@ const EFFECT_PRESETS = [
     version: 1, renderer: 'canvas-particles', description: 'Slow diagonal sage-green leaves.',
     assets: [{ assetId: 'eucalyptus', weight: 100 }],
     motion: { directionDegrees: 155, speedMin: 12, speedMax: 30, driftMin: -8, driftMax: 12, sway: 0.6, rotationMin: 0, rotationMax: 360, rotationSpeedMin: -12, rotationSpeedMax: 12, lifetimeMin: 8, lifetimeMax: 16 },
-    emission: { density: 0.6, spawnRate: 1, maxParticlesDesktop: 18, maxParticlesMobile: 8, spawnArea: 'top', burstOnLoad: false, burstCount: 0 },
+    emission: { density: 0.9, spawnRate: 1, maxParticlesDesktop: 30, maxParticlesMobile: 14, spawnArea: 'top', burstOnLoad: false, burstCount: 0 },
     appearance: {
       sizeMin: 12, sizeMax: 24, opacityMin: 0.5, opacityMax: 0.9,
       colorMode: 'palette', colors: ['#7BA05B', '#5C8A4B', '#9DBE6E'],
@@ -533,7 +533,7 @@ const EFFECT_PRESETS = [
     version: 1, renderer: 'canvas-particles', description: 'Restrained silhouettes, low count, no storm.',
     assets: [{ assetId: 'bat', weight: 100 }],
     motion: { directionDegrees: 100, speedMin: 30, speedMax: 60, driftMin: -14, driftMax: 14, sway: 0.9, rotationMin: 0, rotationMax: 0, rotationSpeedMin: 0, rotationSpeedMax: 0, lifetimeMin: 6, lifetimeMax: 12 },
-    emission: { density: 0.4, spawnRate: 1, maxParticlesDesktop: 8, maxParticlesMobile: 4, spawnArea: 'edges', burstOnLoad: false, burstCount: 0 },
+    emission: { density: 0.55, spawnRate: 1, maxParticlesDesktop: 12, maxParticlesMobile: 6, spawnArea: 'edges', burstOnLoad: false, burstCount: 0 },
     appearance: {
       sizeMin: 16, sizeMax: 30, opacityMin: 0.7, opacityMax: 0.95,
       colorMode: 'single', colors: ['#140A1C'],
@@ -548,7 +548,7 @@ const EFFECT_PRESETS = [
     version: 1, renderer: 'canvas-particles', description: 'Amber sparks drifting upward, variable glow.',
     assets: [{ assetId: 'ember', weight: 70 }, { assetId: 'soft-snow-dot', weight: 30 }],
     motion: { directionDegrees: 0, speedMin: 14, speedMax: 34, driftMin: -8, driftMax: 8, sway: 0.5, rotationMin: 0, rotationMax: 0, rotationSpeedMin: 0, rotationSpeedMax: 0, lifetimeMin: 4, lifetimeMax: 9 },
-    emission: { density: 0.45, spawnRate: 1, maxParticlesDesktop: 16, maxParticlesMobile: 7, spawnArea: 'top', burstOnLoad: false, burstCount: 0 },
+    emission: { density: 0.75, spawnRate: 1, maxParticlesDesktop: 28, maxParticlesMobile: 13, spawnArea: 'top', burstOnLoad: false, burstCount: 0 },
     appearance: {
       sizeMin: 4, sizeMax: 10, opacityMin: 0.4, opacityMax: 0.9,
       colorMode: 'palette', colors: ['#F0BE43', '#FF8A3D', '#FFD86B'],
@@ -563,7 +563,7 @@ const EFFECT_PRESETS = [
     version: 1, renderer: 'canvas-particles', description: 'Embers with a short confetti flourish (combined preset — one render loop).',
     assets: [{ assetId: 'ember', weight: 55 }, { assetId: 'confetti-circle', weight: 25 }, { assetId: 'confetti-strip', weight: 20 }],
     motion: { directionDegrees: 0, speedMin: 16, speedMax: 38, driftMin: -10, driftMax: 10, sway: 0.5, rotationMin: 0, rotationMax: 360, rotationSpeedMin: -20, rotationSpeedMax: 20, lifetimeMin: 4, lifetimeMax: 9 },
-    emission: { density: 0.45, spawnRate: 1, maxParticlesDesktop: 18, maxParticlesMobile: 8, spawnArea: 'top', burstOnLoad: true, burstCount: 26 },
+    emission: { density: 0.75, spawnRate: 1, maxParticlesDesktop: 30, maxParticlesMobile: 14, spawnArea: 'top', burstOnLoad: true, burstCount: 36 },
     appearance: {
       sizeMin: 5, sizeMax: 12, opacityMin: 0.45, opacityMax: 0.9,
       colorMode: 'palette', colors: ['#C91E28', '#F0BE43', '#FFD86B'],
@@ -578,7 +578,7 @@ const EFFECT_PRESETS = [
     version: 1, renderer: 'canvas-particles', description: 'Bats with low-density embers (combined preset — one render loop).',
     assets: [{ assetId: 'bat', weight: 50 }, { assetId: 'ember', weight: 50 }],
     motion: { directionDegrees: 95, speedMin: 20, speedMax: 50, driftMin: -12, driftMax: 12, sway: 0.7, rotationMin: 0, rotationMax: 0, rotationSpeedMin: 0, rotationSpeedMax: 0, lifetimeMin: 5, lifetimeMax: 10 },
-    emission: { density: 0.35, spawnRate: 1, maxParticlesDesktop: 12, maxParticlesMobile: 5, spawnArea: 'edges', burstOnLoad: false, burstCount: 0 },
+    emission: { density: 0.55, spawnRate: 1, maxParticlesDesktop: 18, maxParticlesMobile: 8, spawnArea: 'edges', burstOnLoad: false, burstCount: 0 },
     appearance: {
       sizeMin: 8, sizeMax: 24, opacityMin: 0.5, opacityMax: 0.9,
       colorMode: 'palette', colors: ['#140A1C', '#FF731A'],
