@@ -993,7 +993,7 @@ img { max-width: 100%; }
    Control panel (admin) — tabbed, responsive, 1440px on desktop.
    ═══════════════════════════════════════════════════════════════════════════ */
 .admin-root { min-height: 100vh; background: var(--bg); }
-.admin-shell { max-width: 1440px; margin: 0 auto; padding: 12px 16px 104px; }
+.admin-shell { max-width: 1700px; margin: 0 auto; padding: 12px 16px 104px; }
 .admin-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
 .admin-head h2 { font-size: 20px; }
 
@@ -1011,8 +1011,8 @@ img { max-width: 100%; }
   transition: background .16s ease, color .16s ease;
 }
 .admin-tab:hover { color: var(--ink); background: color-mix(in srgb, var(--line) 40%, transparent); }
-.admin-tab:focus-visible { outline: 2px solid #D44870; outline-offset: 2px; }
-.admin-tab.on { background: #FBE7EE; color: #76263E; border-color: transparent; box-shadow: none; }
+.admin-tab:focus-visible { outline: 2px solid var(--admin-accent, #D44870); outline-offset: 2px; }
+.admin-tab.on { background: var(--admin-sidebar-active, #FBE7EE); color: var(--admin-accent, #76263E); border-color: transparent; box-shadow: none; }
 .admin-panel { padding-top: 12px; }
 
 /* Sticky save bar spans full width; content aligns to the 1440 shell. */
@@ -1020,9 +1020,10 @@ img { max-width: 100%; }
 .admin-savebar-inner { max-width: 1440px; margin: 0 auto; padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); display: flex; gap: 10px; align-items: center; }
 /* Desktop: a compact floating action, not a full-width white strip. */
 @media (min-width: 960px) {
-  .admin-savebar { left: auto; right: 24px; bottom: 20px; background: var(--admin-surface-raised, var(--surface)); border: 1px solid var(--admin-border, var(--line)); border-radius: 14px; box-shadow: var(--admin-shadow, var(--shadow)); }
-  .admin-savebar-inner { max-width: none; margin: 0; padding: 10px 12px; }
-  .admin-savebar-inner .muted { max-width: 220px; }
+  /* Just the button, floating — no padded glass card around it. */
+  .admin-savebar { left: auto; right: 24px; bottom: 20px; background: transparent; border: none; box-shadow: none; }
+  .admin-savebar-inner { max-width: none; margin: 0; padding: 0; }
+  .admin-savebar-inner .muted { max-width: 220px; text-shadow: 0 1px 2px var(--admin-bg); }
 }
 
 .admin-itemgrid, .admin-bannergrid { display: block; }
@@ -1064,16 +1065,19 @@ img { max-width: 100%; }
   .admin-tab-group { display: flex; flex-direction: column; gap: 2px; margin-bottom: 8px; }
   .admin-tab-group-label { display: block; font-size: 11px; font-weight: 700; letter-spacing: 0.6px; text-transform: uppercase; color: var(--admin-text-muted, var(--muted)); padding: 10px 14px 4px; }
   .admin-theme-switch { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; padding: 14px 14px 4px; border-top: 1px solid var(--admin-border, var(--line)); }
-  .admin-panel { padding-top: 0; max-width: 1180px; }
-  .admin-shell.w-builder .admin-panel, .admin-shell.w-analytics .admin-panel { max-width: none; }
-  /* Keep text inputs readable rather than stretching the full panel. */
-  .admin-panel .field input, .admin-panel .field textarea { max-width: 480px; }
+  .admin-panel { padding-top: 0; max-width: none; }
+  /* Single-line fields stay a comfortable width; textareas (bio, support
+     message, etc.) fill the full card so long copy is fully visible. */
+  .admin-panel .field input:not([type=checkbox]):not([type=radio]) { max-width: 720px; }
+  .admin-panel .field textarea { max-width: none; }
 }
 
 @media (min-width: 1200px) {
   .admin-itemgrid { grid-template-columns: repeat(3, 1fr); }
-  .admin-bannergrid { grid-template-columns: repeat(3, 1fr); }
 }
+/* Banners: never more than two per row, and cells may shrink (min-width:0) so a
+   card never spills out of the page. */
+.admin-bannergrid > * { min-width: 0; }
 
 /* ── Icon picker (admin) + custom SVG icons ── */
 .iconpick { position: relative; }
@@ -1252,6 +1256,43 @@ img { max-width: 100%; }
 /* Native dropdown option list readable on dark (honoured on Win/Linux). */
 .admin-root[data-admin-theme^="dark"] .admin-panel select option { background: var(--admin-surface-raised); color: var(--admin-input-text); }
 
+/* Bare inline-styled buttons (e.g. Product Builder section headers "Breakfast ·
+   21 tiles ▲") default to the browser's black button text. Give unclassed admin
+   buttons the theme text colour; .btn/.link/.chip are excluded so their own
+   colours stand, and any inline color= still wins over this. */
+.admin-panel button:not(.btn):not(.link):not(.chip):not(.seg) { color: inherit; }
+
+/* Custom themed checkboxes/radios — the native white box reads as a bright
+   square on the dark themes, so draw our own from admin tokens. */
+.admin-panel input[type=checkbox], .admin-panel input[type=radio] {
+  -webkit-appearance: none; appearance: none; margin: 0; flex: 0 0 auto; cursor: pointer;
+  width: 18px; height: 18px; border: 1.5px solid var(--admin-input-border) !important;
+  border-radius: 5px; background: color-mix(in srgb, var(--admin-input-bg) 76%, transparent) !important;
+  display: inline-grid; place-content: center; vertical-align: middle; -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px);
+}
+.admin-panel input[type=radio] { border-radius: 50%; }
+.admin-panel input[type=checkbox]:checked, .admin-panel input[type=radio]:checked {
+  background: var(--admin-accent) !important; border-color: var(--admin-accent) !important;
+}
+.admin-panel input[type=checkbox]:checked::after {
+  content: ''; width: 5px; height: 9px; border: solid #fff; border-width: 0 2px 2px 0; transform: translateY(-1px) rotate(45deg);
+}
+.admin-panel input[type=radio]:checked::after { content: ''; width: 8px; height: 8px; border-radius: 50%; background: #fff; }
+.admin-panel input[type=checkbox]:focus-visible, .admin-panel input[type=radio]:focus-visible { outline: 2px solid var(--admin-accent); outline-offset: 2px; }
+
+/* Two-up card layout (reservations list, opening + kitchen hours). */
+.admin-two-col { display: grid; grid-template-columns: 1fr; gap: 12px; }
+@media (min-width: 960px) { .admin-two-col { grid-template-columns: 1fr 1fr; align-items: start; } }
+.admin-two-col > .card, .admin-two-col > .history-item { margin-bottom: 0 !important; }
+
+/* Closed dates — compact, grouped by year, sorted. */
+.admin-closure-year { margin-top: 12px; }
+.admin-closure-pill { display: inline-block; font-size: 12px; font-weight: 800; letter-spacing: .04em; padding: 2px 10px; border-radius: 999px; background: var(--admin-accent-soft); color: var(--admin-accent); border: 1px solid color-mix(in srgb, var(--admin-accent) 40%, transparent); margin-bottom: 8px; }
+.admin-closure-grid { display: grid; grid-template-columns: 1fr; gap: 6px; }
+@media (min-width: 700px) { .admin-closure-grid { grid-template-columns: 1fr 1fr; gap: 6px 18px; } }
+@media (min-width: 1200px) { .admin-closure-grid { grid-template-columns: 1fr 1fr 1fr; } }
+.admin-closure-item { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 7px 10px; border: 1px solid var(--admin-border); border-radius: 9px; background: var(--admin-surface-soft); font-size: var(--fs-sm); }
+
 /* Comfortable sizing for the primary form fields (not the dense builder rows). */
 .admin-panel .field input:not([type=checkbox]):not([type=radio]),
 .admin-panel .field textarea,
@@ -1416,7 +1457,7 @@ img { max-width: 100%; }
 .ins-muted-sm { font-size: 12.5px; color: var(--ins-ink2); }
 
 /* ── Revenue overview ── */
-.ins-overview { background: linear-gradient(180deg, #fff, var(--ins-accent-soft) 320%); }
+.ins-overview { background: linear-gradient(180deg, var(--ins-card), var(--ins-accent-soft) 340%); }
 .ins-overview-grid { display: flex; flex-wrap: wrap; gap: 18px; align-items: center; justify-content: space-between; }
 .ins-overview-main { min-width: 0; }
 .ins-metric-label { font-size: 12px; font-weight: 700; letter-spacing: .4px; text-transform: uppercase; color: var(--ins-ink2); }

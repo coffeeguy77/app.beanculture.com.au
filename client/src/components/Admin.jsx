@@ -1206,23 +1206,6 @@ export default function Admin({ onExit }) {
                     </div>
                   </div>
 
-                  {/* Quick access. */}
-                  <div className="card" style={{ marginBottom: 0 }}>
-                    <div className="group-title" style={{ margin: 0 }}>Quick access</div>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
-                      <button type="button" className="btn ghost" onClick={() => setTab('insights')}>Insights</button>
-                      <button type="button" className="btn ghost" onClick={() => setTab('reservations')}>Reservations</button>
-                      <button type="button" className="btn ghost" onClick={() => setTab('banners')}>Banners</button>
-                      <button type="button" className="btn ghost" onClick={() => setTab('push')}>Push</button>
-                      <button type="button" className="btn ghost" onClick={() => setTab('users')}>Users</button>
-                      <button type="button" className="btn ghost" onClick={() => setTab('store')}>Store settings</button>
-                      <button type="button" className="btn ghost" onClick={onExit}>View store</button>
-                    </div>
-                    <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--admin-border)', display: 'flex', gap: 18, flexWrap: 'wrap' }}>
-                      <div><div className="stat-v" style={{ fontSize: 20 }}>{(data.categories || []).length}</div><div className="stat-l">Menu categories</div></div>
-                      <div><div className="stat-v" style={{ fontSize: 20 }}>{allProducts.length}</div><div className="stat-l">Products synced</div></div>
-                    </div>
-                  </div>
                 </div>
                 {!data.dbEnabled && (
                   <div className="card" style={card}>
@@ -1319,6 +1302,7 @@ export default function Admin({ onExit }) {
                   ))}
                 </div>
 
+                <div className="admin-two-col">
                 <div className="card" style={card}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
                     <div className="group-title" style={{ margin: 0 }}>Opening hours</div>
@@ -1381,6 +1365,7 @@ export default function Admin({ onExit }) {
                   )}
                 </div>
 
+                </div>
                 <div className="card" style={card}>
                   <div className="group-title">Closed dates</div>
                   <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 0 }}>Annual leave, public holidays. Closed days can’t be booked for pre-orders. Use a range for multi-day closures (e.g. late Dec – mid Jan). Tick “every year” for recurring dates.</p>
@@ -1401,16 +1386,34 @@ export default function Admin({ onExit }) {
                     <label style={{ display: 'flex', alignItems: 'center', gap: 6, paddingBottom: 12, whiteSpace: 'nowrap' }}><input type="checkbox" checked={!!newClosure.annual} onChange={(e) => setNewClosure((c) => ({ ...c, annual: e.target.checked }))} /> Every year</label>
                     <button className="btn" onClick={addClosure}>Add</button>
                   </div>
-                  {closures.length > 0 && (
-                    <div style={{ marginTop: 8 }}>
-                      {closures.map((c, i) => (
-                        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderTop: '1px solid var(--line)' }}>
-                          <span>{c.from ? `${c.from} → ${c.to}` : c.date}{c.annual ? ' · every year' : ''}{c.label ? ` · ${c.label}` : ''}</span>
-                          <button className="link" style={{ color: '#c0392b' }} onClick={() => rmClosure(i)}>Remove</button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                  {closures.length > 0 && (() => {
+                    // Sort by date and group under a year pill (keeps each entry's
+                    // original index so Remove still targets the right one). Ranges
+                    // stay clustered on one line. Compact multi-column grid so a long
+                    // holiday list doesn't run the page down forever.
+                    const items = closures.map((c, i) => ({ c, i, key: c.from || c.date || '' }))
+                      .sort((a, b) => String(a.key).localeCompare(String(b.key)));
+                    const groups = {};
+                    for (const it of items) { const y = String(it.key).slice(0, 4) || 'Recurring'; (groups[y] = groups[y] || []).push(it); }
+                    const fmt = (iso) => { const d = new Date(`${iso}T00:00:00`); return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString('en-AU', { day: 'numeric', month: 'short' }); };
+                    return (
+                      <div style={{ marginTop: 4 }}>
+                        {Object.keys(groups).sort().map((y) => (
+                          <div key={y} className="admin-closure-year">
+                            <span className="admin-closure-pill">{y}</span>
+                            <div className="admin-closure-grid">
+                              {groups[y].map(({ c, i }) => (
+                                <div key={i} className="admin-closure-item">
+                                  <span><strong>{c.from ? `${fmt(c.from)} → ${fmt(c.to)}` : fmt(c.date)}</strong>{c.label ? ` · ${c.label}` : ''}{c.annual ? ' · yearly' : ''}</span>
+                                  <button className="link" style={{ color: 'var(--admin-danger)', padding: '0 2px' }} title="Remove" onClick={() => rmClosure(i)}>✕</button>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
                 </div>
               </>
             )}
@@ -1432,11 +1435,13 @@ export default function Admin({ onExit }) {
                   </p>
                   {resv === null && <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>Loading…</p>}
                   {resv && resv.length === 0 && <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>No reservations yet.</p>}
-                  {resv && resv.map((r) => (
+                  {resv && resv.length > 0 && (
+                    <div className="admin-two-col">
+                    {resv.map((r) => (
                     <div key={r.id} className="history-item" style={{ opacity: r.status === 'cancelled' ? 0.5 : 1 }}>
                       <div className="history-top">
                         <span><strong>{r.party} {r.party === 1 ? 'guest' : 'guests'}</strong> · {r.name || '—'}</span>
-                        <span className={`pill`} style={{ textTransform: 'capitalize', background: r.status === 'confirmed' ? '#e6f6ec' : r.status === 'seated' ? '#eef' : r.status === 'cancelled' ? '#fdecec' : '#f4eef1' }}>{r.status}</span>
+                        <span className={`cmd-chip ${r.status === 'confirmed' ? 'confirmed' : r.status === 'seated' ? 'seated' : r.status === 'cancelled' ? 'closed' : 'pending'}`}>{r.status}</span>
                       </div>
                       <div className="muted" style={{ fontSize: 'var(--fs-base)', margin: '3px 0' }}>
                         {r.reserveAt ? new Date(r.reserveAt).toLocaleString('en-AU', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : '—'} · {r.phone || ''}{r.email ? ` · ${r.email}` : ''}
@@ -1448,7 +1453,9 @@ export default function Admin({ onExit }) {
                         ))}
                       </div>
                     </div>
-                  ))}
+                    ))}
+                    </div>
+                  )}
                 </div>
 
                 <div className="card" style={card}>
@@ -1470,8 +1477,8 @@ export default function Admin({ onExit }) {
                   {s?.reservationItemId && resvPrintStatus && !resvPrintStatus.error && (() => {
                     const ok = (resvPrintStatus.reportingCategory?.name || '').toLowerCase() === 'reservations';
                     return (
-                      <div style={{ padding: 10, borderRadius: 10, background: ok ? '#e6f6ec' : '#fdecea', border: `1px solid ${ok ? '#2e7d51' : '#c0392b'}`, marginTop: 4 }}>
-                        <div style={{ fontWeight: 700, color: ok ? '#2e7d51' : '#c0392b' }}>
+                      <div style={{ padding: 10, borderRadius: 10, background: `color-mix(in srgb, ${ok ? 'var(--admin-success)' : 'var(--admin-danger)'} 14%, transparent)`, border: `1px solid color-mix(in srgb, ${ok ? 'var(--admin-success)' : 'var(--admin-danger)'} 45%, transparent)`, marginTop: 4 }}>
+                        <div style={{ fontWeight: 700, color: ok ? 'var(--admin-success)' : 'var(--admin-danger)' }}>
                           {ok ? '✓ Looks correct' : '⚠ Not printing under Reservations'}
                         </div>
                         <div style={{ fontSize: 'var(--fs-sm)', marginTop: 4 }}>
@@ -2027,7 +2034,7 @@ export default function Admin({ onExit }) {
                                           off: { background: 'transparent', color: 'var(--muted)', border: '1px solid var(--line)' },
                                           optional: { background: 'var(--brand-soft)', color: 'var(--ink)', border: '1px solid var(--accent)' },
                                           default: { background: 'var(--accent)', color: '#fff', border: '1px solid var(--accent)' },
-                                          locked: { background: 'var(--ink)', color: '#fff', border: '1px solid var(--ink)' },
+                                          locked: { background: 'var(--ink)', color: 'var(--bg)', border: '1px solid var(--ink)' },
                                         }[st];
                                         return (
                                           <button key={m.id} onClick={() => cyclePresetMod(p.id, g.id, m.id)} title="Tap to cycle Hide → Show → Default → Lock"
