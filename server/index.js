@@ -554,6 +554,16 @@ app.post('/api/admin/reservations/status', async (req, res) => {
     res.status(502).json({ error: e.message });
   }
 });
+app.post('/api/admin/reservations/delete', async (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    if (!req.body?.id) return res.status(400).json({ error: 'id is required.' });
+    await db.deleteReservation(req.body.id);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
 
 // ---- Admin: reservation ticket printing — find or auto-create the catalog
 // item that reservation orders are placed against (see server/lib/orders.js

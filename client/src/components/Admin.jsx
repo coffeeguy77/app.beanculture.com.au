@@ -172,6 +172,7 @@ export default function Admin({ onExit }) {
   // Reservation-printing setup status: null = not checked yet, otherwise the
   // inspect() result for the currently-linked Square item (see effect below).
   const [resvPrintStatus, setResvPrintStatus] = useState(null);
+  const [resvDeleteLock, setResvDeleteLock] = useState(true); // guard against accidental reservation deletes
   const [resvSetupBusy, setResvSetupBusy] = useState(false);
   const [resvSetupMsg, setResvSetupMsg] = useState('');
   const [newClosure, setNewClosure] = useState({ date: '', annual: false, label: '' });
@@ -401,6 +402,13 @@ export default function Admin({ onExit }) {
   async function setResvStatus(r, status) {
     setResv((xs) => (xs || []).map((x) => (x.id === r.id ? { ...x, status } : x)));
     try { await api.setReservationStatus(pass, r.id, status); } catch {}
+  }
+  async function removeReservation(r) {
+    if (!window.confirm(`Permanently delete this reservation${r.name ? ` for ${r.name}` : ''}? This can't be undone.`)) return;
+    const prev = resv;
+    setResv((xs) => (xs || []).filter((x) => x.id !== r.id));
+    try { await api.deleteReservation(pass, r.id); }
+    catch (e) { alert('Delete failed: ' + e.message); setResv(prev); }
   }
 
   // Footer buttons can point at whole categories AND hand-picked product
@@ -1463,7 +1471,12 @@ export default function Admin({ onExit }) {
                 <div className="card" style={card}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
                     <div className="group-title" style={{ margin: 0 }}>Reservations</div>
-                    <button type="button" className="btn ghost" style={{ padding: '6px 12px', fontSize: 'var(--fs-base)' }} onClick={() => loadReservations()}>{resv === null ? 'Load' : 'Refresh'}</button>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <button type="button" className={`chip ${resvDeleteLock ? 'on' : ''}`} onClick={() => setResvDeleteLock((v) => !v)}
+                        style={{ fontSize: 'var(--fs-sm)' }} title={resvDeleteLock ? 'Locked — tap to allow deleting reservations' : 'Unlocked — tap to lock again'}>
+                        {resvDeleteLock ? '🔒 Delete locked' : '🔓 Delete unlocked'}</button>
+                      <button type="button" className="btn ghost" style={{ padding: '6px 12px', fontSize: 'var(--fs-base)' }} onClick={() => loadReservations()}>{resv === null ? 'Load' : 'Refresh'}</button>
+                    </div>
                   </div>
                   <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 4 }}>
                     Table bookings from the app. Alerts: {resvChannels.sms ? 'SMS on' : 'SMS off'} · {resvChannels.email ? 'email on' : 'email off'}. Each booking also creates a $0 Square order so it prints + shows in Square.
@@ -1482,10 +1495,12 @@ export default function Admin({ onExit }) {
                         {r.reserveAt ? new Date(r.reserveAt).toLocaleString('en-AU', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : '—'} · {r.phone || ''}{r.email ? ` · ${r.email}` : ''}
                       </div>
                       {r.notes && <div style={{ fontSize: 'var(--fs-base)' }}>{r.notes}</div>}
-                      <div style={{ display: 'flex', gap: 12, marginTop: 4 }}>
+                      <div style={{ display: 'flex', gap: 12, marginTop: 4, alignItems: 'center' }}>
                         {['confirmed', 'seated', 'cancelled'].filter((st) => st !== r.status).map((st) => (
                           <button key={st} className="link" style={{ padding: 0, fontSize: 'var(--fs-base)', textTransform: 'capitalize', color: st === 'cancelled' ? '#c0392b' : undefined }} onClick={() => setResvStatus(r, st)}>Mark {st}</button>
                         ))}
+                        <button className="link" disabled={resvDeleteLock} style={{ padding: 0, fontSize: 'var(--fs-base)', marginLeft: 'auto', color: 'var(--admin-danger)', opacity: resvDeleteLock ? 0.3 : 1 }}
+                          title={resvDeleteLock ? 'Unlock delete (top of card) to remove' : 'Delete this reservation'} onClick={() => removeReservation(r)}>Delete</button>
                       </div>
                     </div>
                     ))}

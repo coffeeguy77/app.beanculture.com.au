@@ -300,13 +300,17 @@ async function insertReservation({ name, phone, email, party, reserveAt, notes, 
 }
 async function listReservations(limit = 200) {
   if (!pool) return [];
-  const r = await pool.query('SELECT id, name, phone, email, party, reserve_at, notes, status, created_at, square_order_id FROM reservations ORDER BY reserve_at DESC NULLS LAST LIMIT $1', [Math.min(limit, 500)]);
-  return r.rows.map((x) => ({ id: String(x.id), name: x.name, phone: x.phone, email: x.email, party: x.party, reserveAt: x.reserve_at, notes: x.notes, status: x.status, createdAt: x.created_at, squareOrderId: x.square_order_id }));
+  const r = await pool.query('SELECT id, name, phone, email, party, reserve_at, notes, status, created_at FROM reservations ORDER BY reserve_at DESC NULLS LAST LIMIT $1', [Math.min(limit, 500)]);
+  return r.rows.map((x) => ({ id: String(x.id), name: x.name, phone: x.phone, email: x.email, party: x.party, reserveAt: x.reserve_at, notes: x.notes, status: x.status, createdAt: x.created_at }));
 }
 async function setReservationStatus(id, status) {
   if (!pool) return;
   const allowed = ['pending', 'confirmed', 'seated', 'cancelled'];
   await pool.query('UPDATE reservations SET status = $2 WHERE id = $1', [id, allowed.includes(status) ? status : 'pending']);
+}
+async function deleteReservation(id) {
+  if (!pool) return;
+  await pool.query('DELETE FROM reservations WHERE id = $1', [id]);
 }
 
 module.exports = {
@@ -314,6 +318,6 @@ module.exports = {
   insertScheduled, listScheduledByCustomer, cancelScheduled, claimDue, updateScheduled,
   track, getAnalytics,
   insertMessage, listMessages, markMessageHandled,
-  insertReservation, listReservations, setReservationStatus,
+  insertReservation, listReservations, setReservationStatus, deleteReservation,
   get enabled() { return !!pool; },
 };
