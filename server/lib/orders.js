@@ -198,11 +198,24 @@ async function getHistory(customerId, limit = 25) {
 // SQUARE_RESERVATION_VARIATION_ID env var (legacy/manual setup) if unset.
 const RESERVATION_VARIATION_ID_ENV = (process.env.SQUARE_RESERVATION_VARIATION_ID || '').trim();
 
-async function createReservationOrder({ name, phone, partySize, at, notes, variationId }) {
+async function createReservationOrder({ name, phone, email, partySize, at, notes, variationId }) {
   const when = at ? new Date(at) : null;
   const scheduled = when && when.getTime() > Date.now();
-  const detail = [`Table reservation`, `${partySize || '?'} guest(s)`, name && `Name: ${name}`, phone && `Ph: ${phone}`, notes && `Notes: ${notes}`]
-    .filter(Boolean).join(' · ').slice(0, 500);
+  // Spelled out on the printed ticket in full, not just relying on Square's
+  // own pickup_at rendering (which varies by printer template) — this is the
+  // one place staff actually read who's coming in, when, and how many.
+  const whenLabel = when
+    ? when.toLocaleString('en-AU', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })
+    : null;
+  const detail = [
+    'Table reservation',
+    whenLabel && `When: ${whenLabel}`,
+    `${partySize || '?'} guest(s)`,
+    name && `Name: ${name}`,
+    phone && `Ph: ${phone}`,
+    email && `Email: ${email}`,
+    notes && `Notes: ${notes}`,
+  ].filter(Boolean).join(' · ').slice(0, 500);
   const pickup_details = {
     recipient: { display_name: name || 'Reservation' },
     note: detail,

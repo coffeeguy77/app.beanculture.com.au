@@ -51,8 +51,13 @@ const InsightsIcon = svg(<>
 const BuildIcon = svg(<>
   <path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18v3h3l6.3-6.3a4 4 0 0 0 5.4-5.4l-2.7 2.7-2-2 2.7-2.7z" />
 </>);
+const CalendarIcon = svg(<>
+  <rect x="3" y="5" width="18" height="16" rx="2" /><line x1="3" y1="10" x2="21" y2="10" />
+  <line x1="8" y1="3" x2="8" y2="7" /><line x1="16" y1="3" x2="16" y2="7" /><circle cx="8.5" cy="14.5" r="1.1" />
+</>);
 const TABS = [
   { id: 'store', label: 'Store', Icon: StoreIcon },
+  { id: 'reservations', label: 'Reservations', Icon: CalendarIcon },
   { id: 'insights', label: 'Insights', Icon: InsightsIcon },
   { id: 'menubuilder', label: 'Menu Builder', Icon: MenuIcon },
   { id: 'productbuilder', label: 'Product Builder', Icon: BuildIcon },
@@ -126,6 +131,18 @@ export default function Admin({ onExit }) {
   const [msgs, setMsgs] = useState(null);
   const [resv, setResv] = useState(null);
   const [resvChannels, setResvChannels] = useState({});
+  // "New reservation" badge: anything booked after the last time the admin
+  // actually opened the Reservations tab counts as unseen. Persisted so a
+  // page refresh doesn't re-flag bookings already looked at.
+  const [resvLastSeen, setResvLastSeen] = useState(() => {
+    try { return localStorage.getItem('bc-admin-resv-seen') || ''; } catch { return ''; }
+  });
+  const newResvCount = (resv || []).filter((r) => r.status !== 'cancelled' && r.createdAt && (!resvLastSeen || new Date(r.createdAt) > new Date(resvLastSeen))).length;
+  // Reservation-printing setup status: null = not checked yet, otherwise the
+  // inspect() result for the currently-linked Square item (see effect below).
+  const [resvPrintStatus, setResvPrintStatus] = useState(null);
+  const [resvSetupBusy, setResvSetupBusy] = useState(false);
+  const [resvSetupMsg, setResvSetupMsg] = useState('');
   const [newClosure, setNewClosure] = useState({ date: '', annual: false, label: '' });
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
 
@@ -225,8 +242,27 @@ export default function Admin({ onExit }) {
       if (notifyStatus === null) api.adminNotifyStatus(pass).then(setNotifyStatus).catch(() => setNotifyStatus({ sms: false, email: false }));
       if (users === null && !usersBusy) loadUsers();
     }
+    // Opening the Reservations tab clears the "new" badge — everything
+    // currently loaded counts as seen from this point on.
+    if (tab === 'reservations') {
+      const now = new Date().toISOString();
+      setResvLastSeen(now);
+      try { localStorage.setItem('bc-admin-resv-seen', now); } catch {}
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
+  // Reservations load as soon as the admin logs in (not just when the tab is
+  // opened) so the "new booking" badge can show up anywhere in the panel,
+  // then refresh every 45s in the background so it stays current. Keyed off
+  // `data` (only set after a successful auth) rather than `pass`, which
+  // changes on every keystroke while the passcode is still being typed.
+  useEffect(() => {
+    if (!data) return;
+    loadReservations(true);
+    const id = setInterval(() => loadReservations(true), 45000);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data]);
 
   async function loadMessages() {
     try { const d = await api.adminMessages(pass); setMsgs(d.messages || []); }
@@ -237,9 +273,9 @@ export default function Admin({ onExit }) {
     setMsgs((xs) => (xs || []).map((x) => (x.id === m.id ? { ...x, handled: next } : x)));
     try { await api.markMessage(pass, m.id, next); } catch {}
   }
-  async function loadReservations() {
+  async function loadReservations(silent = false) {
     try { const d = await api.adminReservations(pass); setResv(d.reservations || []); setResvChannels({ sms: d.sms, email: d.email }); }
-    catch (e) { alert('Could not load reservations: ' + e.message); }
+    catch (e) { if (!silent) alert('Could not load reservations: ' + e.message); }
   }
   async function loadUsers() {
     setUsersBusy(true);
@@ -255,6 +291,49 @@ export default function Admin({ onExit }) {
     try { setPushResult(await api.adminBroadcast(pass, push)); }
     catch (e) { alert('Send failed: ' + e.message); }
     finally { setPushBusy(false); }
+  }
+  // Reservation ticket printing: check what Square actually has on file for
+  // the linked item (reporting_category vs. the "Reservations" category
+  // we're aiming for) and offer a one-click fix if they don't match.
+  async function checkResvPrintStatus(itemId) {
+    const id = itemId || s?.reservationItemId;
+    if (!id) { setResvPrintStatus(null); return; }
+    try {
+      const info = await api.reservationItemInspect(pass, id);
+      setResvPrintStatus(info);
+    } catch (e) { setResvPrintStatus({ error: e.message }); }
+  }
+  useEffect(() => {
+    if (tab === 'reservations' && s?.reservationItemId) checkResvPrintStatus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, s?.reservationItemId]);
+  async function runResvSetup() {
+    setResvSetupBusy(true); setResvSetupMsg('');
+    try {
+      const result = await api.reservationItemSetup(pass, {});
+      // The server already persisted these two fields straight to the DB;
+      // patch the local draft too so the panel reflects it immediately
+      // without re-pulling (and potentially clobbering) other unsaved edits.
+      set({ reservationVariationId: result.variationId, reservationItemId: result.itemId });
+      await checkResvPrintStatus(result.itemId);
+      setResvSetupMsg(result.categoryCreated ? 'Created the Reservations category and item — all set.' : 'Linked and checked — all set.');
+    } catch (e) { setResvSetupMsg('Setup failed: ' + e.message); }
+    finally { setResvSetupBusy(false); setTimeout(() => setResvSetupMsg(''), 6000); }
+  }
+  async function fixResvCategory() {
+    if (!resvPrintStatus?.id) return;
+    setResvSetupBusy(true); setResvSetupMsg('');
+    try {
+      // The category we're aiming for is whatever's already in the item's
+      // tag list under the name "Reservations" (added when Setup ran, or by
+      // hand in Square) — reuse that id rather than creating another one.
+      const target = (resvPrintStatus.categories || []).find((c) => c.name.toLowerCase() === 'reservations');
+      if (!target) { setResvSetupMsg('No "Reservations" category found on this item — run Set up instead.'); return; }
+      await api.reservationItemFixCategory(pass, resvPrintStatus.id, target.id);
+      await checkResvPrintStatus(resvPrintStatus.id);
+      setResvSetupMsg('Fixed — this item will now route to Reservations for printing.');
+    } catch (e) { setResvSetupMsg('Fix failed: ' + e.message); }
+    finally { setResvSetupBusy(false); setTimeout(() => setResvSetupMsg(''), 6000); }
   }
   async function setResvStatus(r, status) {
     setResv((xs) => (xs || []).map((x) => (x.id === r.id ? { ...x, status } : x)));
@@ -923,6 +1002,9 @@ export default function Admin({ onExit }) {
             {TABS.map((t) => (
               <button key={t.id} className={`admin-tab ${tab === t.id ? 'on' : ''}`} onClick={() => setTab(t.id)} type="button">
                 <t.Icon size={20} /><span>{t.label}</span>
+                {t.id === 'reservations' && newResvCount > 0 && (
+                  <span className="pill" style={{ background: '#c0392b', color: '#fff', fontSize: 10, fontWeight: 800, padding: '1px 6px', marginLeft: 4 }}>{newResvCount}</span>
+                )}
               </button>
             ))}
           </nav>
@@ -1006,35 +1088,6 @@ export default function Admin({ onExit }) {
                       {m.contact && <div className="muted" style={{ fontSize: 'var(--fs-sm)', margin: '2px 0' }}>{m.contact}</div>}
                       <div style={{ fontSize: 'var(--fs-md)', whiteSpace: 'pre-line' }}>{m.body}</div>
                       <button className="link" style={{ padding: 0, fontSize: 'var(--fs-base)' }} onClick={() => toggleHandled(m)}>{m.handled ? 'Mark unread' : 'Mark done'}</button>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="card" style={card}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div className="group-title" style={{ margin: 0 }}>Reservations</div>
-                    <button type="button" className="btn ghost" style={{ padding: '6px 12px', fontSize: 'var(--fs-base)' }} onClick={loadReservations}>{resv === null ? 'Load' : 'Refresh'}</button>
-                  </div>
-                  <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 4 }}>
-                    Table bookings from the app. Alerts: {resvChannels.sms ? 'SMS on' : 'SMS off'} · {resvChannels.email ? 'email on' : 'email off'}. Each booking also creates a $0 Square order so it prints + shows in Square.
-                  </p>
-                  {resv === null && <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>Tap Load to see reservations.</p>}
-                  {resv && resv.length === 0 && <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>No reservations yet.</p>}
-                  {resv && resv.map((r) => (
-                    <div key={r.id} className="history-item" style={{ opacity: r.status === 'cancelled' ? 0.5 : 1 }}>
-                      <div className="history-top">
-                        <span><strong>{r.party} {r.party === 1 ? 'guest' : 'guests'}</strong> · {r.name || '—'}</span>
-                        <span className={`pill`} style={{ textTransform: 'capitalize', background: r.status === 'confirmed' ? '#e6f6ec' : r.status === 'seated' ? '#eef' : r.status === 'cancelled' ? '#fdecec' : '#f4eef1' }}>{r.status}</span>
-                      </div>
-                      <div className="muted" style={{ fontSize: 'var(--fs-base)', margin: '3px 0' }}>
-                        {r.reserveAt ? new Date(r.reserveAt).toLocaleString('en-AU', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : '—'} · {r.phone || ''}{r.email ? ` · ${r.email}` : ''}
-                      </div>
-                      {r.notes && <div style={{ fontSize: 'var(--fs-base)' }}>{r.notes}</div>}
-                      <div style={{ display: 'flex', gap: 12, marginTop: 4 }}>
-                        {['confirmed', 'seated', 'cancelled'].filter((st) => st !== r.status).map((st) => (
-                          <button key={st} className="link" style={{ padding: 0, fontSize: 'var(--fs-base)', textTransform: 'capitalize', color: st === 'cancelled' ? '#c0392b' : undefined }} onClick={() => setResvStatus(r, st)}>Mark {st}</button>
-                        ))}
-                      </div>
                     </div>
                   ))}
                 </div>
@@ -1135,7 +1188,86 @@ export default function Admin({ onExit }) {
               </>
             )}
 
-            {/* ───────── INSIGHTS ───────── */}
+            {/* ───────── RESERVATIONS ───────── */}
+            {tab === 'reservations' && (
+              <>
+                <div className="card" style={card}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+                    <div className="group-title" style={{ margin: 0 }}>Reservations</div>
+                    <button type="button" className="btn ghost" style={{ padding: '6px 12px', fontSize: 'var(--fs-base)' }} onClick={() => loadReservations()}>{resv === null ? 'Load' : 'Refresh'}</button>
+                  </div>
+                  <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 4 }}>
+                    Table bookings from the app. Alerts: {resvChannels.sms ? 'SMS on' : 'SMS off'} · {resvChannels.email ? 'email on' : 'email off'}. Each booking also creates a $0 Square order so it prints + shows in Square.
+                  </p>
+                  {resv === null && <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>Loading…</p>}
+                  {resv && resv.length === 0 && <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>No reservations yet.</p>}
+                  {resv && resv.map((r) => (
+                    <div key={r.id} className="history-item" style={{ opacity: r.status === 'cancelled' ? 0.5 : 1 }}>
+                      <div className="history-top">
+                        <span><strong>{r.party} {r.party === 1 ? 'guest' : 'guests'}</strong> · {r.name || '—'}</span>
+                        <span className={`pill`} style={{ textTransform: 'capitalize', background: r.status === 'confirmed' ? '#e6f6ec' : r.status === 'seated' ? '#eef' : r.status === 'cancelled' ? '#fdecec' : '#f4eef1' }}>{r.status}</span>
+                      </div>
+                      <div className="muted" style={{ fontSize: 'var(--fs-base)', margin: '3px 0' }}>
+                        {r.reserveAt ? new Date(r.reserveAt).toLocaleString('en-AU', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : '—'} · {r.phone || ''}{r.email ? ` · ${r.email}` : ''}
+                      </div>
+                      {r.notes && <div style={{ fontSize: 'var(--fs-base)' }}>{r.notes}</div>}
+                      <div style={{ display: 'flex', gap: 12, marginTop: 4 }}>
+                        {['confirmed', 'seated', 'cancelled'].filter((st) => st !== r.status).map((st) => (
+                          <button key={st} className="link" style={{ padding: 0, fontSize: 'var(--fs-base)', textTransform: 'capitalize', color: st === 'cancelled' ? '#c0392b' : undefined }} onClick={() => setResvStatus(r, st)}>Mark {st}</button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="card" style={card}>
+                  <div className="group-title">Ticket printing setup</div>
+                  <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 0 }}>
+                    Each booking submits a real $0 Square order against a "Table Reservation" item so it prints on your
+                    receipt/kitchen printer the same way a normal order does. This finds or creates that item and its
+                    "Reservations" category in Square, and makes sure the item is actually filed under that category
+                    for printing — adding a category to an item in the Square Dashboard doesn't always make it the one
+                    printers route by, which is the most common reason this silently doesn't print.
+                  </p>
+                  {!s?.reservationItemId && (
+                    <button className="btn" disabled={resvSetupBusy} onClick={runResvSetup}>{resvSetupBusy ? 'Setting up…' : 'Set up reservation printing'}</button>
+                  )}
+                  {s?.reservationItemId && !resvPrintStatus && <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>Checking…</p>}
+                  {s?.reservationItemId && resvPrintStatus && resvPrintStatus.error && (
+                    <p className="error-text" style={{ fontSize: 'var(--fs-sm)' }}>Couldn't check: {resvPrintStatus.error}</p>
+                  )}
+                  {s?.reservationItemId && resvPrintStatus && !resvPrintStatus.error && (() => {
+                    const ok = (resvPrintStatus.reportingCategory?.name || '').toLowerCase() === 'reservations';
+                    return (
+                      <div style={{ padding: 10, borderRadius: 10, background: ok ? '#e6f6ec' : '#fdecea', border: `1px solid ${ok ? '#2e7d51' : '#c0392b'}`, marginTop: 4 }}>
+                        <div style={{ fontWeight: 700, color: ok ? '#2e7d51' : '#c0392b' }}>
+                          {ok ? '✓ Looks correct' : '⚠ Not printing under Reservations'}
+                        </div>
+                        <div style={{ fontSize: 'var(--fs-sm)', marginTop: 4 }}>
+                          "{resvPrintStatus.name}" currently prints under <strong>{resvPrintStatus.reportingCategory?.name || '— none —'}</strong>.
+                          {!ok && ' Add "Reservations" as the printing category in Square, then use Fix now below, or just Fix now if it is already tagged with it.'}
+                        </div>
+                        {!ok && (
+                          <button className="btn ghost" style={{ marginTop: 8, padding: '6px 12px', fontSize: 'var(--fs-base)' }} disabled={resvSetupBusy} onClick={fixResvCategory}>
+                            {resvSetupBusy ? 'Fixing…' : 'Fix now'}
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })()}
+                  {s?.reservationItemId && (
+                    <button className="link" style={{ marginTop: 8, fontSize: 'var(--fs-sm)' }} disabled={resvSetupBusy} onClick={runResvSetup}>Re-run setup</button>
+                  )}
+                  {resvSetupMsg && <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>{resvSetupMsg}</p>}
+                  <p className="muted" style={{ fontSize: 'var(--fs-xs)', marginTop: 10 }}>
+                    Last step is on the Square side: in Square, open your printer's profile → <strong>Online Order Tickets</strong> (or
+                    Order tickets) → Categories to print, and tick <strong>Reservations</strong>. Once that's ticked and the status above
+                    shows ✓, new bookings will print automatically.
+                  </p>
+                </div>
+              </>
+            )}
+
             {tab === 'insights' && (
               <Insights days={aDays} onDays={setADays} dashboard={dashboard} analytics={analytics} customers={insCustomers} refreshing={insRefreshing} onRefresh={reloadInsights} lastSync={insSync} />
             )}

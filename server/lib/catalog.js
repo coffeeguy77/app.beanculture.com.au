@@ -563,6 +563,55 @@ async function getItemConfig(itemId) {
 // dashboard. These let the admin panel (Store → Reservations) link an
 // existing item or create a new $0 one in a category that already prints
 // reliably, instead of anyone having to do this by hand via the API.
+
+// Square's printer/KDS "auto-print by category" routing keys off an item's
+// reporting_category ONLY — an item can be tagged into several categories,
+// but only ONE of those (reporting_category) is what any printer profile's
+// "categories to print" list actually matches against. This one-click setup
+// finds-or-creates a "Reservations" category, then finds-or-creates the
+// Table Reservation item pointed at it — fixing reporting_category on an
+// existing item if it's set to the wrong category (e.g. left over from an
+// earlier test in a different category).
+async function findOrCreateCategory(name) {
+  const want = norm(name);
+  const existing = (await getAllCategories()).find((c) => norm(c.name) === want);
+  if (existing) return { id: existing.id, created: false };
+  const body = {
+    idempotency_key: idem(),
+    object: { type: 'CATEGORY', id: '#reservationCategory', category_data: { name } },
+  };
+  const data = await squareFetch('/v2/catalog/object', { method: 'POST', body });
+  return { id: data.catalog_object.id, created: true };
+}
+
+async function setupReservationPrinting({ categoryName = 'Reservations', itemName = 'Table Reservation' } = {}) {
+  const cat = await findOrCreateCategory(categoryName);
+  // Prefer an item we (or a previous setup) already created/linked with this
+  // exact name, so re-running this doesn't spawn duplicate catalog items.
+  const found = await searchItemsByName(itemName);
+  const exact = found.find((it) => norm(it.name) === norm(itemName) && it.variations[0]?.id);
+  let itemId, variationId, categoryFixed = false;
+  if (exact) {
+    itemId = exact.id;
+    variationId = exact.variations[0].id;
+    if (!exact.categoryIds.includes(cat.id)) {
+      await setReportingCategory(itemId, cat.id);
+      categoryFixed = true;
+    } else {
+      // Even if it's already tagged with the category, reporting_category
+      // specifically might still be pointed elsewhere (the exact bug this
+      // whole system exists to catch) — check and fix if needed.
+      const info = await inspectItem(itemId);
+      if (info.reportingCategory?.id !== cat.id) { await setReportingCategory(itemId, cat.id); categoryFixed = true; }
+    }
+  } else {
+    const created = await createReservationCatalogItem({ name: itemName, categoryId: cat.id });
+    itemId = created.itemId;
+    variationId = created.variationId;
+  }
+  return { categoryId: cat.id, categoryCreated: cat.created, itemId, variationId, categoryFixed };
+}
+
 async function searchItemsByName(text) {
   const data = await squareFetch('/v2/catalog/search-catalog-items', {
     method: 'POST',
@@ -675,4 +724,5 @@ async function setReportingCategory(itemId, categoryId) {
 module.exports = {
   getMenu, getFullMenu, getAllCategories, getAllProducts, getItemConfig, cleanName,
   searchItemsByName, createReservationCatalogItem, inspectItem, setReportingCategory,
+  findOrCreateCategory, setupReservationPrinting,
 };

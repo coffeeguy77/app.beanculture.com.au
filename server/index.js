@@ -482,7 +482,7 @@ app.post('/api/reserve', async (req, res) => {
     // Best-effort Square order (so it prints + shows in Square). Never blocks the booking.
     let squareOrderId = null;
     try {
-      const o = await orders.createReservationOrder({ name, phone, partySize: party, at, notes, variationId: getSettings().reservationVariationId });
+      const o = await orders.createReservationOrder({ name, phone, email, partySize: party, at, notes, variationId: getSettings().reservationVariationId });
       squareOrderId = o?.id || null;
     } catch (e) { console.error('[reserve] Square order failed:', e.message); }
 
@@ -557,6 +557,23 @@ app.post('/api/admin/reservation-item/fix-category', async (req, res) => {
     const { itemId, categoryId } = req.body || {};
     if (!itemId || !categoryId) return res.status(400).json({ error: 'itemId and categoryId are required.' });
     res.json(await catalog.setReportingCategory(itemId, categoryId));
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+// One-click reservation printing setup: finds-or-creates the "Reservations"
+// category and the "Table Reservation" item in one call, self-healing an
+// existing item's reporting_category if it's pointed at the wrong category
+// (see catalog.setupReservationPrinting), then saves the resulting variation
+// id straight into settings — no separate Save-changes click needed.
+app.post('/api/admin/reservation-item/setup', async (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const { categoryName, itemName } = req.body || {};
+    const result = await catalog.setupReservationPrinting({ categoryName, itemName });
+    const overrides = { ...(db.getOverrides() || {}), reservationVariationId: result.variationId, reservationItemId: result.itemId };
+    await db.saveOverrides(overrides);
+    res.json(result);
   } catch (e) {
     res.status(502).json({ error: e.message });
   }
