@@ -1224,24 +1224,44 @@ img { max-width: 100%; }
 
 /* ── Admin form controls: real dark styling in every state, not a bright
    white box dropped onto a dark page. ── */
+/* EVERY admin form control — not just .field-wrapped ones — gets a themed
+   glass surface with high-contrast text. Most admin inputs are bare, inline-
+   styled text boxes with no background set, so on the dark themes they fell
+   through to the browser's white box + black text (the reported bug). The
+   !important beats those inline background/border declarations so nothing is
+   left as a bright white box or unreadable black text on a dark page. Colour
+   comes only from --admin-* tokens, so the Light theme stays dark-on-light and
+   the dark themes are light-on-dark automatically. Sizing is deliberately NOT
+   forced here — it stays on the .field/date/time/number rule below so the
+   dense Product/Menu Builder rows keep their existing compact layout. */
+.admin-panel input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]):not([type=file]),
+.admin-panel select,
+.admin-panel textarea {
+  background: color-mix(in srgb, var(--admin-input-bg) 76%, transparent) !important;
+  -webkit-backdrop-filter: blur(7px); backdrop-filter: blur(7px);
+  border: 1px solid var(--admin-input-border) !important;
+  color: var(--admin-input-text) !important;
+  border-radius: 10px;
+}
+.admin-panel input::placeholder, .admin-panel textarea::placeholder { color: var(--admin-text-muted) !important; opacity: 1; }
+.admin-panel input:focus, .admin-panel textarea:focus, .admin-panel select:focus {
+  outline: 2px solid var(--admin-accent); outline-offset: 1px; border-color: var(--admin-accent) !important;
+}
+.admin-panel input:disabled, .admin-panel textarea:disabled, .admin-panel select:disabled { opacity: 0.55; cursor: not-allowed; }
+.admin-panel input:read-only { background: color-mix(in srgb, var(--admin-surface-soft) 82%, transparent) !important; }
+/* Native dropdown option list readable on dark (honoured on Win/Linux). */
+.admin-root[data-admin-theme^="dark"] .admin-panel select option { background: var(--admin-surface-raised); color: var(--admin-input-text); }
+
+/* Comfortable sizing for the primary form fields (not the dense builder rows). */
 .admin-panel .field input:not([type=checkbox]):not([type=radio]),
 .admin-panel .field textarea,
 .admin-panel select,
 .admin-panel input[type=date],
 .admin-panel input[type=time],
 .admin-panel input[type=number] {
-  background: var(--admin-input-bg); border: 1px solid var(--admin-input-border); color: var(--admin-input-text);
-  min-height: 44px; padding: 12px 14px; border-radius: 10px; font-size: var(--fs-md);
+  min-height: 44px; padding: 12px 14px; font-size: var(--fs-md);
 }
-.admin-panel .field textarea { min-height: 110px; padding: 12px 14px; }
-.admin-panel .field input:focus, .admin-panel .field textarea:focus, .admin-panel select:focus {
-  outline: 2px solid var(--admin-accent); outline-offset: 1px; border-color: var(--admin-accent);
-}
-.admin-panel .field input::placeholder, .admin-panel .field textarea::placeholder { color: var(--admin-text-muted); opacity: 1; }
-.admin-panel .field input:disabled, .admin-panel .field textarea:disabled, .admin-panel select:disabled {
-  opacity: 0.55; cursor: not-allowed;
-}
-.admin-panel .field input:read-only { background: var(--admin-surface-soft); }
+.admin-panel .field textarea, .admin-panel textarea { min-height: 110px; }
 .admin-root[data-admin-theme^="dark"] .admin-panel input[type=date]::-webkit-calendar-picker-indicator,
 .admin-root[data-admin-theme^="dark"] .admin-panel input[type=time]::-webkit-calendar-picker-indicator {
   filter: invert(1) brightness(1.6);
@@ -1251,6 +1271,24 @@ img { max-width: 100%; }
 .admin-panel .card { padding: 16px; }
 @media (min-width: 700px) { .admin-panel .card { padding: 22px; } }
 .admin-panel .card + .card { margin-top: 0; }
+
+/* ── Dashboard command centre ── */
+.admin-greet { font-family: Georgia, serif; font-size: 26px; font-weight: 700; color: var(--admin-heading); margin: 0 0 2px; }
+@media (min-width: 960px) { .admin-greet { font-size: 30px; } }
+.admin-cmd-grid { display: grid; grid-template-columns: 1fr; gap: 14px; }
+@media (min-width: 960px) { .admin-cmd-grid { grid-template-columns: 1fr 1fr; align-items: start; } }
+.cmd-list { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.cmd-row { border: 1px solid var(--admin-border); background: var(--admin-surface-soft); border-radius: 12px; padding: 12px 14px; }
+.cmd-row-top { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.cmd-row-title { font-weight: 700; color: var(--admin-heading); }
+.cmd-row-sub { font-size: var(--fs-sm); color: var(--admin-text-muted); margin-top: 2px; }
+.cmd-row-actions { display: flex; gap: 14px; margin-top: 8px; flex-wrap: wrap; }
+.cmd-empty { color: var(--admin-text-muted); font-size: var(--fs-sm); padding: 8px 0 2px; }
+.cmd-chip { font-size: 11px; font-weight: 800; letter-spacing: .03em; text-transform: uppercase; padding: 2px 9px; border-radius: 999px; border: 1px solid transparent; white-space: nowrap; }
+.cmd-chip.pending { color: var(--admin-warning); border-color: color-mix(in srgb, var(--admin-warning) 45%, transparent); background: color-mix(in srgb, var(--admin-warning) 14%, transparent); }
+.cmd-chip.confirmed { color: var(--admin-success); border-color: color-mix(in srgb, var(--admin-success) 45%, transparent); background: color-mix(in srgb, var(--admin-success) 14%, transparent); }
+.cmd-chip.seated { color: var(--admin-accent); border-color: color-mix(in srgb, var(--admin-accent) 45%, transparent); background: var(--admin-accent-soft); }
+.cmd-chip.closed { color: var(--admin-danger); border-color: color-mix(in srgb, var(--admin-danger) 45%, transparent); background: color-mix(in srgb, var(--admin-danger) 14%, transparent); }
 
 /* ── Backend appearance switcher (sidebar) ── */
 .admin-theme-switch { display: flex; flex-direction: column; gap: 8px; }
@@ -1309,6 +1347,15 @@ img { max-width: 100%; }
   margin: -12px -4px 0; padding: 20px 4px 40px; border-radius: 16px;
 }
 @media (min-width: 960px) { .ins-dash { margin: 0; padding: 4px 0 40px; background: transparent; } }
+/* Insights follows the selected BACKEND theme (was hardcoded light/pink). Every
+   ins-* consumer — cards, ink, chart labels, funnel/donut fills — resolves
+   through these, so switching Backend appearance re-skins Insights too. */
+.admin-root .ins-dash {
+  --ins-bg: var(--admin-bg); --ins-card: var(--admin-surface); --ins-ink: var(--admin-heading);
+  --ins-ink2: var(--admin-text-muted); --ins-accent: var(--admin-accent); --ins-accent-soft: var(--admin-accent-soft);
+  --ins-dark: var(--admin-accent-hover); --ins-pos: var(--admin-success); --ins-warn: var(--admin-warning);
+  --ins-line: var(--admin-border);
+}
 
 /* ── Header ── */
 .ins-head { display: flex; flex-wrap: wrap; gap: 18px; justify-content: space-between; align-items: flex-start; padding: 4px 12px 18px; }

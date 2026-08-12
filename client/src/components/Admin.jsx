@@ -1024,6 +1024,46 @@ export default function Admin({ onExit }) {
   const card = { marginBottom: 14 };
   const row = { display: 'flex', gap: 8, alignItems: 'center' };
 
+  // ── Dashboard command-centre data, derived entirely from already-loaded
+  // state (reservations, messages, closures) — no new endpoints. ──
+  const _now = new Date();
+  const _greeting = _now.getHours() < 12 ? 'Good morning' : _now.getHours() < 17 ? 'Good afternoon' : 'Good evening';
+  const _startToday = new Date(_now.getFullYear(), _now.getMonth(), _now.getDate());
+  const _in30 = new Date(_startToday); _in30.setDate(_in30.getDate() + 30);
+  // Upcoming reservations: today or later, not cancelled, soonest first.
+  const upcomingResv = (resv || [])
+    .filter((r) => r.status !== 'cancelled' && r.reserveAt && new Date(r.reserveAt) >= _startToday)
+    .sort((a, b) => new Date(a.reserveAt) - new Date(b.reserveAt))
+    .slice(0, 6);
+  const unreadMsgs = (msgs || []).filter((m) => !m.handled).slice(0, 6);
+  // Closures/public holidays whose (possibly annual) date falls in the next 30
+  // days — so the owner sees when the shop is shut without opening Store.
+  const _fmtDay = (d) => d.toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short' });
+  const closureHits = [];
+  for (const c of (closures || [])) {
+    const yrs = [_startToday.getFullYear(), _startToday.getFullYear() + 1];
+    const consider = (isoDate, isRange, toIso) => {
+      const d = new Date(`${isoDate}T00:00:00`);
+      if (Number.isNaN(d.getTime())) return;
+      if (d >= _startToday && d <= _in30) closureHits.push({ label: c.label || 'Closed', d, range: isRange, to: toIso });
+    };
+    if (c.date) {
+      if (c.annual) yrs.forEach((y) => consider(`${y}-${c.date.slice(5)}`, false));
+      else consider(c.date, false);
+    } else if (c.from) {
+      if (c.annual) yrs.forEach((y) => consider(`${y}-${c.from.slice(5)}`, true, c.to));
+      else consider(c.from, true, c.to);
+    }
+  }
+  const upcomingClosures = closureHits.sort((a, b) => a.d - b.d).slice(0, 6);
+  // Reply-to-customer without a new backend: mailto for an email, tel for a phone.
+  const replyHref = (contact) => {
+    if (!contact) return null;
+    if (contact.includes('@')) return `mailto:${contact}?subject=${encodeURIComponent('Re: your message to Bean Culture')}`;
+    const digits = contact.replace(/[^\d+]/g, '');
+    return digits ? `tel:${digits}` : null;
+  };
+
   return (
     <div className="admin-root" data-admin-theme={adminTheme}>
       <div className={`admin-shell ${shellWidthClass(tab)}`}>
@@ -1070,8 +1110,8 @@ export default function Admin({ onExit }) {
             {tab === 'overview' && (
               <>
                 <div className="admin-page-head">
-                  <h1 className="admin-page-title">Dashboard</h1>
-                  <p className="admin-page-desc">A quick look at what needs attention right now, built entirely from data already in the panel.</p>
+                  <div className="admin-greet">{_greeting}</div>
+                  <p className="admin-page-desc">Here’s what’s happening at Bean Culture today.</p>
                 </div>
                 <div className="stat-tiles" style={{ marginBottom: 18 }}>
                   <div className="stat-tile">
@@ -1079,33 +1119,109 @@ export default function Admin({ onExit }) {
                     <div className="stat-l">Store status{h.timezone ? ` · ${h.timezone}` : ''}</div>
                   </div>
                   <div className="stat-tile" style={{ cursor: 'pointer' }} onClick={() => setTab('reservations')}>
-                    <div className="stat-v">{newResvCount > 0 ? newResvCount : (resv || []).length}</div>
-                    <div className="stat-l">{newResvCount > 0 ? 'New reservations' : `Reservations${resv ? ' · none new' : ' · loading…'}`}</div>
+                    <div className="stat-v">{upcomingResv.length}{newResvCount > 0 ? <span style={{ fontSize: 13, color: 'var(--admin-accent)' }}> · {newResvCount} new</span> : null}</div>
+                    <div className="stat-l">Upcoming reservations</div>
                   </div>
                   <div className="stat-tile" style={{ cursor: 'pointer' }} onClick={() => setTab('store')}>
-                    <div className="stat-v">{msgs ? msgs.filter((m) => !m.handled).length : '—'}</div>
-                    <div className="stat-l">Unread messages</div>
+                    <div className="stat-v">{msgs ? unreadMsgs.length : '—'}</div>
+                    <div className="stat-l">New messages</div>
                   </div>
                   <div className="stat-tile" style={{ cursor: 'pointer' }} onClick={() => setTab('users')}>
                     <div className="stat-v">{users ? users.length : '—'}</div>
                     <div className="stat-l">Loyalty members</div>
                   </div>
-                  <div className="stat-tile" style={{ cursor: 'pointer' }} onClick={() => setTab('menubuilder')}>
-                    <div className="stat-v">{(data.categories || []).length}</div>
-                    <div className="stat-l">Menu categories</div>
-                  </div>
-                  <div className="stat-tile" style={{ cursor: 'pointer' }} onClick={() => setTab('productbuilder')}>
-                    <div className="stat-v">{allProducts.length}</div>
-                    <div className="stat-l">Products synced</div>
-                  </div>
                 </div>
-                <div className="card" style={card}>
-                  <div className="group-title">Quick links</div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
-                    <button type="button" className="btn ghost" onClick={() => setTab('insights')}>View Insights</button>
-                    <button type="button" className="btn ghost" onClick={() => setTab('reservations')}>Manage reservations</button>
-                    <button type="button" className="btn ghost" onClick={() => setTab('store')}>Store settings</button>
-                    <button type="button" className="btn ghost" onClick={onExit}>View store</button>
+
+                <div className="admin-cmd-grid">
+                  {/* Upcoming reservations — future only, nothing past. */}
+                  <div className="card" style={{ marginBottom: 0 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div className="group-title" style={{ margin: 0 }}>Upcoming reservations</div>
+                      <button type="button" className="link" style={{ padding: 0, fontSize: 'var(--fs-base)' }} onClick={() => setTab('reservations')}>View all</button>
+                    </div>
+                    {resv === null && <div className="cmd-empty">Loading…</div>}
+                    {resv && upcomingResv.length === 0 && <div className="cmd-empty">No upcoming bookings.</div>}
+                    <div className="cmd-list">
+                      {upcomingResv.map((r) => (
+                        <div key={r.id} className="cmd-row">
+                          <div className="cmd-row-top">
+                            <span className="cmd-row-title">{r.party} {r.party === 1 ? 'guest' : 'guests'} · {r.name || '—'}</span>
+                            <span className={`cmd-chip ${r.status === 'confirmed' ? 'confirmed' : r.status === 'seated' ? 'seated' : 'pending'}`}>{r.status || 'pending'}</span>
+                          </div>
+                          <div className="cmd-row-sub">
+                            {new Date(r.reserveAt).toLocaleString('en-AU', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}
+                            {r.phone ? ` · ${r.phone}` : ''}{r.notes ? ` · ${r.notes}` : ''}
+                          </div>
+                          {r.status !== 'confirmed' && (
+                            <div className="cmd-row-actions">
+                              <button className="link" style={{ padding: 0, fontSize: 'var(--fs-base)', color: 'var(--admin-success)' }} onClick={() => setResvStatus(r, 'confirmed')}>Confirm</button>
+                              <button className="link" style={{ padding: 0, fontSize: 'var(--fs-base)', color: 'var(--admin-danger)' }} onClick={() => setResvStatus(r, 'cancelled')}>Cancel</button>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* New customer messages — reply straight from here. */}
+                  <div className="card" style={{ marginBottom: 0 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div className="group-title" style={{ margin: 0 }}>New messages</div>
+                      <button type="button" className="link" style={{ padding: 0, fontSize: 'var(--fs-base)' }} onClick={() => setTab('store')}>All messages</button>
+                    </div>
+                    {msgs === null && <div className="cmd-empty">Loading…</div>}
+                    {msgs && unreadMsgs.length === 0 && <div className="cmd-empty">No new enquiries. 🎉</div>}
+                    <div className="cmd-list">
+                      {unreadMsgs.map((m) => {
+                        const href = replyHref(m.contact);
+                        return (
+                          <div key={m.id} className="cmd-row">
+                            <div className="cmd-row-top">
+                              <span className="cmd-row-title" style={{ textTransform: 'capitalize' }}>{m.type} · {m.name || 'Anonymous'}</span>
+                              <span className="cmd-row-sub" style={{ marginTop: 0 }}>{new Date(m.createdAt).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })}</span>
+                            </div>
+                            {m.contact && <div className="cmd-row-sub">{m.contact}</div>}
+                            <div style={{ fontSize: 'var(--fs-md)', whiteSpace: 'pre-line', margin: '4px 0 0', color: 'var(--admin-text)' }}>{m.body}</div>
+                            <div className="cmd-row-actions">
+                              {href && <a className="link" style={{ padding: 0, fontSize: 'var(--fs-base)', color: 'var(--admin-accent)' }} href={href}>Reply</a>}
+                              <button className="link" style={{ padding: 0, fontSize: 'var(--fs-base)' }} onClick={() => toggleHandled(m)}>Mark done</button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Upcoming closures / public holidays — next 30 days. */}
+                  <div className="card" style={{ marginBottom: 0 }}>
+                    <div className="group-title" style={{ margin: 0 }}>Upcoming closures (next 30 days)</div>
+                    {upcomingClosures.length === 0 && <div className="cmd-empty">Open every day for the next 30 days.</div>}
+                    <div className="cmd-list">
+                      {upcomingClosures.map((c, i) => (
+                        <div key={i} className="cmd-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+                          <span className="cmd-row-title">{c.label}</span>
+                          <span className="cmd-chip closed">{_fmtDay(c.d)}{c.range && c.to ? ` → ${_fmtDay(new Date(`${c.to}T00:00:00`))}` : ''}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Quick access. */}
+                  <div className="card" style={{ marginBottom: 0 }}>
+                    <div className="group-title" style={{ margin: 0 }}>Quick access</div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
+                      <button type="button" className="btn ghost" onClick={() => setTab('insights')}>Insights</button>
+                      <button type="button" className="btn ghost" onClick={() => setTab('reservations')}>Reservations</button>
+                      <button type="button" className="btn ghost" onClick={() => setTab('banners')}>Banners</button>
+                      <button type="button" className="btn ghost" onClick={() => setTab('push')}>Push</button>
+                      <button type="button" className="btn ghost" onClick={() => setTab('users')}>Users</button>
+                      <button type="button" className="btn ghost" onClick={() => setTab('store')}>Store settings</button>
+                      <button type="button" className="btn ghost" onClick={onExit}>View store</button>
+                    </div>
+                    <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--admin-border)', display: 'flex', gap: 18, flexWrap: 'wrap' }}>
+                      <div><div className="stat-v" style={{ fontSize: 20 }}>{(data.categories || []).length}</div><div className="stat-l">Menu categories</div></div>
+                      <div><div className="stat-v" style={{ fontSize: 20 }}>{allProducts.length}</div><div className="stat-l">Products synced</div></div>
+                    </div>
                   </div>
                 </div>
                 {!data.dbEnabled && (
