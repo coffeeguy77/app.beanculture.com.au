@@ -68,6 +68,9 @@ const DEFAULTS = {
   // (not the variation) — kept alongside so the admin panel can inspect/fix
   // the item's Square category setup without a second lookup.
   reservationVariationId: '',
+  // Email address that receives a copy of every new table reservation (set in
+  // Admin → Reservations). Overrides the RESERVATION_OWNER_EMAIL env var.
+  reservationNotifyEmail: '',
   reservationItemId: '',
   // Custom order for the menu sections on the storefront, as an array of display
   // names (e.g. ['Coffee','All Day Menu',…]). Set from the admin "Menu items

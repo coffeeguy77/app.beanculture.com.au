@@ -343,6 +343,9 @@ function LoyaltyGrowthCard({ signups }) {
                   fill="var(--ins-accent)" opacity={(d.n || 0) > 0 ? 0.9 : 0.15}>
                   <title>{`${longDate(d.day)} — ${num(d.n || 0)} signup${d.n === 1 ? '' : 's'}`}</title>
                 </rect>
+                {(d.n || 0) > 0 && (
+                  <text x={cx} y={Math.max(9, pad.t + innerH - h - 4)} textAnchor="middle" className="ins-bar-count">{num(d.n)}</text>
+                )}
                 {i % labelStep === 0 && (
                   <text x={cx} y={H - 6} textAnchor="middle" className="ins-axis">{shortDate(d.day)}</text>
                 )}

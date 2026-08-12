@@ -488,8 +488,9 @@ app.post('/api/reserve', async (req, res) => {
 
     const saved = await db.insertReservation({ name, phone, email, party, reserveAt: at, notes, squareOrderId });
 
-    // Fire notifications in the background (don't make the customer wait).
-    notify.reservationNotify({ name, phone, email, party, reserveAt: at, notes }).catch(() => {});
+    // Fire notifications in the background (don't make the customer wait). The
+    // owner copy goes to the admin-configured reservationNotifyEmail if set.
+    notify.reservationNotify({ name, phone, email, party, reserveAt: at, notes }, { ownerEmail: getSettings().reservationNotifyEmail }).catch(() => {});
 
     res.json({ ok: true, id: saved?.id ? String(saved.id) : null });
   } catch (e) {
@@ -756,6 +757,27 @@ app.post('/api/admin/broadcast', async (req, res) => {
       if (ok) sent++; else failed++;
     }
     res.json({ sent, skipped, failed, total: users.length });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+// ---- Admin: send a single TEST message to one recipient (preview before broadcast) ----
+app.post('/api/admin/broadcast/test', async (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const { channel, subject, message, link, to } = req.body || {};
+    if (!message || !String(message).trim()) return res.status(400).json({ error: 'Message is required.' });
+    if (!to || !String(to).trim()) return res.status(400).json({ error: `Add a test ${channel === 'sms' ? 'phone number' : 'email address'}.` });
+    if (channel === 'sms' && !notify.smsConfigured) return res.status(400).json({ error: 'SMS isn’t configured yet — add the Twilio env vars in Railway.' });
+    if (channel === 'email' && !notify.emailConfigured) return res.status(400).json({ error: 'Email isn’t configured yet — add the Resend env vars in Railway.' });
+    if (channel !== 'sms' && channel !== 'email') return res.status(400).json({ error: 'Pick a channel.' });
+    const text = String(message).trim() + (link ? `\n\n${String(link).trim()}` : '');
+    const ok = channel === 'sms'
+      ? await notify.sendSMS(String(to).trim(), text)
+      : await notify.sendEmail(String(to).trim(), `[TEST] ${subject || 'Bean Culture'}`, text);
+    if (!ok) return res.status(400).json({ error: 'Test send failed — check the number/email and provider config.' });
+    res.json({ ok: true, to: String(to).trim() });
   } catch (e) {
     res.status(400).json({ error: e.message });
   }

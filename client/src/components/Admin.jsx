@@ -138,6 +138,8 @@ export default function Admin({ onExit }) {
   const [push, setPush] = useState({ channel: 'sms', subject: '', message: '', link: '' });
   const [pushBusy, setPushBusy] = useState(false);
   const [pushResult, setPushResult] = useState(null);
+  const [pushTest, setPushTest] = useState('');
+  const [pushTestBusy, setPushTestBusy] = useState(false);
   const [tab, setTab] = useState('overview');
   const [qrFrom, setQrFrom] = useState(1);
   const [qrTo, setQrTo] = useState(12);
@@ -329,6 +331,16 @@ export default function Admin({ onExit }) {
     try { setPushResult(await api.adminBroadcast(pass, push)); }
     catch (e) { alert('Send failed: ' + e.message); }
     finally { setPushBusy(false); }
+  }
+  async function sendTestBroadcast() {
+    if (!push.message.trim()) { alert('Write a message first.'); return; }
+    if (!pushTest.trim()) { alert(`Add a test ${push.channel === 'sms' ? 'phone number' : 'email address'}.`); return; }
+    setPushTestBusy(true);
+    try {
+      await api.adminBroadcastTest(pass, { ...push, to: pushTest.trim() });
+      alert(`Test ${push.channel === 'sms' ? 'SMS' : 'email'} sent to ${pushTest.trim()}.`);
+    } catch (e) { alert('Test failed: ' + e.message); }
+    finally { setPushTestBusy(false); }
   }
   // Reservation ticket printing: check what Square actually has on file for
   // the linked item (reporting_category vs. the "Reservations" category
@@ -1009,13 +1021,17 @@ export default function Admin({ onExit }) {
 
   if (needPass) {
     return (
-      <div className="app"><main className="page">
-        <h2>Control panel</h2>
-        <label className="field"><span>Passcode</span><input type="password" value={pass} onChange={(e) => setPass(e.target.value)} /></label>
-        <button className="btn full" style={{ marginTop: 12 }} onClick={() => load(pass)}>Enter</button>
-        {error && <p className="error-text">{error}</p>}
-        <button className="link center-link" onClick={onExit}>← Back to store</button>
-      </main></div>
+      <div className="admin-root admin-login" data-admin-theme={adminTheme}>
+        <div className="admin-panel admin-login-card">
+          <div style={{ fontFamily: 'Georgia, serif', fontSize: 24, fontWeight: 700, color: 'var(--admin-heading)' }}>Bean Culture</div>
+          <p className="admin-page-desc" style={{ marginBottom: 16 }}>Control panel — enter your passcode.</p>
+          <label className="field"><span>Passcode</span>
+            <input type="password" value={pass} onChange={(e) => setPass(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') load(pass); }} autoFocus /></label>
+          <button className="btn full" style={{ marginTop: 12 }} onClick={() => load(pass)}>Enter</button>
+          {error && <p className="error-text" style={{ color: 'var(--admin-danger)' }}>{error}</p>}
+          <button className="link center-link" onClick={onExit}>← Back to store</button>
+        </div>
+      </div>
     );
   }
   if (!s) return <div className="app"><div className="center-screen"><div className="spinner" /></div></div>;
@@ -1424,6 +1440,12 @@ export default function Admin({ onExit }) {
                 <div className="admin-page-head">
                   <h1 className="admin-page-title">Reservations</h1>
                   <p className="admin-page-desc">Table bookings and ticket-printing setup.</p>
+                </div>
+                <div className="card" style={card}>
+                  <div className="group-title">Notification email</div>
+                  <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 0 }}>A copy of every new reservation is emailed here (in addition to the ticket printing). Leave blank to use the default address.</p>
+                  <label className="field"><span>Reservation copies go to</span>
+                    <input type="email" inputMode="email" value={s.reservationNotifyEmail || ''} onChange={(e) => set({ reservationNotifyEmail: e.target.value })} placeholder="bookings@yourcafe.com.au" /></label>
                 </div>
                 <div className="card" style={card}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
@@ -2315,6 +2337,15 @@ export default function Admin({ onExit }) {
                 <label className="field" style={{ marginBottom: 12 }}><span>Link (optional)</span>
                   <input inputMode="url" value={push.link} onChange={(e) => setPush((p) => ({ ...p, link: e.target.value }))} placeholder="https://app.beanculture.com.au" /></label>
 
+                {/* Send yourself a test first so you can see exactly how it lands. */}
+                <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, flexWrap: 'wrap', padding: '10px 0', margin: '2px 0 10px', borderTop: '1px solid var(--admin-border)', borderBottom: '1px solid var(--admin-border)' }}>
+                  <label className="field" style={{ flex: '1 1 220px', margin: 0 }}><span>Send a test to yourself first</span>
+                    <input value={pushTest} onChange={(e) => setPushTest(e.target.value)}
+                      inputMode={push.channel === 'sms' ? 'tel' : 'email'}
+                      placeholder={push.channel === 'sms' ? '+61 4XX XXX XXX' : 'you@example.com'} /></label>
+                  <button className="btn ghost" disabled={pushTestBusy || !push.message.trim() || !pushTest.trim() || (notifyStatus && !notifyStatus[push.channel])}
+                    onClick={sendTestBroadcast}>{pushTestBusy ? 'Sending test…' : `Send test ${push.channel === 'sms' ? 'SMS' : 'email'}`}</button>
+                </div>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
                   <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>
                     {users === null ? 'Counting audience…' : `To ${users.length} loyalty member${users.length === 1 ? '' : 's'}${push.channel === 'sms' ? ` · ${users.filter((u) => u.phone).length} with a phone` : ` · ${users.filter((u) => u.email).length} with an email`}`}

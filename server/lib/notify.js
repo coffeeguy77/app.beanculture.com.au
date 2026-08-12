@@ -43,13 +43,17 @@ async function sendEmail(to, subject, text) {
 }
 
 // Fire off all configured notifications for a new reservation (best-effort).
-async function reservationNotify(r) {
+// opts.ownerEmail (set from the admin's "Reservation notification email" field)
+// takes precedence over the RESERVATION_OWNER_EMAIL env var, so the owner can
+// point booking copies at any address without a redeploy.
+async function reservationNotify(r, opts) {
+  const ownerEmail = (opts && opts.ownerEmail && String(opts.ownerEmail).trim()) || OWNER_EMAIL;
   const when = r.reserveAt ? new Date(r.reserveAt).toLocaleString('en-AU', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', timeZone: process.env.SEASON_TZ || 'Australia/Sydney' }) : 'soon';
   const line = `${r.party || '?'} guest(s) · ${when}${r.name ? ` · ${r.name}` : ''}${r.phone ? ` · ${r.phone}` : ''}`;
   const results = await Promise.allSettled([
     sendSMS(OWNER_PHONE, `New table reservation: ${line}${r.notes ? ` — ${r.notes}` : ''}`),
     r.phone ? sendSMS(r.phone, `Thanks${r.name ? ` ${r.name}` : ''}! Your table for ${r.party || ''} on ${when} at Bean Culture is received — we’ll confirm shortly.`) : Promise.resolve(false),
-    sendEmail(OWNER_EMAIL, `New reservation — ${line}`, `New table reservation\n\nGuests: ${r.party}\nWhen: ${when}\nName: ${r.name || '—'}\nPhone: ${r.phone || '—'}\nEmail: ${r.email || '—'}\nNotes: ${r.notes || '—'}`),
+    sendEmail(ownerEmail, `New reservation — ${line}`, `New table reservation\n\nGuests: ${r.party}\nWhen: ${when}\nName: ${r.name || '—'}\nPhone: ${r.phone || '—'}\nEmail: ${r.email || '—'}\nNotes: ${r.notes || '—'}`),
   ]);
   return {
     ownerSms: results[0].value === true,

@@ -6,8 +6,20 @@ const { squareFetch, LOCATION_ID, CURRENCY } = require('./squareClient');
 
 async function salesSummary(days = 30) {
   const since = new Date(Date.now() - days * 86400000);
-  const orders = [];
-  let cursor;
+  const dayMap = new Map();
+  // Best clients: most walk-in POS sales are genuinely anonymous (no name is
+  // ever taken at the counter), so a name-based guest bucket is mostly noise.
+  // Only orders tied to a real customer_id — a loyalty member, whether they
+  // ordered in the app or tapped their account in Square POS — count towards
+  // this list; that's also the only case where "best client" is meaningful
+  // (the same person, reliably, across visits).
+  const clientMap = new Map();
+  let revenue = 0, count = 0;
+  let cursor, pages = 0;
+  // Aggregate each page as it arrives (rather than collecting every order into
+  // one array and capping at 10k) so a full 365-day window with high order
+  // volume is never silently truncated — memory stays bounded to the maps, and
+  // we page up to 200×500 = 100k orders.
   do {
     const data = await squareFetch('/v2/orders/search', {
       method: 'POST',
@@ -24,36 +36,26 @@ async function salesSummary(days = 30) {
         ...(cursor ? { cursor } : {}),
       },
     });
-    for (const o of data.orders || []) orders.push(o);
+    for (const o of data.orders || []) {
+      const amt = o.total_money?.amount || 0;
+      revenue += amt; count += 1;
+      const when = o.closed_at || o.created_at;
+      const day = when ? new Date(when).toISOString().slice(0, 10) : null;
+      if (day) {
+        const e = dayMap.get(day) || { revenue: 0, orders: 0 };
+        e.revenue += amt; e.orders += 1;
+        dayMap.set(day, e);
+      }
+      if (o.customer_id) {
+        const ce = clientMap.get(o.customer_id) || { revenue: 0, orders: 0 };
+        ce.revenue += amt; ce.orders += 1;
+        clientMap.set(o.customer_id, ce);
+      }
+    }
     cursor = data.cursor;
-  } while (cursor && orders.length < 10000);
+    pages += 1;
+  } while (cursor && pages < 200);
 
-  const dayMap = new Map();
-  // Best clients: most walk-in POS sales are genuinely anonymous (no name is
-  // ever taken at the counter), so a name-based guest bucket is mostly noise.
-  // Only orders tied to a real customer_id — a loyalty member, whether they
-  // ordered in the app or tapped their account in Square POS — count towards
-  // this list; that's also the only case where "best client" is meaningful
-  // (the same person, reliably, across visits).
-  const clientMap = new Map();
-  let revenue = 0;
-  for (const o of orders) {
-    const amt = o.total_money?.amount || 0;
-    revenue += amt;
-    const when = o.closed_at || o.created_at;
-    const day = when ? new Date(when).toISOString().slice(0, 10) : null;
-    if (day) {
-      const e = dayMap.get(day) || { revenue: 0, orders: 0 };
-      e.revenue += amt; e.orders += 1;
-      dayMap.set(day, e);
-    }
-    if (o.customer_id) {
-      const ce = clientMap.get(o.customer_id) || { revenue: 0, orders: 0 };
-      ce.revenue += amt; ce.orders += 1;
-      clientMap.set(o.customer_id, ce);
-    }
-  }
-  const count = orders.length;
   const daily = [...dayMap.entries()]
     .map(([day, e]) => ({ day, revenue: e.revenue, orders: e.orders }))
     .sort((a, b) => a.day.localeCompare(b.day));

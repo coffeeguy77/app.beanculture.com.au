@@ -993,7 +993,7 @@ img { max-width: 100%; }
    Control panel (admin) — tabbed, responsive, 1440px on desktop.
    ═══════════════════════════════════════════════════════════════════════════ */
 .admin-root { min-height: 100vh; background: var(--bg); }
-.admin-shell { max-width: 1700px; margin: 0 auto; padding: 12px 16px 104px; }
+.admin-shell { max-width: 1600px; margin: 0 auto; padding: 12px 16px 104px; }
 .admin-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
 .admin-head h2 { font-size: 20px; }
 
@@ -1036,9 +1036,13 @@ img { max-width: 100%; }
 
 /* Page-width modifiers for .admin-shell — same 1440px default unless a tab
    opts into something narrower/wider for its content. */
-.admin-shell.w-standard { max-width: 1200px; }
-.admin-shell.w-wide { max-width: 1440px; }
-.admin-shell.w-analytics { max-width: 1500px; }
+/* One consistent page width for EVERY admin screen (Dashboard, Reservations,
+   Tables, Banners, Coupons, Push, Users, Store all match Menu/Product Builder).
+   Kept as separate selectors so the JSX width hints still resolve, but they all
+   land on the same max-width for visual consistency. */
+.admin-shell.w-standard,
+.admin-shell.w-wide,
+.admin-shell.w-analytics,
 .admin-shell.w-builder { max-width: 1600px; }
 
 /* Per-page header: title + one-line description above a tab's content. */
@@ -1253,6 +1257,9 @@ img { max-width: 100%; }
 }
 .admin-panel input:disabled, .admin-panel textarea:disabled, .admin-panel select:disabled { opacity: 0.55; cursor: not-allowed; }
 .admin-panel input:read-only { background: color-mix(in srgb, var(--admin-surface-soft) 82%, transparent) !important; }
+/* A select with long option text (e.g. Banners "Choose item") must never push
+   past its flex cell / card. */
+.admin-panel select { max-width: 100%; min-width: 0; }
 /* Native dropdown option list readable on dark (honoured on Win/Linux). */
 .admin-root[data-admin-theme^="dark"] .admin-panel select option { background: var(--admin-surface-raised); color: var(--admin-input-text); }
 
@@ -1279,6 +1286,12 @@ img { max-width: 100%; }
 }
 .admin-panel input[type=radio]:checked::after { content: ''; width: 8px; height: 8px; border-radius: 50%; background: #fff; }
 .admin-panel input[type=checkbox]:focus-visible, .admin-panel input[type=radio]:focus-visible { outline: 2px solid var(--admin-accent); outline-offset: 2px; }
+
+/* Admin sign-in — themed card, so the passcode label/text is never invisible. */
+.admin-login { min-height: 100vh; display: grid; place-items: center; background: var(--admin-bg); padding: 24px; }
+.admin-login-card { width: min(400px, 94vw); background: var(--admin-surface); border: 1px solid var(--admin-border); border-radius: 18px; padding: 26px 24px; box-shadow: var(--admin-shadow); }
+.admin-login-card .field span { color: var(--admin-text-muted); }
+.admin-login-card .center-link { display: block; margin: 12px auto 0; color: var(--admin-text-muted); }
 
 /* Two-up card layout (reservations list, opening + kitchen hours). */
 .admin-two-col { display: grid; grid-template-columns: 1fr; gap: 12px; }
@@ -1468,7 +1481,7 @@ img { max-width: 100%; }
 
 /* ── Metric cards ── */
 .ins-metric { background: var(--ins-card); border: 1px solid var(--ins-line); border-radius: 14px; padding: 14px; box-shadow: 0 1px 2px rgba(33,26,23,.04); }
-.ins-metric.prominent { background: linear-gradient(180deg, #fff, var(--ins-accent-soft)); border-color: color-mix(in srgb, var(--ins-accent) 25%, var(--ins-line)); }
+.ins-metric.prominent { background: linear-gradient(180deg, var(--ins-card), var(--ins-accent-soft)); border-color: color-mix(in srgb, var(--ins-accent) 25%, var(--ins-line)); }
 .ins-metric-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
 .ins-metric-ico { color: var(--ins-accent); display: inline-flex; }
 .ins-metric-value { font-size: 26px; font-weight: 800; color: var(--ins-ink); line-height: 1.1; }
@@ -1503,6 +1516,7 @@ img { max-width: 100%; }
 .ins-viewall:focus-visible { outline: 2px solid var(--ins-accent); outline-offset: 2px; }
 
 /* ── Funnel ── */
+.ins-bar-count { font-size: 10px; font-weight: 800; fill: var(--ins-ink); }
 .ins-funnel { display: grid; gap: 12px; }
 .ins-funnel-top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 13px; margin-bottom: 5px; }
 .ins-funnel-label { font-weight: 600; color: var(--ins-ink); }
@@ -1510,9 +1524,9 @@ img { max-width: 100%; }
 .ins-funnel-vals b { color: var(--ins-ink); }
 .ins-drop { color: var(--ins-warn); margin-left: 6px; font-weight: 600; }
 .ins-funnel-track { height: 12px; background: var(--ins-bg); border-radius: 7px; overflow: hidden; }
-.ins-funnel-fill { height: 100%; background: color-mix(in srgb, var(--ins-accent) 55%, #fff); border-radius: 7px; transition: width .4s ease; }
-.ins-funnel-row.final .ins-funnel-fill { background: var(--ins-pos); }
-.ins-funnel-row.final .ins-funnel-label { color: var(--ins-pos); font-weight: 700; }
+.ins-funnel-fill { height: 100%; background: color-mix(in srgb, var(--ins-accent) 55%, var(--ins-card)); border-radius: 7px; transition: width .4s ease; }
+.ins-funnel-row.final .ins-funnel-fill { background: var(--ins-accent); }
+.ins-funnel-row.final .ins-funnel-label { color: var(--ins-accent); font-weight: 700; }
 
 /* ── Product ranking ── */
 .ins-rank { list-style: none; margin: 0; padding: 0; display: grid; gap: 11px; }
