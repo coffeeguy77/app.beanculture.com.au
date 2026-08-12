@@ -412,6 +412,195 @@ const SEASONAL_EFFECTS = {
   halloween: { effectsEnabled: true, effectPreset: 'halloween', intensity: 'standard' },
 };
 
+
+// ── Effects Engine: reusable particle-overlay presets ──────────────────────
+// A stable-ID entity independent of theme palette and seasonal banner (see
+// client/src/effectEngine.js for the renderer that consumes this shape).
+// Seasonal events and themes reference an effect by `id`, never by name, so
+// renaming an effect in the Effect Builder never breaks an assignment.
+const EFFECT_PRESETS = [
+  {
+    id: 'eff-snow', name: 'Snow', slug: 'snow', builtIn: true, enabled: true, frontendSelectable: true,
+    version: 1, renderer: 'canvas-particles', description: 'Drifting snowflakes in white, ivory and pale blue.',
+    assets: [
+      { assetId: 'snowflake-1', weight: 35 }, { assetId: 'snowflake-2', weight: 25 },
+      { assetId: 'snowflake-3', weight: 20 }, { assetId: 'soft-snow-dot', weight: 20 },
+    ],
+    motion: { directionDegrees: 180, speedMin: 18, speedMax: 46, driftMin: -10, driftMax: 10, sway: 0.6, rotationMin: 0, rotationMax: 360, rotationSpeedMin: -15, rotationSpeedMax: 15, lifetimeMin: 8, lifetimeMax: 16 },
+    emission: { density: 1, spawnRate: 1, maxParticlesDesktop: 30, maxParticlesMobile: 12, spawnArea: 'top', burstOnLoad: false, burstCount: 0 },
+    appearance: {
+      sizeMin: 10, sizeMax: 22, opacityMin: 0.45, opacityMax: 0.9,
+      colorMode: 'palette', colors: ['#FFFFFF', '#F7FBFF', '#DDEEFF', '#F4E5C1'],
+      renderMode: 'random', fillPercentage: 20, strokePercentage: 50, mixedPercentage: 30,
+      strokeWidthMin: 1.6, strokeWidthMax: 2.6,
+      glowEnabled: true, glowColorMode: 'inherit', glowColors: [], glowBlurMin: 3, glowBlurMax: 8, glowOpacity: 0.5, glowPercentage: 20,
+    },
+    randomness: { amount: 0.6, assetRandomness: 1, colorRandomness: 0.7, sizeRandomness: 0.8, speedRandomness: 0.7, opacityRandomness: 0.6, rotationRandomness: 1 },
+    accessibility: { reducedMotionMode: 'static-glow' },
+  },
+  {
+    id: 'eff-hearts', name: 'Hearts', slug: 'hearts', builtIn: true, enabled: true, frontendSelectable: true,
+    version: 1, renderer: 'canvas-particles', description: 'Soft rose and blush hearts drifting diagonally.',
+    assets: [{ assetId: 'heart-outline', weight: 60 }, { assetId: 'heart-filled', weight: 40 }],
+    motion: { directionDegrees: 160, speedMin: 16, speedMax: 38, driftMin: -6, driftMax: 14, sway: 0.5, rotationMin: -20, rotationMax: 20, rotationSpeedMin: -10, rotationSpeedMax: 10, lifetimeMin: 7, lifetimeMax: 13 },
+    emission: { density: 0.7, spawnRate: 1, maxParticlesDesktop: 20, maxParticlesMobile: 9, spawnArea: 'top', burstOnLoad: false, burstCount: 0 },
+    appearance: {
+      sizeMin: 12, sizeMax: 24, opacityMin: 0.5, opacityMax: 0.9,
+      colorMode: 'palette', colors: ['#F1A8C1', '#E76591', '#FFD2DF'],
+      renderMode: 'random', fillPercentage: 40, strokePercentage: 30, mixedPercentage: 30,
+      strokeWidthMin: 2, strokeWidthMax: 3, glowEnabled: true, glowColorMode: 'inherit', glowColors: [], glowBlurMin: 3, glowBlurMax: 7, glowOpacity: 0.5, glowPercentage: 20,
+    },
+    randomness: { amount: 0.5, assetRandomness: 1, colorRandomness: 0.6, sizeRandomness: 0.7, speedRandomness: 0.6, opacityRandomness: 0.6, rotationRandomness: 0.8 },
+    accessibility: { reducedMotionMode: 'static-glow' },
+  },
+  {
+    id: 'eff-petals', name: 'Petals', slug: 'petals', builtIn: true, enabled: true, frontendSelectable: true,
+    version: 1, renderer: 'canvas-particles', description: 'Tumbling botanical petals, diagonal fall.',
+    assets: [{ assetId: 'petal-round', weight: 40 }, { assetId: 'petal-curved', weight: 35 }, { assetId: 'tulip-petal', weight: 25 }],
+    motion: { directionDegrees: 160, speedMin: 16, speedMax: 42, driftMin: -10, driftMax: 16, sway: 0.7, rotationMin: 0, rotationMax: 360, rotationSpeedMin: -30, rotationSpeedMax: 30, lifetimeMin: 7, lifetimeMax: 15 },
+    emission: { density: 0.9, spawnRate: 1, maxParticlesDesktop: 22, maxParticlesMobile: 10, spawnArea: 'top', burstOnLoad: false, burstCount: 0 },
+    appearance: {
+      sizeMin: 10, sizeMax: 26, opacityMin: 0.5, opacityMax: 0.92,
+      colorMode: 'palette', colors: ['#E8AFC8', '#F2CE72', '#F5D0BE'],
+      renderMode: 'fill', fillPercentage: 100, strokePercentage: 0, mixedPercentage: 0,
+      strokeWidthMin: 1.5, strokeWidthMax: 2, glowEnabled: false, glowColorMode: 'inherit', glowColors: [], glowBlurMin: 2, glowBlurMax: 5, glowOpacity: 0.4, glowPercentage: 0,
+    },
+    randomness: { amount: 0.7, assetRandomness: 1, colorRandomness: 0.7, sizeRandomness: 1, speedRandomness: 0.7, opacityRandomness: 0.6, rotationRandomness: 1 },
+    accessibility: { reducedMotionMode: 'static-glow' },
+  },
+  {
+    id: 'eff-sparkles', name: 'Sparkles', slug: 'sparkles', builtIn: true, enabled: true, frontendSelectable: true,
+    version: 1, renderer: 'canvas-particles', description: 'Slow-fading points of light, low density.',
+    assets: [{ assetId: 'sparkle', weight: 50 }, { assetId: 'star', weight: 30 }, { assetId: 'soft-snow-dot', weight: 20 }],
+    motion: { directionDegrees: 180, speedMin: 6, speedMax: 18, driftMin: -6, driftMax: 6, sway: 0.4, rotationMin: 0, rotationMax: 360, rotationSpeedMin: -8, rotationSpeedMax: 8, lifetimeMin: 5, lifetimeMax: 10 },
+    emission: { density: 0.55, spawnRate: 1, maxParticlesDesktop: 16, maxParticlesMobile: 7, spawnArea: 'viewport', burstOnLoad: false, burstCount: 0 },
+    appearance: {
+      sizeMin: 6, sizeMax: 16, opacityMin: 0.2, opacityMax: 0.95,
+      colorMode: 'palette', colors: ['#FFF7DA', '#FFE9A8', '#FFFFFF'],
+      renderMode: 'fill', fillPercentage: 100, strokePercentage: 0, mixedPercentage: 0,
+      strokeWidthMin: 1, strokeWidthMax: 2, glowEnabled: true, glowColorMode: 'inherit', glowColors: [], glowBlurMin: 4, glowBlurMax: 10, glowOpacity: 0.6, glowPercentage: 40,
+    },
+    randomness: { amount: 0.6, assetRandomness: 1, colorRandomness: 0.5, sizeRandomness: 0.6, speedRandomness: 0.5, opacityRandomness: 1, rotationRandomness: 0.6 },
+    accessibility: { reducedMotionMode: 'static-glow' },
+  },
+  {
+    id: 'eff-confetti', name: 'Confetti', slug: 'confetti', builtIn: true, enabled: true, frontendSelectable: true,
+    version: 1, renderer: 'canvas-particles', description: 'Initial burst plus a light continuous fall.',
+    assets: [{ assetId: 'confetti-strip', weight: 40 }, { assetId: 'confetti-circle', weight: 35 }, { assetId: 'confetti-diamond', weight: 25 }],
+    motion: { directionDegrees: 180, speedMin: 40, speedMax: 90, driftMin: -20, driftMax: 20, sway: 0.5, rotationMin: 0, rotationMax: 360, rotationSpeedMin: -60, rotationSpeedMax: 60, lifetimeMin: 3, lifetimeMax: 6 },
+    emission: { density: 0.4, spawnRate: 1, maxParticlesDesktop: 18, maxParticlesMobile: 8, spawnArea: 'top', burstOnLoad: true, burstCount: 40 },
+    appearance: {
+      sizeMin: 8, sizeMax: 16, opacityMin: 0.7, opacityMax: 1,
+      colorMode: 'palette', colors: ['#F2D66C', '#FFF0A3', '#B88A20', '#E4536B', '#5AA9E6'],
+      renderMode: 'fill', fillPercentage: 100, strokePercentage: 0, mixedPercentage: 0,
+      strokeWidthMin: 1, strokeWidthMax: 1.5, glowEnabled: false, glowColorMode: 'inherit', glowColors: [], glowBlurMin: 2, glowBlurMax: 4, glowOpacity: 0.3, glowPercentage: 0,
+    },
+    randomness: { amount: 0.7, assetRandomness: 1, colorRandomness: 1, sizeRandomness: 0.6, speedRandomness: 0.8, opacityRandomness: 0.4, rotationRandomness: 1 },
+    accessibility: { reducedMotionMode: 'off' },
+  },
+  {
+    id: 'eff-clover', name: 'Clover', slug: 'clover', builtIn: true, enabled: true, frontendSelectable: false,
+    version: 1, renderer: 'canvas-particles', description: 'Gentle falling clover, green with occasional gold.',
+    assets: [{ assetId: 'clover', weight: 100 }],
+    motion: { directionDegrees: 170, speedMin: 14, speedMax: 32, driftMin: -6, driftMax: 10, sway: 0.5, rotationMin: -15, rotationMax: 15, rotationSpeedMin: -8, rotationSpeedMax: 8, lifetimeMin: 7, lifetimeMax: 14 },
+    emission: { density: 0.5, spawnRate: 1, maxParticlesDesktop: 16, maxParticlesMobile: 7, spawnArea: 'top', burstOnLoad: false, burstCount: 0 },
+    appearance: {
+      sizeMin: 10, sizeMax: 20, opacityMin: 0.5, opacityMax: 0.9,
+      colorMode: 'palette', colors: ['#20A05A', '#16864A', '#DFC248'],
+      renderMode: 'fill', fillPercentage: 100, strokePercentage: 0, mixedPercentage: 0,
+      strokeWidthMin: 1, strokeWidthMax: 1.5, glowEnabled: false, glowColorMode: 'inherit', glowColors: [], glowBlurMin: 2, glowBlurMax: 4, glowOpacity: 0.3, glowPercentage: 0,
+    },
+    randomness: { amount: 0.5, assetRandomness: 0, colorRandomness: 0.6, sizeRandomness: 0.6, speedRandomness: 0.6, opacityRandomness: 0.5, rotationRandomness: 0.7 },
+    accessibility: { reducedMotionMode: 'static-glow' },
+  },
+  {
+    id: 'eff-eucalyptus', name: 'Eucalyptus', slug: 'eucalyptus', builtIn: true, enabled: true, frontendSelectable: false,
+    version: 1, renderer: 'canvas-particles', description: 'Slow diagonal sage-green leaves.',
+    assets: [{ assetId: 'eucalyptus', weight: 100 }],
+    motion: { directionDegrees: 155, speedMin: 12, speedMax: 30, driftMin: -8, driftMax: 12, sway: 0.6, rotationMin: 0, rotationMax: 360, rotationSpeedMin: -12, rotationSpeedMax: 12, lifetimeMin: 8, lifetimeMax: 16 },
+    emission: { density: 0.6, spawnRate: 1, maxParticlesDesktop: 18, maxParticlesMobile: 8, spawnArea: 'top', burstOnLoad: false, burstCount: 0 },
+    appearance: {
+      sizeMin: 12, sizeMax: 24, opacityMin: 0.5, opacityMax: 0.9,
+      colorMode: 'palette', colors: ['#7BA05B', '#5C8A4B', '#9DBE6E'],
+      renderMode: 'fill', fillPercentage: 100, strokePercentage: 0, mixedPercentage: 0,
+      strokeWidthMin: 1, strokeWidthMax: 1.5, glowEnabled: false, glowColorMode: 'inherit', glowColors: [], glowBlurMin: 2, glowBlurMax: 4, glowOpacity: 0.3, glowPercentage: 0,
+    },
+    randomness: { amount: 0.5, assetRandomness: 0, colorRandomness: 0.6, sizeRandomness: 0.7, speedRandomness: 0.6, opacityRandomness: 0.5, rotationRandomness: 0.8 },
+    accessibility: { reducedMotionMode: 'static-glow' },
+  },
+  {
+    id: 'eff-bats', name: 'Bats', slug: 'bats', builtIn: true, enabled: true, frontendSelectable: false,
+    version: 1, renderer: 'canvas-particles', description: 'Restrained silhouettes, low count, no storm.',
+    assets: [{ assetId: 'bat', weight: 100 }],
+    motion: { directionDegrees: 100, speedMin: 30, speedMax: 60, driftMin: -14, driftMax: 14, sway: 0.9, rotationMin: 0, rotationMax: 0, rotationSpeedMin: 0, rotationSpeedMax: 0, lifetimeMin: 6, lifetimeMax: 12 },
+    emission: { density: 0.4, spawnRate: 1, maxParticlesDesktop: 8, maxParticlesMobile: 4, spawnArea: 'edges', burstOnLoad: false, burstCount: 0 },
+    appearance: {
+      sizeMin: 16, sizeMax: 30, opacityMin: 0.7, opacityMax: 0.95,
+      colorMode: 'single', colors: ['#140A1C'],
+      renderMode: 'fill', fillPercentage: 100, strokePercentage: 0, mixedPercentage: 0,
+      strokeWidthMin: 1, strokeWidthMax: 1.5, glowEnabled: false, glowColorMode: 'inherit', glowColors: [], glowBlurMin: 2, glowBlurMax: 4, glowOpacity: 0.3, glowPercentage: 0,
+    },
+    randomness: { amount: 0.4, assetRandomness: 0, colorRandomness: 0, sizeRandomness: 0.5, speedRandomness: 0.5, opacityRandomness: 0.3, rotationRandomness: 0 },
+    accessibility: { reducedMotionMode: 'off' },
+  },
+  {
+    id: 'eff-embers', name: 'Embers', slug: 'embers', builtIn: true, enabled: true, frontendSelectable: false,
+    version: 1, renderer: 'canvas-particles', description: 'Amber sparks drifting upward, variable glow.',
+    assets: [{ assetId: 'ember', weight: 70 }, { assetId: 'soft-snow-dot', weight: 30 }],
+    motion: { directionDegrees: 0, speedMin: 14, speedMax: 34, driftMin: -8, driftMax: 8, sway: 0.5, rotationMin: 0, rotationMax: 0, rotationSpeedMin: 0, rotationSpeedMax: 0, lifetimeMin: 4, lifetimeMax: 9 },
+    emission: { density: 0.45, spawnRate: 1, maxParticlesDesktop: 16, maxParticlesMobile: 7, spawnArea: 'top', burstOnLoad: false, burstCount: 0 },
+    appearance: {
+      sizeMin: 4, sizeMax: 10, opacityMin: 0.4, opacityMax: 0.9,
+      colorMode: 'palette', colors: ['#F0BE43', '#FF8A3D', '#FFD86B'],
+      renderMode: 'fill', fillPercentage: 100, strokePercentage: 0, mixedPercentage: 0,
+      strokeWidthMin: 1, strokeWidthMax: 1.5, glowEnabled: true, glowColorMode: 'inherit', glowColors: [], glowBlurMin: 2, glowBlurMax: 6, glowOpacity: 0.6, glowPercentage: 50,
+    },
+    randomness: { amount: 0.6, assetRandomness: 0.5, colorRandomness: 0.7, sizeRandomness: 0.7, speedRandomness: 0.7, opacityRandomness: 0.7, rotationRandomness: 0 },
+    accessibility: { reducedMotionMode: 'static-glow' },
+  },
+  {
+    id: 'eff-lunar-celebration', name: 'Lunar Celebration', slug: 'lunar-celebration', builtIn: true, enabled: true, frontendSelectable: false,
+    version: 1, renderer: 'canvas-particles', description: 'Embers with a short confetti flourish (combined preset — one render loop).',
+    assets: [{ assetId: 'ember', weight: 55 }, { assetId: 'confetti-circle', weight: 25 }, { assetId: 'confetti-strip', weight: 20 }],
+    motion: { directionDegrees: 0, speedMin: 16, speedMax: 38, driftMin: -10, driftMax: 10, sway: 0.5, rotationMin: 0, rotationMax: 360, rotationSpeedMin: -20, rotationSpeedMax: 20, lifetimeMin: 4, lifetimeMax: 9 },
+    emission: { density: 0.45, spawnRate: 1, maxParticlesDesktop: 18, maxParticlesMobile: 8, spawnArea: 'top', burstOnLoad: true, burstCount: 26 },
+    appearance: {
+      sizeMin: 5, sizeMax: 12, opacityMin: 0.45, opacityMax: 0.9,
+      colorMode: 'palette', colors: ['#C91E28', '#F0BE43', '#FFD86B'],
+      renderMode: 'fill', fillPercentage: 100, strokePercentage: 0, mixedPercentage: 0,
+      strokeWidthMin: 1, strokeWidthMax: 1.5, glowEnabled: true, glowColorMode: 'inherit', glowColors: [], glowBlurMin: 2, glowBlurMax: 6, glowOpacity: 0.55, glowPercentage: 30,
+    },
+    randomness: { amount: 0.6, assetRandomness: 0.6, colorRandomness: 0.7, sizeRandomness: 0.7, speedRandomness: 0.7, opacityRandomness: 0.6, rotationRandomness: 0.8 },
+    accessibility: { reducedMotionMode: 'static-glow' },
+  },
+  {
+    id: 'eff-halloween-atmosphere', name: 'Halloween Atmosphere', slug: 'halloween-atmosphere', builtIn: true, enabled: true, frontendSelectable: false,
+    version: 1, renderer: 'canvas-particles', description: 'Bats with low-density embers (combined preset — one render loop).',
+    assets: [{ assetId: 'bat', weight: 50 }, { assetId: 'ember', weight: 50 }],
+    motion: { directionDegrees: 95, speedMin: 20, speedMax: 50, driftMin: -12, driftMax: 12, sway: 0.7, rotationMin: 0, rotationMax: 0, rotationSpeedMin: 0, rotationSpeedMax: 0, lifetimeMin: 5, lifetimeMax: 10 },
+    emission: { density: 0.35, spawnRate: 1, maxParticlesDesktop: 12, maxParticlesMobile: 5, spawnArea: 'edges', burstOnLoad: false, burstCount: 0 },
+    appearance: {
+      sizeMin: 8, sizeMax: 24, opacityMin: 0.5, opacityMax: 0.9,
+      colorMode: 'palette', colors: ['#140A1C', '#FF731A'],
+      renderMode: 'fill', fillPercentage: 100, strokePercentage: 0, mixedPercentage: 0,
+      strokeWidthMin: 1, strokeWidthMax: 1.5, glowEnabled: true, glowColorMode: 'single', glowColors: ['#FF731A'], glowBlurMin: 2, glowBlurMax: 5, glowOpacity: 0.5, glowPercentage: 15,
+    },
+    randomness: { amount: 0.5, assetRandomness: 0.5, colorRandomness: 0.4, sizeRandomness: 0.7, speedRandomness: 0.6, opacityRandomness: 0.5, rotationRandomness: 0 },
+    accessibility: { reducedMotionMode: 'off' },
+  },
+];
+const EFFECTS_SCHEMA_VERSION = 1;
+DEFAULTS.effects = { version: EFFECTS_SCHEMA_VERSION, presets: EFFECT_PRESETS };
+
+// Map each built-in seasonal event to its default built-in effect by STABLE ID
+// (never by display name, so renaming an effect never breaks the assignment).
+const SEASONAL_EFFECT_IDS = {
+  christmas: 'eff-snow', newyear: 'eff-confetti', australiaday: 'eff-eucalyptus',
+  lunarnewyear: 'eff-lunar-celebration', valentines: 'eff-hearts', stpatricks: 'eff-clover',
+  easter: 'eff-petals', anzac: 'eff-petals', mothersday: 'eff-petals', floriade: 'eff-petals',
+  fathersday: 'eff-embers', halloween: 'eff-halloween-atmosphere',
+};
+
 // Schema version for the seasonal records. Bumped when the palette/effects model
 // changes so migrations can run idempotently.
 const SEASONAL_SCHEMA_VERSION = 2;
@@ -422,6 +611,7 @@ const SEASONAL_SCHEMA_VERSION = 2;
 for (const t of DEFAULTS.seasonalThemes) {
   if (SEASONAL_PALETTES[t.id]) t.palette = SEASONAL_PALETTES[t.id];
   t.effectsConfig = SEASONAL_EFFECTS[t.id] || { effectsEnabled: false, effectPreset: t.id, intensity: 'standard' };
+  t.effectsConfig.effectId = t.effectsConfig.effectId || SEASONAL_EFFECT_IDS[t.id] || null;
   t.schemaVersion = SEASONAL_SCHEMA_VERSION;
 }
 
@@ -449,7 +639,7 @@ function getSettings() {
   // Precedence: DEFAULTS < SETTINGS_JSON env < admin edits stored in the DB.
   const merged = deepMerge(DEFAULTS, env);
   const full = deepMerge(merged, db.getOverrides());
-  return reconcileClosures(reconcileSeasonal(full));
+  return reconcileClosures(reconcileEffects(reconcileSeasonal(full)));
 }
 
 // Built-in festive themes must ALWAYS be present, even if an old saved settings
@@ -470,6 +660,26 @@ function reconcileSeasonal(settings) {
     if (t && t.id && !BUILTIN_SEASONAL_IDS.has(t.id)) out.push(t);
   }
   return { ...settings, seasonalThemes: out };
+}
+
+// Built-in effect presets must always be present too (same pattern as
+// seasonal themes): rebuilt from EFFECT_PRESETS by id, patched by any saved
+// admin edit with the same id (so enabled/frontendSelectable/tuning changes
+// persist and a built-in can even be fully re-authored), and any saved effect
+// whose id isn't a built-in is a custom admin-created effect and is appended.
+const BUILTIN_EFFECT_IDS = new Set(EFFECT_PRESETS.map((e) => e.id));
+function reconcileEffects(settings) {
+  const eff = settings.effects && typeof settings.effects === 'object' ? settings.effects : { version: EFFECTS_SCHEMA_VERSION, presets: [] };
+  const saved = Array.isArray(eff.presets) ? eff.presets : [];
+  const savedById = new Map(saved.map((e) => [e.id, e]));
+  const out = EFFECT_PRESETS.map((def) => {
+    const ov = savedById.get(def.id);
+    return ov ? deepMerge(def, ov) : def;
+  });
+  for (const e of saved) {
+    if (e && e.id && !BUILTIN_EFFECT_IDS.has(e.id)) out.push(e);
+  }
+  return { ...settings, effects: { version: EFFECTS_SCHEMA_VERSION, presets: out } };
 }
 
 // Today's MM-DD in the cafe's timezone.
@@ -512,7 +722,7 @@ function flatten(s) {
     // Remastered token recipe + event-aware effect config (schema v2). Falls
     // back to the built-in defaults by id if a saved override predates v2.
     palette: s.palette || SEASONAL_PALETTES[s.id] || null,
-    effectsConfig: s.effectsConfig || SEASONAL_EFFECTS[s.id] || { effectsEnabled: false, effectPreset: s.id, intensity: 'standard' },
+    effectsConfig: s.effectsConfig || { ...(SEASONAL_EFFECTS[s.id] || { effectsEnabled: false, effectPreset: s.id, intensity: 'standard' }), effectId: SEASONAL_EFFECT_IDS[s.id] || null },
     banner: s.banner || null,
   };
 }

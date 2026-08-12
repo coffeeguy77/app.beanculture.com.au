@@ -53,10 +53,21 @@ img { max-width: 100%; }
 }
 .topbar .brand { font-family: Georgia, serif; font-weight: 700; font-size: 20px; color: var(--brand); }
 .iconbtn {
-  width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--line);
+  position: relative; width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--line);
   background: var(--surface); color: var(--brand); font-size: 18px; display: grid; place-items: center;
-  cursor: pointer;
+  cursor: pointer; padding: 0; overflow: hidden;
+  /* Mobile browsers can otherwise leave a rectangular native-button artefact
+     (iOS Safari's default -webkit-appearance chrome, Android Chrome's default
+     focus/active overlay) showing through the corners of a circular custom
+     button. Resetting appearance + clipping to the circle removes it at the
+     source rather than papering over it with another background. */
+  -webkit-appearance: none; -moz-appearance: none; appearance: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform .1s ease, border-color .15s ease;
 }
+.iconbtn:active { transform: scale(0.97); }
+.iconbtn:focus { outline: none; }
+.iconbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .icon-row { display: flex; gap: 8px; flex: none; }
 
 /* Announcement */
@@ -2458,3 +2469,13 @@ body:has(.store-shell) { background: var(--bc-canvas-deep, #160f12); }
     border: 1.5px solid var(--checkout-primary);
   }
 }
+
+/* ── Effect overlay selector (ThemePicker) ── */
+.fx-radio-group { display: flex; flex-direction: column; gap: 2px; }
+.fx-radio {
+  display: flex; align-items: center; gap: 10px; padding: 9px 4px; cursor: pointer;
+  font-size: 14.5px; border-radius: 10px;
+}
+.fx-radio:hover { background: var(--brand-soft); }
+.fx-radio input[type="radio"] { width: 18px; height: 18px; accent-color: var(--brand); flex: none; }
+.fx-radio span[aria-hidden] { font-size: 16px; width: 20px; text-align: center; flex: none; }

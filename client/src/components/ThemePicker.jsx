@@ -18,6 +18,13 @@ const EFFECT_ICON = {
   mothersday: '💐', floriade: '🌷', fathersday: '☕', halloween: '🦇',
 };
 
+// Small glyph per Effects Engine slug, used in the customer overlay selector.
+const OVERLAY_ICON = {
+  snow: '❄', hearts: '💗', petals: '🌸', sparkles: '✨', confetti: '🎉',
+  clover: '☘', eucalyptus: '🍃', bats: '🦇', embers: '🔥',
+  'lunar-celebration': '🏮', 'halloween-atmosphere': '🦇',
+};
+
 // One preview card. `core` carries the handful of colours we preview from
 // (gradient stops + surface/primary/accent); works for both presets and the
 // seasonal adapter shape below. `effectIcon`/`eventActive` are seasonal-only.
@@ -46,7 +53,7 @@ function ThemeCard({ name, core, selected, onClick, effectIcon, eventActive }) {
   );
 }
 
-export default function ThemePicker({ presets, seasonal, currentId, activeSeasonalId, onApply, onApplySeasonal, onReset, onClose }) {
+export default function ThemePicker({ presets, seasonal, currentId, activeSeasonalId, effects, effectPref, onApplyEffect, onApply, onApplySeasonal, onReset, onClose }) {
   const list = presets || [];
   const presetCore = (p) => ({
     start: p.canvasStart, end: p.canvasEnd, surface: p.surface, primary: p.primary, accent: p.accent,
@@ -116,6 +123,44 @@ export default function ThemePicker({ presets, seasonal, currentId, activeSeason
           <p className="muted" style={{ margin: 0, fontSize: 12.5 }}>
             Event banners and animated effects appear only during the configured event dates. The colour scheme can be used at any time.
           </p>
+
+          {effects && effects.length > 0 && (
+            <div>
+              <div className="group-title">Effect overlay</div>
+              <p className="muted" style={{ margin: '0 0 8px', fontSize: 12.5 }}>
+                Add a particle overlay to any theme — it never changes the colour scheme or loads an event banner on its own.
+              </p>
+              <div className="fx-radio-group" role="radiogroup" aria-label="Effect overlay">
+                <label className="fx-radio">
+                  <input
+                    type="radio" name="fx-overlay"
+                    checked={!effectPref || effectPref.mode === 'theme-default'}
+                    onChange={() => onApplyEffect({ mode: 'theme-default' })}
+                  />
+                  <span>Theme default</span>
+                </label>
+                <label className="fx-radio">
+                  <input
+                    type="radio" name="fx-overlay"
+                    checked={effectPref?.mode === 'none'}
+                    onChange={() => onApplyEffect({ mode: 'none' })}
+                  />
+                  <span>None</span>
+                </label>
+                {effects.map((e) => (
+                  <label key={e.id} className="fx-radio">
+                    <input
+                      type="radio" name="fx-overlay"
+                      checked={effectPref?.mode === 'custom' && effectPref?.effectId === e.id}
+                      onChange={() => onApplyEffect({ mode: 'custom', effectId: e.id })}
+                    />
+                    <span aria-hidden="true">{OVERLAY_ICON[e.slug] || '✦'}</span>
+                    <span>{e.name}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
 
           <button className="btn ghost full" onClick={() => { onReset(); onClose(); }}>Use store theme</button>
           <button className="btn full" onClick={onClose}>Done</button>

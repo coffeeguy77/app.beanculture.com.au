@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { api, formatMoney, imgUrl } from './api.js';
 import { applyTheme } from './theme.js';
 import { STOREFRONT_THEMES, resolvePreset, applyStoreTheme, presetSwatch, buildTokens, seasonalAsPreset } from './themes.js';
-import { getUser, setUser as saveUser, getSavedTheme, setSavedTheme, getSeasonOptOut, setSeasonOptOut, getStoredOrder, setStoredOrder, getFavorites, saveFavorites, getStoredThemeBlob, saveStoredTheme } from './store.js';
+import { getUser, setUser as saveUser, getSavedTheme, setSavedTheme, getSeasonOptOut, setSeasonOptOut, getStoredOrder, setStoredOrder, getFavorites, saveFavorites, getStoredThemeBlob, saveStoredTheme, getEffectPreference, setEffectPreference } from './store.js';
 import HeroSlider from './components/HeroSlider.jsx';
 import OrderTypeBar from './components/OrderTypeBar.jsx';
 import MenuDock from './components/MenuDock.jsx';
@@ -16,7 +16,7 @@ import Account from './components/Account.jsx';
 import ThemePicker from './components/ThemePicker.jsx';
 import Admin from './components/Admin.jsx';
 import Logo from './components/Logo.jsx';
-import SeasonalEffects from './components/SeasonalEffects.jsx';
+import EffectOverlay from './components/EffectOverlay.jsx';
 import SeasonalPerimeter from './components/SeasonalPerimeter.jsx';
 import { AccountIcon, ThemeIcon, StoreIcon, SlotIcon, CartIcon, HeartIcon } from './components/icons.jsx';
 import Favorites from './components/Favorites.jsx';
@@ -202,6 +202,10 @@ export default function App() {
   const [showTheme, setShowTheme] = useState(false);
   const [completed, setCompleted] = useState(null);
   const [activeTheme, setActiveTheme] = useState(null);
+  // Effects Engine: the customer's overlay choice, independent from the theme
+  // palette above. { mode: 'theme-default' | 'none' | 'custom', effectId? }
+  const [effectPref, setEffectPrefState] = useState(() => getEffectPreference());
+  const setEffectPref = (pref) => { setEffectPrefState(pref); setEffectPreference(pref); };
 
   const initialTable = readTable();
   // A previously-saved order (survives a browser refresh). A fresh QR scan
@@ -815,22 +819,39 @@ export default function App() {
   // preset so saved data never breaks.
   const prefersReducedMotion = typeof window !== 'undefined' && window.matchMedia
     && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const legacyEffectPreset = (s) => {
-    const e = s.effects || {};
-    if (e.snow) return 'christmas'; if (e.hearts) return 'valentines';
-    if (e.confetti) return s.id === 'lunarnewyear' ? 'lunarnewyear' : 'newyear';
-    if (e.petals) return s.id; // botanical → the event's own preset
-    return s.id;
-  };
-  const eventEffect = (() => {
+  // Effects Engine resolution. Themes/seasonal events reference a reusable
+  // effect by stable id (never by name) — `config.effects` is the enabled,
+  // customer-safe list published by /api/config (see server/lib/settings.js).
+  const EFFECT_INTENSITY = { subtle: 0.72, standard: 1, celebratory: 1.15 };
+  const effectsList = config.effects || [];
+  const findEffect = (id) => effectsList.find((e) => e.id === id) || null;
+  // The active event's OWN assigned effect — only meaningful while its date
+  // window is active (banner + effect always gated on the date, never on a
+  // palette a customer hand-picked out of season).
+  const seasonalEffectPreset = (() => {
     const s = eventSeasonal;
     if (!s) return null;
     const ec = s.effectsConfig;
-    if (ec && ec.effectsEnabled === false) return null;
-    if (ec && ec.effectsEnabled) return { preset: ec.effectPreset || s.id, intensity: ec.intensity || 'standard' };
-    // Pre-v2 record: derive from old flags (only if any were set).
-    const legacy = s.effects && Object.values(s.effects).some(Boolean);
-    return legacy ? { preset: legacyEffectPreset(s), intensity: 'standard' } : null;
+    if (!ec || ec.effectsEnabled === false || !ec.effectId) return null;
+    const e = findEffect(ec.effectId);
+    if (!e) return null;
+    const mult = EFFECT_INTENSITY[ec.intensity] || 1;
+    return { ...e, emission: { ...e.emission, density: (e.emission?.density ?? 1) * mult } };
+  })();
+  // The customer's independent overlay choice always wins over the seasonal
+  // default: an explicit "none" suppresses even an active seasonal effect; an
+  // explicit custom pick runs any time (and never triggers a seasonal banner
+  // on its own). "theme-default" falls back to the seasonal effect above,
+  // which is itself null outside the event's date window. A disabled/deleted
+  // custom choice falls back to theme-default rather than crashing.
+  const resolvedEffectPreset = (() => {
+    if (effectPref?.mode === 'custom') {
+      const e = findEffect(effectPref.effectId);
+      if (e && e.frontendSelectable !== false) return e;
+    } else if (effectPref?.mode === 'none') {
+      return null;
+    }
+    return seasonalEffectPreset;
   })();
 
   // "Browse menu" dock data — real categories, live item counts, icon by name.
@@ -916,10 +937,9 @@ export default function App() {
 
   return (
     <div className={`app store-shell${(view === 'store' || view === 'reserve' || (!wide && view === 'checkout')) ? ' app-flush' : ''}`}>
-      {eventEffect && (
-        <SeasonalEffects
-          preset={eventEffect.preset}
-          intensity={eventEffect.intensity}
+      {resolvedEffectPreset && (
+        <EffectOverlay
+          preset={resolvedEffectPreset}
           active
           reducedMotion={prefersReducedMotion}
         />
@@ -1118,6 +1138,9 @@ export default function App() {
           seasonal={config.seasonalThemes || []}
           activeSeasonalId={config?.activeSeasonalTheme?.id || null}
           currentId={getStoredThemeBlob()?.id || 'espresso-plum'}
+          effects={effectsList.filter((e) => e.frontendSelectable)}
+          effectPref={effectPref}
+          onApplyEffect={setEffectPref}
           onApply={updateTheme}
           onApplySeasonal={(s) => {
             // A hand-picked seasonal palette re-skins + keeps decor, and persists

@@ -8,6 +8,7 @@ const OPTOUT_KEY = 'bc_season_optout';
 // ({ id, v, ts, explicit, tokens }) so the pre-paint inline script in index.html
 // can read the saved tokens and re-skin :root before React boots (no flash).
 const STORE_THEME_KEY = 'bean-culture-theme';
+const EFFECT_KEY = 'bean-culture-effect';
 const CART_KEY = 'bc_cart';
 const CART_TTL = 12 * 60 * 60 * 1000; // keep a saved order for 12 hours
 
@@ -79,6 +80,25 @@ export function getFavorites(uid) {
 }
 export function saveFavorites(uid, arr) {
   try { localStorage.setItem(FAV_KEY(uid), JSON.stringify(arr || [])); } catch {}
+}
+
+// Independent customer effect-overlay preference (Effects Engine). Kept in a
+// key separate from the theme blob above since a palette and an overlay effect
+// are chosen independently: { mode: 'theme-default' | 'none' | 'custom', effectId? }
+export function getEffectPreference() {
+  try {
+    const v = JSON.parse(localStorage.getItem(EFFECT_KEY) || 'null');
+    if (v && typeof v === 'object' && v.mode) return v;
+    return { mode: 'theme-default' };
+  } catch {
+    return { mode: 'theme-default' };
+  }
+}
+export function setEffectPreference(pref) {
+  try {
+    if (pref && pref.mode) localStorage.setItem(EFFECT_KEY, JSON.stringify(pref));
+    else localStorage.removeItem(EFFECT_KEY);
+  } catch {}
 }
 
 // Whether the customer has opted out of the auto seasonal theme.

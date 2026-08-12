@@ -69,6 +69,14 @@ app.get('/api/config', async (_req, res) => {
     theme: settings.theme,
     themePresets: settings.themePresets,
     seasonalThemes: seasonalForPicker(settings),
+    effects: (settings.effects && settings.effects.presets || [])
+      .filter((e) => e.enabled !== false)
+      .map((e) => ({
+        id: e.id, name: e.name, slug: e.slug, description: e.description,
+        frontendSelectable: !!e.frontendSelectable, renderer: e.renderer,
+        assets: e.assets, motion: e.motion, emission: e.emission,
+        appearance: e.appearance, randomness: e.randomness, accessibility: e.accessibility,
+      })),
     activeSeasonalTheme: activeSeasonal(settings),
     hero: settings.hero,
     heroRatio: settings.heroRatio,

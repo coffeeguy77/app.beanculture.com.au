@@ -4,6 +4,7 @@ import { SlotIcon } from './icons.jsx';
 import IconPicker from './IconPicker.jsx';
 import HoursEditor from './HoursEditor.jsx';
 import Insights from './Insights.jsx';
+import EffectBuilder from './EffectBuilder.jsx';
 import { formatMoney, api } from '../api.js';
 
 const LINK_TYPES = ['scroll', 'category', 'item', 'account', 'url', 'none'];
@@ -1959,11 +1960,18 @@ export default function Admin({ onExit }) {
                             // derive from old snow/hearts/petals/confetti flags when
                             // no effectsConfig exists yet, so saved data never breaks.
                             const legacyOn = !!(t.effects && Object.values(t.effects).some(Boolean));
-                            const ec = t.effectsConfig || { effectsEnabled: legacyOn, effectPreset: t.id, intensity: 'standard' };
+                            const ec = t.effectsConfig || { effectsEnabled: legacyOn, effectPreset: t.id, intensity: 'standard', effectId: null };
                             const setEc = (patch) => updSeasonal(i, { effectsConfig: { ...ec, ...patch } });
+                            const effectsList = (s.effects && s.effects.presets) || [];
                             return (
                               <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 8, alignItems: 'center', fontSize: 'var(--fs-sm)' }} className="muted">
                                 <label style={{ ...row }}><input type="checkbox" checked={ec.effectsEnabled !== false} onChange={(e) => setEc({ effectsEnabled: e.target.checked })} /> Animated effect</label>
+                                <label style={{ ...row }}>Effect
+                                  <select value={ec.effectId || ''} onChange={(e) => setEc({ effectId: e.target.value || null })} style={{ padding: '4px 8px', borderRadius: 8, border: '1px solid var(--line)', marginLeft: 6 }}>
+                                    <option value="">— none —</option>
+                                    {effectsList.map((eff) => <option key={eff.id} value={eff.id}>{eff.name}</option>)}
+                                  </select>
+                                </label>
                                 <label style={{ ...row }}>Intensity
                                   <select value={ec.intensity || 'standard'} onChange={(e) => setEc({ intensity: e.target.value })} style={{ padding: '4px 8px', borderRadius: 8, border: '1px solid var(--line)', marginLeft: 6 }}>
                                     <option value="subtle">Subtle</option>
@@ -1971,7 +1979,7 @@ export default function Admin({ onExit }) {
                                     <option value="celebratory">Celebratory</option>
                                   </select>
                                 </label>
-                                <span style={{ fontSize: 'var(--fs-xs)' }}>Effect: {ec.effectPreset || t.id} · shows only during the event dates</span>
+                                <span style={{ fontSize: 'var(--fs-xs)' }}>Shows only during the event dates</span>
                               </div>
                             );
                           })()}
@@ -2020,6 +2028,12 @@ export default function Admin({ onExit }) {
                   </div>
                   <button className="btn ghost full" style={{ marginTop: 10 }} onClick={addSeasonal}>+ Add custom event theme</button>
                 </div>
+
+                <EffectBuilder
+                  effects={(s.effects && s.effects.presets) || []}
+                  seasonalThemes={seasonalThemes}
+                  onChange={(presets) => set({ effects: { version: (s.effects && s.effects.version) || 1, presets } })}
+                />
               </>
             )}
           </div>
