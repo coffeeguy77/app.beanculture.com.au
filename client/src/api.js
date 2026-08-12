@@ -32,6 +32,10 @@ export const api = {
   reserve: (payload) => req('/api/reserve', { method: 'POST', body: JSON.stringify(payload) }),
   adminReservations: (pass) => req(`/api/admin/reservations?pass=${encodeURIComponent(pass || '')}`),
   setReservationStatus: (pass, id, status) => req(`/api/admin/reservations/status?pass=${encodeURIComponent(pass || '')}`, { method: 'POST', body: JSON.stringify({ id, status }) }),
+  // Reservation ticket-printing setup (inspect / fix reporting category / one-click setup)
+  reservationItemInspect: (pass, id) => req(`/api/admin/reservation-item/inspect?pass=${encodeURIComponent(pass || '')}&id=${encodeURIComponent(id || '')}`),
+  reservationItemFixCategory: (pass, itemId, categoryId) => req(`/api/admin/reservation-item/fix-category?pass=${encodeURIComponent(pass || '')}`, { method: 'POST', body: JSON.stringify({ itemId, categoryId }) }),
+  reservationItemSetup: (pass, body) => req(`/api/admin/reservation-item/setup?pass=${encodeURIComponent(pass || '')}`, { method: 'POST', body: JSON.stringify(body || {}) }),
   // Coupons (validate a code at checkout)
   getCoupon: (code) => req(`/api/coupon?code=${encodeURIComponent(code || '')}`),
   // Admin: customers enrolled via Square loyalty
