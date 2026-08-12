@@ -200,7 +200,6 @@ const RESERVATION_VARIATION_ID_ENV = (process.env.SQUARE_RESERVATION_VARIATION_I
 
 async function createReservationOrder({ name, phone, email, partySize, at, notes, variationId }) {
   const when = at ? new Date(at) : null;
-  const scheduled = when && when.getTime() > Date.now();
   // Spelled out on the printed ticket in full, not just relying on Square's
   // own pickup_at rendering (which varies by printer template) — this is the
   // one place staff actually read who's coming in, when, and how many.
@@ -216,12 +215,18 @@ async function createReservationOrder({ name, phone, email, partySize, at, notes
     email && `Email: ${email}`,
     notes && `Notes: ${notes}`,
   ].filter(Boolean).join(' · ').slice(0, 500);
+  // Deliberately ASAP, never SCHEDULED, even though the reservation itself is
+  // for a future time: Square's default prep-time-based ticket printing holds
+  // a SCHEDULED order's ticket back until shortly before its pickup_at, which
+  // for a table booking days out means the ticket would never print anywhere
+  // near "now" when the owner actually wants to know about it. The real
+  // booking time is already spelled out in the note text above (and on the
+  // ticket) — this only controls when Square decides to print/notify.
   const pickup_details = {
     recipient: { display_name: name || 'Reservation' },
     note: detail,
-    schedule_type: scheduled ? 'SCHEDULED' : 'ASAP',
+    schedule_type: 'ASAP',
   };
-  if (scheduled) pickup_details.pickup_at = when.toISOString();
   const resolvedVariationId = (variationId || RESERVATION_VARIATION_ID_ENV || '').trim();
   const lineItem = resolvedVariationId
     ? { catalog_object_id: resolvedVariationId, quantity: '1', note: detail }
