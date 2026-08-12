@@ -928,6 +928,14 @@ export default function App() {
     const y = el.getBoundingClientRect().top + window.scrollY - shellH - 14;
     window.scrollTo({ top: Math.max(0, y), behavior: reduce ? 'auto' : 'smooth' });
   };
+  // Jump to a named category heading (falls back to the old default behaviour
+  // when the configured name is blank or doesn't match a live category — e.g.
+  // the owner hasn't set it yet, or renamed/removed that section in Square).
+  const jumpToCategory = (name, fallback) => {
+    const want = String(name || '').trim().toLowerCase();
+    const match = want && menu?.categories?.find((c) => (c.category || '').trim().toLowerCase() === want);
+    if (match) { setView('home'); pickCategory(match.category); } else { fallback(); }
+  };
   const notices = [];
   if (!storeOpen) {
     if (preorder) {
@@ -939,7 +947,7 @@ export default function App() {
         elapsedMin: nHours.closedSinceMin,
         reopenLabel: no?.label,
         text: `We’re closed${nLabel ? ` — we reopen ${nLabel}` : ''}. Pre-order now — we’ll start it when we open.`,
-        cta: { label: 'Pre-order now', onClick: () => { setView('home'); setDineIn(false); setPreWhen('later'); scrollToOrderType(); } },
+        cta: { label: 'Pre-order now', onClick: () => { setDineIn(false); setPreWhen('later'); jumpToCategory(config.preorderCategory, () => { setView('home'); scrollToOrderType(); }); } },
       });
     } else {
       notices.push({ id: 'closed', type: 'urgent', icon: '●', text: `We’re closed right now${nLabel ? ` — we reopen ${nLabel}` : ''}.` });
@@ -955,7 +963,7 @@ export default function App() {
         closesInMin: k,
         closesLabel,
         categories: nHours.kitchen?.categories || [],
-        cta: { label: 'Order now', onClick: () => { setView('home'); scrollMenu(); } },
+        cta: { label: 'Order now', onClick: () => jumpToCategory(config.kitchenClosingOrderCategory, () => { setView('home'); scrollMenu(); }) },
       });
     }
   }

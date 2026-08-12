@@ -1050,6 +1050,15 @@ export default function Admin({ onExit }) {
                     {s.useAppHours ? 'These hours decide when the app is open and when customers can order “now”.' : 'Currently using your Square location hours. Tick above to set hours here instead.'}
                   </p>
                   {s.useAppHours && <HoursEditor value={s.storeHours} onChange={(v) => set({ storeHours: v })} />}
+                  <label style={{ display: 'grid', gap: 4, marginTop: 12, maxWidth: 280 }}>
+                    <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>“Pre-order now” button opens on</span>
+                    <select value={s.preorderCategory || ''} onChange={(e) => set({ preorderCategory: e.target.value })}
+                      style={{ padding: 8, borderRadius: 10, border: '1px solid var(--line)' }}>
+                      <option value="">— top of the order form —</option>
+                      {cats.map((c) => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                    <span className="muted" style={{ fontSize: 'var(--fs-xs)' }}>Shown to customers when the store is closed, jumps straight to this heading when tapped.</span>
+                  </label>
                 </div>
 
                 <div className="card" style={card}>
@@ -1062,6 +1071,15 @@ export default function Admin({ onExit }) {
                   <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 4 }}>
                     Made-to-order categories are only available while the kitchen is open. Everything else (pre-made / fridge items) stays available whenever the store is open. Leave off to keep the kitchen open whenever the store is.
                   </p>
+                  <label style={{ display: 'grid', gap: 4, marginTop: 10, maxWidth: 280 }}>
+                    <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>“Order now” button (kitchen closing soon) opens on</span>
+                    <select value={s.kitchenClosingOrderCategory || ''} onChange={(e) => set({ kitchenClosingOrderCategory: e.target.value })}
+                      style={{ padding: 8, borderRadius: 10, border: '1px solid var(--line)' }}>
+                      <option value="">— top of the menu —</option>
+                      {cats.map((c) => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                    <span className="muted" style={{ fontSize: 'var(--fs-xs)' }}>Shown when the kitchen is closing within the hour, jumps straight to this heading when tapped.</span>
+                  </label>
                   {s.kitchenHoursOn && (
                     <>
                       <HoursEditor value={s.kitchenHours} onChange={(v) => set({ kitchenHours: v })} />
@@ -1400,7 +1418,13 @@ export default function Admin({ onExit }) {
                 {/* ───────── PRODUCT BUILDER ───────── */}
                 {true && (
                 <div className="card" style={card}>
-                  <div className="group-title">Product builder</div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+                    <div className="group-title" style={{ margin: 0 }}>Product builder</div>
+                    <button type="button" className={`chip ${deleteLock ? 'on' : ''}`} onClick={() => setDeleteLock((v) => !v)}
+                      style={{ fontSize: 'var(--fs-sm)' }} title={deleteLock ? 'Locked — tap to allow deleting tiles' : 'Unlocked — tap to lock again'}>
+                      {deleteLock ? '🔒 Delete locked' : '🔓 Delete unlocked'}
+                    </button>
+                  </div>
                   <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 0 }}>
                     Turn ONE variable Square item (e.g. “Breakfast”) into several named tiles — without creating new
                     Square products. Pick the item, lock a variation, then set each option to <strong>Hide</strong>,
@@ -1535,7 +1559,8 @@ export default function Admin({ onExit }) {
                           <button className="link" title="Select to combine (tick 2+ from the same product)" onClick={() => toggleCombineSel(p.id)} style={{ color: combineSel.has(p.id) ? 'var(--accent)' : 'var(--muted)', fontWeight: combineSel.has(p.id) ? 700 : 400 }}>⛓</button>
                           <button className="link" title="Duplicate preset" onClick={() => dupPreset(p.id)}>⧉</button>
                           <button className="link" onClick={() => setExpanded((x) => ({ ...x, [p.id]: !isOpen }))}>{isOpen ? '▲' : '▼'}</button>
-                          <button className="link" style={{ color: '#c0392b' }} title="Remove preset" onClick={() => rmPreset(p.id)}>✕</button>
+                          <button className="link" disabled={deleteLock} style={{ color: '#c0392b', opacity: deleteLock ? 0.3 : 1 }}
+                            title={deleteLock ? 'Unlock delete (top-right) to remove' : 'Remove preset'} onClick={() => rmPreset(p.id)}>✕</button>
                         </div>
                         {isOpen && (
                           <div style={{ marginTop: 8, borderTop: '1px solid var(--line)', paddingTop: 8, display: 'grid', gap: 8 }}>
@@ -1556,6 +1581,23 @@ export default function Admin({ onExit }) {
                                 );
                               })()}
                             </div>
+                            {cfg && p.sourceItemId && (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                {(() => {
+                                  const img = imgOverride[p.sourceItemId] || cfg.image;
+                                  return img
+                                    ? <img src={img} alt="" style={{ width: 44, height: 44, borderRadius: 8, objectFit: 'cover', flex: 'none' }} />
+                                    : <span style={{ width: 44, height: 44, borderRadius: 8, background: 'var(--brand-soft)', flex: 'none', display: 'grid', placeItems: 'center', fontSize: 'var(--fs-lg)' }}>🍽️</span>;
+                                })()}
+                                <label className="btn ghost" title="Upload a real photo to this Square item — updates it everywhere the product is used"
+                                  style={{ padding: '5px 10px', fontSize: 'var(--fs-sm)', cursor: imgBusy === p.sourceItemId ? 'default' : 'pointer' }}>
+                                  {imgBusy === p.sourceItemId ? 'Uploading…' : ((imgOverride[p.sourceItemId] || cfg.image) ? 'Replace photo' : 'Add photo')}
+                                  <input type="file" accept="image/*" style={{ display: 'none' }} disabled={imgBusy === p.sourceItemId}
+                                    onChange={(e) => { const f = e.target.files[0]; if (f) uploadSquareImage(f, p.sourceItemId); e.target.value = ''; }} />
+                                </label>
+                                <span className="muted" style={{ fontSize: 'var(--fs-xs)' }}>Sends the photo to Square — updates it everywhere this product is used, not just this tile.</span>
+                              </div>
+                            )}
                             {p.sourceItemId && !cfg && <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>Loading item options…</p>}
                             {cfg && (
                               <>

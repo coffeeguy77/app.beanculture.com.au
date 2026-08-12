@@ -156,9 +156,7 @@ export default function ItemModal({ item, currency, onClose, onAdd }) {
 
         <div className="sheet-main">
           <div className="sheet-left">
-            {item.image
-              ? <img className="sheet-img" src={imgUrl(item.image, 720)} alt="" decoding="async" />
-              : <div className="sheet-img sheet-img-ph" aria-hidden="true" />}
+            {item.image && <img className="sheet-img" src={imgUrl(item.image, 720)} alt="" decoding="async" />}
             <div className="sheet-left-body">
               {item.category && <div className="sheet-eyebrow">{item.category}</div>}
               <h2>{item.name}</h2>

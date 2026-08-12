@@ -85,6 +85,8 @@ app.get('/api/config', async (_req, res) => {
     layoutMode: settings.layoutMode,
     topMenuStyle: settings.topMenuStyle,
     footer: settings.footer,
+    kitchenClosingOrderCategory: settings.kitchenClosingOrderCategory || '',
+    preorderCategory: settings.preorderCategory || '',
     cloudinary: cloudinary.configured(),
     hours: hoursStatus,
     scheduling: {

@@ -43,6 +43,14 @@ const DEFAULTS = {
     SUN: [],
   },
   kitchenCategories: [],
+  // Which category the two "order now" CTAs jump to when tapped, by category
+  // display name (must match a live menu/section heading exactly). Empty =
+  // fall back to the old behaviour (top of the menu / the fulfilment row).
+  // kitchenClosingOrderCategory: the "Order now" prompt shown when the kitchen
+  // is closing soon (App.jsx notices). preorderCategory: the "Pre-order now"
+  // prompt shown when the store itself is currently closed.
+  kitchenClosingOrderCategory: 'Lunch',
+  preorderCategory: 'Breakfast',
   // Closure dates (annual leave, public holidays). Each entry is either a single
   // day { date:'YYYY-MM-DD' } or a range { from:'YYYY-MM-DD', to:'YYYY-MM-DD' }.
   // annual:true repeats every year on the same month/day(s).
