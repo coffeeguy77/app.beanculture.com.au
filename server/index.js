@@ -504,6 +504,46 @@ app.get('/api/admin/reservations', async (req, res) => {
     res.status(502).json({ error: e.message });
   }
 });
+// Diagnostic: pull the actual Square order for one reservation, straight from
+// Square (not our DB) — confirms whether the order really exists, which
+// location it's filed under, and its fulfillment/state, so a "nothing prints"
+// report can be narrowed to "no order was ever created" vs. "order exists but
+// something about routing/printing itself is the problem".
+// Diagnostic: every Square location on this account, so a "the order exists
+// but nothing showed up on the till" report can be checked against whether
+// the printer/POS device is actually signed into the SAME location this app
+// is configured to submit orders to (SQUARE_LOCATION_ID).
+app.get('/api/admin/square-locations', async (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const data = await sq.squareFetch('/v2/locations');
+    res.json({
+      configuredLocationId: sq.LOCATION_ID,
+      locations: (data.locations || []).map((l) => ({ id: l.id, name: l.name, status: l.status })),
+    });
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+app.get('/api/admin/reservations/square-order', async (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const id = req.query.orderId;
+    if (!id) return res.status(400).json({ error: 'orderId is required.' });
+    const order = await orders.getOrder(id);
+    res.json({
+      id: order?.id,
+      locationId: order?.location_id,
+      state: order?.state,
+      ticketName: order?.ticket_name,
+      createdAt: order?.created_at,
+      lineItems: (order?.line_items || []).map((li) => ({ name: li.name, catalogObjectId: li.catalog_object_id, note: li.note })),
+      fulfillments: (order?.fulfillments || []).map((f) => ({ type: f.type, state: f.state, pickupDetails: f.pickup_details })),
+    });
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
 app.post('/api/admin/reservations/status', async (req, res) => {
   if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
   try {
