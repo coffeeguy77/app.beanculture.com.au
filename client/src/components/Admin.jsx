@@ -94,7 +94,12 @@ function shellWidthClass(tab) {
 }
 
 export default function Admin({ onExit }) {
-  const [pass, setPass] = useState('');
+  // Restore the admin passcode from this device so a reload/return visit stays
+  // signed in (lightly base64-obscured, not security — the passcode still
+  // authorises every request server-side). Cleared automatically on a 401.
+  const [pass, setPass] = useState(() => {
+    try { return atob(localStorage.getItem('bc-admin-pass') || '') || ''; } catch { return ''; }
+  });
   const [needPass, setNeedPass] = useState(false);
   const [data, setData] = useState(null);
   const [s, setS] = useState(null); // editable settings
@@ -239,11 +244,17 @@ export default function Admin({ onExit }) {
     setError('');
     try {
       const res = await fetch(`/api/admin/overview?pass=${encodeURIComponent(p || '')}`);
-      if (res.status === 401) { setNeedPass(true); return; }
+      if (res.status === 401) {
+        try { localStorage.removeItem('bc-admin-pass'); } catch {}
+        setNeedPass(true);
+        return;
+      }
       const d = await res.json();
       setData(d);
       setS(JSON.parse(JSON.stringify(d.settings)));
       setNeedPass(false);
+      // Remember this working passcode so we don't prompt again next visit.
+      try { localStorage.setItem('bc-admin-pass', btoa(p || '')); } catch {}
       try {
         const cr = await fetch(`/api/admin/catalog?pass=${encodeURIComponent(p || '')}`);
         if (cr.ok) { const cd = await cr.json(); setAdminCat(cd.categories || []); }
@@ -258,7 +269,9 @@ export default function Admin({ onExit }) {
       } catch {}
     } catch (e) { setError(e.message); }
   }
-  useEffect(() => { load(''); }, []);
+  // On mount, try the remembered passcode first (empty string if none) so a
+  // returning admin lands straight in the panel instead of the login screen.
+  useEffect(() => { load(pass); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   // Fetch the full config (variations + modifiers) for any item used by a preset.
   useEffect(() => {
     const ids = [...new Set((s?.presets || []).map((p) => p.sourceItemId).filter(Boolean))];
