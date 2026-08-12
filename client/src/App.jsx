@@ -206,6 +206,14 @@ export default function App() {
   // palette above. { mode: 'theme-default' | 'none' | 'custom', effectId? }
   const [effectPref, setEffectPrefState] = useState(() => getEffectPreference());
   const setEffectPref = (pref) => { setEffectPrefState(pref); setEffectPreference(pref); };
+  // Ref-based memo cache for the resolved effect preset (NOT useMemo: this
+  // component has an early `return` for the loading state below, and hooks
+  // must never be called conditionally — a useMemo placed after that return
+  // would be skipped on the first render and added on a later one, which is
+  // exactly React error #310, "rendered more hooks than previous render".
+  // A ref declared here, before any early return, sidesteps that entirely —
+  // everything that reads/writes it afterwards is plain JS, not a hook.
+  const effectMemoRef = useRef({ seasonalDeps: null, seasonal: null, resolvedDeps: null, resolved: null });
 
   const initialTable = readTable();
   // A previously-saved order (survives a browser refresh). A fresh QR scan
@@ -835,30 +843,42 @@ export default function App() {
   // engine's boot before its idle-callback ever fires, so the canvas would
   // exist but never actually draw a single particle.
   const seasonalEc = eventSeasonal?.effectsConfig;
-  const seasonalEffectPreset = useMemo(() => {
-    if (!eventSeasonal || !seasonalEc || seasonalEc.effectsEnabled === false || !seasonalEc.effectId) return null;
-    const e = findEffect(seasonalEc.effectId);
-    if (!e) return null;
-    const mult = EFFECT_INTENSITY[seasonalEc.intensity] || 1;
-    return { ...e, emission: { ...e.emission, density: (e.emission?.density ?? 1) * mult } };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [eventSeasonal?.id, seasonalEc?.effectsEnabled, seasonalEc?.effectId, seasonalEc?.intensity, effectsList]);
+  const seasonalDeps = [eventSeasonal?.id, seasonalEc?.effectsEnabled, seasonalEc?.effectId, seasonalEc?.intensity, effectsList];
+  const seasonalDepsChanged = !effectMemoRef.current.seasonalDeps
+    || seasonalDeps.some((v, i) => v !== effectMemoRef.current.seasonalDeps[i]);
+  if (seasonalDepsChanged) {
+    effectMemoRef.current.seasonal = (() => {
+      if (!eventSeasonal || !seasonalEc || seasonalEc.effectsEnabled === false || !seasonalEc.effectId) return null;
+      const e = findEffect(seasonalEc.effectId);
+      if (!e) return null;
+      const mult = EFFECT_INTENSITY[seasonalEc.intensity] || 1;
+      return { ...e, emission: { ...e.emission, density: (e.emission?.density ?? 1) * mult } };
+    })();
+    effectMemoRef.current.seasonalDeps = seasonalDeps;
+  }
+  const seasonalEffectPreset = effectMemoRef.current.seasonal;
   // The customer's independent overlay choice always wins over the seasonal
   // default: an explicit "none" suppresses even an active seasonal effect; an
   // explicit custom pick runs any time (and never triggers a seasonal banner
   // on its own). "theme-default" falls back to the seasonal effect above,
   // which is itself null outside the event's date window. A disabled/deleted
   // custom choice falls back to theme-default rather than crashing.
-  const resolvedEffectPreset = useMemo(() => {
-    if (effectPref?.mode === 'custom') {
-      const e = findEffect(effectPref.effectId);
-      if (e && e.frontendSelectable !== false) return e;
-    } else if (effectPref?.mode === 'none') {
-      return null;
-    }
-    return seasonalEffectPreset;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [effectPref?.mode, effectPref?.effectId, seasonalEffectPreset, effectsList]);
+  const resolvedDeps = [effectPref?.mode, effectPref?.effectId, seasonalEffectPreset, effectsList];
+  const resolvedDepsChanged = !effectMemoRef.current.resolvedDeps
+    || resolvedDeps.some((v, i) => v !== effectMemoRef.current.resolvedDeps[i]);
+  if (resolvedDepsChanged) {
+    effectMemoRef.current.resolved = (() => {
+      if (effectPref?.mode === 'custom') {
+        const e = findEffect(effectPref.effectId);
+        if (e && e.frontendSelectable !== false) return e;
+      } else if (effectPref?.mode === 'none') {
+        return null;
+      }
+      return seasonalEffectPreset;
+    })();
+    effectMemoRef.current.resolvedDeps = resolvedDeps;
+  }
+  const resolvedEffectPreset = effectMemoRef.current.resolved;
 
   // "Browse menu" dock data — real categories, live item counts, icon by name.
   const dockCategories = menu.categories
