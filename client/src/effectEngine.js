@@ -154,12 +154,23 @@ function makeParticle(preset, W, H, seed) {
   };
 }
 
+// Density used to be scaled directly against maxParticlesDesktop/Mobile, which
+// made it a no-op above density=1: base = max*density was then immediately
+// clamped back down to max, so raising density from 1 to 3 (or 100, clamped
+// to 3) never produced a single extra particle — max was quietly acting as
+// BOTH the scaling reference and the ceiling. Fixed: density now scales a
+// fixed reference baseline (independent of the ceiling), so admins get real,
+// visible headroom between "1x" and the configured Desktop/Mobile max, which
+// remains the one true hard ceiling.
+const DENSITY_BASELINE_DESKTOP = 22;
+const DENSITY_BASELINE_MOBILE = 9;
 function envInfo(preset) {
   const mobile = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(max-width:767px)').matches;
   const conn = (typeof navigator !== 'undefined' && navigator.connection) || {};
   const lowPower = !!conn.saveData || (typeof navigator !== 'undefined' && navigator.deviceMemory && navigator.deviceMemory <= 3);
   const max = mobile ? preset.emission.maxParticlesMobile : preset.emission.maxParticlesDesktop;
-  const base = Math.round(max * clamp(preset.emission.density, 0, 3));
+  const baseline = mobile ? DENSITY_BASELINE_MOBILE : DENSITY_BASELINE_DESKTOP;
+  const base = Math.round(baseline * clamp(preset.emission.density, 0, 3));
   const n = clamp(base, mobile ? 4 : 6, max) * (lowPower ? 0.6 : 1);
   return { mobile, lowPower, n: Math.max(4, Math.round(n)) };
 }
