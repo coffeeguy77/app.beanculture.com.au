@@ -1021,6 +1021,25 @@ img { max-width: 100%; }
 
 .admin-itemgrid, .admin-bannergrid { display: block; }
 
+/* Nav groups: flat pill scroller on mobile (groups render as plain siblings,
+   labels hidden); a labelled vertical rail from 960px up (see below). */
+.admin-tab-group { display: contents; }
+.admin-tab-group-label { display: none; }
+.admin-theme-switch { display: none; }
+
+/* Page-width modifiers for .admin-shell — same 1440px default unless a tab
+   opts into something narrower/wider for its content. */
+.admin-shell.w-standard { max-width: 1200px; }
+.admin-shell.w-wide { max-width: 1440px; }
+.admin-shell.w-analytics { max-width: 1500px; }
+.admin-shell.w-builder { max-width: 1600px; }
+
+/* Per-page header: title + one-line description above a tab's content. */
+.admin-page-head { margin: 0 0 16px; }
+.admin-page-title { font-size: 24px; font-weight: 700; color: var(--admin-heading, var(--ink)); margin: 0 0 4px; font-family: Georgia, serif; }
+.admin-page-desc { font-size: var(--fs-sm); color: var(--admin-text-muted, var(--muted)); margin: 0; max-width: 62ch; }
+@media (min-width: 960px) { .admin-page-title { font-size: 28px; } }
+
 /* Tablet: two-up item + banner grids. */
 @media (min-width: 700px) {
   .admin-itemgrid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0 18px; }
@@ -1035,8 +1054,12 @@ img { max-width: 100%; }
     background: transparent; backdrop-filter: none; padding: 0; gap: 6px;
   }
   .admin-tab { position: relative; flex-direction: row; justify-content: flex-start; align-items: center; width: 100%; min-width: 0; gap: 12px; height: 42px; padding: 0 14px; font-size: 14px; }
-  .admin-tab.on::before { content: ''; position: absolute; left: 0; top: 8px; bottom: 8px; width: 3px; border-radius: 0 3px 3px 0; background: #D44870; }
+  .admin-tab.on::before { content: ''; position: absolute; left: 0; top: 8px; bottom: 8px; width: 3px; border-radius: 0 3px 3px 0; background: var(--admin-accent, #D44870); }
+  .admin-tab-group { display: flex; flex-direction: column; gap: 2px; margin-bottom: 8px; }
+  .admin-tab-group-label { display: block; font-size: 11px; font-weight: 700; letter-spacing: 0.6px; text-transform: uppercase; color: var(--admin-text-muted, var(--muted)); padding: 10px 14px 4px; }
+  .admin-theme-switch { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; padding: 14px 14px 4px; border-top: 1px solid var(--admin-border, var(--line)); }
   .admin-panel { padding-top: 0; max-width: 1180px; }
+  .admin-shell.w-builder .admin-panel, .admin-shell.w-analytics .admin-panel { max-width: none; }
   /* Keep text inputs readable rather than stretching the full panel. */
   .admin-panel .field input, .admin-panel .field textarea { max-width: 480px; }
 }
@@ -1122,6 +1145,120 @@ img { max-width: 100%; }
 .gc-amounts { display: flex; flex-wrap: wrap; gap: 8px; }
 .gc-result { text-align: center; padding: 10px 0; }
 .gc-code { font-family: ui-monospace, Menlo, monospace; font-size: 20px; font-weight: 700; letter-spacing: 2px; background: var(--brand-soft); color: var(--ink); border-radius: 12px; padding: 14px; margin: 12px 0; word-break: break-all; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Admin design system — theme tokens & isolation.
+   The storefront's theme.js writes --bg/--surface/--ink/--muted/--brand/
+   --accent/--line/etc directly onto <html>, and every admin component
+   (including Product Builder + Menu Builder) already reads those same
+   var(--x) names throughout its inline styles. So redefining those exact
+   names at .admin-root scope below makes the whole admin — every existing
+   page, with zero JSX changes — pick up a fixed, storefront-independent
+   palette chosen from "Backend appearance" in the sidebar and remembered
+   locally per device.
+   ═══════════════════════════════════════════════════════════════════════════ */
+.admin-root[data-admin-theme="light"] {
+  --admin-bg: #F5F6F8; --admin-surface: #FFFFFF; --admin-surface-raised: #FFFFFF; --admin-surface-soft: #F0F1F4;
+  --admin-border: #E1E4E8; --admin-border-strong: #C9CDD3;
+  --admin-text: #2C3035; --admin-text-muted: #6F7680; --admin-heading: #17191C;
+  --admin-accent: #D44870; --admin-accent-hover: #B93B60; --admin-accent-soft: #FBE7EE;
+  --admin-input-bg: #FFFFFF; --admin-input-border: #D6D9DE; --admin-input-text: #17191C;
+  --admin-sidebar: #FFFFFF; --admin-sidebar-hover: #F5F6F8; --admin-sidebar-active: #FBE7EE;
+  --admin-success: #2E7D51; --admin-warning: #B4790E; --admin-danger: #C0392B;
+  --admin-shadow: 0 8px 30px rgba(23, 25, 28, 0.10); --admin-shadow-sm: 0 3px 12px rgba(23, 25, 28, 0.07);
+}
+.admin-root[data-admin-theme="dark-pink"] {
+  --admin-bg: #171216; --admin-surface: #21191E; --admin-surface-raised: #292027; --admin-surface-soft: #32262E;
+  --admin-border: #45343E; --admin-border-strong: #5A4551;
+  --admin-text: #F2E9ED; --admin-text-muted: #BBAAB3; --admin-heading: #FFF7FA;
+  --admin-accent: #EF7199; --admin-accent-hover: #F58AAD; --admin-accent-soft: rgba(239, 113, 153, 0.16);
+  --admin-input-bg: #251C21; --admin-input-border: #4A3841; --admin-input-text: #FFF7FA;
+  --admin-sidebar: #1B1518; --admin-sidebar-hover: #241B20; --admin-sidebar-active: #32222A;
+  --admin-success: #4CAF74; --admin-warning: #E0A93A; --admin-danger: #E2604E;
+  --admin-shadow: 0 10px 34px rgba(0, 0, 0, 0.45); --admin-shadow-sm: 0 4px 14px rgba(0, 0, 0, 0.3);
+}
+.admin-root[data-admin-theme="dark-blue"] {
+  --admin-bg: #10161E; --admin-surface: #17212B; --admin-surface-raised: #1D2936; --admin-surface-soft: #253342;
+  --admin-border: #35475A; --admin-border-strong: #45596E;
+  --admin-text: #EAF0F5; --admin-text-muted: #A7B5C3; --admin-heading: #F7FAFC;
+  --admin-accent: #5EA9FF; --admin-accent-hover: #7EBAFF; --admin-accent-soft: rgba(94, 169, 255, 0.16);
+  --admin-input-bg: #142030; --admin-input-border: #2E4256; --admin-input-text: #F7FAFC;
+  --admin-sidebar: #0D1319; --admin-sidebar-hover: #16202A; --admin-sidebar-active: #1D2C3C;
+  --admin-success: #4CAF74; --admin-warning: #E0A93A; --admin-danger: #E2604E;
+  --admin-shadow: 0 10px 34px rgba(0, 0, 0, 0.45); --admin-shadow-sm: 0 4px 14px rgba(0, 0, 0, 0.3);
+}
+.admin-root[data-admin-theme="dark-green"] {
+  --admin-bg: #101813; --admin-surface: #18221D; --admin-surface-raised: #1F2D25; --admin-surface-soft: #28382E;
+  --admin-border: #394C40; --admin-border-strong: #4A6153;
+  --admin-text: #EAF3ED; --admin-text-muted: #A8B9AE; --admin-heading: #F5FAF7;
+  --admin-accent: #5DCC8C; --admin-accent-hover: #78D9A0; --admin-accent-soft: rgba(93, 204, 140, 0.16);
+  --admin-input-bg: #14201A; --admin-input-border: #31473A; --admin-input-text: #F5FAF7;
+  --admin-sidebar: #0D1510; --admin-sidebar-hover: #172119; --admin-sidebar-active: #1E3327;
+  --admin-success: #5DCC8C; --admin-warning: #E0A93A; --admin-danger: #E2604E;
+  --admin-shadow: 0 10px 34px rgba(0, 0, 0, 0.45); --admin-shadow-sm: 0 4px 14px rgba(0, 0, 0, 0.3);
+}
+/* Fallback so the admin never renders unthemed before React sets the attribute. */
+.admin-root { --admin-bg: #F5F6F8; --admin-surface: #FFFFFF; --admin-surface-raised: #FFFFFF; --admin-surface-soft: #F0F1F4; --admin-border: #E1E4E8; --admin-border-strong: #C9CDD3; --admin-text: #2C3035; --admin-text-muted: #6F7680; --admin-heading: #17191C; --admin-accent: #D44870; --admin-accent-hover: #B93B60; --admin-accent-soft: #FBE7EE; --admin-input-bg: #FFFFFF; --admin-input-border: #D6D9DE; --admin-input-text: #17191C; --admin-sidebar: #FFFFFF; --admin-sidebar-hover: #F5F6F8; --admin-sidebar-active: #FBE7EE; --admin-success: #2E7D51; --admin-warning: #B4790E; --admin-danger: #C0392B; --admin-shadow: 0 8px 30px rgba(23, 25, 28, 0.10); --admin-shadow-sm: 0 3px 12px rgba(23, 25, 28, 0.07); }
+
+/* Redefine the shared token names every admin component already consumes —
+   this is what actually isolates admin colour from the storefront theme,
+   and what lets Product Builder / Menu Builder inherit for free. */
+.admin-root {
+  --bg: var(--admin-bg); --surface: var(--admin-surface); --ink: var(--admin-text);
+  --muted: var(--admin-text-muted); --brand: var(--admin-accent); --accent: var(--admin-accent);
+  --accent-ink: #ffffff; --line: var(--admin-border); --brand-soft: var(--admin-accent-soft);
+  --accent-soft: var(--admin-accent-soft); --radius: 14px;
+  --shadow: var(--admin-shadow); --shadow-sm: var(--admin-shadow-sm);
+  background: var(--admin-bg); color: var(--admin-text); min-height: 100vh;
+  /* The storefront's 11–18px scale reads too small on a dense control panel —
+     bump it up for admin only. */
+  --fs-xs: 12px; --fs-sm: 13px; --fs-base: 15px; --fs-md: 15px; --fs-lg: 16px; --fs-xl: 20px;
+}
+.admin-root h1, .admin-root h2, .admin-root h3, .admin-root h4 { color: var(--admin-heading); }
+
+/* ── Admin form controls: real dark styling in every state, not a bright
+   white box dropped onto a dark page. ── */
+.admin-panel .field input:not([type=checkbox]):not([type=radio]),
+.admin-panel .field textarea,
+.admin-panel select,
+.admin-panel input[type=date],
+.admin-panel input[type=time],
+.admin-panel input[type=number] {
+  background: var(--admin-input-bg); border: 1px solid var(--admin-input-border); color: var(--admin-input-text);
+  min-height: 44px; padding: 12px 14px; border-radius: 10px; font-size: var(--fs-md);
+}
+.admin-panel .field textarea { min-height: 110px; padding: 12px 14px; }
+.admin-panel .field input:focus, .admin-panel .field textarea:focus, .admin-panel select:focus {
+  outline: 2px solid var(--admin-accent); outline-offset: 1px; border-color: var(--admin-accent);
+}
+.admin-panel .field input::placeholder, .admin-panel .field textarea::placeholder { color: var(--admin-text-muted); opacity: 1; }
+.admin-panel .field input:disabled, .admin-panel .field textarea:disabled, .admin-panel select:disabled {
+  opacity: 0.55; cursor: not-allowed;
+}
+.admin-panel .field input:read-only { background: var(--admin-surface-soft); }
+.admin-root[data-admin-theme^="dark"] .admin-panel input[type=date]::-webkit-calendar-picker-indicator,
+.admin-root[data-admin-theme^="dark"] .admin-panel input[type=time]::-webkit-calendar-picker-indicator {
+  filter: invert(1) brightness(1.6);
+}
+.admin-panel .btn { min-height: 44px; border-radius: 10px; }
+.admin-panel .card, .admin-panel .stat-tile { background: var(--admin-surface); border: 1px solid var(--admin-border); }
+.admin-panel .card { padding: 16px; }
+@media (min-width: 700px) { .admin-panel .card { padding: 22px; } }
+.admin-panel .card + .card { margin-top: 0; }
+
+/* ── Backend appearance switcher (sidebar) ── */
+.admin-theme-switch { display: flex; flex-direction: column; gap: 8px; }
+.admin-theme-switch-label { font-size: var(--fs-xs); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--admin-text-muted); }
+.admin-theme-swatches { display: flex; gap: 8px; }
+.admin-theme-swatch {
+  width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--admin-border); cursor: pointer; padding: 0;
+  display: grid; place-items: center; position: relative;
+}
+.admin-theme-swatch.on { border-color: var(--admin-accent); box-shadow: 0 0 0 2px var(--admin-accent-soft); }
+.admin-theme-swatch[data-swatch="light"] { background: linear-gradient(135deg, #F5F6F8 50%, #FFFFFF 50%); }
+.admin-theme-swatch[data-swatch="dark-pink"] { background: linear-gradient(135deg, #171216 50%, #EF7199 50%); }
+.admin-theme-swatch[data-swatch="dark-blue"] { background: linear-gradient(135deg, #10161E 50%, #5EA9FF 50%); }
+.admin-theme-swatch[data-swatch="dark-green"] { background: linear-gradient(135deg, #101813 50%, #5DCC8C 50%); }
 
 /* ── Admin typography baseline: one consistent type scale everywhere ── */
 :root { --fs-xs: 11px; --fs-sm: 12px; --fs-base: 13px; --fs-md: 14px; --fs-lg: 15px; --fs-xl: 18px; }

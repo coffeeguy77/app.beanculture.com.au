@@ -55,7 +55,12 @@ const CalendarIcon = svg(<>
   <rect x="3" y="5" width="18" height="16" rx="2" /><line x1="3" y1="10" x2="21" y2="10" />
   <line x1="8" y1="3" x2="8" y2="7" /><line x1="16" y1="3" x2="16" y2="7" /><circle cx="8.5" cy="14.5" r="1.1" />
 </>);
+const DashboardIcon = svg(<>
+  <rect x="3" y="3" width="8" height="8" rx="1.5" /><rect x="13" y="3" width="8" height="5" rx="1.5" />
+  <rect x="13" y="10" width="8" height="11" rx="1.5" /><rect x="3" y="13" width="8" height="8" rx="1.5" />
+</>);
 const TABS = [
+  { id: 'overview', label: 'Dashboard', Icon: DashboardIcon },
   { id: 'store', label: 'Store', Icon: StoreIcon },
   { id: 'reservations', label: 'Reservations', Icon: CalendarIcon },
   { id: 'insights', label: 'Insights', Icon: InsightsIcon },
@@ -68,6 +73,25 @@ const TABS = [
   { id: 'tables', label: 'Tables', Icon: QrIcon },
   { id: 'theme', label: 'Theme', Icon: ThemeIcon2 },
 ];
+// Sidebar navigation, grouped. Purely a presentation grouping over the same
+// TABS/tab-id state — no change to what each tab renders or how it saves.
+const TAB_GROUPS = [
+  { label: 'Overview', tabs: ['overview', 'insights'] },
+  { label: 'Orders & Service', tabs: ['reservations', 'tables'] },
+  { label: 'Menu', tabs: ['menubuilder', 'productbuilder'] },
+  { label: 'Marketing', tabs: ['banners', 'coupons', 'push'] },
+  { label: 'Customers', tabs: ['users'] },
+  { label: 'Store', tabs: ['store', 'theme'] },
+];
+// Page-width class per tab: Standard for simple forms, Wide for Theme,
+// Analytics for Insights' charts, Builder for the two builder pages (whose
+// own internal layout is untouched — only the outer shell gets more room).
+function shellWidthClass(tab) {
+  if (tab === 'theme') return 'w-wide';
+  if (tab === 'insights') return 'w-analytics';
+  if (tab === 'menubuilder' || tab === 'productbuilder') return 'w-builder';
+  return 'w-standard';
+}
 
 export default function Admin({ onExit }) {
   const [pass, setPass] = useState('');
@@ -114,7 +138,7 @@ export default function Admin({ onExit }) {
   const [push, setPush] = useState({ channel: 'sms', subject: '', message: '', link: '' });
   const [pushBusy, setPushBusy] = useState(false);
   const [pushResult, setPushResult] = useState(null);
-  const [tab, setTab] = useState('store');
+  const [tab, setTab] = useState('overview');
   const [qrFrom, setQrFrom] = useState(1);
   const [qrTo, setQrTo] = useState(12);
   const [qrCodes, setQrCodes] = useState([]);
@@ -145,6 +169,14 @@ export default function Admin({ onExit }) {
   const [resvSetupMsg, setResvSetupMsg] = useState('');
   const [newClosure, setNewClosure] = useState({ date: '', annual: false, label: '' });
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
+  // Backend appearance (admin-only palette) — persisted locally, independent
+  // of the storefront's customer-facing theme/season settings.
+  const [adminTheme, setAdminTheme] = useState(() => {
+    try { return localStorage.getItem('bc-admin-theme') || 'light'; } catch { return 'light'; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem('bc-admin-theme', adminTheme); } catch {}
+  }, [adminTheme]);
 
   // Reload every Insights data source: analytics + Square dashboard + loyalty members.
   function reloadInsights() {
@@ -240,6 +272,12 @@ export default function Admin({ onExit }) {
   useEffect(() => {
     if (tab === 'push') {
       if (notifyStatus === null) api.adminNotifyStatus(pass).then(setNotifyStatus).catch(() => setNotifyStatus({ sms: false, email: false }));
+      if (users === null && !usersBusy) loadUsers();
+    }
+    // Dashboard cards reuse the same already-existing loaders (messages,
+    // loyalty users) rather than any new endpoint.
+    if (tab === 'overview') {
+      if (msgs === null) loadMessages();
       if (users === null && !usersBusy) loadUsers();
     }
     // Opening the Reservations tab clears the "new" badge — everything
@@ -987,11 +1025,11 @@ export default function Admin({ onExit }) {
   const row = { display: 'flex', gap: 8, alignItems: 'center' };
 
   return (
-    <div className="admin-root">
-      <div className="admin-shell">
+    <div className="admin-root" data-admin-theme={adminTheme}>
+      <div className={`admin-shell ${shellWidthClass(tab)}`}>
         <div className="admin-head">
           <button className="link" onClick={onExit}>← Store</button>
-          <h2 style={{ margin: 0, fontFamily: 'Georgia, serif' }}>Control panel</h2>
+          <h2 style={{ margin: 0, fontFamily: 'Georgia, serif' }}>Bean Culture · Control panel</h2>
           {!data.dbEnabled
             ? <span className="muted" style={{ fontSize: 'var(--fs-xs)' }}>⚠ DB off — changes won’t persist</span>
             : <span style={{ width: 60 }} />}
@@ -999,17 +1037,86 @@ export default function Admin({ onExit }) {
 
         <div className="admin-layout">
           <nav className="admin-tabs">
-            {TABS.map((t) => (
-              <button key={t.id} className={`admin-tab ${tab === t.id ? 'on' : ''}`} onClick={() => setTab(t.id)} type="button">
-                <t.Icon size={20} /><span>{t.label}</span>
-                {t.id === 'reservations' && newResvCount > 0 && (
-                  <span className="pill" style={{ background: '#c0392b', color: '#fff', fontSize: 10, fontWeight: 800, padding: '1px 6px', marginLeft: 4 }}>{newResvCount}</span>
-                )}
-              </button>
+            {TAB_GROUPS.map((g) => (
+              <div className="admin-tab-group" key={g.label}>
+                <div className="admin-tab-group-label">{g.label}</div>
+                {g.tabs.map((id) => {
+                  const t = TABS.find((x) => x.id === id);
+                  if (!t) return null;
+                  return (
+                    <button key={t.id} className={`admin-tab ${tab === t.id ? 'on' : ''}`} onClick={() => setTab(t.id)} type="button">
+                      <t.Icon size={20} /><span>{t.label}</span>
+                      {t.id === 'reservations' && newResvCount > 0 && (
+                        <span className="pill" style={{ background: '#c0392b', color: '#fff', fontSize: 10, fontWeight: 800, padding: '1px 6px', marginLeft: 4 }}>{newResvCount}</span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
             ))}
+            <div className="admin-theme-switch">
+              <div className="admin-theme-switch-label">Backend appearance</div>
+              <div className="admin-theme-swatches">
+                {['light', 'dark-pink', 'dark-blue', 'dark-green'].map((th) => (
+                  <button key={th} type="button" className={`admin-theme-swatch ${adminTheme === th ? 'on' : ''}`}
+                    data-swatch={th} onClick={() => setAdminTheme(th)} aria-label={`${th} theme`} title={th} />
+                ))}
+              </div>
+            </div>
           </nav>
 
           <div className="admin-panel">
+            {/* ───────── DASHBOARD ───────── */}
+            {tab === 'overview' && (
+              <>
+                <div className="admin-page-head">
+                  <h1 className="admin-page-title">Dashboard</h1>
+                  <p className="admin-page-desc">A quick look at what needs attention right now, built entirely from data already in the panel.</p>
+                </div>
+                <div className="stat-tiles" style={{ marginBottom: 18 }}>
+                  <div className="stat-tile">
+                    <div className="stat-v" style={{ color: h.open ? 'var(--admin-success)' : 'var(--admin-danger)' }}>{h.open ? 'Open' : 'Closed'}</div>
+                    <div className="stat-l">Store status{h.timezone ? ` · ${h.timezone}` : ''}</div>
+                  </div>
+                  <div className="stat-tile" style={{ cursor: 'pointer' }} onClick={() => setTab('reservations')}>
+                    <div className="stat-v">{newResvCount > 0 ? newResvCount : (resv || []).length}</div>
+                    <div className="stat-l">{newResvCount > 0 ? 'New reservations' : `Reservations${resv ? ' · none new' : ' · loading…'}`}</div>
+                  </div>
+                  <div className="stat-tile" style={{ cursor: 'pointer' }} onClick={() => setTab('store')}>
+                    <div className="stat-v">{msgs ? msgs.filter((m) => !m.handled).length : '—'}</div>
+                    <div className="stat-l">Unread messages</div>
+                  </div>
+                  <div className="stat-tile" style={{ cursor: 'pointer' }} onClick={() => setTab('users')}>
+                    <div className="stat-v">{users ? users.length : '—'}</div>
+                    <div className="stat-l">Loyalty members</div>
+                  </div>
+                  <div className="stat-tile" style={{ cursor: 'pointer' }} onClick={() => setTab('menubuilder')}>
+                    <div className="stat-v">{(data.categories || []).length}</div>
+                    <div className="stat-l">Menu categories</div>
+                  </div>
+                  <div className="stat-tile" style={{ cursor: 'pointer' }} onClick={() => setTab('productbuilder')}>
+                    <div className="stat-v">{allProducts.length}</div>
+                    <div className="stat-l">Products synced</div>
+                  </div>
+                </div>
+                <div className="card" style={card}>
+                  <div className="group-title">Quick links</div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
+                    <button type="button" className="btn ghost" onClick={() => setTab('insights')}>View Insights</button>
+                    <button type="button" className="btn ghost" onClick={() => setTab('reservations')}>Manage reservations</button>
+                    <button type="button" className="btn ghost" onClick={() => setTab('store')}>Store settings</button>
+                    <button type="button" className="btn ghost" onClick={onExit}>View store</button>
+                  </div>
+                </div>
+                {!data.dbEnabled && (
+                  <div className="card" style={card}>
+                    <div className="group-title" style={{ color: 'var(--admin-danger)' }}>⚠ Database off</div>
+                    <p className="muted" style={{ fontSize: 'var(--fs-sm)', margin: '4px 0 0' }}>Settings changes won't persist between deploys until a database is connected.</p>
+                  </div>
+                )}
+              </>
+            )}
+
             {/* ───────── STORE ───────── */}
             {tab === 'store' && (
               <>
