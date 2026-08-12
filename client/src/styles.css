@@ -1018,6 +1018,12 @@ img { max-width: 100%; }
 /* Sticky save bar spans full width; content aligns to the 1440 shell. */
 .admin-savebar { position: fixed; left: 0; right: 0; bottom: 0; background: var(--surface); border-top: 1px solid var(--line); z-index: 40; }
 .admin-savebar-inner { max-width: 1440px; margin: 0 auto; padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); display: flex; gap: 10px; align-items: center; }
+/* Desktop: a compact floating action, not a full-width white strip. */
+@media (min-width: 960px) {
+  .admin-savebar { left: auto; right: 24px; bottom: 20px; background: var(--admin-surface-raised, var(--surface)); border: 1px solid var(--admin-border, var(--line)); border-radius: 14px; box-shadow: var(--admin-shadow, var(--shadow)); }
+  .admin-savebar-inner { max-width: none; margin: 0; padding: 10px 12px; }
+  .admin-savebar-inner .muted { max-width: 220px; }
+}
 
 .admin-itemgrid, .admin-bannergrid { display: block; }
 

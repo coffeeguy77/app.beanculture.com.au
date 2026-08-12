@@ -1120,6 +1120,10 @@ export default function Admin({ onExit }) {
             {/* ───────── STORE ───────── */}
             {tab === 'store' && (
               <>
+                <div className="admin-page-head">
+                  <h1 className="admin-page-title">Store settings</h1>
+                  <p className="admin-page-desc">Business details, contact info, branding, opening/kitchen hours and closures.</p>
+                </div>
                 <div className="card" style={card}>
                   <div style={{ fontWeight: 800, color: h.open ? '#2e7d51' : 'var(--brand)' }}>{h.open ? '● Open now' : '● Closed'}</div>
                   <div className="muted" style={{ fontSize: 'var(--fs-sm)' }}>{h.timezone} · {h.hasHours ? 'hours from Square' : 'no hours set in Square'}</div>
@@ -1298,6 +1302,10 @@ export default function Admin({ onExit }) {
             {/* ───────── RESERVATIONS ───────── */}
             {tab === 'reservations' && (
               <>
+                <div className="admin-page-head">
+                  <h1 className="admin-page-title">Reservations</h1>
+                  <p className="admin-page-desc">Table bookings and ticket-printing setup.</p>
+                </div>
                 <div className="card" style={card}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
                     <div className="group-title" style={{ margin: 0 }}>Reservations</div>
