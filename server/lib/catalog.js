@@ -618,7 +618,61 @@ async function createReservationCatalogItem({ name, categoryId }) {
   return { itemId: created.id, variationId: variation.id };
 }
 
+// Full diagnostic detail for one catalog item — used by the reservation
+// print-troubleshooting panel to show exactly what Square has on file
+// (reporting category vs. the full category list, and location presence),
+// since printer/KDS auto-print routing in Square keys off reporting_category
+// specifically, not just any category the item happens to also be tagged with.
+async function inspectItem(itemId) {
+  const data = await squareFetch(`/v2/catalog/object/${itemId}?include_related_objects=true`);
+  const obj = data.object;
+  if (!obj) throw new Error('Item not found');
+  const d = obj.item_data || {};
+  const related = new Map((data.related_objects || []).map((o) => [o.id, o]));
+  const catName = (id) => related.get(id)?.category_data?.name || id;
+  return {
+    id: obj.id,
+    name: d.name || '',
+    reportingCategory: d.reporting_category ? { id: d.reporting_category.id, name: catName(d.reporting_category.id) } : null,
+    categories: (d.categories || []).map((c) => ({ id: c.id, name: catName(c.id) })),
+    presentAtAllLocations: obj.present_at_all_locations !== false,
+    presentAtLocationIds: obj.present_at_location_ids || [],
+    absentAtLocationIds: obj.absent_at_location_ids || [],
+    ecomVisibility: (d.ecom_visibility || 'VISIBLE'),
+    variations: (d.variations || []).filter((v) => !v.is_deleted).map((v) => ({
+      id: v.id,
+      name: v.item_variation_data?.name || '',
+      sellable: v.item_variation_data?.sellable !== false,
+      presentAtAllLocations: v.present_at_all_locations !== false,
+      presentAtLocationIds: v.present_at_location_ids || [],
+      absentAtLocationIds: v.absent_at_location_ids || [],
+    })),
+  };
+}
+
+// Set an item's reporting_category (the field Square's printer/KDS auto-print
+// routing actually keys off) without disturbing anything else about it —
+// used to fix items that got assigned a category via the dashboard's
+// secondary "categories" list without ever becoming the reporting category.
+async function setReportingCategory(itemId, categoryId) {
+  const data = await squareFetch(`/v2/catalog/object/${itemId}`);
+  const obj = data.object;
+  if (!obj) throw new Error('Item not found');
+  const d = obj.item_data || {};
+  const categories = Array.isArray(d.categories) ? d.categories.slice() : [];
+  if (!categories.some((c) => c.id === categoryId)) categories.push({ id: categoryId });
+  const body = {
+    idempotency_key: idem(),
+    object: {
+      ...obj,
+      item_data: { ...d, categories, reporting_category: { id: categoryId } },
+    },
+  };
+  const out = await squareFetch('/v2/catalog/object', { method: 'POST', body });
+  return { id: out.catalog_object?.id };
+}
+
 module.exports = {
   getMenu, getFullMenu, getAllCategories, getAllProducts, getItemConfig, cleanName,
-  searchItemsByName, createReservationCatalogItem,
+  searchItemsByName, createReservationCatalogItem, inspectItem, setReportingCategory,
 };

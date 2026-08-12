@@ -537,6 +537,30 @@ app.post('/api/admin/reservation-item/create', async (req, res) => {
     res.status(502).json({ error: e.message });
   }
 });
+// Diagnostic: exactly what Square has on file for the linked reservation item —
+// reporting_category is the field printer/KDS auto-print routing actually
+// keys off, which can silently differ from the (possibly several) categories
+// shown in the Dashboard's item editor.
+app.get('/api/admin/reservation-item/inspect', async (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const id = req.query.id;
+    if (!id) return res.status(400).json({ error: 'No item id (pass ?id=<Square item id>, not the variation id).' });
+    res.json(await catalog.inspectItem(id));
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+app.post('/api/admin/reservation-item/fix-category', async (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const { itemId, categoryId } = req.body || {};
+    if (!itemId || !categoryId) return res.status(400).json({ error: 'itemId and categoryId are required.' });
+    res.json(await catalog.setReportingCategory(itemId, categoryId));
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
 
 // ---- Admin: export current settings + status (gated by a passcode) ----
 app.get('/api/admin/overview', async (req, res) => {
