@@ -828,23 +828,28 @@ export default function App() {
   // The active event's OWN assigned effect — only meaningful while its date
   // window is active (banner + effect always gated on the date, never on a
   // palette a customer hand-picked out of season).
-  const seasonalEffectPreset = (() => {
-    const s = eventSeasonal;
-    if (!s) return null;
-    const ec = s.effectsConfig;
-    if (!ec || ec.effectsEnabled === false || !ec.effectId) return null;
-    const e = findEffect(ec.effectId);
+  // Memoised on primitive fields only (not object identity) — App re-renders
+  // often (scroll state, ticking countdowns, etc.), and EffectOverlay's own
+  // effect restarts whenever the `preset` prop reference changes. Without
+  // this, a fresh object literal every render would cancel+restart the
+  // engine's boot before its idle-callback ever fires, so the canvas would
+  // exist but never actually draw a single particle.
+  const seasonalEc = eventSeasonal?.effectsConfig;
+  const seasonalEffectPreset = useMemo(() => {
+    if (!eventSeasonal || !seasonalEc || seasonalEc.effectsEnabled === false || !seasonalEc.effectId) return null;
+    const e = findEffect(seasonalEc.effectId);
     if (!e) return null;
-    const mult = EFFECT_INTENSITY[ec.intensity] || 1;
+    const mult = EFFECT_INTENSITY[seasonalEc.intensity] || 1;
     return { ...e, emission: { ...e.emission, density: (e.emission?.density ?? 1) * mult } };
-  })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [eventSeasonal?.id, seasonalEc?.effectsEnabled, seasonalEc?.effectId, seasonalEc?.intensity, effectsList]);
   // The customer's independent overlay choice always wins over the seasonal
   // default: an explicit "none" suppresses even an active seasonal effect; an
   // explicit custom pick runs any time (and never triggers a seasonal banner
   // on its own). "theme-default" falls back to the seasonal effect above,
   // which is itself null outside the event's date window. A disabled/deleted
   // custom choice falls back to theme-default rather than crashing.
-  const resolvedEffectPreset = (() => {
+  const resolvedEffectPreset = useMemo(() => {
     if (effectPref?.mode === 'custom') {
       const e = findEffect(effectPref.effectId);
       if (e && e.frontendSelectable !== false) return e;
@@ -852,7 +857,8 @@ export default function App() {
       return null;
     }
     return seasonalEffectPreset;
-  })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [effectPref?.mode, effectPref?.effectId, seasonalEffectPreset, effectsList]);
 
   // "Browse menu" dock data — real categories, live item counts, icon by name.
   const dockCategories = menu.categories
