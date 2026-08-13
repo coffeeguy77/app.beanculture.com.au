@@ -59,6 +59,9 @@ const DashboardIcon = svg(<>
   <rect x="3" y="3" width="8" height="8" rx="1.5" /><rect x="13" y="3" width="8" height="5" rx="1.5" />
   <rect x="13" y="10" width="8" height="11" rx="1.5" /><rect x="3" y="13" width="8" height="8" rx="1.5" />
 </>);
+const ComboIcon = svg(<>
+  <circle cx="8" cy="8" r="4.2" /><circle cx="16" cy="8" r="4.2" /><circle cx="12" cy="16" r="4.2" />
+</>);
 const TABS = [
   { id: 'overview', label: 'Dashboard', Icon: DashboardIcon },
   { id: 'store', label: 'Store', Icon: StoreIcon },
@@ -66,6 +69,7 @@ const TABS = [
   { id: 'insights', label: 'Insights', Icon: InsightsIcon },
   { id: 'menubuilder', label: 'Menu Builder', Icon: MenuIcon },
   { id: 'productbuilder', label: 'Product Builder', Icon: BuildIcon },
+  { id: 'combobuilder', label: 'Combo Builder', Icon: ComboIcon },
   { id: 'banners', label: 'Banners', Icon: BannerIcon },
   { id: 'users', label: 'Users', Icon: InsightsIcon },
   { id: 'coupons', label: 'Coupons', Icon: BannerIcon },
@@ -78,7 +82,7 @@ const TABS = [
 const TAB_GROUPS = [
   { label: 'Overview', tabs: ['overview', 'insights'] },
   { label: 'Orders & Service', tabs: ['reservations', 'tables'] },
-  { label: 'Menu', tabs: ['menubuilder', 'productbuilder'] },
+  { label: 'Menu', tabs: ['menubuilder', 'productbuilder', 'combobuilder'] },
   { label: 'Marketing', tabs: ['banners', 'coupons', 'push'] },
   { label: 'Customers', tabs: ['users'] },
   { label: 'Store', tabs: ['store', 'theme'] },
@@ -89,7 +93,7 @@ const TAB_GROUPS = [
 function shellWidthClass(tab) {
   if (tab === 'theme') return 'w-wide';
   if (tab === 'insights') return 'w-analytics';
-  if (tab === 'menubuilder' || tab === 'productbuilder') return 'w-builder';
+  if (tab === 'menubuilder' || tab === 'productbuilder' || tab === 'combobuilder') return 'w-builder';
   return 'w-standard';
 }
 
@@ -176,6 +180,11 @@ export default function Admin({ onExit }) {
   const [resvSetupBusy, setResvSetupBusy] = useState(false);
   const [resvSetupMsg, setResvSetupMsg] = useState('');
   const [newClosure, setNewClosure] = useState({ date: '', annual: false, label: '' });
+  // Combo Builder — our own alternative to Square's native Combo item type
+  // (which needs a paid Restaurants plan). See server/lib/settings.js `combos`.
+  const [comboDeleteLock, setComboDeleteLock] = useState(true); // guard against accidental combo deletes
+  const [comboItemPicker, setComboItemPicker] = useState(null); // `${comboId}:${groupId}` currently open
+  const [comboItemSearch, setComboItemSearch] = useState({}); // picker key -> search text
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
   // Backend appearance (admin-only palette) — persisted locally, independent
   // of the storefront's customer-facing theme/season settings.
@@ -563,6 +572,41 @@ export default function Admin({ onExit }) {
       const cur = Array.isArray(x.items) ? x.items : [];
       return { ...x, items: cur.includes(itemId) ? cur.filter((i) => i !== itemId) : [...cur, itemId] };
     }));
+
+  // ---- product builder presets (named hot-links into one variable item) ----
+  // ---- combo builder (bundles across DIFFERENT items + an auto discount) ----
+  const combos = s?.combos || [];
+  const setCombos = (arr) => set({ combos: arr });
+  const addCombo = () =>
+    setCombos([...combos, {
+      id: 'combo' + Date.now().toString(36), name: 'New combo', description: '', image: '',
+      active: true, section: 'Combos', discountValue: 3,
+      groups: [{ id: 'g' + Date.now().toString(36), label: 'Choose your item', sourceType: 'both', categoryName: '', itemIds: [] }],
+    }]);
+  const updCombo = (id, patch) => setCombos(combos.map((x) => (x.id === id ? { ...x, ...patch } : x)));
+  const rmCombo = (id) => setCombos(combos.filter((x) => x.id !== id));
+  const addComboGroup = (comboId) =>
+    updCombo(comboId, {
+      groups: [...(combos.find((c) => c.id === comboId)?.groups || []),
+        { id: 'g' + Date.now().toString(36), label: 'Choose your item', sourceType: 'both', categoryName: '', itemIds: [] }],
+    });
+  const updComboGroup = (comboId, groupId, patch) => {
+    const combo = combos.find((c) => c.id === comboId);
+    if (!combo) return;
+    updCombo(comboId, { groups: (combo.groups || []).map((g) => (g.id === groupId ? { ...g, ...patch } : g)) });
+  };
+  const rmComboGroup = (comboId, groupId) => {
+    const combo = combos.find((c) => c.id === comboId);
+    if (!combo) return;
+    updCombo(comboId, { groups: (combo.groups || []).filter((g) => g.id !== groupId) });
+  };
+  const toggleComboGroupItem = (comboId, groupId, itemId) => {
+    const combo = combos.find((c) => c.id === comboId);
+    const group = combo && (combo.groups || []).find((g) => g.id === groupId);
+    if (!group) return;
+    const cur = Array.isArray(group.itemIds) ? group.itemIds : [];
+    updComboGroup(comboId, groupId, { itemIds: cur.includes(itemId) ? cur.filter((i) => i !== itemId) : [...cur, itemId] });
+  };
 
   // ---- product builder presets (named hot-links into one variable item) ----
   const presets = s?.presets || [];
@@ -2112,6 +2156,154 @@ export default function Admin({ onExit }) {
                   <button className="btn ghost full" onClick={addPreset}>+ Add preset</button>
                 </div>
                 )}
+              </>
+            )}
+
+            {/* ───────── COMBO BUILDER ───────── */}
+            {tab === 'combobuilder' && (
+              <>
+                <div className="admin-page-head">
+                  <h1 className="admin-page-title">Combo Builder</h1>
+                  <p className="admin-page-desc">Bundle items from different parts of your menu (a burger + a side + a drink) with an automatic dollar discount — without needing Square's paid Combo item type or its higher processing rate. Nothing is created in Square's catalog; the discount applies itself at checkout.</p>
+                </div>
+
+                <div className="card" style={card}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+                    <div className="group-title" style={{ margin: 0 }}>Combos</div>
+                    <button type="button" className={`chip ${comboDeleteLock ? 'on' : ''}`} onClick={() => setComboDeleteLock((v) => !v)}
+                      style={{ fontSize: 'var(--fs-sm)' }} title={comboDeleteLock ? 'Locked — tap to allow deleting combos' : 'Unlocked — tap to lock again'}>
+                      {comboDeleteLock ? '🔒 Delete locked' : '🔓 Delete unlocked'}
+                    </button>
+                  </div>
+                  <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 6 }}>
+                    Each combo needs at least one group (e.g. "Choose your burger"). A group is satisfied by any item in a Square category and/or items you hand-pick. The customer picks one option per group; the combo's price is the sum of what they picked, minus your discount. Remember to press <strong>Save changes</strong>.
+                  </p>
+                  {combos.length === 0 && <p className="muted" style={{ fontSize: 'var(--fs-base)' }}>No combos yet — add one below.</p>}
+                </div>
+
+                {combos.map((combo) => (
+                  <div key={combo.id} className="card" style={card}>
+                    <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                      {combo.image ? (
+                        <img src={combo.image} alt="" style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 10, border: '1px solid var(--line)' }} />
+                      ) : (
+                        <div style={{ width: 64, height: 64, borderRadius: 10, border: '1px dashed var(--line)', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+                          <ComboIcon size={22} />
+                        </div>
+                      )}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        <label className="btn ghost" style={{ padding: '6px 10px', fontSize: 'var(--fs-sm)', cursor: 'pointer', width: 'fit-content' }}>
+                          {combo.image ? 'Change photo' : 'Add photo'}
+                          <input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files[0]; if (f) uploadImage(f, (url) => updCombo(combo.id, { image: url }), 'combos'); }} />
+                        </label>
+                        {combo.image && <button type="button" className="link" style={{ fontSize: 'var(--fs-xs)' }} onClick={() => updCombo(combo.id, { image: '' })}>Remove photo</button>}
+                      </div>
+                      <div style={{ flex: '1 1 260px', minWidth: 200, display: 'grid', gap: 8 }}>
+                        <input value={combo.name || ''} onChange={(e) => updCombo(combo.id, { name: e.target.value })} placeholder="Combo name (e.g. Burger Combo)"
+                          style={{ padding: '10px 12px', border: '1px solid var(--line)', borderRadius: 10, fontWeight: 700, fontSize: 'var(--fs-md)' }} />
+                        <textarea value={combo.description || ''} onChange={(e) => updCombo(combo.id, { description: e.target.value })} placeholder="Short description (optional)" rows={2}
+                          style={{ padding: '10px 12px', border: '1px solid var(--line)', borderRadius: 10, fontSize: 'var(--fs-base)', resize: 'vertical' }} />
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end' }}>
+                        <button type="button" className={`chip ${combo.active !== false ? 'on' : ''}`} onClick={() => updCombo(combo.id, { active: combo.active === false })}>
+                          {combo.active !== false ? 'Active' : 'Off'}
+                        </button>
+                        <button type="button" className="link" disabled={comboDeleteLock} style={{ color: 'var(--admin-danger)', opacity: comboDeleteLock ? 0.3 : 1 }}
+                          title={comboDeleteLock ? 'Unlock delete (top of card) to remove' : 'Delete this combo'}
+                          onClick={() => { if (window.confirm(`Delete "${combo.name || 'this combo'}"?`)) rmCombo(combo.id); }}>Delete</button>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginTop: 14 }}>
+                      <label className="field" style={{ flex: '1 1 200px', minWidth: 160 }}>
+                        <span>Storefront section</span>
+                        <input list="combo-section-names" value={combo.section || ''} onChange={(e) => updCombo(combo.id, { section: e.target.value })} placeholder="Combos" />
+                      </label>
+                      <label className="field" style={{ flex: '0 0 160px' }}>
+                        <span>Discount ($ off)</span>
+                        <input type="number" min="0" step="0.5" value={combo.discountValue ?? 0} onChange={(e) => updCombo(combo.id, { discountValue: Number(e.target.value) })} />
+                      </label>
+                    </div>
+
+                    <div style={{ marginTop: 16 }}>
+                      <div className="group-title" style={{ marginBottom: 8 }}>Groups — one "choose one" step per component</div>
+                      {(combo.groups || []).map((group, gi) => {
+                        const pickerKey = `${combo.id}:${group.id}`;
+                        const pickerOpen = comboItemPicker === pickerKey;
+                        const searchText = comboItemSearch[pickerKey] || '';
+                        const filteredProducts = allProducts.filter((p) => !searchText || p.name.toLowerCase().includes(searchText.toLowerCase()));
+                        return (
+                          <div key={group.id} style={{ border: '1px solid var(--line)', borderRadius: 12, padding: 12, marginBottom: 10 }}>
+                            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                              <span className="muted" style={{ fontSize: 'var(--fs-xs)' }}>{gi + 1}</span>
+                              <input value={group.label || ''} onChange={(e) => updComboGroup(combo.id, group.id, { label: e.target.value })} placeholder="e.g. Choose your burger"
+                                style={{ flex: '1 1 180px', minWidth: 140, padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 10 }} />
+                              <select value={group.sourceType || 'both'} onChange={(e) => updComboGroup(combo.id, group.id, { sourceType: e.target.value })}
+                                style={{ padding: 8, borderRadius: 10, border: '1px solid var(--line)' }}>
+                                <option value="both">Category + hand-picked</option>
+                                <option value="category">Category only</option>
+                                <option value="items">Hand-picked items only</option>
+                              </select>
+                              <button type="button" className="link" style={{ color: 'var(--admin-danger)' }} onClick={() => rmComboGroup(combo.id, group.id)}>Remove</button>
+                            </div>
+
+                            {group.sourceType !== 'items' && (
+                              <label className="field" style={{ marginTop: 10 }}>
+                                <span>Category (any item in it qualifies)</span>
+                                <input list="combo-category-names" value={group.categoryName || ''} onChange={(e) => updComboGroup(combo.id, group.id, { categoryName: e.target.value })} placeholder="e.g. Burgers" />
+                              </label>
+                            )}
+
+                            {group.sourceType !== 'category' && (
+                              <div style={{ marginTop: 10 }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                  <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>Hand-picked items ({(group.itemIds || []).length})</span>
+                                  <button type="button" className="link" onClick={() => setComboItemPicker(pickerOpen ? null : pickerKey)}>{pickerOpen ? 'Done' : 'Choose items'}</button>
+                                </div>
+                                {(group.itemIds || []).length > 0 && (
+                                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
+                                    {(group.itemIds || []).map((id) => {
+                                      const p = allProducts.find((x) => x.id === id);
+                                      return (
+                                        <span key={id} className="chip on" style={{ fontSize: 'var(--fs-xs)' }}>
+                                          {p?.name || id}
+                                          <button type="button" onClick={() => toggleComboGroupItem(combo.id, group.id, id)} style={{ marginLeft: 4, border: 'none', background: 'none', cursor: 'pointer', color: 'inherit' }}>✕</button>
+                                        </span>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                                {pickerOpen && (
+                                  <div style={{ border: '1px solid var(--line)', borderRadius: 10, padding: 8, marginTop: 8, maxHeight: 260, overflowY: 'auto' }}>
+                                    <input value={searchText} onChange={(e) => setComboItemSearch((m) => ({ ...m, [pickerKey]: e.target.value }))} placeholder="Search products…"
+                                      style={{ width: '100%', padding: '7px 10px', border: '1px solid var(--line)', borderRadius: 8, marginBottom: 8 }} />
+                                    {filteredProducts.slice(0, 120).map((p) => (
+                                      <label key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 2px', fontSize: 'var(--fs-sm)' }}>
+                                        <input type="checkbox" checked={(group.itemIds || []).includes(p.id)} onChange={() => toggleComboGroupItem(combo.id, group.id, p.id)} />
+                                        {p.name} <span className="muted">· {p.category}</span>
+                                      </label>
+                                    ))}
+                                    {filteredProducts.length === 0 && <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>No products match.</p>}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                      <button type="button" className="btn ghost full" onClick={() => addComboGroup(combo.id)}>+ Add group</button>
+                    </div>
+                  </div>
+                ))}
+
+                <datalist id="combo-section-names">
+                  {[...new Set([...adminCat.map((c) => c.category), ...productSections.map((x) => x.name), ...presets.map((x) => x.section), ...combos.map((x) => x.section)].filter(Boolean))].map((n) => <option key={n} value={n} />)}
+                </datalist>
+                <datalist id="combo-category-names">
+                  {[...new Set(sqCats.map((c) => c.name))].filter(Boolean).map((n) => <option key={n} value={n} />)}
+                </datalist>
+
+                <button type="button" className="btn full" onClick={addCombo}>+ Add combo</button>
               </>
             )}
 

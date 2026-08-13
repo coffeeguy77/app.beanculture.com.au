@@ -423,6 +423,83 @@ async function getMenu(opts = {}) {
     if (hidden.size) sections = sections.filter((sec) => !hidden.has(String(sec.category).toLowerCase()));
   }
 
+  // Combo builder: bundles across DIFFERENT items (unlike a preset, which hot-
+  // links ONE item) — e.g. "choose your burger" + "choose your side" + "choose
+  // your drink". Renders as its own virtual tile; the discount itself is only
+  // ever applied at order time (server/lib/combos.js, re-validated there from
+  // scratch), never trusted from anything computed here. A combo with a group
+  // that resolves to zero real items is skipped entirely rather than shown
+  // broken (e.g. its category was renamed/deleted in Square).
+  if (includeSections) {
+    const combosBySection = new Map();
+    for (const combo of getSettings().combos || []) {
+      if (!combo || combo.active === false) continue;
+      const name = String(combo.name || '').trim();
+      if (!name) continue;
+
+      const groups = [];
+      let cheapestTotal = 0;
+      let broken = false;
+      for (const g of combo.groups || []) {
+        if (!g || !g.id) { broken = true; break; }
+        const optionIds = new Set();
+        if (g.sourceType !== 'items' && g.categoryName) {
+          const wanted = cleanName(String(g.categoryName)).toLowerCase();
+          for (const [catId, c] of categories) {
+            if (cleanName(c.name || '').toLowerCase() === wanted) {
+              for (const { item } of byCatId.get(catId) || []) optionIds.add(item.id);
+            }
+          }
+        }
+        if (g.sourceType !== 'category') {
+          for (const id of Array.isArray(g.itemIds) ? g.itemIds : []) optionIds.add(id);
+        }
+        const options = [...optionIds].map((id) => itemsById.get(id)).filter((it) => it && it.variations.some((v) => !v.soldOut));
+        if (!options.length) { broken = true; break; }
+
+        const cheapest = Math.min(...options.map((it) => Math.min(...it.variations.filter((v) => !v.soldOut).map((v) => v.price))));
+        cheapestTotal += cheapest;
+        groups.push({
+          id: g.id,
+          label: String(g.label || '').trim() || 'Choose one',
+          options: options.map((it) => ({ id: it.id, name: it.name, image: it.image, variations: it.variations })),
+        });
+      }
+      if (broken || !groups.length) continue;
+
+      const discountValue = Math.max(0, Number(combo.discountValue) || 0);
+      const fromPrice = Math.max(0, cheapestTotal - discountValue);
+      const tile = {
+        // Two identical synthetic variations (not one) so the storefront's
+        // generic "from $X" price-badge logic (which only shows "from" when an
+        // item has >1 variation) kicks in without any change to MenuList.jsx —
+        // a combo's real price always depends on which options are chosen.
+        id: 'combo:' + combo.id,
+        name,
+        description: combo.description || '',
+        image: combo.image || null,
+        soldOut: false,
+        variations: [
+          { id: 'combo-price-a', name: '', price: fromPrice, soldOut: false },
+          { id: 'combo-price-b', name: '', price: fromPrice, soldOut: false },
+        ],
+        modifierGroups: [],
+        isCombo: true,
+        comboId: combo.id,
+        comboGroups: groups,
+        comboDiscountValue: discountValue,
+      };
+      const secName = String(combo.section || '').trim() || 'Combos';
+      if (!combosBySection.has(secName)) combosBySection.set(secName, []);
+      combosBySection.get(secName).push(tile);
+    }
+    for (const [secName, tiles] of combosBySection) {
+      const existing = sections.find((s) => s.category.toLowerCase() === secName.toLowerCase());
+      if (existing) { existing.items.push(...tiles); continue; }
+      sections.push({ category: secName, items: tiles, showImages: true, custom: true, topNav: true, footerNav: false });
+    }
+  }
+
   // Apply the owner's custom section order (settings.menuOrder = display names)
   // across BOTH category and product sections. Listed names come first in that
   // order; anything not listed keeps its current order after them (stable sort).
@@ -724,5 +801,5 @@ async function setReportingCategory(itemId, categoryId) {
 module.exports = {
   getMenu, getFullMenu, getAllCategories, getAllProducts, getItemConfig, cleanName,
   searchItemsByName, createReservationCatalogItem, inspectItem, setReportingCategory,
-  findOrCreateCategory, setupReservationPrinting,
+  findOrCreateCategory, setupReservationPrinting, listAllCatalog,
 };

@@ -1,9 +1,26 @@
 import React from 'react';
 import { formatMoney } from '../api.js';
 
-export default function CartView({ cart, currency, onQty, onRemove, onClear, dineIn, table, onCheckout, onBack, kitchenBanner, unavailableKeys }) {
+// See CartPanel.jsx for why: groups combo-linked lines into one card.
+function groupCart(cart) {
+  const out = [];
+  const seen = new Set();
+  for (const c of cart) {
+    if (c.comboInstanceId) {
+      if (seen.has(c.comboInstanceId)) continue;
+      seen.add(c.comboInstanceId);
+      out.push({ type: 'combo', instanceId: c.comboInstanceId, name: c.comboName, lines: cart.filter((x) => x.comboInstanceId === c.comboInstanceId) });
+    } else {
+      out.push({ type: 'single', line: c });
+    }
+  }
+  return out;
+}
+
+export default function CartView({ cart, currency, onQty, onRemove, onClear, onComboQty, onRemoveCombo, dineIn, table, onCheckout, onBack, kitchenBanner, unavailableKeys }) {
   const total = cart.reduce((n, c) => n + c.unitPrice * c.quantity, 0);
   const hasUnavailable = cart.some((c) => unavailableKeys?.has(c.key));
+  const grouped = groupCart(cart);
   if (cart.length === 0) {
     return (
       <main className="page cart-page">
@@ -22,7 +39,29 @@ export default function CartView({ cart, currency, onQty, onRemove, onClear, din
       </div>
       <span className="context-pill">{dineIn ? `Dine in · Table ${table || '—'}` : 'Takeaway'}</span>
       <ul className="cart-list">
-        {cart.map((c) => {
+        {grouped.map((g) => {
+          if (g.type === 'combo') {
+            const qty = g.lines[0]?.quantity || 1;
+            const comboTotal = g.lines.reduce((n, l) => n + l.unitPrice * l.quantity, 0);
+            return (
+              <li key={g.instanceId} className="cart-line cart-line-combo">
+                <div className="cart-line-main">
+                  <div className="cart-line-name">🍔 {g.name}</div>
+                  <div className="cart-line-sub">{g.lines.map((l) => l.itemName).join(' + ')}</div>
+                </div>
+                <div className="cart-line-right">
+                  <div className="stepper sm">
+                    <button onClick={() => onComboQty(g.instanceId, -1)}>−</button>
+                    <span>{qty}</span>
+                    <button onClick={() => onComboQty(g.instanceId, 1)}>+</button>
+                  </div>
+                  <div style={{ fontWeight: 700 }}>{formatMoney(comboTotal, currency)}</div>
+                  {onRemoveCombo && <button className="cart-remove" onClick={() => onRemoveCombo(g.instanceId)} aria-label={`Remove ${g.name}`}>✕</button>}
+                </div>
+              </li>
+            );
+          }
+          const c = g.line;
           const unavailable = unavailableKeys?.has(c.key);
           return (
           <li key={c.key} className={`cart-line ${unavailable ? 'unavailable' : ''}`}>

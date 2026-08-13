@@ -94,6 +94,21 @@ const DEFAULTS = {
   // When on, an item that has presets built from it is hidden from the normal
   // menu (its presets represent it), so the big master tile doesn't also show.
   hidePresetSources: true,
+  // Combo builder: bundles across DIFFERENT Square items (a burger + a side +
+  // a drink) with an automatic dollar-amount discount — our own alternative to
+  // Square's native Combo item type, which needs a paid Square Restaurants plan.
+  // Nothing is created in Square's Catalog; at checkout the discount is applied
+  // as a normal Square order-level discount (server/lib/combos.js), exactly
+  // like a coupon, just triggered automatically instead of by a typed code.
+  // Each: { id, name, description, image, active, section, discountValue,
+  //   groups: [{ id, label, sourceType: 'category'|'items'|'both', categoryName, itemIds:[] }] }
+  // A group is satisfied by ANY item in `categoryName` and/or any id in
+  // `itemIds` (sourceType picks which of those apply). Every group requires
+  // exactly one selection (v1 — no upcharges/min/max like Square's combo UI).
+  // `section` places the combo's tile among the storefront's menu sections
+  // (default "Combos"). A combo with a group that resolves to zero real items
+  // is hidden from the storefront entirely rather than showing broken.
+  combos: [],
   // Section display names hidden from the storefront (by name). Used to show/hide
   // product-builder sections from "Menu items offered" without deleting them.
   hiddenSections: [],

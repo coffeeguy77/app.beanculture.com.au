@@ -75,8 +75,18 @@ export default function Checkout({ config, cart, currency, onQty, dineIn, setDin
   const cardRef = useRef(null);
 
   const cartTotal = cart.reduce((n, c) => n + c.unitPrice * c.quantity, 0);
-  const cartPayload = cart.map((c) => ({ variationId: c.variationId, quantity: c.quantity, modifierIds: c.modifierIds, note: c.note }));
-  const hasCoupon = coupon.trim().length > 0;
+  const hasCombo = cart.some((c) => c.comboInstanceId);
+  const cartPayload = cart.map((c) => ({
+    variationId: c.variationId, quantity: c.quantity, modifierIds: c.modifierIds, note: c.note,
+    // Combo Builder tags — the server independently re-validates these against
+    // the stored combo definition before applying any discount (see
+    // server/lib/combos.js); nothing here is trusted at face value.
+    ...(c.comboInstanceId ? { comboId: c.comboId, comboInstanceId: c.comboInstanceId, comboGroupId: c.comboGroupId } : {}),
+  }));
+  // A combo's discount already applies itself automatically — a typed coupon
+  // on top would stack two discounts, so the coupon field is disabled while
+  // any combo is in the cart (the server enforces this too, independently).
+  const hasCoupon = !hasCombo && coupon.trim().length > 0;
   const usingReward = !!tierId;
 
   // Validate the entered coupon against the app's codes so we can show the real
@@ -373,10 +383,14 @@ export default function Checkout({ config, cart, currency, onQty, dineIn, setDin
       )}
 
       {when === 'asap' && (
-        <label className="field" style={{ marginTop: 16 }}>
-          <span>Promo code (optional)</span>
-          <input value={coupon} onChange={(e) => setCoupon(e.target.value)} placeholder="Enter code" autoCapitalize="characters" />
-        </label>
+        hasCombo ? (
+          <p className="muted" style={{ marginTop: 16, fontSize: 14 }}>Your combo discount is already applied — promo codes can't be combined with a combo deal.</p>
+        ) : (
+          <label className="field" style={{ marginTop: 16 }}>
+            <span>Promo code (optional)</span>
+            <input value={coupon} onChange={(e) => setCoupon(e.target.value)} placeholder="Enter code" autoCapitalize="characters" />
+          </label>
+        )
       )}
 
       <label className="field" style={{ marginTop: 14 }}>

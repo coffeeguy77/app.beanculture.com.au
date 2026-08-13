@@ -255,6 +255,10 @@ img { max-width: 100%; }
    instead of overlapping the item title -- long titles wrap to 2 lines and
    the top-right badge was cutting the text off. */
 .sold-tag-kitchen { top: auto; bottom: 10px; }
+/* Combo Builder: badge on the menu tile + a distinct tint on its grouped cart line. */
+.combo-tag { position: absolute; top: 10px; left: 10px; background: var(--accent); color: #fff; font-size: 10px; font-weight: 700; padding: 3px 8px; border-radius: 999px; text-transform: uppercase; letter-spacing: 0.5px; }
+.cart-line-combo { border-color: var(--accent); background: var(--accent-soft); }
+.store-cart .cart-line-combo { border-color: var(--brand); background: var(--bc-blush, var(--brand-soft)); }
 .plus { width: 30px; height: 30px; border-radius: 50%; background: var(--brand-soft); color: var(--brand); display: grid; place-items: center; font-size: 20px; flex: none; }
 
 /* Buttons */

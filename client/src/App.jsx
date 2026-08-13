@@ -8,6 +8,7 @@ import OrderTypeBar from './components/OrderTypeBar.jsx';
 import MenuDock from './components/MenuDock.jsx';
 import MenuList from './components/MenuList.jsx';
 import ItemModal from './components/ItemModal.jsx';
+import ComboModal from './components/ComboModal.jsx';
 import KitchenClosingCountdown from './components/KitchenClosingCountdown.jsx';
 import CartView from './components/CartView.jsx';
 import CartPanel from './components/CartPanel.jsx';
@@ -582,6 +583,26 @@ export default function App() {
     track('add_cart', { ref: entry.itemName, qty: entry.quantity });
     setActiveItem(null);
   }
+  // A combo adds several linked cart lines at once (one per group choice),
+  // tagged with a shared comboInstanceId so the cart can group/remove/adjust
+  // them together as one unit — see ComboModal. Always appended fresh (never
+  // merged with an existing instance), so ordering the same combo twice makes
+  // two clearly separate combo cards rather than silently merging quantities.
+  function addComboToCart(entries, meta) {
+    setCart((prev) => [...prev, ...entries]);
+    track('add_cart', { ref: meta?.comboName || 'Combo', qty: meta?.quantity || 1 });
+    setActiveItem(null);
+  }
+  function updateComboQty(instanceId, delta) {
+    setCart((prev) => {
+      const next = prev.map((c) => (c.comboInstanceId === instanceId ? { ...c, quantity: c.quantity + delta } : c));
+      const stillHas = next.some((c) => c.comboInstanceId === instanceId && c.quantity > 0);
+      return stillHas ? next : next.filter((c) => c.comboInstanceId !== instanceId);
+    });
+  }
+  function removeCombo(instanceId) {
+    setCart((prev) => prev.filter((c) => c.comboInstanceId !== instanceId));
+  }
   function trackPurchase(order) {
     trackItems('purchase_item', cart.map((c) => ({ name: c.itemName, qty: c.quantity, amount: c.unitPrice * c.quantity })));
     track('purchase', { amount: order?.totalMoney?.amount || cartTotal });
@@ -1141,6 +1162,7 @@ export default function App() {
               <CartPanel
                 cart={cart} currency={currency} onQty={updateQty}
                 onRemove={removeItem} onClear={clearCart}
+                onComboQty={updateComboQty} onRemoveCombo={removeCombo}
                 dineIn={dineIn} table={table}
                 summary={fulfilmentLabel}
                 unavailableKeys={cartUnavailableKeys}
@@ -1155,6 +1177,7 @@ export default function App() {
         <CartView
           cart={cart} currency={currency} onQty={updateQty}
           onRemove={removeItem} onClear={clearCart}
+          onComboQty={updateComboQty} onRemoveCombo={removeCombo}
           dineIn={dineIn} table={table}
           unavailableKeys={cartUnavailableKeys}
           onCheckout={() => setView('checkout')} onBack={() => setView('home')}
@@ -1164,7 +1187,9 @@ export default function App() {
       {!wide && view === 'checkout' && checkoutEl}
 
       {activeItem && (
-        <ItemModal item={activeItem} currency={currency} onClose={() => setActiveItem(null)} onAdd={addToCart} />
+        activeItem.isCombo
+          ? <ComboModal item={activeItem} currency={currency} onClose={() => setActiveItem(null)} onAdd={addComboToCart} />
+          : <ItemModal item={activeItem} currency={currency} onClose={() => setActiveItem(null)} onAdd={addToCart} />
       )}
       {showTheme && (
         <ThemePicker

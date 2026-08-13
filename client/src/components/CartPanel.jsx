@@ -4,11 +4,30 @@ import CartEmptyIllustration from './CartEmptyIllustration.jsx';
 
 // Persistent cart shown as a sidebar on desktop / landscape-tablet layouts.
 // Mirrors CartView's content but stays visible beside the menu.
-export default function CartPanel({ cart, currency, onQty, onRemove, onClear, dineIn, table, onCheckout, summary, unavailableKeys }) {
+// Group flat cart lines into single items vs. combo instances (several lines
+// sharing one comboInstanceId, added together by ComboModal), so a combo shows
+// as one card with one quantity control instead of N separate confusing rows.
+function groupCart(cart) {
+  const out = [];
+  const seen = new Set();
+  for (const c of cart) {
+    if (c.comboInstanceId) {
+      if (seen.has(c.comboInstanceId)) continue;
+      seen.add(c.comboInstanceId);
+      out.push({ type: 'combo', instanceId: c.comboInstanceId, name: c.comboName, lines: cart.filter((x) => x.comboInstanceId === c.comboInstanceId) });
+    } else {
+      out.push({ type: 'single', line: c });
+    }
+  }
+  return out;
+}
+
+export default function CartPanel({ cart, currency, onQty, onRemove, onClear, onComboQty, onRemoveCombo, dineIn, table, onCheckout, summary, unavailableKeys }) {
   const total = cart.reduce((n, c) => n + c.unitPrice * c.quantity, 0);
   const count = cart.reduce((n, c) => n + c.quantity, 0);
   const hasUnavailable = cart.some((c) => unavailableKeys?.has(c.key));
   const empty = cart.length === 0;
+  const grouped = groupCart(cart);
 
   return (
     <div className="cart-panel">
@@ -37,7 +56,31 @@ export default function CartPanel({ cart, currency, onQty, onRemove, onClear, di
         </div>
       ) : (
         <ul className="cart-list cart-panel-list">
-          {cart.map((c) => {
+          {grouped.map((g) => {
+            if (g.type === 'combo') {
+              const qty = g.lines[0]?.quantity || 1;
+              const comboTotal = g.lines.reduce((n, l) => n + l.unitPrice * l.quantity, 0);
+              return (
+                <li key={g.instanceId} className="cart-line cart-line-combo">
+                  <div className="cl-main">
+                    <div className="cl-head">
+                      <span className="cl-name">🍔 {g.name}</span>
+                      <span className="cl-price">{formatMoney(comboTotal, currency)}</span>
+                    </div>
+                    <div className="cl-sub">{g.lines.map((l) => l.itemName).join(' + ')}</div>
+                    <div className="cl-controls">
+                      <div className="stepper sm">
+                        <button onClick={() => onComboQty(g.instanceId, -1)} aria-label="Decrease">−</button>
+                        <span>{qty}</span>
+                        <button onClick={() => onComboQty(g.instanceId, 1)} aria-label="Increase">+</button>
+                      </div>
+                      {onRemoveCombo && <button className="cl-remove" onClick={() => onRemoveCombo(g.instanceId)} aria-label={`Remove ${g.name}`}>Remove</button>}
+                    </div>
+                  </div>
+                </li>
+              );
+            }
+            const c = g.line;
             const unavailable = unavailableKeys?.has(c.key);
             return (
               <li key={c.key} className={`cart-line ${unavailable ? 'unavailable' : ''}`}>

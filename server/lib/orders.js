@@ -3,6 +3,7 @@
 
 const { squareFetch, LOCATION_ID, idem, CURRENCY } = require('./squareClient');
 const coupons = require('./coupons');
+const combos = require('./combos');
 
 const DINEIN_FULFILLMENT = (process.env.SQUARE_DINEIN_FULFILLMENT || 'PICKUP').toUpperCase();
 const COMP_COUPON_CODE = (process.env.COMP_COUPON_CODE || '').trim();
@@ -75,11 +76,20 @@ async function createOrder({ cart, dineIn, table, name, coupon, customerId, pick
     order.discounts = [
       { uid: 'comp', name: `Test comp (${COMP_COUPON_CODE})`, percentage: '100', scope: 'ORDER' },
     ];
-  } else if (coupon) {
-    // App-managed coupon → order-level discount (Square recomputes the total).
-    const c = coupons.find(coupon);
-    const d = c && coupons.discountFor(c);
-    if (d) order.discounts = [d];
+  } else {
+    // Combo Builder discounts are re-derived and re-validated server-side from
+    // the cart's comboId/comboInstanceId/comboGroupId tags (see combos.js) —
+    // never trust a discount amount from the client. A combo in the cart takes
+    // priority over a typed coupon rather than stacking with one.
+    const comboDiscounts = await combos.discountsForCart(cart);
+    if (comboDiscounts.length) {
+      order.discounts = comboDiscounts;
+    } else if (coupon) {
+      // App-managed coupon → order-level discount (Square recomputes the total).
+      const c = coupons.find(coupon);
+      const d = c && coupons.discountFor(c);
+      if (d) order.discounts = [d];
+    }
   }
 
   const data = await squareFetch('/v2/orders', {
