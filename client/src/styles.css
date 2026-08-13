@@ -394,6 +394,11 @@ img { max-width: 100%; }
 .cgroup-hint { font-size: 11.5px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; }
 .cgroup-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(132px, 1fr)); gap: 10px; }
 .cgroup-warn { margin: 0; font-size: 12.5px; font-weight: 700; color: #c0262d; }
+/* Combo Builder: the picked component's own size/modifier options, nested
+   visually under the "choose your X" step they belong to. */
+.combo-customize { display: flex; flex-direction: column; gap: 10px; margin: 10px 0 0 14px; padding: 12px; border-left: 2px solid var(--line); background: var(--brand-soft); border-radius: 0 12px 12px 0; }
+.combo-customize-label { font-weight: 700; font-size: 13px; color: var(--brand); }
+.combo-modgroup { display: flex; flex-direction: column; gap: 8px; }
 
 .ccard {
   position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 4px;

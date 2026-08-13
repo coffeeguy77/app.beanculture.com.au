@@ -462,13 +462,13 @@ async function getMenu(opts = {}) {
         groups.push({
           id: g.id,
           label: String(g.label || '').trim() || 'Choose one',
-          options: options.map((it) => ({ id: it.id, name: it.name, image: it.image, variations: it.variations })),
+          options: options.map((it) => ({ id: it.id, name: it.name, image: it.image, variations: it.variations, modifierGroups: it.modifierGroups })),
         });
       }
       if (broken || !groups.length) continue;
 
-      const discountValue = Math.max(0, Number(combo.discountValue) || 0);
-      const fromPrice = Math.max(0, cheapestTotal - discountValue);
+      const discountCents = Math.max(0, Math.round((Number(combo.discountValue) || 0) * 100));
+      const fromPrice = Math.max(0, cheapestTotal - discountCents);
       const tile = {
         // Two identical synthetic variations (not one) so the storefront's
         // generic "from $X" price-badge logic (which only shows "from" when an
@@ -487,7 +487,7 @@ async function getMenu(opts = {}) {
         isCombo: true,
         comboId: combo.id,
         comboGroups: groups,
-        comboDiscountValue: discountValue,
+        comboDiscountValue: discountCents,
       };
       const secName = String(combo.section || '').trim() || 'Combos';
       if (!combosBySection.has(secName)) combosBySection.set(secName, []);
