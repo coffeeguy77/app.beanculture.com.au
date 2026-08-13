@@ -244,12 +244,8 @@ export default function ComboModal({ item: combo, currency, onClose, onAdd }) {
             {discount > 0 && subtotal > 0 && (
               <span className="sheet-footer-summary">{formatMoney(subtotal, currency)} − {formatMoney(discount, currency)} combo discount</span>
             )}
-            {missingGroups.length > 0 && (
-              <span className="sheet-footer-warn">Choose {missingGroups.map((g) => g.label).join(', ')}</span>
-            )}
-            {!missingGroups.length && unmetGroups.length > 0 && (
-              <span className="sheet-footer-warn">Finish customising {unmetGroups.map((g) => g.label).join(', ')}</span>
-            )}
+            {/* The red REQUIRED pills already make the outstanding steps obvious —
+                no need for a repetitive "Choose Choose your item" footer line. */}
           </div>
           <button className="btn sheet-footer-add" onClick={handleAdd} disabled={!canAdd}>
             Add to order · {formatMoney(unitPrice * qty, currency)}
