@@ -656,22 +656,24 @@ export default function Admin({ onExit }) {
   // Cycle a combo item's modifier through Show → Hide → Locked-in → Show
   // (scoped to this combo only). Locked = always included + hidden + priced in;
   // Hidden = never offered; Show = normal customer choice.
-  const cycleItemMod = (comboId, groupId, itemId, modId) => {
+  // Cycle a combo add-on through the four Product Builder states, scoped to THIS
+  // combo only: Show (offered, not pre-ticked) → Default (offered + pre-ticked) →
+  // Locked (always included, hidden, priced in) → Hidden (never offered) → Show.
+  // Stored explicitly across four maps so it overrides whatever the tile does.
+  const COMBO_MOD_ORDER = ['show', 'default', 'lock', 'hide'];
+  const cycleItemMod = (comboId, groupId, itemId, modId, startState) => {
     const combo = combos.find((c) => c.id === comboId);
     const group = combo && (combo.groups || []).find((g) => g.id === groupId);
     if (!group) return;
-    const locks = { ...(group.itemLocks || {}) };
-    const hides = { ...(group.itemHides || {}) };
-    const lockedArr = Array.isArray(locks[itemId]) ? locks[itemId] : [];
-    const hiddenArr = Array.isArray(hides[itemId]) ? hides[itemId] : [];
-    const isLocked = lockedArr.includes(modId);
-    const isHidden = hiddenArr.includes(modId);
-    if (!isLocked && !isHidden) { hides[itemId] = [...hiddenArr, modId]; } // Show → Hide
-    else if (isHidden) { hides[itemId] = hiddenArr.filter((m) => m !== modId); locks[itemId] = [...lockedArr, modId]; } // Hide → Lock
-    else { locks[itemId] = lockedArr.filter((m) => m !== modId); } // Lock → Show
-    if (!locks[itemId] || !locks[itemId].length) delete locks[itemId];
-    if (!hides[itemId] || !hides[itemId].length) delete hides[itemId];
-    updComboGroup(comboId, groupId, { itemLocks: locks, itemHides: hides });
+    const maps = { show: { ...(group.itemShows || {}) }, default: { ...(group.itemDefaults || {}) }, lock: { ...(group.itemLocks || {}) }, hide: { ...(group.itemHides || {}) } };
+    const arrOf = (k) => (Array.isArray(maps[k][itemId]) ? maps[k][itemId] : []);
+    let cur = null;
+    for (const k of COMBO_MOD_ORDER) if (arrOf(k).includes(modId)) { cur = k; break; }
+    if (!cur) cur = startState || 'show';
+    const next = COMBO_MOD_ORDER[(COMBO_MOD_ORDER.indexOf(cur) + 1) % 4];
+    for (const k of COMBO_MOD_ORDER) { const a = arrOf(k).filter((m) => m !== modId); if (a.length) maps[k][itemId] = a; else delete maps[k][itemId]; }
+    maps[next][itemId] = [...arrOf(next), modId];
+    updComboGroup(comboId, groupId, { itemShows: maps.show, itemDefaults: maps.default, itemLocks: maps.lock, itemHides: maps.hide });
   };
 
   // ---- product builder presets (named hot-links into one variable item) ----
@@ -2392,7 +2394,15 @@ export default function Admin({ onExit }) {
                                       const cfg = r.srcItemId ? itemConfigs[r.srcItemId] : null;
                                       const locks = (group.itemLocks && group.itemLocks[r.key]) || [];
                                       const hides = (group.itemHides && group.itemHides[r.key]) || [];
+                                      const shows = (group.itemShows && group.itemShows[r.key]) || [];
+                                      const defs = (group.itemDefaults && group.itemDefaults[r.key]) || [];
                                       const parts = [locks.length ? `${locks.length} locked` : '', hides.length ? `${hides.length} hidden` : ''].filter(Boolean).join(' · ');
+                                      // Effective state of an add-on = per-combo override if set, else the
+                                      // item's Product Builder tile state. Four states mirror the tile:
+                                      // show (offered, not pre-ticked) / default (pre-ticked) / lock / hide.
+                                      const tg = r.tileGroups; // preset tile config, or null for a raw legacy item
+                                      const tileState = (mgId, modId) => { if (!tg) return 'show'; const gc = tg[mgId]; const s = gc && gc[modId]; return s === 'locked' ? 'lock' : s === 'default' ? 'default' : s ? 'show' : 'hide'; };
+                                      const effState = (mgId, modId) => (locks.includes(modId) ? 'lock' : hides.includes(modId) ? 'hide' : shows.includes(modId) ? 'show' : defs.includes(modId) ? 'default' : tileState(mgId, modId));
                                       return (
                                         <div key={r.key} style={{ borderTop: '1px solid var(--admin-border)', paddingTop: 8, marginTop: 8 }}>
                                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
@@ -2400,34 +2410,27 @@ export default function Admin({ onExit }) {
                                             <button type="button" className="link" onClick={async () => { if (!open && r.srcItemId) await ensureItemConfig(r.srcItemId); setComboLockOpen(open ? null : lockKey); }}>{open ? 'Done' : 'Override options'}</button>
                                           </div>
                                           {open && (() => {
-                                            // The combo mirrors the Product Builder TILE, so by default we only
-                                            // show the add-ons the tile shows (state 'optional'/'default'/'locked').
-                                            // Tile-hidden add-ons stay out of the way behind "Show hidden add-ons"
-                                            // in case the owner wants to surface one just for this combo.
-                                            const tg = r.tileGroups; // preset tile config, or null for a raw legacy item
                                             const revealHidden = !!comboShowHidden[lockKey];
-                                            const tileShows = (mgId, modId) => { if (!tg) return true; const gc = tg[mgId]; return !!(gc && gc[modId]); };
                                             let hiddenCount = 0;
-                                            if (tg && cfg) for (const mg of cfg.modifierGroups || []) for (const m of mg.modifiers || []) if (!tileShows(mg.id, m.id)) hiddenCount++;
+                                            if (cfg) for (const mg of cfg.modifierGroups || []) for (const m of mg.modifiers || []) if (effState(mg.id, m.id) === 'hide') hiddenCount++;
                                             return (
                                             <div style={{ marginTop: 8 }}>
                                               {!cfg && <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>Loading options…</p>}
                                               {cfg && (cfg.modifierGroups || []).length === 0 && <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>This product has no add-ons to override.</p>}
                                               {cfg && (cfg.modifierGroups || []).map((mg) => {
-                                                const mods = (mg.modifiers || []).filter((m) => revealHidden || tileShows(mg.id, m.id) || locks.includes(m.id) || hides.includes(m.id));
+                                                const mods = (mg.modifiers || []).filter((m) => revealHidden || effState(mg.id, m.id) !== 'hide');
                                                 if (!mods.length) return null;
                                                 return (
                                                 <div key={mg.id} style={{ marginBottom: 8 }}>
                                                   <div className="muted" style={{ fontSize: 'var(--fs-xs)', textTransform: 'uppercase', letterSpacing: '.4px', marginBottom: 4 }}>{mg.name}</div>
                                                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                                                     {mods.map((m) => {
-                                                      const st = locks.includes(m.id) ? 'lock' : hides.includes(m.id) ? 'hide' : 'show';
-                                                      const tileHidden = !tileShows(mg.id, m.id);
-                                                      const tag = st === 'lock' ? '🔒 Locked' : st === 'hide' ? '🚫 Hidden' : tileHidden ? 'Off (tile)' : 'Default';
+                                                      const st = effState(mg.id, m.id);
+                                                      const tag = st === 'lock' ? '🔒 Locked' : st === 'hide' ? '🚫 Hidden' : st === 'default' ? 'Default (pre-ticked)' : 'Show';
                                                       return (
-                                                        <button key={m.id} type="button" className={`chip ${st === 'lock' ? 'on' : ''}`} style={{ fontSize: 'var(--fs-xs)', opacity: (st === 'hide' || (tileHidden && st === 'show')) ? 0.55 : 1, textDecoration: st === 'hide' ? 'line-through' : 'none' }}
-                                                          title="Tap to cycle: Default (as on the tile) → Hide → Locked in"
-                                                          onClick={() => cycleItemMod(combo.id, group.id, r.key, m.id)}>
+                                                        <button key={m.id} type="button" className={`chip ${(st === 'lock' || st === 'default') ? 'on' : ''}`} style={{ fontSize: 'var(--fs-xs)', opacity: st === 'hide' ? 0.5 : 1, textDecoration: st === 'hide' ? 'line-through' : 'none' }}
+                                                          title="Tap to cycle: Show → Default → Locked → Hidden"
+                                                          onClick={() => cycleItemMod(combo.id, group.id, r.key, m.id, st)}>
                                                           {m.name}{m.price > 0 ? ` +${formatMoney(m.price, data?.currency)}` : ''} · {tag}
                                                         </button>
                                                       );
@@ -2436,13 +2439,13 @@ export default function Admin({ onExit }) {
                                                 </div>
                                                 );
                                               })}
-                                              {tg && hiddenCount > 0 && (
+                                              {hiddenCount > 0 && (
                                                 <button type="button" className="link" style={{ fontSize: 'var(--fs-xs)' }}
                                                   onClick={() => setComboShowHidden((m) => ({ ...m, [lockKey]: !revealHidden }))}>
-                                                  {revealHidden ? 'Hide the tile-hidden add-ons' : `Show hidden add-ons (${hiddenCount})`}
+                                                  {revealHidden ? 'Hide the hidden add-ons' : `Show hidden add-ons (${hiddenCount})`}
                                                 </button>
                                               )}
-                                              <p className="muted" style={{ fontSize: 'var(--fs-xs)', marginTop: 4 }}>This shows exactly what the item's Product Builder tile shows. Override <strong>for this combo only</strong>: tap an add-on to cycle <strong>Default → Hide → Locked in</strong> (e.g. lock chips into this deal). The item's own menu listing is unchanged.</p>
+                                              <p className="muted" style={{ fontSize: 'var(--fs-xs)', marginTop: 4 }}>Tap an add-on to cycle <strong>Show → Default → Locked → Hidden</strong> — <strong>Show</strong> = offered but not pre-ticked, <strong>Default</strong> = pre-ticked, <strong>Locked</strong> = always included, <strong>Hidden</strong> = removed. Applies to this combo only; the item's own menu listing is unchanged.</p>
                                             </div>
                                             );
                                           })()}

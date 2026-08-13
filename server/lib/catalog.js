@@ -509,25 +509,38 @@ async function getMenu(opts = {}) {
         // (a preset id, or a raw item id for legacy combos).
         const lockMap = g.itemLocks || {};
         const hideMap = g.itemHides || {};
+        const showMap = g.itemShows || {};       // force "offered, NOT pre-selected"
+        const defMap = g.itemDefaults || {};      // force "offered + pre-selected"
         const resolvedOptions = baseOptions.map((o) => {
           const lockSet = new Set(lockMap[o.id] || []);
           const hideSet = new Set(hideMap[o.id] || []);
+          const showSet = new Set(showMap[o.id] || []);
+          const defSet = new Set(defMap[o.id] || []);
           const lockedMods = [...(o.lockedMods || [])];
+          // Clone the tile's defaults so a per-combo Show/Default override can flip
+          // whether a customer-facing add-on starts pre-selected — without touching
+          // the item's own menu listing.
+          const defaults = {};
+          for (const gid of Object.keys(o.defaults || {})) defaults[gid] = [...(o.defaults[gid] || [])];
+          const dropDefault = (gid, mid) => { if (defaults[gid]) defaults[gid] = defaults[gid].filter((x) => x !== mid); };
+          const addDefault = (gid, mid) => { defaults[gid] = defaults[gid] || []; if (!defaults[gid].includes(mid)) defaults[gid].push(mid); };
           let modifierGroups = o.modifierGroups || [];
-          if (lockSet.size || hideSet.size) {
+          if (lockSet.size || hideSet.size || showSet.size || defSet.size) {
             modifierGroups = (o.modifierGroups || []).map((mg) => {
               const kept = [];
               for (const m of mg.modifiers || []) {
-                if (lockSet.has(m.id)) lockedMods.push({ id: m.id, name: m.name, price: m.price || 0 });
-                else if (hideSet.has(m.id)) { /* hidden — not offered, not applied */ }
-                else kept.push(m);
+                if (lockSet.has(m.id)) { lockedMods.push({ id: m.id, name: m.name, price: m.price || 0 }); dropDefault(mg.id, m.id); continue; }
+                if (hideSet.has(m.id)) { dropDefault(mg.id, m.id); continue; } // hidden — not offered
+                kept.push(m);
+                if (showSet.has(m.id)) dropDefault(mg.id, m.id);   // shown, not pre-selected
+                if (defSet.has(m.id)) addDefault(mg.id, m.id);      // pre-selected
               }
               return { ...mg, modifiers: kept };
             }).filter((mg) => (mg.modifiers || []).length > 0);
           }
           const lockPrice = lockedMods.reduce((s, m) => s + (m.price || 0), 0);
           const cheapestVar = Math.min(...o.variations.filter((v) => !v.soldOut).map((v) => v.price));
-          return { id: o.id, name: o.name, image: o.image, variations: o.variations, modifierGroups, lockedMods, defaults: o.defaults || {}, _eff: cheapestVar + lockPrice };
+          return { id: o.id, name: o.name, image: o.image, variations: o.variations, modifierGroups, lockedMods, defaults, _eff: cheapestVar + lockPrice };
         });
 
         // "From" price counts each group's cheapest option INCLUDING its locked-

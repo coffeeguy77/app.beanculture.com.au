@@ -222,7 +222,7 @@ export default function ItemModal({ item, currency, onClose, onAdd }) {
               const unmet = required && have < group.min;
               const hint = group.selectionType === 'SINGLE'
                 ? 'Choose one'
-                : group.max > 0 ? `Choose up to ${group.max}` : 'Choose one or more';
+                : group.max > 0 ? `Choose up to ${group.max}` : '';
               return (
                 <div key={group.id} className="cgroup">
                   <div className="cgroup-title">
@@ -230,7 +230,7 @@ export default function ItemModal({ item, currency, onClose, onAdd }) {
                     <span className="cgroup-name">{group.name}</span>
                     {required
                       ? <span className="cgroup-req">Required</span>
-                      : group.selectionType !== 'SINGLE' && <span className="cgroup-hint">{hint}</span>}
+                      : group.selectionType !== 'SINGLE' && hint && <span className="cgroup-hint">{hint}</span>}
                   </div>
                   <div className="cgroup-grid">
                     {group.modifiers.map((mod) => {

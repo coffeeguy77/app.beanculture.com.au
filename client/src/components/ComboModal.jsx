@@ -196,12 +196,14 @@ export default function ComboModal({ item: combo, currency, onClose, onAdd }) {
                         const modSel = (modifierPick[group.id] || {})[mg.id] || new Set();
                         const required = (mg.min || 0) > 0;
                         const unmet = required && modSel.size < mg.min;
-                        const hint = mg.selectionType === 'SINGLE' ? 'Choose one' : mg.max > 0 ? `Choose up to ${mg.max}` : 'Choose one or more';
+                        // Hide the "choose one or more" nudge on optional groups (matches
+                        // the main menu) so customers don't feel obligated to add extras.
+                        const hint = mg.selectionType === 'SINGLE' ? '' : mg.max > 0 ? `Choose up to ${mg.max}` : '';
                         return (
                           <div key={mg.id} className="combo-modgroup">
                             <div className="cgroup-title">
                               <span className="cgroup-name">{mg.name}</span>
-                              {required ? <span className="cgroup-req">Required</span> : <span className="cgroup-hint">{hint}</span>}
+                              {required ? <span className="cgroup-req">Required</span> : hint ? <span className="cgroup-hint">{hint}</span> : null}
                             </div>
                             <div className="cgroup-grid">
                               {mg.modifiers.map((mod) => {
