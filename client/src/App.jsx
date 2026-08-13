@@ -445,6 +445,16 @@ export default function App() {
       .map((c) => ({ label: c.category, icon: iconFor(c.category), categories: [c.category], cats: [c.category] }));
     return [...manual, ...auto];
   }, [config, menu]);
+
+  // Apply the menu icon-size sliders as CSS variables on the document root. Doing
+  // it here (rather than only via an inline style prop) guarantees they inherit
+  // everywhere the dock/footer icons render, and updates live when the sliders
+  // change in the admin.
+  useEffect(() => {
+    const r = document.documentElement;
+    r.style.setProperty('--dock-icon-scale', String(config?.dockIconScale || 1));
+    r.style.setProperty('--footer-icon-scale', String(config?.footerIconScale || 1));
+  }, [config?.dockIconScale, config?.footerIconScale]);
   const canOrder = config?.hours?.canOrderNow !== false;
   const preorder = config?.hours?.preorder;
   const storeOpen = config?.hours?.open !== false;
