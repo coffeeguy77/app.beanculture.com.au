@@ -140,4 +140,28 @@ async function discountsForCart(cart) {
   return discounts;
 }
 
-module.exports = { discountsForCart };
+// Enforce per-combo modifier locks server-side: for every combo cart line,
+// append the modifier ids the owner locked into that combo group's item (from
+// the STORED combo definition), so a tampered client can never strip a locked
+// add-on (e.g. the combo's included chips) to pay less. Returns a new cart with
+// those modifier ids merged in; non-combo carts pass straight through untouched.
+async function applyLockedMods(cart) {
+  const list = Array.isArray(cart) ? cart : [];
+  if (!list.some((l) => l && l.comboInstanceId && l.comboId && l.comboGroupId)) return list;
+  const settings = getSettings();
+  const idx = await loadRawCatalog();
+  return list.map((line) => {
+    if (!line || !line.comboInstanceId || !line.comboId || !line.comboGroupId) return line;
+    const combo = (settings.combos || []).find((c) => c && c.id === line.comboId && c.active !== false);
+    if (!combo) return line;
+    const group = (combo.groups || []).find((g) => g && g.id === line.comboGroupId);
+    if (!group || !group.itemLocks) return line;
+    const itemId = variationOwner(idx, line.variationId);
+    const locks = itemId && Array.isArray(group.itemLocks[itemId]) ? group.itemLocks[itemId] : null;
+    if (!locks || !locks.length) return line;
+    const merged = new Set([...(Array.isArray(line.modifierIds) ? line.modifierIds : []), ...locks]);
+    return { ...line, modifierIds: [...merged] };
+  });
+}
+
+module.exports = { discountsForCart, applyLockedMods };

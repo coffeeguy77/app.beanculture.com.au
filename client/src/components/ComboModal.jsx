@@ -61,9 +61,12 @@ export default function ComboModal({ item: combo, currency, onClose, onAdd }) {
       const variation = (option.variations || []).find((v) => v.id === variationPick[g.id]) || (option.variations || [])[0];
       if (!variation) continue;
       const modSel = modifierPick[g.id] || {};
-      let modPrice = 0;
-      const modIds = [];
-      const modNames = [];
+      // Modifiers the owner locked into this combo option are ALWAYS included
+      // (baked into the price + sent on the line), never shown as a toggle.
+      const locked = option.lockedMods || [];
+      let modPrice = locked.reduce((s, m) => s + (m.price || 0), 0);
+      const modIds = locked.map((m) => m.id);
+      const modNames = locked.map((m) => m.name);
       for (const mg of option.modifierGroups || []) {
         const set = modSel[mg.id];
         if (!set) continue;
@@ -162,6 +165,10 @@ export default function ComboModal({ item: combo, currency, onClose, onAdd }) {
                       );
                     })}
                   </div>
+
+                  {c && (option.lockedMods || []).length > 0 && (
+                    <div className="combo-included">✓ Included with this combo: {option.lockedMods.map((m) => `${m.name}${m.price > 0 ? ` (+${formatMoney(m.price, currency)})` : ''}`).join(', ')}</div>
+                  )}
 
                   {hasCustomisation && (
                     <div className="combo-customize">

@@ -185,6 +185,7 @@ export default function Admin({ onExit }) {
   const [comboDeleteLock, setComboDeleteLock] = useState(true); // guard against accidental combo deletes
   const [comboItemPicker, setComboItemPicker] = useState(null); // `${comboId}:${groupId}` currently open
   const [comboItemSearch, setComboItemSearch] = useState({}); // picker key -> search text
+  const [comboLockOpen, setComboLockOpen] = useState(null); // `${comboId}:${groupId}:${itemId}` lock panel open
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
   // Backend appearance (admin-only palette) — persisted locally, independent
   // of the storefront's customer-facing theme/season settings.
@@ -606,6 +607,17 @@ export default function Admin({ onExit }) {
     if (!group) return;
     const cur = Array.isArray(group.itemIds) ? group.itemIds : [];
     updComboGroup(comboId, groupId, { itemIds: cur.includes(itemId) ? cur.filter((i) => i !== itemId) : [...cur, itemId] });
+  };
+  // Lock/unlock a modifier into a combo group's item (scoped to the combo only).
+  const toggleItemLock = (comboId, groupId, itemId, modId) => {
+    const combo = combos.find((c) => c.id === comboId);
+    const group = combo && (combo.groups || []).find((g) => g.id === groupId);
+    if (!group) return;
+    const locksMap = { ...(group.itemLocks || {}) };
+    const cur = Array.isArray(locksMap[itemId]) ? locksMap[itemId] : [];
+    locksMap[itemId] = cur.includes(modId) ? cur.filter((m) => m !== modId) : [...cur, modId];
+    if (!locksMap[itemId].length) delete locksMap[itemId];
+    updComboGroup(comboId, groupId, { itemLocks: locksMap });
   };
 
   // ---- product builder presets (named hot-links into one variable item) ----
@@ -2271,6 +2283,49 @@ export default function Admin({ onExit }) {
                                           {p?.name || id}
                                           <button type="button" onClick={() => toggleComboGroupItem(combo.id, group.id, id)} style={{ marginLeft: 4, border: 'none', background: 'none', cursor: 'pointer', color: 'inherit' }}>✕</button>
                                         </span>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                                {/* Per-item modifier locks — lock an add-on (e.g. chips) into THIS combo. */}
+                                {(group.itemIds || []).length > 0 && (
+                                  <div style={{ marginTop: 8 }}>
+                                    {(group.itemIds || []).map((id) => {
+                                      const p = allProducts.find((x) => x.id === id);
+                                      const lockKey = `${combo.id}:${group.id}:${id}`;
+                                      const open = comboLockOpen === lockKey;
+                                      const cfg = itemConfigs[id];
+                                      const locks = (group.itemLocks && group.itemLocks[id]) || [];
+                                      return (
+                                        <div key={id} style={{ borderTop: '1px solid var(--admin-border)', paddingTop: 8, marginTop: 8 }}>
+                                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                                            <span style={{ fontWeight: 650, fontSize: 'var(--fs-sm)' }}>{p?.name || id}{locks.length ? <span className="muted"> · {locks.length} locked in</span> : null}</span>
+                                            <button type="button" className="link" onClick={async () => { if (!open) await ensureItemConfig(id); setComboLockOpen(open ? null : lockKey); }}>{open ? 'Done' : 'Lock options'}</button>
+                                          </div>
+                                          {open && (
+                                            <div style={{ marginTop: 8 }}>
+                                              {!cfg && <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>Loading options…</p>}
+                                              {cfg && (cfg.modifierGroups || []).length === 0 && <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>This item has no add-ons to lock.</p>}
+                                              {cfg && (cfg.modifierGroups || []).map((mg) => (
+                                                <div key={mg.id} style={{ marginBottom: 8 }}>
+                                                  <div className="muted" style={{ fontSize: 'var(--fs-xs)', textTransform: 'uppercase', letterSpacing: '.4px', marginBottom: 4 }}>{mg.name}</div>
+                                                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                                                    {(mg.modifiers || []).map((m) => {
+                                                      const on = locks.includes(m.id);
+                                                      return (
+                                                        <button key={m.id} type="button" className={`chip ${on ? 'on' : ''}`} style={{ fontSize: 'var(--fs-xs)' }}
+                                                          onClick={() => toggleItemLock(combo.id, group.id, id, m.id)}>
+                                                          {on ? '🔒 ' : ''}{m.name}{m.price > 0 ? ` +${formatMoney(m.price, data?.currency)}` : ''}
+                                                        </button>
+                                                      );
+                                                    })}
+                                                  </div>
+                                                </div>
+                                              ))}
+                                              <p className="muted" style={{ fontSize: 'var(--fs-xs)', marginTop: 4 }}>Locked add-ons are always included in this combo (price baked in) and hidden from the customer. The item's normal menu listing is unchanged.</p>
+                                            </div>
+                                          )}
+                                        </div>
                                       );
                                     })}
                                   </div>

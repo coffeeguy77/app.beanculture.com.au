@@ -24,6 +24,10 @@ function buildNote({ dineIn, table }) {
 
 async function createOrder({ cart, dineIn, table, name, coupon, customerId, pickupAt, idempotencyKey, note: customerNote }) {
   if (!Array.isArray(cart) || cart.length === 0) throw new Error('Cart is empty');
+  // Bake any per-combo locked modifiers into the combo lines before pricing, so
+  // an item the owner locked into a combo (e.g. chips) is always charged even if
+  // a tampered client left it off. No-op for carts without a combo.
+  cart = await combos.applyLockedMods(cart);
 
   const isComp =
     !!COMP_COUPON_CODE &&

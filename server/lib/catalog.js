@@ -462,7 +462,28 @@ async function getMenu(opts = {}) {
         groups.push({
           id: g.id,
           label: String(g.label || '').trim() || 'Choose one',
-          options: options.map((it) => ({ id: it.id, name: it.name, image: it.image, variations: it.variations, modifierGroups: it.modifierGroups })),
+          options: options.map((it) => {
+            // Per-combo modifier locks: modifiers the owner has "locked in" for
+            // this item WITHIN this combo (e.g. always add chips to the combo's
+            // steak sandwich). They're baked into the combo option — removed from
+            // the customer-facing modifier list and returned as `lockedMods` so
+            // ComboModal always includes them. This lives only in the combo
+            // definition, so the standalone menu item is completely unaffected.
+            const lockSet = new Set(((g.itemLocks && g.itemLocks[it.id]) || []));
+            const lockedMods = [];
+            let modifierGroups = it.modifierGroups || [];
+            if (lockSet.size) {
+              modifierGroups = (it.modifierGroups || []).map((mg) => {
+                const kept = [];
+                for (const m of mg.modifiers || []) {
+                  if (lockSet.has(m.id)) lockedMods.push({ id: m.id, name: m.name, price: m.price || 0 });
+                  else kept.push(m);
+                }
+                return { ...mg, modifiers: kept };
+              }).filter((mg) => (mg.modifiers || []).length > 0); // drop groups fully satisfied by a lock
+            }
+            return { id: it.id, name: it.name, image: it.image, variations: it.variations, modifierGroups, lockedMods };
+          }),
         });
       }
       if (broken || !groups.length) continue;
