@@ -341,6 +341,11 @@ async function getMenu(opts = {}) {
   // fields / price as that tile does on the menu (populated in the preset pass
   // below, consumed by the combo pass further down).
   const comboOptionByPresetId = new Map();
+  // Same view keyed by the SOURCE item id, so a combo step that hand-picked a
+  // raw Square item (legacy) still inherits that item's Product Builder tile
+  // config automatically — the required fields / hidden options / defaults the
+  // owner set on the tile flow through without re-picking. First tile wins.
+  const comboOptionByItemId = new Map();
   if (includeSections) {
     const presetsBySection = new Map();
     const presetSourceIds = new Set();
@@ -407,7 +412,7 @@ async function getMenu(opts = {}) {
       // Combo option view of this tile: same configured modifier groups + locked
       // add-ons + defaults, but with BASE variation prices (the combo bakes the
       // locked-mod price in itself via lockedMods, so it isn't double-counted).
-      comboOptionByPresetId.set(p.id, {
+      const comboView = {
         id: 'preset:' + p.id,
         name: tile.name,
         image: src.image || null,
@@ -415,7 +420,9 @@ async function getMenu(opts = {}) {
         modifierGroups: groups,
         lockedMods,
         defaults,
-      });
+      };
+      comboOptionByPresetId.set(p.id, comboView);
+      if (!comboOptionByItemId.has(p.sourceItemId)) comboOptionByItemId.set(p.sourceItemId, comboView);
     }
     const sectionNav = getSettings().presetSectionNav || {};
     // A builder section shows on the storefront when its Top-menu or Footer
@@ -484,6 +491,11 @@ async function getMenu(opts = {}) {
           for (const id of Array.isArray(g.itemIds) ? g.itemIds : []) rawIds.add(id);
         }
         for (const id of rawIds) {
+          // Prefer the item's Product Builder tile view (inherits its options /
+          // required fields / hidden add-ons); only fall back to the bare Square
+          // item if the owner never built a tile for it.
+          const tileView = comboOptionByItemId.get(id);
+          if (tileView && tileView.variations.some((v) => !v.soldOut)) { baseOptions.push(tileView); continue; }
           const it = itemsById.get(id);
           if (it && it.variations.some((v) => !v.soldOut)) {
             baseOptions.push({ id: it.id, name: it.name, image: it.image, variations: it.variations, modifierGroups: it.modifierGroups, lockedMods: [], defaults: {} });

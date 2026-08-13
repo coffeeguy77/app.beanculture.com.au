@@ -76,7 +76,10 @@ export default function Checkout({ config, cart, currency, onQty, onComboQty, on
   // ---- scheduling + saved cards ----
   // Seed from the takeaway Now/Later choice made on the menu.
   const takeawayLater = dineIn === false && preWhen === 'later';
-  const [when, setWhen] = useState(takeawayLater ? 'schedule' : 'asap'); // asap | schedule | repeat
+  // When the shop itself is closed, immediate pickup ("ASAP") makes no sense —
+  // there's no one to make it now — so force scheduling for a future time.
+  const closedNow = config.hours?.open === false;
+  const [when, setWhen] = useState((takeawayLater || closedNow) ? 'schedule' : 'asap'); // asap | schedule | repeat
   const [schedDate, setSchedDate] = useState((takeawayLater && preAt?.date) || dateStr(new Date(Date.now() + 86400000)));
   const [schedTime, setSchedTime] = useState((takeawayLater && preAt?.time) || '08:00');
   const [repeatType, setRepeatType] = useState('weekly'); // daily | weekly
@@ -185,7 +188,7 @@ export default function Checkout({ config, cart, currency, onQty, onComboQty, on
     if (!name.trim()) { setError('Please enter your name.'); return false; }
     if (dineIn === null) { setError('Please choose Dine in or Takeaway.'); return false; }
     if (dineIn && !table.trim()) { setError('Please enter your table number.'); return false; }
-    if (!canOrder && when === 'asap') { setError('Ordering is currently closed — schedule a time instead.'); return false; }
+    if ((!canOrder || closedNow) && when === 'asap') { setError('We’re closed right now — schedule a pickup time instead.'); return false; }
     if ((isSchedule || isRepeat) && !user?.customerId) { setError('Please sign in (via Account) to schedule an order.'); return false; }
     if ((isSchedule || isRepeat) && !sched.enabled && autocharge) { setError('Scheduled auto-charge is not available right now.'); return false; }
     if (isRepeat && repeatType === 'weekly' && !repeatDays.length) { setError('Pick at least one day to repeat on.'); return false; }
@@ -342,7 +345,10 @@ export default function Checkout({ config, cart, currency, onQty, onComboQty, on
       <div className="group" style={{ marginTop: 16 }}>
         <div className="group-title">When</div>
         <div className="segmented three">
-          <button className={when === 'asap' ? 'seg active' : 'seg'} onClick={() => setWhen('asap')} type="button">ASAP</button>
+          <button className={when === 'asap' ? 'seg active' : 'seg'} disabled={closedNow}
+            onClick={() => !closedNow && setWhen('asap')} type="button"
+            style={closedNow ? { opacity: 0.45, cursor: 'not-allowed' } : undefined}
+            title={closedNow ? 'Closed right now — schedule a time' : undefined}>ASAP</button>
           <button className={when === 'schedule' ? 'seg active' : 'seg'} onClick={() => setWhen('schedule')} type="button">Schedule</button>
           <button className={when === 'repeat' ? 'seg active' : 'seg'} onClick={() => setWhen('repeat')} type="button">Repeat</button>
         </div>

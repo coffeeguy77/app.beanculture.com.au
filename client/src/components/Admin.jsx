@@ -187,6 +187,7 @@ export default function Admin({ onExit }) {
   const [comboItemSearch, setComboItemSearch] = useState({}); // picker key -> search text
   const [comboLockOpen, setComboLockOpen] = useState(null); // `${comboId}:${groupId}:${itemId}` lock panel open
   const [comboPickerSec, setComboPickerSec] = useState({}); // picker key -> section filter
+  const [comboShowHidden, setComboShowHidden] = useState({}); // lock key -> reveal tile-hidden add-ons
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
   // Backend appearance (admin-only palette) — persisted locally, independent
   // of the storefront's customer-facing theme/season settings.
@@ -2353,7 +2354,7 @@ export default function Admin({ onExit }) {
                               const optionRows = [
                                 ...(group.presetIds || []).map((pid) => {
                                   const pr = (presets || []).find((x) => x.id === pid);
-                                  return { key: 'preset:' + pid, label: pr ? pr.name : pid, sub: pr?.section || '', srcItemId: pr?.sourceItemId, remove: () => toggleComboGroupPreset(combo.id, group.id, pid) };
+                                  return { key: 'preset:' + pid, label: pr ? pr.name : pid, sub: pr?.section || '', srcItemId: pr?.sourceItemId, tileGroups: pr?.groups || null, remove: () => toggleComboGroupPreset(combo.id, group.id, pid) };
                                 }),
                                 ...(group.itemIds || []).map((id) => {
                                   const it = allProducts.find((x) => x.id === id);
@@ -2370,7 +2371,7 @@ export default function Admin({ onExit }) {
                               <div style={{ marginTop: 14 }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, marginBottom: 8 }}>
                                   <span style={{ fontWeight: 650, fontSize: 'var(--fs-sm)', color: 'var(--admin-text)' }}>Products in this step <span className="muted">({optionRows.length})</span></span>
-                                  <button type="button" className="btn ghost" style={{ padding: '7px 14px', fontSize: 'var(--fs-sm)' }} onClick={() => setComboItemPicker(pickerOpen ? null : pickerKey)}>{pickerOpen ? 'Done' : '+ Choose products'}</button>
+                                  <button type="button" className="btn ghost" style={{ padding: '7px 14px', fontSize: 'var(--fs-sm)' }} onClick={() => setComboItemPicker(pickerOpen ? null : pickerKey)}>{pickerOpen ? 'Done' : (optionRows.length ? 'Edit products' : '+ Choose products')}</button>
                                 </div>
                                 {optionRows.length > 0 && (
                                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
@@ -2398,19 +2399,33 @@ export default function Admin({ onExit }) {
                                             <span style={{ fontWeight: 650, fontSize: 'var(--fs-sm)' }}>{r.label}{parts ? <span className="muted"> · {parts}</span> : null}</span>
                                             <button type="button" className="link" onClick={async () => { if (!open && r.srcItemId) await ensureItemConfig(r.srcItemId); setComboLockOpen(open ? null : lockKey); }}>{open ? 'Done' : 'Override options'}</button>
                                           </div>
-                                          {open && (
+                                          {open && (() => {
+                                            // The combo mirrors the Product Builder TILE, so by default we only
+                                            // show the add-ons the tile shows (state 'optional'/'default'/'locked').
+                                            // Tile-hidden add-ons stay out of the way behind "Show hidden add-ons"
+                                            // in case the owner wants to surface one just for this combo.
+                                            const tg = r.tileGroups; // preset tile config, or null for a raw legacy item
+                                            const revealHidden = !!comboShowHidden[lockKey];
+                                            const tileShows = (mgId, modId) => { if (!tg) return true; const gc = tg[mgId]; return !!(gc && gc[modId]); };
+                                            let hiddenCount = 0;
+                                            if (tg && cfg) for (const mg of cfg.modifierGroups || []) for (const m of mg.modifiers || []) if (!tileShows(mg.id, m.id)) hiddenCount++;
+                                            return (
                                             <div style={{ marginTop: 8 }}>
                                               {!cfg && <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>Loading options…</p>}
                                               {cfg && (cfg.modifierGroups || []).length === 0 && <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>This product has no add-ons to override.</p>}
-                                              {cfg && (cfg.modifierGroups || []).map((mg) => (
+                                              {cfg && (cfg.modifierGroups || []).map((mg) => {
+                                                const mods = (mg.modifiers || []).filter((m) => revealHidden || tileShows(mg.id, m.id) || locks.includes(m.id) || hides.includes(m.id));
+                                                if (!mods.length) return null;
+                                                return (
                                                 <div key={mg.id} style={{ marginBottom: 8 }}>
                                                   <div className="muted" style={{ fontSize: 'var(--fs-xs)', textTransform: 'uppercase', letterSpacing: '.4px', marginBottom: 4 }}>{mg.name}</div>
                                                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                                                    {(mg.modifiers || []).map((m) => {
+                                                    {mods.map((m) => {
                                                       const st = locks.includes(m.id) ? 'lock' : hides.includes(m.id) ? 'hide' : 'show';
-                                                      const tag = st === 'lock' ? '🔒 Locked' : st === 'hide' ? '🚫 Hidden' : 'Default';
+                                                      const tileHidden = !tileShows(mg.id, m.id);
+                                                      const tag = st === 'lock' ? '🔒 Locked' : st === 'hide' ? '🚫 Hidden' : tileHidden ? 'Off (tile)' : 'Default';
                                                       return (
-                                                        <button key={m.id} type="button" className={`chip ${st === 'lock' ? 'on' : ''}`} style={{ fontSize: 'var(--fs-xs)', opacity: st === 'hide' ? 0.55 : 1, textDecoration: st === 'hide' ? 'line-through' : 'none' }}
+                                                        <button key={m.id} type="button" className={`chip ${st === 'lock' ? 'on' : ''}`} style={{ fontSize: 'var(--fs-xs)', opacity: (st === 'hide' || (tileHidden && st === 'show')) ? 0.55 : 1, textDecoration: st === 'hide' ? 'line-through' : 'none' }}
                                                           title="Tap to cycle: Default (as on the tile) → Hide → Locked in"
                                                           onClick={() => cycleItemMod(combo.id, group.id, r.key, m.id)}>
                                                           {m.name}{m.price > 0 ? ` +${formatMoney(m.price, data?.currency)}` : ''} · {tag}
@@ -2419,10 +2434,18 @@ export default function Admin({ onExit }) {
                                                     })}
                                                   </div>
                                                 </div>
-                                              ))}
-                                              <p className="muted" style={{ fontSize: 'var(--fs-xs)', marginTop: 4 }}>The product already shows exactly what its Product Builder tile shows. Here you can override <strong>for this combo only</strong>: tap an add-on to cycle <strong>Default → Hide → Locked in</strong> (e.g. lock chips into this deal). The item's own menu listing is unchanged.</p>
+                                                );
+                                              })}
+                                              {tg && hiddenCount > 0 && (
+                                                <button type="button" className="link" style={{ fontSize: 'var(--fs-xs)' }}
+                                                  onClick={() => setComboShowHidden((m) => ({ ...m, [lockKey]: !revealHidden }))}>
+                                                  {revealHidden ? 'Hide the tile-hidden add-ons' : `Show hidden add-ons (${hiddenCount})`}
+                                                </button>
+                                              )}
+                                              <p className="muted" style={{ fontSize: 'var(--fs-xs)', marginTop: 4 }}>This shows exactly what the item's Product Builder tile shows. Override <strong>for this combo only</strong>: tap an add-on to cycle <strong>Default → Hide → Locked in</strong> (e.g. lock chips into this deal). The item's own menu listing is unchanged.</p>
                                             </div>
-                                          )}
+                                            );
+                                          })()}
                                         </div>
                                       );
                                     })}
@@ -2441,7 +2464,7 @@ export default function Admin({ onExit }) {
                                     {(presets || []).length === 0 && <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>No Product Builder products yet — build some in Product Builder first.</p>}
                                     {filteredPresets.slice(0, 200).map((p) => (
                                       <label key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 2px', fontSize: 'var(--fs-sm)' }}>
-                                        <input type="checkbox" checked={(group.presetIds || []).includes(p.id)} onChange={() => toggleComboGroupPreset(combo.id, group.id, p.id)} />
+                                        <input type="checkbox" checked={(group.presetIds || []).includes(p.id)} onChange={() => { const adding = !(group.presetIds || []).includes(p.id); toggleComboGroupPreset(combo.id, group.id, p.id); if (adding) setComboItemPicker(null); }} />
                                         {p.name} <span className="muted">· {p.section || 'Specials'}</span>
                                       </label>
                                     ))}
