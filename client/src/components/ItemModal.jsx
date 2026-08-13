@@ -214,7 +214,7 @@ export default function ItemModal({ item, currency, onClose, onAdd }) {
               );
             })()}
 
-            {(item.modifierGroups || []).map((group) => {
+            {[...(item.modifierGroups || [])].sort((a, b) => ((b.min || 0) > 0 ? 1 : 0) - ((a.min || 0) > 0 ? 1 : 0)).map((group) => {
               sectionNum += 1;
               const num = sectionNum;
               const required = (group.min || 0) > 0;

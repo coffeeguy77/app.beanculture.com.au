@@ -457,33 +457,42 @@ async function getMenu(opts = {}) {
         const options = [...optionIds].map((id) => itemsById.get(id)).filter((it) => it && it.variations.some((v) => !v.soldOut));
         if (!options.length) { broken = true; break; }
 
-        const cheapest = Math.min(...options.map((it) => Math.min(...it.variations.filter((v) => !v.soldOut).map((v) => v.price))));
+        // Per-combo modifier config (scoped to THIS combo, never the standalone
+        // menu item): each item's modifiers can be Locked in (always included +
+        // hidden, price baked in — e.g. chips on the combo steak) or Hidden
+        // (never offered). Everything else stays a normal customer choice.
+        const lockMap = g.itemLocks || {};
+        const hideMap = g.itemHides || {};
+        const resolvedOptions = options.map((it) => {
+          const lockSet = new Set(lockMap[it.id] || []);
+          const hideSet = new Set(hideMap[it.id] || []);
+          const lockedMods = [];
+          let modifierGroups = it.modifierGroups || [];
+          if (lockSet.size || hideSet.size) {
+            modifierGroups = (it.modifierGroups || []).map((mg) => {
+              const kept = [];
+              for (const m of mg.modifiers || []) {
+                if (lockSet.has(m.id)) lockedMods.push({ id: m.id, name: m.name, price: m.price || 0 });
+                else if (hideSet.has(m.id)) { /* hidden — not offered, not applied */ }
+                else kept.push(m);
+              }
+              return { ...mg, modifiers: kept };
+            }).filter((mg) => (mg.modifiers || []).length > 0); // drop groups emptied by hide/lock
+          }
+          const lockPrice = lockedMods.reduce((s, m) => s + (m.price || 0), 0);
+          const cheapestVar = Math.min(...it.variations.filter((v) => !v.soldOut).map((v) => v.price));
+          return { id: it.id, name: it.name, image: it.image, variations: it.variations, modifierGroups, lockedMods, _eff: cheapestVar + lockPrice };
+        });
+
+        // "From" price counts each group's cheapest option INCLUDING its locked-
+        // in extras, so a combo that always adds $3 chips can't advertise a price
+        // that's impossible to actually buy it at.
+        const cheapest = Math.min(...resolvedOptions.map((o) => o._eff));
         cheapestTotal += cheapest;
         groups.push({
           id: g.id,
           label: String(g.label || '').trim() || 'Choose one',
-          options: options.map((it) => {
-            // Per-combo modifier locks: modifiers the owner has "locked in" for
-            // this item WITHIN this combo (e.g. always add chips to the combo's
-            // steak sandwich). They're baked into the combo option — removed from
-            // the customer-facing modifier list and returned as `lockedMods` so
-            // ComboModal always includes them. This lives only in the combo
-            // definition, so the standalone menu item is completely unaffected.
-            const lockSet = new Set(((g.itemLocks && g.itemLocks[it.id]) || []));
-            const lockedMods = [];
-            let modifierGroups = it.modifierGroups || [];
-            if (lockSet.size) {
-              modifierGroups = (it.modifierGroups || []).map((mg) => {
-                const kept = [];
-                for (const m of mg.modifiers || []) {
-                  if (lockSet.has(m.id)) lockedMods.push({ id: m.id, name: m.name, price: m.price || 0 });
-                  else kept.push(m);
-                }
-                return { ...mg, modifiers: kept };
-              }).filter((mg) => (mg.modifiers || []).length > 0); // drop groups fully satisfied by a lock
-            }
-            return { id: it.id, name: it.name, image: it.image, variations: it.variations, modifierGroups, lockedMods };
-          }),
+          options: resolvedOptions.map(({ _eff, ...o }) => o),
         });
       }
       if (broken || !groups.length) continue;

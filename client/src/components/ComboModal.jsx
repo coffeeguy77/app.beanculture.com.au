@@ -128,7 +128,7 @@ export default function ComboModal({ item: combo, currency, onClose, onAdd }) {
               <h2>{combo.name}</h2>
               <div className="sheet-from-price">
                 From {formatMoney(Math.max(0, (combo.variations?.[0]?.price ?? 0)), currency)}
-                {discount > 0 && <span className="muted"> · always {formatMoney(discount, currency)} off this combo</span>}
+                {discount > 0 && <span className="muted"> · save {formatMoney(discount, currency)} on this combo</span>}
               </div>
               {combo.description && <p className="sheet-desc">{combo.description}</p>}
             </div>
@@ -188,7 +188,7 @@ export default function ComboModal({ item: combo, currency, onClose, onAdd }) {
                         </div>
                       )}
 
-                      {(option.modifierGroups || []).map((mg) => {
+                      {[...(option.modifierGroups || [])].sort((a, b) => ((b.min || 0) > 0 ? 1 : 0) - ((a.min || 0) > 0 ? 1 : 0)).map((mg) => {
                         const modSel = (modifierPick[group.id] || {})[mg.id] || new Set();
                         const required = (mg.min || 0) > 0;
                         const unmet = required && modSel.size < mg.min;

@@ -608,16 +608,25 @@ export default function Admin({ onExit }) {
     const cur = Array.isArray(group.itemIds) ? group.itemIds : [];
     updComboGroup(comboId, groupId, { itemIds: cur.includes(itemId) ? cur.filter((i) => i !== itemId) : [...cur, itemId] });
   };
-  // Lock/unlock a modifier into a combo group's item (scoped to the combo only).
-  const toggleItemLock = (comboId, groupId, itemId, modId) => {
+  // Cycle a combo item's modifier through Show → Hide → Locked-in → Show
+  // (scoped to this combo only). Locked = always included + hidden + priced in;
+  // Hidden = never offered; Show = normal customer choice.
+  const cycleItemMod = (comboId, groupId, itemId, modId) => {
     const combo = combos.find((c) => c.id === comboId);
     const group = combo && (combo.groups || []).find((g) => g.id === groupId);
     if (!group) return;
-    const locksMap = { ...(group.itemLocks || {}) };
-    const cur = Array.isArray(locksMap[itemId]) ? locksMap[itemId] : [];
-    locksMap[itemId] = cur.includes(modId) ? cur.filter((m) => m !== modId) : [...cur, modId];
-    if (!locksMap[itemId].length) delete locksMap[itemId];
-    updComboGroup(comboId, groupId, { itemLocks: locksMap });
+    const locks = { ...(group.itemLocks || {}) };
+    const hides = { ...(group.itemHides || {}) };
+    const lockedArr = Array.isArray(locks[itemId]) ? locks[itemId] : [];
+    const hiddenArr = Array.isArray(hides[itemId]) ? hides[itemId] : [];
+    const isLocked = lockedArr.includes(modId);
+    const isHidden = hiddenArr.includes(modId);
+    if (!isLocked && !isHidden) { hides[itemId] = [...hiddenArr, modId]; } // Show → Hide
+    else if (isHidden) { hides[itemId] = hiddenArr.filter((m) => m !== modId); locks[itemId] = [...lockedArr, modId]; } // Hide → Lock
+    else { locks[itemId] = lockedArr.filter((m) => m !== modId); } // Lock → Show
+    if (!locks[itemId] || !locks[itemId].length) delete locks[itemId];
+    if (!hides[itemId] || !hides[itemId].length) delete hides[itemId];
+    updComboGroup(comboId, groupId, { itemLocks: locks, itemHides: hides });
   };
 
   // ---- product builder presets (named hot-links into one variable item) ----
@@ -2296,33 +2305,37 @@ export default function Admin({ onExit }) {
                                       const open = comboLockOpen === lockKey;
                                       const cfg = itemConfigs[id];
                                       const locks = (group.itemLocks && group.itemLocks[id]) || [];
+                                      const hides = (group.itemHides && group.itemHides[id]) || [];
+                                      const parts = [locks.length ? `${locks.length} locked` : '', hides.length ? `${hides.length} hidden` : ''].filter(Boolean).join(' · ');
                                       return (
                                         <div key={id} style={{ borderTop: '1px solid var(--admin-border)', paddingTop: 8, marginTop: 8 }}>
                                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-                                            <span style={{ fontWeight: 650, fontSize: 'var(--fs-sm)' }}>{p?.name || id}{locks.length ? <span className="muted"> · {locks.length} locked in</span> : null}</span>
-                                            <button type="button" className="link" onClick={async () => { if (!open) await ensureItemConfig(id); setComboLockOpen(open ? null : lockKey); }}>{open ? 'Done' : 'Lock options'}</button>
+                                            <span style={{ fontWeight: 650, fontSize: 'var(--fs-sm)' }}>{p?.name || id}{parts ? <span className="muted"> · {parts}</span> : null}</span>
+                                            <button type="button" className="link" onClick={async () => { if (!open) await ensureItemConfig(id); setComboLockOpen(open ? null : lockKey); }}>{open ? 'Done' : 'Options'}</button>
                                           </div>
                                           {open && (
                                             <div style={{ marginTop: 8 }}>
                                               {!cfg && <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>Loading options…</p>}
-                                              {cfg && (cfg.modifierGroups || []).length === 0 && <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>This item has no add-ons to lock.</p>}
+                                              {cfg && (cfg.modifierGroups || []).length === 0 && <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>This item has no add-ons to configure.</p>}
                                               {cfg && (cfg.modifierGroups || []).map((mg) => (
                                                 <div key={mg.id} style={{ marginBottom: 8 }}>
                                                   <div className="muted" style={{ fontSize: 'var(--fs-xs)', textTransform: 'uppercase', letterSpacing: '.4px', marginBottom: 4 }}>{mg.name}</div>
                                                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                                                     {(mg.modifiers || []).map((m) => {
-                                                      const on = locks.includes(m.id);
+                                                      const st = locks.includes(m.id) ? 'lock' : hides.includes(m.id) ? 'hide' : 'show';
+                                                      const tag = st === 'lock' ? '🔒 Locked' : st === 'hide' ? '🚫 Hidden' : 'Show';
                                                       return (
-                                                        <button key={m.id} type="button" className={`chip ${on ? 'on' : ''}`} style={{ fontSize: 'var(--fs-xs)' }}
-                                                          onClick={() => toggleItemLock(combo.id, group.id, id, m.id)}>
-                                                          {on ? '🔒 ' : ''}{m.name}{m.price > 0 ? ` +${formatMoney(m.price, data?.currency)}` : ''}
+                                                        <button key={m.id} type="button" className={`chip ${st === 'lock' ? 'on' : ''}`} style={{ fontSize: 'var(--fs-xs)', opacity: st === 'hide' ? 0.55 : 1, textDecoration: st === 'hide' ? 'line-through' : 'none' }}
+                                                          title="Tap to cycle: Show → Hide → Locked in"
+                                                          onClick={() => cycleItemMod(combo.id, group.id, id, m.id)}>
+                                                          {m.name}{m.price > 0 ? ` +${formatMoney(m.price, data?.currency)}` : ''} · {tag}
                                                         </button>
                                                       );
                                                     })}
                                                   </div>
                                                 </div>
                                               ))}
-                                              <p className="muted" style={{ fontSize: 'var(--fs-xs)', marginTop: 4 }}>Locked add-ons are always included in this combo (price baked in) and hidden from the customer. The item's normal menu listing is unchanged.</p>
+                                              <p className="muted" style={{ fontSize: 'var(--fs-xs)', marginTop: 4 }}>Tap an add-on to cycle <strong>Show → Hide → Locked in</strong>. Locked = always included (price baked in, hidden from the customer); Hidden = never offered. Only affects this combo — the item's normal menu listing is unchanged.</p>
                                             </div>
                                           )}
                                         </div>
