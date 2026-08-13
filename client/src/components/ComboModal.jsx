@@ -39,7 +39,11 @@ export default function ComboModal({ item: combo, currency, onClose, onAdd }) {
     setModifierPick((prev) => {
       const groupState = { ...(prev[group.id] || {}) };
       const cur = new Set(groupState[modGroup.id] || []);
-      if (modGroup.selectionType === 'SINGLE') {
+      // Treat "pick exactly one" groups (max 1) as single-select even when Square
+      // tags them MULTIPLE — tapping another option moves the tick instead of
+      // forcing you to un-tick the first.
+      const single = modGroup.selectionType === 'SINGLE' || modGroup.max === 1;
+      if (single) {
         if (cur.has(mod.id)) cur.clear();
         else { cur.clear(); cur.add(mod.id); }
       } else if (cur.has(mod.id)) cur.delete(mod.id);
@@ -198,7 +202,7 @@ export default function ComboModal({ item: combo, currency, onClose, onAdd }) {
                         const unmet = required && modSel.size < mg.min;
                         // Hide the "choose one or more" nudge on optional groups (matches
                         // the main menu) so customers don't feel obligated to add extras.
-                        const hint = mg.selectionType === 'SINGLE' ? '' : mg.max > 0 ? `Choose up to ${mg.max}` : '';
+                        const hint = (mg.selectionType === 'SINGLE' || mg.max === 1) ? '' : mg.max > 0 ? `Choose up to ${mg.max}` : '';
                         return (
                           <div key={mg.id} className="combo-modgroup">
                             <div className="cgroup-title">

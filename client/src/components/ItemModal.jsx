@@ -66,7 +66,9 @@ export default function ItemModal({ item, currency, onClose, onAdd }) {
   function toggleModifier(group, mod) {
     setSelected((prev) => {
       const cur = new Set(prev[group.id] || []);
-      if (group.selectionType === 'SINGLE') {
+      // "Pick exactly one" groups (max 1) act as single-select even if Square
+      // tags them MULTIPLE — the tick moves rather than needing a manual un-tick.
+      if (group.selectionType === 'SINGLE' || group.max === 1) {
         // Pill behaviour: tapping the already-chosen option deselects it back
         // to "none picked" instead of being stuck once chosen, like a radio
         // button would be. Required groups (group.min > 0) are enforced at
@@ -220,7 +222,7 @@ export default function ItemModal({ item, currency, onClose, onAdd }) {
               const required = (group.min || 0) > 0;
               const have = (selected[group.id]?.size) || 0;
               const unmet = required && have < group.min;
-              const hint = group.selectionType === 'SINGLE'
+              const hint = (group.selectionType === 'SINGLE' || group.max === 1)
                 ? 'Choose one'
                 : group.max > 0 ? `Choose up to ${group.max}` : '';
               return (
