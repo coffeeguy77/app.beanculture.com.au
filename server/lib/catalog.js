@@ -582,10 +582,24 @@ async function getMenu(opts = {}) {
       if (!combosBySection.has(secName)) combosBySection.set(secName, []);
       combosBySection.get(secName).push(tile);
     }
+    const comboNav = getSettings().presetSectionNav || {};
     for (const [secName, tiles] of combosBySection) {
       const existing = sections.find((s) => s.category.toLowerCase() === secName.toLowerCase());
       if (existing) { existing.items.push(...tiles); continue; }
-      sections.push({ category: secName, items: tiles, showImages: true, custom: true, topNav: true, footerNav: false });
+      // Respect the Menu Builder Top-menu / Footer toggles for the combo section
+      // (same as product sections). Only default to the top bar when the owner
+      // hasn't configured it at all — so ticking Footer actually surfaces combos
+      // in the footer menu instead of being ignored.
+      const nav = comboNav[secName];
+      const banner = nav && nav.banner && nav.banner.on && (nav.banner.title || nav.banner.image)
+        ? { title: nav.banner.title || '', image: nav.banner.image || null, itemId: nav.banner.itemId || null, hideText: nav.banner.hideText === true }
+        : null;
+      sections.push({
+        category: secName, items: tiles, showImages: nav ? nav.showImages !== false : true, custom: true,
+        topNav: nav ? nav.top === true : true,
+        footerNav: nav ? nav.footer === true : false,
+        banner,
+      });
     }
   }
 

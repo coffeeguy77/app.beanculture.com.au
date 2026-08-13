@@ -466,7 +466,7 @@ export default function Checkout({ config, cart, currency, onQty, onComboQty, on
                   <li key={g.instanceId} className="co-line co-line-combo">
                     <div className="co-line-main">
                       <div className="co-line-name">🍔 {g.name}</div>
-                      <div className="co-line-sub">{g.lines.map((l) => l.itemName + (l.variationName ? ` · ${l.variationName}` : '')).join(' + ')}</div>
+                      <div className="co-line-sub">{g.lines.map((l) => l.itemName + (l.variationName && l.variationName !== l.itemName ? ` · ${l.variationName}` : '')).join(' + ')}</div>
                       {comboDisc > 0 && <div className="co-line-sub cl-combo-save">Combo saving −{formatMoney(comboDisc, currency)}</div>}
                       <div style={{ display: 'flex', gap: 14, marginTop: 4 }}>
                         {onEditCombo && <button type="button" className="link" style={{ padding: 0 }} onClick={() => onEditCombo(g.instanceId)}>Edit</button>}
@@ -490,7 +490,7 @@ export default function Checkout({ config, cart, currency, onQty, onComboQty, on
               return (
                 <li key={c.key} className="co-line">
                   <div className="co-line-main">
-                    <div className="co-line-name">{c.itemName}{c.variationName ? ` · ${c.variationName}` : ''}</div>
+                    <div className="co-line-name">{c.itemName}{c.variationName && c.variationName !== c.itemName ? ` · ${c.variationName}` : ''}</div>
                     {c.modifierNames?.length > 0 && <div className="co-line-sub">{c.modifierNames.join(', ')}</div>}
                     {c.note && <div className="co-line-sub">“{c.note}”</div>}
                   </div>

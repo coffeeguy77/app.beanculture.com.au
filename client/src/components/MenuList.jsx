@@ -76,7 +76,14 @@ export default function MenuList({ categories, currency, onPick, scrollTo, scrol
           <div className={`items ${showImages ? '' : 'noimg'}`}>
             {cat.items.map((item) => {
               const from = fromPrice(item);
-              const multi = item.variations.length > 1;
+              // Show "from" only when the price can actually be higher than the
+              // base: a real price range across variations, any priced add-on, or
+              // a combo (whose price always depends on the options chosen). A
+              // single fixed-price item (e.g. Porridge $19) shows just "$19".
+              const prices = item.variations.map((v) => v.price).filter((p) => p != null);
+              const priceRange = prices.length > 1 && Math.max(...prices) > Math.min(...prices);
+              const hasUpsell = (item.modifierGroups || []).some((g) => (g.modifiers || []).some((m) => (m.price || 0) > 0));
+              const multi = item.isCombo ? item.variations.length > 1 : (priceRange || hasUpsell);
               const unavailable = item.soldOut || kitchenShut;
               // Only show short, human descriptions on the card. Technical Square
               // composition copy (e.g. "Origin Composition: 50% Brazil | …") and

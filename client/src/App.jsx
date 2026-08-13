@@ -430,10 +430,14 @@ export default function App() {
   const footerSlots = useMemo(() => {
     if (!menu) return [];
     const live = menu.categories.filter((c) => c.footerNav === true);
-    const liveNames = new Set(live.map((c) => c.category.toLowerCase()));
+    // Any section that exists in the live menu can be placed in a footer button —
+    // explicitly grouping it into a footer button IS the intent to show it, even
+    // if its own "Footer" toggle is off (e.g. Combos / Specials, which default to
+    // the top bar). Auto buttons below still only appear for Footer-toggled ones.
+    const allNames = new Set(menu.categories.map((c) => c.category.toLowerCase()));
     const grouped = new Set();
     const manual = (config?.footer || [])
-      .map((slot) => ({ ...slot, cats: (slot.categories || []).filter((cat) => liveNames.has(cat.toLowerCase())) }))
+      .map((slot) => ({ ...slot, cats: (slot.categories || []).filter((cat) => allNames.has(cat.toLowerCase())) }))
       .filter((slot) => slot.cats.length);
     manual.forEach((slot) => slot.cats.forEach((c) => grouped.add(c.toLowerCase())));
     const auto = live

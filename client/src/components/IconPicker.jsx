@@ -6,7 +6,9 @@ import { SlotIcon, ICON_LIBRARY } from './icons.jsx';
 // icon fetches its SVG once and stores it in settings, so the storefront has no
 // runtime dependency on the icon CDN.
 const ICONIFY = 'https://api.iconify.design';
-const SETS = 'lucide,tabler,ph';
+// Premium, polished icon families first (filled + duotone), then clean stroke
+// sets — gives a far richer, more designed selection than stroke-only.
+const SETS = 'solar,ph,fluent,material-symbols,mingcute,hugeicons,streamline,tabler,lucide';
 
 export default function IconPicker({ value, brand = '#b5566e', onChange }) {
   const [open, setOpen] = useState(false);
@@ -78,7 +80,7 @@ export default function IconPicker({ value, brand = '#b5566e', onChange }) {
                   </button>
                 ))}
               </div>
-              <div className="muted" style={{ fontSize: 11, marginTop: 6 }}>Or search thousands more above (all stroke icons).</div>
+              <div className="muted" style={{ fontSize: 11, marginTop: 6 }}>Or search thousands more above — filled, duotone &amp; line styles.</div>
             </>
           )}
         </div>

@@ -150,6 +150,10 @@ export default function ItemModal({ item, currency, onClose, onAdd }) {
   }
 
   let sectionNum = 0;
+  // An item is only "customisable" if it offers a size choice or at least one
+  // real add-on group. Plain items (e.g. Porridge) shouldn't be told to
+  // "choose your options" — the Notes field covers any special request.
+  const hasOptions = item.variations.length > 1 || (item.modifierGroups || []).some((g) => (g.modifiers || []).length > 0);
 
   return (
     <div className="backdrop item-backdrop" onClick={onClose}>
@@ -188,8 +192,10 @@ export default function ItemModal({ item, currency, onClose, onAdd }) {
 
           <div className="sheet-right">
             <div className="sheet-right-head">
-              <h3>Customise your {(item.name || 'item').toLowerCase()}</h3>
-              <p>Choose your options and make it yours.</p>
+              <h3>{hasOptions ? `Customise your ${(item.name || 'item').toLowerCase()}` : `Add ${item.name || 'item'} to your order`}</h3>
+              {hasOptions
+                ? <p>Choose your options and make it yours.</p>
+                : <p>Nothing to choose here — add a note below if you'd like it a certain way.</p>}
             </div>
 
             {item.variations.length > 1 && (() => {
