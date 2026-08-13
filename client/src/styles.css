@@ -949,17 +949,6 @@ img { max-width: 100%; }
   :root { --app-w: 680px; }
   .items { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; align-items: stretch; }
   .item { height: 100%; }
-  /* Image tiles become vertical cards with a wide landscape image on top, shown
-     2-up. The same landscape shot then fills the product modal's banner cleanly
-     (portrait/square crops used to leave gaps). Text-only ('noimg') sections
-     keep their compact auto-fill rows. */
-  .items:not(.noimg) { grid-template-columns: repeat(2, 1fr); }
-  .items:not(.noimg) .item { flex-direction: column; align-items: stretch; gap: 0; padding: 0; overflow: hidden; }
-  .items:not(.noimg) .item-img,
-  .items:not(.noimg) .item-noimg { width: 100%; height: 178px; border-radius: 0; }
-  .items:not(.noimg) .item-body { padding: 12px 14px 44px; }
-  .items:not(.noimg) .plus { position: absolute; right: 12px; bottom: 12px; }
-  .items:not(.noimg) .sold-tag-kitchen { top: auto; bottom: 12px; }
 }
 
 /* Desktop + landscape tablet: two-column app with a persistent cart sidebar. */
@@ -977,9 +966,7 @@ img { max-width: 100%; }
 
   /* The column already provides side padding, so drop the per-section padding. */
   .hero, .ordertype, .search, .catnav, .menu { padding-left: 0; padding-right: 0; }
-  .items.noimg { grid-template-columns: repeat(auto-fill, minmax(228px, 1fr)); }
-  /* Keep image tiles 2-up (large landscape cards) even on the wide desktop column. */
-  .items:not(.noimg) { grid-template-columns: repeat(2, 1fr); }
+  .items { grid-template-columns: repeat(auto-fill, minmax(228px, 1fr)); }
 
   /* Persistent cart sidebar */
   .cart-aside { display: block; position: sticky; top: 78px; align-self: start; }
@@ -1937,13 +1924,23 @@ body:has(.store-shell) { background: #F7F4EF; }
   .store-main .item:not(.sold):hover { transform: translateY(-3px); box-shadow: var(--shadow); border-color: color-mix(in srgb, var(--brand) 30%, var(--s-line)); }
 }
 
-/* 3-up (desktop) / 2-up (tablet) landscape grid. */
+/* 2-up image tiles as vertical cards with a wide landscape image on top — the
+   same shot then fills the product modal banner cleanly (portrait/square crops
+   left gaps). Text-only ('noimg') sections keep compact rows and can pack more
+   per row. */
 @media (min-width: 700px) {
   .store-main .cat-head .cat-title { font-size: 31px; }
-  .store-main .items { grid-template-columns: repeat(2, 1fr); gap: 14px; }
+  .store-main .items { grid-template-columns: repeat(2, 1fr); gap: 16px; }
+  .store-main .items:not(.noimg) .item { flex-direction: column; align-items: stretch; min-height: 0; gap: 0; padding: 0; overflow: hidden; }
+  .store-main .items:not(.noimg) .item .item-img,
+  .store-main .items:not(.noimg) .item .item-noimg { width: 100%; max-width: none; height: 178px; min-height: 0; align-self: auto; border-radius: 0; }
+  .store-main .items:not(.noimg) .item-body { padding: 12px 15px 48px; justify-content: flex-start; }
+  .store-main .items:not(.noimg) .plus { position: absolute; right: 13px; bottom: 13px; margin: 0; }
+  .store-main .items:not(.noimg) .sold-tag-kitchen { top: auto; bottom: 13px; }
 }
 @media (min-width: 900px) {
-  .store-main .items { grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .store-main .items:not(.noimg) { grid-template-columns: repeat(2, 1fr); gap: 18px; }
+  .store-main .items.noimg { grid-template-columns: repeat(3, 1fr); gap: 14px; }
 }
 
 /* ── Scheduling: ONE unified white control surface ──
