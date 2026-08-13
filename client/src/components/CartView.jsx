@@ -17,7 +17,7 @@ function groupCart(cart) {
   return out;
 }
 
-export default function CartView({ cart, currency, onQty, onRemove, onClear, onComboQty, onRemoveCombo, dineIn, table, onCheckout, onBack, kitchenBanner, unavailableKeys }) {
+export default function CartView({ cart, currency, onQty, onRemove, onClear, onComboQty, onRemoveCombo, onEditCombo, dineIn, table, onCheckout, onBack, kitchenBanner, unavailableKeys }) {
   const comboSavings = comboDiscountFor(cart);
   const total = Math.max(0, cart.reduce((n, c) => n + c.unitPrice * c.quantity, 0) - comboSavings);
   const hasUnavailable = cart.some((c) => unavailableKeys?.has(c.key));
@@ -59,7 +59,10 @@ export default function CartView({ cart, currency, onQty, onRemove, onClear, onC
                     <button onClick={() => onComboQty(g.instanceId, 1)}>+</button>
                   </div>
                   <div style={{ fontWeight: 700 }}>{formatMoney(comboTotal, currency)}</div>
-                  {onRemoveCombo && <button className="cart-remove" onClick={() => onRemoveCombo(g.instanceId)} aria-label={`Remove ${g.name}`}>✕</button>}
+                  <div style={{ display: 'flex', gap: 10 }}>
+                    {onEditCombo && <button className="link" style={{ padding: 0, fontSize: 13 }} onClick={() => onEditCombo(g.instanceId)}>Edit</button>}
+                    {onRemoveCombo && <button className="cart-remove" onClick={() => onRemoveCombo(g.instanceId)} aria-label={`Remove ${g.name}`}>✕</button>}
+                  </div>
                 </div>
               </li>
             );

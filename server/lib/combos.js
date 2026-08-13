@@ -98,7 +98,7 @@ async function discountsForCart(cart) {
   for (const line of Array.isArray(cart) ? cart : []) {
     if (!line || !line.comboInstanceId || !line.comboId) continue;
     if (!instances.has(line.comboInstanceId)) instances.set(line.comboInstanceId, { comboId: line.comboId, lines: [] });
-    instances.get(line.comboInstanceId).lines.push({ variationId: line.variationId, comboGroupId: line.comboGroupId });
+    instances.get(line.comboInstanceId).lines.push({ variationId: line.variationId, comboGroupId: line.comboGroupId, quantity: Math.max(1, parseInt(line.quantity, 10) || 1) });
   }
   if (!instances.size) return [];
 
@@ -110,16 +110,24 @@ async function discountsForCart(cart) {
     if (!combo || !Array.isArray(combo.groups) || !combo.groups.length) continue;
 
     let satisfied = true;
+    // Number of COMPLETE combos = the smallest quantity across the groups'
+    // matched lines (an atomic bundle keeps them equal; if they somehow differ,
+    // only the fully-satisfied count is discounted). Every group must be
+    // present, or the whole instance earns nothing (a removed component ⇒ no
+    // discount, which is exactly the abuse case the client UI now also prevents).
+    let comboQty = Infinity;
     for (const group of combo.groups) {
       if (!group || !group.id) { satisfied = false; break; }
       const allowed = groupItemIds(group, idx);
       const claimedLine = inst.lines.find((l) => l.comboGroupId === group.id);
       const itemId = claimedLine && variationOwner(idx, claimedLine.variationId);
       if (!itemId || !allowed.has(itemId)) { satisfied = false; break; }
+      comboQty = Math.min(comboQty, claimedLine.quantity || 1);
     }
     if (!satisfied) continue;
+    if (!Number.isFinite(comboQty) || comboQty < 1) comboQty = 1;
 
-    const cents = Math.max(0, Math.round((Number(combo.discountValue) || 0) * 100));
+    const cents = Math.max(0, Math.round((Number(combo.discountValue) || 0) * 100)) * comboQty;
     if (!cents) continue;
     n += 1;
     discounts.push({

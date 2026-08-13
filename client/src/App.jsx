@@ -603,6 +603,16 @@ export default function App() {
   function removeCombo(instanceId) {
     setCart((prev) => prev.filter((c) => c.comboInstanceId !== instanceId));
   }
+  // Edit a combo: drop the current instance and reopen its builder so the
+  // customer can re-pick. Keeps combos atomic — we never let them tweak one
+  // component of a live bundle (that's what broke the discount).
+  function editCombo(instanceId) {
+    const line = cart.find((c) => c.comboInstanceId === instanceId);
+    if (!line) return;
+    const comboItem = (menu.categories || []).flatMap((c) => c.items || []).find((i) => i.isCombo && i.comboId === line.comboId);
+    removeCombo(instanceId);
+    if (comboItem) setActiveItem(comboItem);
+  }
   function trackPurchase(order) {
     trackItems('purchase_item', cart.map((c) => ({ name: c.itemName, qty: c.quantity, amount: c.unitPrice * c.quantity })));
     track('purchase', { amount: order?.totalMoney?.amount || cartTotal });
@@ -817,6 +827,7 @@ export default function App() {
   const checkoutEl = (
     <Checkout
       config={config} cart={cart} currency={currency} onQty={updateQty}
+      onComboQty={updateComboQty} onRemoveCombo={removeCombo} onEditCombo={editCombo}
       dineIn={dineIn} setDineIn={setDineIn} table={table} setTable={setTable}
       tableLock={tableLock} onUnlockTable={unlockTable} onScanTable={applyScannedTable}
       name={name} setName={setName} user={user} canOrder={canOrder}
@@ -1162,7 +1173,7 @@ export default function App() {
               <CartPanel
                 cart={cart} currency={currency} onQty={updateQty}
                 onRemove={removeItem} onClear={clearCart}
-                onComboQty={updateComboQty} onRemoveCombo={removeCombo}
+                onComboQty={updateComboQty} onRemoveCombo={removeCombo} onEditCombo={editCombo}
                 dineIn={dineIn} table={table}
                 summary={fulfilmentLabel}
                 unavailableKeys={cartUnavailableKeys}
@@ -1177,7 +1188,7 @@ export default function App() {
         <CartView
           cart={cart} currency={currency} onQty={updateQty}
           onRemove={removeItem} onClear={clearCart}
-          onComboQty={updateComboQty} onRemoveCombo={removeCombo}
+          onComboQty={updateComboQty} onRemoveCombo={removeCombo} onEditCombo={editCombo}
           dineIn={dineIn} table={table}
           unavailableKeys={cartUnavailableKeys}
           onCheckout={() => setView('checkout')} onBack={() => setView('home')}

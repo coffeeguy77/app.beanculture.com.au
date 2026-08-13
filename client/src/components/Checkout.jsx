@@ -4,6 +4,23 @@ import { TableLockPill, TableEntry } from './TableControls.jsx';
 import WalletButtons from './WalletButtons.jsx';
 import ScheduleWhen from './ScheduleWhen.jsx';
 
+// Group flat cart lines so a combo (several lines sharing one comboInstanceId)
+// is shown + controlled as ONE atomic bundle. Mirrors CartPanel/CartView.
+function groupCart(cart) {
+  const out = [];
+  const seen = new Set();
+  for (const c of cart) {
+    if (c.comboInstanceId) {
+      if (seen.has(c.comboInstanceId)) continue;
+      seen.add(c.comboInstanceId);
+      out.push({ type: 'combo', instanceId: c.comboInstanceId, name: c.comboName, lines: cart.filter((x) => x.comboInstanceId === c.comboInstanceId) });
+    } else {
+      out.push({ type: 'single', line: c });
+    }
+  }
+  return out;
+}
+
 function loadSquareSdk(environment) {
   const src = environment === 'sandbox'
     ? 'https://sandbox.web.squarecdn.com/v1/square.js'
@@ -25,7 +42,7 @@ function dateStr(d) {
 }
 const WEEKDAYS = [['Mon', 1], ['Tue', 2], ['Wed', 3], ['Thu', 4], ['Fri', 5], ['Sat', 6], ['Sun', 0]];
 
-export default function Checkout({ config, cart, currency, onQty, dineIn, setDineIn, table, setTable, tableLock, onUnlockTable, onScanTable, name, setName, user, canOrder, preWhen, preAt, onPaid, onScheduled, onBack }) {
+export default function Checkout({ config, cart, currency, onQty, onComboQty, onRemoveCombo, onEditCombo, dineIn, setDineIn, table, setTable, tableLock, onUnlockTable, onScanTable, name, setName, user, canOrder, preWhen, preAt, onPaid, onScheduled, onBack }) {
   const [status, setStatus] = useState('init');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -431,25 +448,59 @@ export default function Checkout({ config, cart, currency, onQty, dineIn, setDin
         <div className="group" style={{ marginTop: 16 }}>
           <div className="group-title">Your order</div>
           <ul className="co-order">
-            {cart.map((c) => (
-              <li key={c.key} className="co-line">
-                <div className="co-line-main">
-                  <div className="co-line-name">{c.itemName}{c.variationName ? ` · ${c.variationName}` : ''}</div>
-                  {c.modifierNames?.length > 0 && <div className="co-line-sub">{c.modifierNames.join(', ')}</div>}
-                  {c.note && <div className="co-line-sub">“{c.note}”</div>}
-                </div>
-                <div className="co-line-right">
-                  {onQty ? (
-                    <div className="stepper sm">
-                      <button type="button" onClick={() => onQty(c.key, -1)} aria-label="Decrease">−</button>
-                      <span>{c.quantity}</span>
-                      <button type="button" onClick={() => onQty(c.key, 1)} aria-label="Increase">+</button>
+            {groupCart(cart).map((g) => {
+              if (g.type === 'combo') {
+                // A combo is ONE atomic bundle: whole-combo quantity + remove +
+                // edit only, never per-component controls (that's what let the
+                // bundle be pulled apart while keeping the discount).
+                const qty = g.lines[0]?.quantity || 1;
+                const comboDisc = (g.lines[0]?.comboDiscount || 0) * qty;
+                const comboTotal = Math.max(0, g.lines.reduce((n, l) => n + l.unitPrice * l.quantity, 0) - comboDisc);
+                return (
+                  <li key={g.instanceId} className="co-line co-line-combo">
+                    <div className="co-line-main">
+                      <div className="co-line-name">🍔 {g.name}</div>
+                      <div className="co-line-sub">{g.lines.map((l) => l.itemName + (l.variationName ? ` · ${l.variationName}` : '')).join(' + ')}</div>
+                      {comboDisc > 0 && <div className="co-line-sub cl-combo-save">Combo saving −{formatMoney(comboDisc, currency)}</div>}
+                      <div style={{ display: 'flex', gap: 14, marginTop: 4 }}>
+                        {onEditCombo && <button type="button" className="link" style={{ padding: 0 }} onClick={() => onEditCombo(g.instanceId)}>Edit</button>}
+                        {onRemoveCombo && <button type="button" className="link" style={{ padding: 0 }} onClick={() => onRemoveCombo(g.instanceId)}>Remove</button>}
+                      </div>
                     </div>
-                  ) : <span className="muted">{c.quantity}×</span>}
-                  <div style={{ fontWeight: 700, minWidth: 56, textAlign: 'right' }}>{formatMoney(c.unitPrice * c.quantity, currency)}</div>
-                </div>
-              </li>
-            ))}
+                    <div className="co-line-right">
+                      {onComboQty ? (
+                        <div className="stepper sm">
+                          <button type="button" onClick={() => onComboQty(g.instanceId, -1)} aria-label="Decrease">−</button>
+                          <span>{qty}</span>
+                          <button type="button" onClick={() => onComboQty(g.instanceId, 1)} aria-label="Increase">+</button>
+                        </div>
+                      ) : <span className="muted">{qty}×</span>}
+                      <div style={{ fontWeight: 700, minWidth: 56, textAlign: 'right' }}>{formatMoney(comboTotal, currency)}</div>
+                    </div>
+                  </li>
+                );
+              }
+              const c = g.line;
+              return (
+                <li key={c.key} className="co-line">
+                  <div className="co-line-main">
+                    <div className="co-line-name">{c.itemName}{c.variationName ? ` · ${c.variationName}` : ''}</div>
+                    {c.modifierNames?.length > 0 && <div className="co-line-sub">{c.modifierNames.join(', ')}</div>}
+                    {c.note && <div className="co-line-sub">“{c.note}”</div>}
+                  </div>
+                  <div className="co-line-right">
+                    {onQty ? (
+                      <div className="stepper sm">
+                        <button type="button" onClick={() => onQty(c.key, -1)} aria-label="Decrease">−</button>
+                        <span>{c.quantity}</span>
+                        <button type="button" onClick={() => onQty(c.key, 1)} aria-label="Increase">+</button>
+                      </div>
+                    ) : <span className="muted">{c.quantity}×</span>}
+                    <div style={{ fontWeight: 700, minWidth: 56, textAlign: 'right' }}>{formatMoney(c.unitPrice * c.quantity, currency)}</div>
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         </div>
       )}

@@ -22,7 +22,7 @@ function groupCart(cart) {
   return out;
 }
 
-export default function CartPanel({ cart, currency, onQty, onRemove, onClear, onComboQty, onRemoveCombo, dineIn, table, onCheckout, summary, unavailableKeys }) {
+export default function CartPanel({ cart, currency, onQty, onRemove, onClear, onComboQty, onRemoveCombo, onEditCombo, dineIn, table, onCheckout, summary, unavailableKeys }) {
   const gross = cart.reduce((n, c) => n + c.unitPrice * c.quantity, 0);
   const comboSavings = comboDiscountFor(cart);
   const total = Math.max(0, gross - comboSavings);
@@ -78,6 +78,7 @@ export default function CartPanel({ cart, currency, onQty, onRemove, onClear, on
                         <span>{qty}</span>
                         <button onClick={() => onComboQty(g.instanceId, 1)} aria-label="Increase">+</button>
                       </div>
+                      {onEditCombo && <button className="cl-remove" onClick={() => onEditCombo(g.instanceId)} aria-label={`Edit ${g.name}`}>Edit</button>}
                       {onRemoveCombo && <button className="cl-remove" onClick={() => onRemoveCombo(g.instanceId)} aria-label={`Remove ${g.name}`}>Remove</button>}
                     </div>
                   </div>
