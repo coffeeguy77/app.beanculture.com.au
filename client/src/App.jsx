@@ -929,12 +929,36 @@ export default function App() {
 
   // "Browse menu" dock data — real categories, live item counts, icon by name.
   const catIcons = config.categoryIcons || {};
-  const dockCategories = menu.categories
-    .filter((c) => c.topNav !== false)
-    .map((c) => {
-      const chosen = catIcons[c.category] || catIcons[(c.category || '').toLowerCase()];
-      return { name: c.category, count: (c.items || []).length, iconName: chosen?.icon || iconFor(c.category), iconSvg: chosen?.iconSvg || null };
-    });
+  // Dock buttons = top-nav sections in menu order, except that the Top-menu
+  // builder (config.topMenu) can COMBINE a few sections under one button (e.g.
+  // "Deals" = Combos + Specials) to cut down the number of buttons. A combined
+  // button appears at the position of its first member and jumps there on tap;
+  // it highlights whenever any of its sections is the active one.
+  const dockCategories = (() => {
+    const liveTop = menu.categories.filter((c) => c.topNav !== false);
+    const liveNames = new Set(liveTop.map((c) => (c.category || '').toLowerCase()));
+    const slots = (config.topMenu || [])
+      .map((slot) => ({ ...slot, cats: (slot.categories || []).filter((cat) => liveNames.has((cat || '').toLowerCase())) }))
+      .filter((slot) => slot.cats.length);
+    const slotForCat = new Map();
+    slots.forEach((slot) => slot.cats.forEach((c) => { if (!slotForCat.has(c.toLowerCase())) slotForCat.set(c.toLowerCase(), slot); }));
+    const emitted = new Set();
+    const out = [];
+    for (const c of liveTop) {
+      const key = (c.category || '').toLowerCase();
+      const slot = slotForCat.get(key);
+      if (slot) {
+        if (emitted.has(slot)) continue;
+        emitted.add(slot);
+        const count = slot.cats.reduce((n, cn) => { const mc = liveTop.find((x) => (x.category || '').toLowerCase() === cn.toLowerCase()); return n + ((mc?.items || []).length); }, 0);
+        out.push({ name: slot.label || slot.cats[0], cats: [...slot.cats], count, iconName: slot.icon || iconFor(slot.cats[0]), iconSvg: slot.iconSvg || null });
+      } else {
+        const chosen = catIcons[c.category] || catIcons[key];
+        out.push({ name: c.category, cats: [c.category], count: (c.items || []).length, iconName: chosen?.icon || iconFor(c.category), iconSvg: chosen?.iconSvg || null });
+      }
+    }
+    return out;
+  })();
   const dockActive = layoutMode === 'single'
     ? (activeGroup && activeGroup.length === 1 ? activeGroup[0] : null)
     : (spyCat || activeCat);

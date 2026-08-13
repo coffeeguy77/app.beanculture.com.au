@@ -28,9 +28,9 @@ export default function MenuDock({ categories, active, onPick }) {
   const scrollActiveIntoView = (smooth) => {
     const el = stripRef.current;
     if (!el || !active) return;
-    const tile = [...el.children].find(
-      (t) => t.getAttribute && t.getAttribute('data-cat-tile') === active
-    );
+    // The active tile may be a combined button whose label ≠ the active category,
+    // so match on the rendered "on" state rather than the category name.
+    const tile = el.querySelector('.dock-tab.on');
     if (!tile) return;
     const viewStart = el.scrollLeft;
     const viewEnd = el.scrollLeft + el.clientWidth;
@@ -142,21 +142,24 @@ export default function MenuDock({ categories, active, onPick }) {
           </button>
           <div className="menu-dock-viewport">
             <div className="menu-dock-strip" ref={stripRef} role="tablist" aria-label="Menu categories">
-              {categories.map((c) => (
+              {categories.map((c) => {
+                const isOn = (c.cats || [c.name]).includes(active);
+                return (
                 <button
                   key={c.name}
                   data-cat-tile={c.name}
                   type="button"
                   role="tab"
-                  aria-selected={active === c.name}
-                  className={`dock-tab${active === c.name ? ' on' : ''}`}
-                  onClick={() => { userNav.current = true; onPick(c.name); }}
+                  aria-selected={isOn}
+                  className={`dock-tab${isOn ? ' on' : ''}`}
+                  onClick={() => { userNav.current = true; onPick((c.cats && c.cats[0]) || c.name); }}
                 >
                   <span className="dock-tab-ic"><SlotIcon icon={c.iconName} iconSvg={c.iconSvg} size={29} /></span>
                   <span className="dock-tab-label">{c.name}</span>
-                  {active === c.name && c.count > 0 && <span className="dock-tab-count">{c.count}</span>}
+                  {isOn && c.count > 0 && <span className="dock-tab-count">{c.count}</span>}
                 </button>
-              ))}
+                );
+              })}
             </div>
             <span className={`dock-fade left${arrows.left ? ' show' : ''}`} aria-hidden="true" />
             <span className={`dock-fade right${arrows.right ? ' show' : ''}`} aria-hidden="true" />

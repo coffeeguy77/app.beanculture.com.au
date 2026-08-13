@@ -230,6 +230,9 @@ const DEFAULTS = {
   // No hardcoded defaults — the owner builds these, and can auto-add product-
   // builder sections via their Top/Footer toggles (see presetSectionNav).
   footer: [],
+  // Top "Browse menu" dock buttons that combine several sections into one
+  // (e.g. { label: 'Deals', icon, categories: ['Combos', 'Specials'] }).
+  topMenu: [],
   // Per-category icon for the "Browse menu" top dock (name → { icon, iconSvg }).
   // Chosen in Admin → Menu Builder; falls back to an auto-mapped icon by name.
   categoryIcons: {},

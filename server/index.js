@@ -85,6 +85,7 @@ app.get('/api/config', async (_req, res) => {
     layoutMode: settings.layoutMode,
     topMenuStyle: settings.topMenuStyle,
     footer: settings.footer,
+    topMenu: settings.topMenu || [],
     categoryIcons: settings.categoryIcons || {},
     dockIconScale: settings.dockIconScale || 1,
     footerIconScale: settings.footerIconScale || 1,

@@ -534,6 +534,22 @@ export default function Admin({ onExit }) {
     updSlot(i, { categories: has ? slot.categories.filter((c) => c.toLowerCase() !== cat.toLowerCase()) : [...slot.categories, cat] });
   };
 
+  // ---- top-menu (dock) builder: combine a few sections under one dock button ----
+  const topMenu = s?.topMenu || [];
+  const setTopMenu = (arr) => set({ topMenu: arr });
+  const addTopSlot = () => setTopMenu([...topMenu, { label: 'Deals', icon: 'tag', categories: [] }]);
+  const updTopSlot = (i, patch) => setTopMenu(topMenu.map((x, j) => (j === i ? { ...x, ...patch } : x)));
+  const rmTopSlot = (i) => setTopMenu(topMenu.filter((_, j) => j !== i));
+  const moveTopSlot = (i, d) => {
+    const j = i + d; if (j < 0 || j >= topMenu.length) return;
+    const a = [...topMenu]; [a[i], a[j]] = [a[j], a[i]]; setTopMenu(a);
+  };
+  const toggleTopSlotCat = (i, cat) => {
+    const slot = topMenu[i];
+    const has = slot.categories.some((c) => c.toLowerCase() === cat.toLowerCase());
+    updTopSlot(i, { categories: has ? slot.categories.filter((c) => c.toLowerCase() !== cat.toLowerCase()) : [...slot.categories, cat] });
+  };
+
   // ---- menu items offered (category / item chooser) ----
   const ms = s?.menuSelection || {};
   const setMS = (cat, patch) =>
@@ -1736,6 +1752,35 @@ export default function Admin({ onExit }) {
                       <label style={{ ...row, gap: 6 }}><input type="radio" name="topmenustyle" checked={s.topMenuStyle === 'swipe'} onChange={() => set({ topMenuStyle: 'swipe' })} /> Swipe (one scrolling row)</label>
                     </div>
                   </div>
+                </div>
+
+                <div className="card" style={card}>
+                  <div className="group-title">Top menu — combine buttons</div>
+                  <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 0 }}>Too many buttons in the top “Browse the menu” bar? Group a few sections under one button (e.g. <strong>“Deals” = Combos + Specials</strong>). Grouped sections still show as their own headings in the menu; the button jumps to the first. Any section you don’t group keeps its own button.</p>
+                  {topMenu.map((slot, i) => (
+                    <div key={i} {...dropZone('topmenu', i, (f, t) => setTopMenu(reorderArray(topMenu, f, t)))}
+                      className={isDragOver('topmenu', i) ? 'drag-over' : ''}
+                      style={{ border: '1px solid var(--line)', borderRadius: 12, padding: 10, marginBottom: 10 }}>
+                      <div style={{ ...row, gap: 10 }}>
+                        <span {...dragHandle('topmenu', i)}>⠿</span>
+                        <IconPicker value={{ icon: slot.icon, iconSvg: slot.iconSvg }} brand={s.theme?.brand} onChange={(v) => updTopSlot(i, v)} />
+                        <input value={slot.label || ''} onChange={(e) => updTopSlot(i, { label: e.target.value })} placeholder="Button label"
+                          style={{ flex: 1, minWidth: 0, padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 10 }} />
+                        <div style={row}>
+                          <button className="link" onClick={() => moveTopSlot(i, -1)}>↑</button>
+                          <button className="link" onClick={() => moveTopSlot(i, 1)}>↓</button>
+                          <button className="link" style={{ color: '#c0392b' }} onClick={() => rmTopSlot(i)}>✕</button>
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                        {cats.map((c) => {
+                          const on = slot.categories.some((x) => x.toLowerCase() === c.toLowerCase());
+                          return <button key={c} onClick={() => toggleTopSlotCat(i, c)} className={`chip ${on ? 'on' : ''}`} style={{ fontSize: 'var(--fs-xs)', padding: '5px 9px' }}>{c}</button>;
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                  <button className="btn ghost full" onClick={addTopSlot}>+ Add combined button</button>
                 </div>
 
                 <div className="card" style={card}>
