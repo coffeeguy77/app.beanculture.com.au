@@ -156,7 +156,7 @@ export default function MenuDock({ categories, active, onPick }) {
                   role="tab"
                   aria-selected={isOn}
                   className={`dock-tab${isOn ? ' on' : ''}`}
-                  onClick={() => { userNav.current = true; onPick((c.cats && c.cats[0]) || c.name); }}
+                  onClick={() => { userNav.current = true; onPick(c.cats || [c.name]); }}
                 >
                   <span className="dock-tab-ic"><SlotIcon icon={c.iconName} iconSvg={c.iconSvg} size={29} /></span>
                   <span className="dock-tab-label">{c.name}</span>
