@@ -1910,7 +1910,7 @@ body:has(.store-shell) { background: #F7F4EF; }
 }
 .store-main .item .item-img,
 .store-main .item .item-noimg {
-  width: 40%; max-width: 120px; height: auto; min-height: 88px; align-self: stretch;
+  width: 42%; max-width: 148px; aspect-ratio: 3 / 2; height: auto; min-height: 0; align-self: center;
   object-fit: cover; border-radius: 10px;
 }
 .store-main .item-body { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; }
@@ -1924,23 +1924,13 @@ body:has(.store-shell) { background: #F7F4EF; }
   .store-main .item:not(.sold):hover { transform: translateY(-3px); box-shadow: var(--shadow); border-color: color-mix(in srgb, var(--brand) 30%, var(--s-line)); }
 }
 
-/* 2-up image tiles as vertical cards with a wide landscape image on top — the
-   same shot then fills the product modal banner cleanly (portrait/square crops
-   left gaps). Text-only ('noimg') sections keep compact rows and can pack more
-   per row. */
+/* 3-up (desktop) / 2-up (tablet) landscape grid. */
 @media (min-width: 700px) {
   .store-main .cat-head .cat-title { font-size: 31px; }
-  .store-main .items { grid-template-columns: repeat(2, 1fr); gap: 16px; }
-  .store-main .items:not(.noimg) .item { flex-direction: column; align-items: stretch; min-height: 0; gap: 0; padding: 0; overflow: hidden; }
-  .store-main .items:not(.noimg) .item .item-img,
-  .store-main .items:not(.noimg) .item .item-noimg { width: 100%; max-width: none; height: 178px; min-height: 0; align-self: auto; border-radius: 0; }
-  .store-main .items:not(.noimg) .item-body { padding: 12px 15px 48px; justify-content: flex-start; }
-  .store-main .items:not(.noimg) .plus { position: absolute; right: 13px; bottom: 13px; margin: 0; }
-  .store-main .items:not(.noimg) .sold-tag-kitchen { top: auto; bottom: 13px; }
+  .store-main .items { grid-template-columns: repeat(2, 1fr); gap: 14px; }
 }
 @media (min-width: 900px) {
-  .store-main .items:not(.noimg) { grid-template-columns: repeat(2, 1fr); gap: 18px; }
-  .store-main .items.noimg { grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .store-main .items { grid-template-columns: repeat(3, 1fr); gap: 14px; }
 }
 
 /* ── Scheduling: ONE unified white control surface ──
