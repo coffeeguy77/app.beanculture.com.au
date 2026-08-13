@@ -9,6 +9,10 @@ import { SlotIcon } from './icons.jsx';
 const EPSILON = 2;
 
 export default function MenuDock({ categories, active, onPick }) {
+  // `active` is a list of the currently-showing category names (a combined
+  // button can own several). Normalise so old string callers still work.
+  const activeCats = Array.isArray(active) ? active : (active ? [active] : []);
+  const activeKey = activeCats.join('|');
   const stripRef = useRef(null);
   const sentRef = useRef(null);
   const userNav = useRef(false);
@@ -27,7 +31,7 @@ export default function MenuDock({ categories, active, onPick }) {
   // If the active tile is already fully visible, do nothing (don't fight the user).
   const scrollActiveIntoView = (smooth) => {
     const el = stripRef.current;
-    if (!el || !active) return;
+    if (!el || !activeCats.length) return;
     // The active tile may be a combined button whose label ≠ the active category,
     // so match on the rendered "on" state rather than the category name.
     const tile = el.querySelector('.dock-tab.on');
@@ -112,7 +116,7 @@ export default function MenuDock({ categories, active, onPick }) {
     scrollActiveIntoView(userNav.current && !reduce);
     userNav.current = false;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active]);
+  }, [activeKey]);
 
   const nudge = (dir) => {
     const el = stripRef.current;
@@ -143,7 +147,7 @@ export default function MenuDock({ categories, active, onPick }) {
           <div className="menu-dock-viewport">
             <div className="menu-dock-strip" ref={stripRef} role="tablist" aria-label="Menu categories">
               {categories.map((c) => {
-                const isOn = (c.cats || [c.name]).includes(active);
+                const isOn = (c.cats || [c.name]).some((x) => activeCats.includes(x));
                 return (
                 <button
                   key={c.name}

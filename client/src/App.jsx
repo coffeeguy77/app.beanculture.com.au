@@ -935,40 +935,48 @@ export default function App() {
   // button appears at the position of its first member and jumps there on tap;
   // it highlights whenever any of its sections is the active one.
   const dockCategories = (() => {
-    const liveTop = menu.categories.filter((c) => c.topNav !== false);
-    const liveNames = new Set(liveTop.map((c) => (c.category || '').toLowerCase()));
+    const all = menu.categories;
+    const allNames = new Set(all.map((c) => (c.category || '').toLowerCase()));
+    // A grouped section can be any category that exists — grouping it into a
+    // button is the intent to show it, even if its own Top-menu toggle is off.
     const slots = (config.topMenu || [])
-      .map((slot) => ({ ...slot, cats: (slot.categories || []).filter((cat) => liveNames.has((cat || '').toLowerCase())) }))
+      .map((slot) => ({ ...slot, cats: (slot.categories || []).filter((cat) => allNames.has((cat || '').toLowerCase())) }))
       .filter((slot) => slot.cats.length);
     const slotForCat = new Map();
     slots.forEach((slot) => slot.cats.forEach((c) => { if (!slotForCat.has(c.toLowerCase())) slotForCat.set(c.toLowerCase(), slot); }));
     const emitted = new Set();
     const out = [];
-    for (const c of liveTop) {
+    for (const c of all) {
       const key = (c.category || '').toLowerCase();
       const slot = slotForCat.get(key);
       if (slot) {
         if (emitted.has(slot)) continue;
         emitted.add(slot);
-        const count = slot.cats.reduce((n, cn) => { const mc = liveTop.find((x) => (x.category || '').toLowerCase() === cn.toLowerCase()); return n + ((mc?.items || []).length); }, 0);
+        const count = slot.cats.reduce((n, cn) => { const mc = all.find((x) => (x.category || '').toLowerCase() === cn.toLowerCase()); return n + ((mc?.items || []).length); }, 0);
         out.push({ name: slot.label || slot.cats[0], cats: [...slot.cats], count, iconName: slot.icon || iconFor(slot.cats[0]), iconSvg: slot.iconSvg || null });
       } else {
+        if (c.topNav === false) continue; // ungrouped + not top-nav → no dock button
         const chosen = catIcons[c.category] || catIcons[key];
         out.push({ name: c.category, cats: [c.category], count: (c.items || []).length, iconName: chosen?.icon || iconFor(c.category), iconSvg: chosen?.iconSvg || null });
       }
     }
     return out;
   })();
-  const dockActive = layoutMode === 'single'
-    ? (activeGroup && activeGroup.length === 1 ? activeGroup[0] : null)
-    : (spyCat || activeCat);
-  // Picking a category: single-layout swaps the shown group; default layout
-  // scroll-spies + scrolls to the section (activeCat drives MenuList's scroll).
-  const pickCategory = (cat) => {
+  // The dock's active state is a LIST of category names, so a combined button
+  // (e.g. Specials + Combos) lights up when its group is showing.
+  const dockActiveCats = layoutMode === 'single'
+    ? (activeGroup || [])
+    : [spyCat || activeCat].filter(Boolean);
+  // Picking a category: single-layout swaps the shown group (a combined dock
+  // button passes ALL its categories, so every grouped section is shown, not
+  // just the first); default layout scroll-spies + scrolls to the first section.
+  const pickCategory = (catOrCats) => {
+    const cats = Array.isArray(catOrCats) ? catOrCats : [catOrCats];
+    const first = cats[0];
     setQuery('');
     footerCycle.current = { slot: -1, idx: 0 }; // a dock/search pick resets footer cycling
-    if (layoutMode === 'single') { setActiveGroup([cat]); setActiveCat(cat); }
-    else { setSpyCat(cat); setActiveCat(cat); }
+    if (layoutMode === 'single') { setActiveGroup(cats); setActiveCat(first); }
+    else { setSpyCat(first); setActiveCat(first); }
     setScrollTick((t) => t + 1);
   };
   // Primary-nav "Coffee" → first coffee-ish category, only if one exists.
@@ -1199,7 +1207,7 @@ export default function App() {
               <input placeholder="Search the menu…" value={query} onChange={(e) => setQuery(e.target.value)} />
             </div>
             {!query && (
-              <MenuDock categories={dockCategories} active={dockActive} onPick={pickCategory} />
+              <MenuDock categories={dockCategories} active={dockActiveCats} onPick={pickCategory} />
             )}
             <MenuList
               categories={filteredMenu}
