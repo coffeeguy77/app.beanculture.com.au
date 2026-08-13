@@ -152,7 +152,7 @@ export default function MenuDock({ categories, active, onPick }) {
                   className={`dock-tab${active === c.name ? ' on' : ''}`}
                   onClick={() => { userNav.current = true; onPick(c.name); }}
                 >
-                  <span className="dock-tab-ic"><SlotIcon icon={c.iconName} size={29} /></span>
+                  <span className="dock-tab-ic"><SlotIcon icon={c.iconName} iconSvg={c.iconSvg} size={29} /></span>
                   <span className="dock-tab-label">{c.name}</span>
                   {active === c.name && c.count > 0 && <span className="dock-tab-count">{c.count}</span>}
                 </button>

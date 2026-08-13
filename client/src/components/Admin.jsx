@@ -1768,8 +1768,18 @@ export default function Admin({ onExit }) {
                   <div className="group-title">Top Menu — live sections &amp; order</div>
                   <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 0 }}>
                     The sections currently live on the storefront (turned on via the <strong>Top menu</strong> / <strong>Footer</strong>
-                    toggles in Product builder). Drag or use ↑/↓ to set the order they appear.
+                    toggles in Product builder). Drag or use ↑/↓ to set the order they appear. Tap a row's icon to choose its picture.
                   </p>
+                  <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', padding: '8px 0 12px', marginBottom: 8, borderBottom: '1px solid var(--admin-border)' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 10, flex: '1 1 240px' }}>
+                      <span className="muted" style={{ fontSize: 'var(--fs-sm)', whiteSpace: 'nowrap' }}>Top menu icon size {Math.round((s.dockIconScale || 1) * 100)}%</span>
+                      <input type="range" min="0.7" max="1.8" step="0.05" value={s.dockIconScale || 1} onChange={(e) => set({ dockIconScale: Number(e.target.value) })} style={{ flex: 1 }} />
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 10, flex: '1 1 240px' }}>
+                      <span className="muted" style={{ fontSize: 'var(--fs-sm)', whiteSpace: 'nowrap' }}>Footer icon size {Math.round((s.footerIconScale || 1) * 100)}%</span>
+                      <input type="range" min="0.7" max="1.8" step="0.05" value={s.footerIconScale || 1} onChange={(e) => set({ footerIconScale: Number(e.target.value) })} style={{ flex: 1 }} />
+                    </label>
+                  </div>
                   {orderedUnits.length === 0 && <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>No live sections yet — turn on Top menu and/or Footer for a section in Product builder.</p>}
                   {orderedUnits.map((u, idx) => {
                     if (u.type === 'presetsec') {
@@ -1780,6 +1790,7 @@ export default function Admin({ onExit }) {
                           style={{ border: '1px solid var(--line)', borderRadius: 12, padding: 10, marginBottom: 10, opacity: hidden ? 0.55 : 1 }}>
                           <div style={{ ...row, justifyContent: 'space-between' }}>
                             <span {...dragHandle('units', idx)}>⠿</span>
+                            <IconPicker value={(s.categoryIcons || {})[u.name]} brand={s.theme?.brand} onChange={(v) => set({ categoryIcons: { ...(s.categoryIcons || {}), [u.name]: v } })} />
                             <input type="checkbox" checked={!hidden} title="Show this product-builder section" onChange={() => toggleSectionHidden(u.name)} />
                             <span title="Product builder section" style={{ fontSize: 'var(--fs-lg)' }}>🛠️</span>
                             <span style={{ fontWeight: 700, flex: 1, minWidth: 0 }}>{u.name}</span>
@@ -1801,6 +1812,7 @@ export default function Admin({ onExit }) {
                           style={{ border: '1px solid var(--accent)', borderRadius: 12, padding: 10, marginBottom: 10, background: 'var(--brand-soft)', opacity: sec.enabled === false ? 0.55 : 1 }}>
                           <div style={{ ...row, justifyContent: 'space-between' }}>
                             <span {...dragHandle('units', idx)}>⠿</span>
+                            <IconPicker value={(s.categoryIcons || {})[sec.name]} brand={s.theme?.brand} onChange={(v) => set({ categoryIcons: { ...(s.categoryIcons || {}), [sec.name]: v } })} />
                             <input type="checkbox" checked={sec.enabled !== false} title="Show this section in the app" onChange={(e) => updSection(sec.id, { enabled: e.target.checked })} />
                             <label style={{ ...row, flex: 1, minWidth: 0 }}>
                               <span title="Product section" style={{ fontSize: 'var(--fs-lg)' }}>🧩</span>
@@ -1878,6 +1890,7 @@ export default function Admin({ onExit }) {
                         style={{ border: '1px solid var(--line)', borderRadius: 12, padding: 10, marginBottom: 10, opacity: on ? 1 : 0.55 }}>
                         <div style={{ ...row, justifyContent: 'space-between' }}>
                           <span {...dragHandle('units', idx)}>⠿</span>
+                          <IconPicker value={(s.categoryIcons || {})[c.category]} brand={s.theme?.brand} onChange={(v) => set({ categoryIcons: { ...(s.categoryIcons || {}), [c.category]: v } })} />
                           <label style={{ ...row, cursor: 'pointer', flex: 1 }}>
                             <input type="checkbox" checked={on} onChange={(e) => setCatEnabled(c.category, e.target.checked)} />
                             <span style={{ fontWeight: 700 }}>{c.category}</span>

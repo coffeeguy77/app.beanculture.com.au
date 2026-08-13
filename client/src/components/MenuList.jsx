@@ -10,28 +10,35 @@ function fromPrice(item) {
   return prices.length ? Math.min(...prices) : null;
 }
 
-export default function MenuList({ categories, currency, onPick, scrollTo, onScrolled, kitchenClosedCats }) {
+export default function MenuList({ categories, currency, onPick, scrollTo, scrollKey, onScrolled, kitchenClosedCats }) {
   const kShut = new Set((kitchenClosedCats || []).map((c) => (c || '').toLowerCase()));
+  // Keyed on scrollKey (a nonce bumped on every dock/footer pick) — NOT on the
+  // category name — so pressing the same footer slot again still fires, and so
+  // clearing the target after the scroll (onScrolled) can't re-run this effect
+  // and cancel its own retries mid-flight (that was the intermittent "the
+  // heading didn't jump, but a refresh fixes it" bug: onScrolled ran
+  // synchronously, nulled the target, and the cleanup killed the retry loop
+  // after a single early attempt — which only landed right once images were
+  // cached). The retries now run the full ~900ms so a section whose feature
+  // banner / product images are still loading (shifting the page height) still
+  // settles on the correct heading.
   useEffect(() => {
-    if (!scrollTo) return;
-    // Bring the chosen category's TITLE just below the sticky stack, via native
-    // scrollIntoView + the title's scroll-margin-top (CSS = header/shell + dock
-    // height). Re-run a few times over ~500ms because switching category swaps
-    // the section and its feature-banner/product images change the page height
-    // as they load — a single early jump lands short. After each jump, nudge the
-    // scroll ±1px to force position:sticky to repaint (Chrome leaves the sticky
-    // header/dock mis-painted until the next real scroll event).
-    let tries = 0;
+    if (!scrollTo) return undefined;
+    let tries = 0; let cancelled = false;
     const run = () => {
       const el = document.getElementById(slug(scrollTo));
       if (el) el.scrollIntoView({ block: 'start', behavior: 'auto' });
-      window.scrollBy(0, -1); window.scrollBy(0, 1);
+      window.scrollBy(0, -1); window.scrollBy(0, 1); // nudge sticky to repaint
     };
-    requestAnimationFrame(() => requestAnimationFrame(run));
-    const id = setInterval(() => { run(); if (++tries >= 3) clearInterval(id); }, 160);
-    onScrolled && onScrolled();
-    return () => clearInterval(id);
-  }, [scrollTo]);
+    requestAnimationFrame(() => requestAnimationFrame(() => { if (!cancelled) run(); }));
+    const id = setInterval(() => {
+      if (cancelled) return;
+      run();
+      if (++tries >= 6) { clearInterval(id); onScrolled && onScrolled(); }
+    }, 150);
+    return () => { cancelled = true; clearInterval(id); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scrollKey]);
 
   if (!categories || categories.length === 0) {
     return <div className="empty">No items match. Try another search.</div>;

@@ -292,7 +292,10 @@ img { max-width: 100%; }
 }
 .navitem { background: none; border: none; display: flex; flex-direction: column; align-items: center; gap: 3px; color: var(--muted); font-size: 11px; cursor: pointer; padding: 4px 16px; }
 .navitem.on { color: var(--brand); }
-.navitem .ic { font-size: 20px; display: grid; place-items: center; }
+.navitem .ic { display: inline-flex; align-items: center; justify-content: center; height: calc(24px * var(--footer-icon-scale, 1)); }
+.navitem .ic svg { height: 100%; width: auto; }
+.navitem .ic .slot-svg { height: 100%; width: auto; aspect-ratio: 1 / 1; }
+.navitem .ic .slot-svg svg { height: 100%; width: 100%; }
 
 /* Hot-category footer — 6 shortcuts per row, wraps to more rows if needed. */
 .catbar { flex-wrap: wrap; justify-content: center; padding: 5px 0 calc(5px + env(safe-area-inset-bottom)); row-gap: 2px; }
@@ -1855,7 +1858,13 @@ body:has(.store-shell) { background: #F7F4EF; }
 }
 .dock-tab:hover { border-color: var(--brand); background: var(--s-card); }
 .dock-tab:active { transform: scale(.97); }
-.dock-tab-ic { color: var(--brand); display: inline-flex; }
+/* Consistent, owner-scalable dock icons: fixed HEIGHT (so every icon reads the
+   same size regardless of its artwork), width follows the square viewBox, and
+   the whole set scales with the Menu Builder size slider (--dock-icon-scale). */
+.dock-tab-ic { color: var(--brand); display: inline-flex; align-items: center; justify-content: center; height: calc(30px * var(--dock-icon-scale, 1)); }
+.dock-tab-ic svg { height: 100%; width: auto; }
+.dock-tab-ic .slot-svg { height: 100%; width: auto; aspect-ratio: 1 / 1; }
+.dock-tab-ic .slot-svg svg { height: 100%; width: 100%; }
 .dock-tab-label { font-size: 14.5px; font-weight: 600; white-space: nowrap; }
 .dock-tab-count {
   position: absolute; top: 6px; right: 6px; min-width: 24px; height: 24px; padding: 0 6px;

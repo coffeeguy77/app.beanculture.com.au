@@ -230,6 +230,13 @@ const DEFAULTS = {
   // No hardcoded defaults — the owner builds these, and can auto-add product-
   // builder sections via their Top/Footer toggles (see presetSectionNav).
   footer: [],
+  // Per-category icon for the "Browse menu" top dock (name → { icon, iconSvg }).
+  // Chosen in Admin → Menu Builder; falls back to an auto-mapped icon by name.
+  categoryIcons: {},
+  // Global icon size multipliers for the top dock + footer menu (owner-tunable
+  // via sliders in Menu Builder). 1 = default; ~0.7–1.6 usable range.
+  dockIconScale: 1,
+  footerIconScale: 1,
   // Per product-builder-section navigation: { [sectionName]: { top, footer } }.
   // top → the section appears in the top menu links (category chips); footer →
   // it appears as a footer menu link. Set from the Product builder section rows.

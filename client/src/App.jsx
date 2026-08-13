@@ -249,6 +249,7 @@ export default function App() {
   const [cart, setCart] = useState(() => stored?.cart || []);
   const [query, setQuery] = useState('');
   const [activeCat, setActiveCat] = useState(null); // one-shot scroll target for MenuList
+  const [scrollTick, setScrollTick] = useState(0); // nonce so the same target re-fires a scroll
   const [spyCat, setSpyCat] = useState(null); // persistent "current section" for the dock highlight
   const [activeGroup, setActiveGroup] = useState(null); // category names shown in 'single' layout
 
@@ -913,9 +914,13 @@ export default function App() {
   const resolvedEffectPreset = effectMemoRef.current.resolved;
 
   // "Browse menu" dock data — real categories, live item counts, icon by name.
+  const catIcons = config.categoryIcons || {};
   const dockCategories = menu.categories
     .filter((c) => c.topNav !== false)
-    .map((c) => ({ name: c.category, count: (c.items || []).length, iconName: iconFor(c.category) }));
+    .map((c) => {
+      const chosen = catIcons[c.category] || catIcons[(c.category || '').toLowerCase()];
+      return { name: c.category, count: (c.items || []).length, iconName: chosen?.icon || iconFor(c.category), iconSvg: chosen?.iconSvg || null };
+    });
   const dockActive = layoutMode === 'single'
     ? (activeGroup && activeGroup.length === 1 ? activeGroup[0] : null)
     : (spyCat || activeCat);
@@ -926,6 +931,7 @@ export default function App() {
     footerCycle.current = { slot: -1, idx: 0 }; // a dock/search pick resets footer cycling
     if (layoutMode === 'single') { setActiveGroup([cat]); setActiveCat(cat); }
     else { setSpyCat(cat); setActiveCat(cat); }
+    setScrollTick((t) => t + 1);
   };
   // Primary-nav "Coffee" → first coffee-ish category, only if one exists.
   const coffeeCat = menu.categories.find((c) => (c.category || '').toLowerCase().includes('coffee') && c.topNav !== false) || null;
@@ -1002,7 +1008,8 @@ export default function App() {
   if (config.announcement) notices.push({ id: 'announce', type: 'promotional', text: config.announcement, dismissible: true });
 
   return (
-    <div className={`app store-shell${(view === 'store' || view === 'reserve' || (!wide && view === 'checkout')) ? ' app-flush' : ''}`}>
+    <div className={`app store-shell${(view === 'store' || view === 'reserve' || (!wide && view === 'checkout')) ? ' app-flush' : ''}`}
+      style={{ '--dock-icon-scale': config.dockIconScale || 1, '--footer-icon-scale': config.footerIconScale || 1 }}>
       {resolvedEffectPreset && (
         <EffectOverlay
           preset={resolvedEffectPreset}
@@ -1116,7 +1123,7 @@ export default function App() {
               interval={config.heroInterval}
               onLink={(link) => {
                 if (!link || link.type === 'none') return;
-                if (link.type === 'category') setActiveCat(link.value);
+                if (link.type === 'category') { setActiveCat(link.value); setScrollTick((t) => t + 1); }
                 else if (link.type === 'item' && link.value) {
                   // Open the product directly (e.g. a "steak sandwich" banner → its
                   // item card), scanning every category for the matching id.
@@ -1132,7 +1139,7 @@ export default function App() {
                   const shut = found && (found.soldOut || kitchenClosedSet.has((foundCat || '').toLowerCase()));
                   if (found && !shut) setActiveItem({ ...found, category: foundCat });
                   else if (found) {
-                    setActiveCat(foundCat);
+                    setActiveCat(foundCat); setScrollTick((t) => t + 1);
                     const el = document.querySelector('.menu'); if (el) el.scrollIntoView({ behavior: 'smooth' });
                   }
                   else { const el = document.querySelector('.menu'); if (el) el.scrollIntoView({ behavior: 'smooth' }); }
@@ -1161,6 +1168,7 @@ export default function App() {
               currency={currency}
               onPick={(item) => { setActiveItem(item); track('product_view', { ref: item.name }); }}
               scrollTo={activeCat}
+              scrollKey={scrollTick}
               onScrolled={() => setActiveCat(null)}
               kitchenClosedCats={kitchenClosedCats}
             />
@@ -1259,7 +1267,8 @@ export default function App() {
                     setActiveGroup(slot.cats);
                     setView('home');
                     setActiveCat(slot.cats[idx]); // scrolls to that category's title
-                  } else { setView('home'); setActiveCat(slot.cats[0]); }
+                    setScrollTick((t) => t + 1);
+                  } else { setView('home'); setActiveCat(slot.cats[0]); setScrollTick((t) => t + 1); }
                 }}
                 aria-label={slot.label}
               >
