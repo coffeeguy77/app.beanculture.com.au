@@ -101,7 +101,7 @@ export default function Checkout({ config, cart, currency, onQty, onComboQty, on
     // Combo Builder tags — the server independently re-validates these against
     // the stored combo definition before applying any discount (see
     // server/lib/combos.js); nothing here is trusted at face value.
-    ...(c.comboInstanceId ? { comboId: c.comboId, comboInstanceId: c.comboInstanceId, comboGroupId: c.comboGroupId } : {}),
+    ...(c.comboInstanceId ? { comboId: c.comboId, comboInstanceId: c.comboInstanceId, comboGroupId: c.comboGroupId, comboItemId: c.itemId } : {}),
   }));
   // A combo's discount already applies itself automatically — a typed coupon
   // on top would stack two discounts, so the coupon field is disabled while

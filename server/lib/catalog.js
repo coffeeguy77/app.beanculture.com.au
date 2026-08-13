@@ -336,6 +336,11 @@ async function getMenu(opts = {}) {
   // Each preset locks a variation and curates which modifier options show; it
   // renders as its own tile in its section and, when ordered, submits as the
   // real Square variation + modifier ids.
+  // Reusable "combo option" view per preset id, so a combo step built from a
+  // Product Builder tile shows EXACTLY the same configured options / required
+  // fields / price as that tile does on the menu (populated in the preset pass
+  // below, consumed by the combo pass further down).
+  const comboOptionByPresetId = new Map();
   if (includeSections) {
     const presetsBySection = new Map();
     const presetSourceIds = new Set();
@@ -358,6 +363,7 @@ async function getMenu(opts = {}) {
       const groups = [];
       const lockedModifierIds = [];
       const lockedModifierNames = [];
+      const lockedMods = []; // { id, name, price } — for the combo view
       const defaults = {};
       let lockedTotal = 0;
       for (const g of src.modifierGroups || []) {
@@ -367,7 +373,7 @@ async function getMenu(opts = {}) {
         for (const m of g.modifiers) {
           const state = cfg[m.id]; // 'optional' | 'default' | 'locked' ; undefined → off
           if (!state) continue;
-          if (state === 'locked') { lockedModifierIds.push(m.id); lockedModifierNames.push(m.name); lockedTotal += m.price || 0; continue; }
+          if (state === 'locked') { lockedModifierIds.push(m.id); lockedModifierNames.push(m.name); lockedMods.push({ id: m.id, name: m.name, price: m.price || 0 }); lockedTotal += m.price || 0; continue; }
           offered.push(m);
           if (state === 'default') { (defaults[g.id] = defaults[g.id] || []).push(m.id); }
         }
@@ -397,6 +403,19 @@ async function getMenu(opts = {}) {
       const secName = String(p.section || '').trim() || 'Specials';
       if (!presetsBySection.has(secName)) presetsBySection.set(secName, []);
       presetsBySection.get(secName).push(tile);
+
+      // Combo option view of this tile: same configured modifier groups + locked
+      // add-ons + defaults, but with BASE variation prices (the combo bakes the
+      // locked-mod price in itself via lockedMods, so it isn't double-counted).
+      comboOptionByPresetId.set(p.id, {
+        id: 'preset:' + p.id,
+        name: tile.name,
+        image: src.image || null,
+        variations: chosenVars.map((v) => ({ id: v.id, name: v.name, price: v.price || 0, soldOut: !!v.soldOut })),
+        modifierGroups: groups,
+        lockedMods,
+        defaults,
+      });
     }
     const sectionNav = getSettings().presetSectionNav || {};
     // A builder section shows on the storefront when its Top-menu or Footer
@@ -442,34 +461,49 @@ async function getMenu(opts = {}) {
       let broken = false;
       for (const g of combo.groups || []) {
         if (!g || !g.id) { broken = true; break; }
-        const optionIds = new Set();
+
+        // Build the group's option pool. Preferred source is Product Builder
+        // tiles (presetIds) — each shows exactly as it does on the menu. Legacy
+        // combos that hand-picked raw Square items (itemIds) or a whole category
+        // still resolve, as bare items.
+        const baseOptions = [];
+        for (const pid of Array.isArray(g.presetIds) ? g.presetIds : []) {
+          const view = comboOptionByPresetId.get(pid);
+          if (view && view.variations.some((v) => !v.soldOut)) baseOptions.push(view);
+        }
+        const rawIds = new Set();
         if (g.sourceType !== 'items' && g.categoryName) {
           const wanted = cleanName(String(g.categoryName)).toLowerCase();
           for (const [catId, c] of categories) {
             if (cleanName(c.name || '').toLowerCase() === wanted) {
-              for (const { item } of byCatId.get(catId) || []) optionIds.add(item.id);
+              for (const { item } of byCatId.get(catId) || []) rawIds.add(item.id);
             }
           }
         }
         if (g.sourceType !== 'category') {
-          for (const id of Array.isArray(g.itemIds) ? g.itemIds : []) optionIds.add(id);
+          for (const id of Array.isArray(g.itemIds) ? g.itemIds : []) rawIds.add(id);
         }
-        const options = [...optionIds].map((id) => itemsById.get(id)).filter((it) => it && it.variations.some((v) => !v.soldOut));
-        if (!options.length) { broken = true; break; }
+        for (const id of rawIds) {
+          const it = itemsById.get(id);
+          if (it && it.variations.some((v) => !v.soldOut)) {
+            baseOptions.push({ id: it.id, name: it.name, image: it.image, variations: it.variations, modifierGroups: it.modifierGroups, lockedMods: [], defaults: {} });
+          }
+        }
+        if (!baseOptions.length) { broken = true; break; }
 
-        // Per-combo modifier config (scoped to THIS combo, never the standalone
-        // menu item): each item's modifiers can be Locked in (always included +
-        // hidden, price baked in — e.g. chips on the combo steak) or Hidden
-        // (never offered). Everything else stays a normal customer choice.
+        // Per-combo override (scoped to THIS combo only): on top of whatever the
+        // tile already shows, an add-on can be Locked in (always included +
+        // hidden, priced in) or Hidden (never offered). Keyed by the option id
+        // (a preset id, or a raw item id for legacy combos).
         const lockMap = g.itemLocks || {};
         const hideMap = g.itemHides || {};
-        const resolvedOptions = options.map((it) => {
-          const lockSet = new Set(lockMap[it.id] || []);
-          const hideSet = new Set(hideMap[it.id] || []);
-          const lockedMods = [];
-          let modifierGroups = it.modifierGroups || [];
+        const resolvedOptions = baseOptions.map((o) => {
+          const lockSet = new Set(lockMap[o.id] || []);
+          const hideSet = new Set(hideMap[o.id] || []);
+          const lockedMods = [...(o.lockedMods || [])];
+          let modifierGroups = o.modifierGroups || [];
           if (lockSet.size || hideSet.size) {
-            modifierGroups = (it.modifierGroups || []).map((mg) => {
+            modifierGroups = (o.modifierGroups || []).map((mg) => {
               const kept = [];
               for (const m of mg.modifiers || []) {
                 if (lockSet.has(m.id)) lockedMods.push({ id: m.id, name: m.name, price: m.price || 0 });
@@ -477,11 +511,11 @@ async function getMenu(opts = {}) {
                 else kept.push(m);
               }
               return { ...mg, modifiers: kept };
-            }).filter((mg) => (mg.modifiers || []).length > 0); // drop groups emptied by hide/lock
+            }).filter((mg) => (mg.modifiers || []).length > 0);
           }
           const lockPrice = lockedMods.reduce((s, m) => s + (m.price || 0), 0);
-          const cheapestVar = Math.min(...it.variations.filter((v) => !v.soldOut).map((v) => v.price));
-          return { id: it.id, name: it.name, image: it.image, variations: it.variations, modifierGroups, lockedMods, _eff: cheapestVar + lockPrice };
+          const cheapestVar = Math.min(...o.variations.filter((v) => !v.soldOut).map((v) => v.price));
+          return { id: o.id, name: o.name, image: o.image, variations: o.variations, modifierGroups, lockedMods, defaults: o.defaults || {}, _eff: cheapestVar + lockPrice };
         });
 
         // "From" price counts each group's cheapest option INCLUDING its locked-

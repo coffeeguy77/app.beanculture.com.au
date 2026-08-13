@@ -186,6 +186,7 @@ export default function Admin({ onExit }) {
   const [comboItemPicker, setComboItemPicker] = useState(null); // `${comboId}:${groupId}` currently open
   const [comboItemSearch, setComboItemSearch] = useState({}); // picker key -> search text
   const [comboLockOpen, setComboLockOpen] = useState(null); // `${comboId}:${groupId}:${itemId}` lock panel open
+  const [comboPickerSec, setComboPickerSec] = useState({}); // picker key -> section filter
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
   // Backend appearance (admin-only palette) — persisted locally, independent
   // of the storefront's customer-facing theme/season settings.
@@ -285,7 +286,9 @@ export default function Admin({ onExit }) {
   useEffect(() => { load(pass); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   // Fetch the full config (variations + modifiers) for any item used by a preset.
   useEffect(() => {
-    const ids = [...new Set((s?.presets || []).map((p) => p.sourceItemId).filter(Boolean))];
+    const presetSrc = (s?.presets || []).map((p) => p.sourceItemId).filter(Boolean);
+    const comboItemIds = (s?.combos || []).flatMap((c) => (c.groups || []).flatMap((g) => g.itemIds || []));
+    const ids = [...new Set([...presetSrc, ...comboItemIds].filter(Boolean))];
     ids.forEach((id) => {
       if (itemConfigs[id]) return;
       fetch(`/api/admin/item-config?id=${encodeURIComponent(id)}&pass=${encodeURIComponent(pass)}`)
@@ -607,6 +610,47 @@ export default function Admin({ onExit }) {
     if (!group) return;
     const cur = Array.isArray(group.itemIds) ? group.itemIds : [];
     updComboGroup(comboId, groupId, { itemIds: cur.includes(itemId) ? cur.filter((i) => i !== itemId) : [...cur, itemId] });
+  };
+  // Add/remove a Product Builder tile (preset) as an option in a combo group.
+  const toggleComboGroupPreset = (comboId, groupId, presetId) => {
+    const combo = combos.find((c) => c.id === comboId);
+    const group = combo && (combo.groups || []).find((g) => g.id === groupId);
+    if (!group) return;
+    const cur = Array.isArray(group.presetIds) ? group.presetIds : [];
+    updComboGroup(comboId, groupId, { presetIds: cur.includes(presetId) ? cur.filter((i) => i !== presetId) : [...cur, presetId] });
+  };
+  // Retail (full separate price) + deal price of a combo, from each group's
+  // cheapest option incl. its locked-in extras. Needs item configs loaded.
+  const comboRetail = (combo) => {
+    let retail = 0; let known = true;
+    for (const g of combo.groups || []) {
+      let best = Infinity;
+      for (const pid of g.presetIds || []) {
+        const p = (presets || []).find((x) => x.id === pid);
+        const cfg = p && itemConfigs[p.sourceItemId];
+        if (!p || !cfg) { known = false; continue; }
+        const vids = (p.variationIds && p.variationIds.length) ? p.variationIds : [p.variationId];
+        const vPrices = (cfg.variations || []).filter((v) => vids.includes(v.id)).map((v) => v.price);
+        if (!vPrices.length) { known = false; continue; }
+        let lock = 0;
+        for (const mg of cfg.modifierGroups || []) { const gc = (p.groups || {})[mg.id] || {}; for (const m of mg.modifiers) if (gc[m.id] === 'locked') lock += m.price || 0; }
+        const ov = (g.itemLocks && g.itemLocks['preset:' + pid]) || [];
+        for (const mg of cfg.modifierGroups || []) for (const m of mg.modifiers) if (ov.includes(m.id)) lock += m.price || 0;
+        best = Math.min(best, Math.min(...vPrices) + lock);
+      }
+      for (const id of g.itemIds || []) {
+        const cfg = itemConfigs[id];
+        if (!cfg || !(cfg.variations || []).length) { known = false; continue; }
+        const ov = (g.itemLocks && g.itemLocks[id]) || [];
+        let lock = 0;
+        for (const mg of cfg.modifierGroups || []) for (const m of mg.modifiers) if (ov.includes(m.id)) lock += m.price || 0;
+        best = Math.min(best, Math.min(...cfg.variations.map((v) => v.price)) + lock);
+      }
+      if (g.categoryName && !(g.presetIds || []).length && !(g.itemIds || []).length) { known = false; continue; }
+      if (best === Infinity) { known = false; continue; }
+      retail += best;
+    }
+    return { retail, known };
   };
   // Cycle a combo item's modifier through Show → Hide → Locked-in → Show
   // (scoped to this combo only). Locked = always included + hidden + priced in;
@@ -2244,6 +2288,19 @@ export default function Admin({ onExit }) {
                         <span>Discount ($ off)</span>
                         <input type="number" min="0" step="0.5" value={combo.discountValue ?? 0} onChange={(e) => updCombo(combo.id, { discountValue: Number(e.target.value) })} />
                       </label>
+                      {(() => {
+                        const { retail, known } = comboRetail(combo);
+                        const disc = Math.round((Number(combo.discountValue) || 0) * 100);
+                        const final = Math.max(0, retail - disc);
+                        return (
+                          <div style={{ flex: '1 1 240px', minWidth: 210, alignSelf: 'flex-end', padding: '10px 12px', border: '1px solid var(--admin-border)', borderRadius: 10, background: 'var(--admin-surface-soft)' }}>
+                            <div className="muted" style={{ fontSize: 'var(--fs-xs)', textTransform: 'uppercase', letterSpacing: '.4px', marginBottom: 4 }}>Deal maths · cheapest options</div>
+                            {known && retail > 0 ? (
+                              <div style={{ fontSize: 'var(--fs-sm)' }}>Retail <strong>{formatMoney(retail, data?.currency)}</strong> − {formatMoney(disc, data?.currency)} = <strong style={{ color: 'var(--admin-accent)' }}>{formatMoney(final, data?.currency)}</strong></div>
+                            ) : <div className="muted" style={{ fontSize: 'var(--fs-sm)' }}>Add a tile to each step to see the retail total &amp; deal price.</div>}
+                          </div>
+                        );
+                      })()}
                     </div>
 
                     <div style={{ marginTop: 16 }}>
@@ -2277,57 +2334,72 @@ export default function Admin({ onExit }) {
                               </label>
                             )}
 
-                            {group.sourceType !== 'category' && (
+                            {group.sourceType !== 'category' && (() => {
+                              // Unified option rows: Product Builder tiles (presetIds) are the
+                              // preferred source; any legacy hand-picked raw items still show.
+                              const optionRows = [
+                                ...(group.presetIds || []).map((pid) => {
+                                  const pr = (presets || []).find((x) => x.id === pid);
+                                  return { key: 'preset:' + pid, label: pr ? pr.name : pid, sub: pr?.section || '', srcItemId: pr?.sourceItemId, remove: () => toggleComboGroupPreset(combo.id, group.id, pid) };
+                                }),
+                                ...(group.itemIds || []).map((id) => {
+                                  const it = allProducts.find((x) => x.id === id);
+                                  return { key: id, label: (it?.name || id), sub: 'raw item', srcItemId: id, remove: () => toggleComboGroupItem(combo.id, group.id, id) };
+                                }),
+                              ];
+                              const secFilter = comboPickerSec[pickerKey] != null ? comboPickerSec[pickerKey] : (group.categoryName || '');
+                              const presetSections = [...new Set((presets || []).map((p) => p.section).filter(Boolean))];
+                              const filteredPresets = (presets || []).filter((p) =>
+                                (!searchText || (p.name || '').toLowerCase().includes(searchText.toLowerCase())) &&
+                                (!secFilter || (p.section || '').toLowerCase() === secFilter.toLowerCase())
+                              );
+                              return (
                               <div style={{ marginTop: 14 }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-                                  <span style={{ fontWeight: 650, fontSize: 'var(--fs-sm)', color: 'var(--admin-text)' }}>Hand-picked items <span className="muted">({(group.itemIds || []).length})</span></span>
-                                  <button type="button" className="btn ghost" style={{ padding: '7px 14px', fontSize: 'var(--fs-sm)' }} onClick={() => setComboItemPicker(pickerOpen ? null : pickerKey)}>{pickerOpen ? 'Done' : '+ Choose items'}</button>
+                                  <span style={{ fontWeight: 650, fontSize: 'var(--fs-sm)', color: 'var(--admin-text)' }}>Products in this step <span className="muted">({optionRows.length})</span></span>
+                                  <button type="button" className="btn ghost" style={{ padding: '7px 14px', fontSize: 'var(--fs-sm)' }} onClick={() => setComboItemPicker(pickerOpen ? null : pickerKey)}>{pickerOpen ? 'Done' : '+ Choose products'}</button>
                                 </div>
-                                {(group.itemIds || []).length > 0 && (
+                                {optionRows.length > 0 && (
                                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
-                                    {(group.itemIds || []).map((id) => {
-                                      const p = allProducts.find((x) => x.id === id);
-                                      return (
-                                        <span key={id} className="chip on" style={{ fontSize: 'var(--fs-xs)' }}>
-                                          {p?.name || id}
-                                          <button type="button" onClick={() => toggleComboGroupItem(combo.id, group.id, id)} style={{ marginLeft: 4, border: 'none', background: 'none', cursor: 'pointer', color: 'inherit' }}>✕</button>
-                                        </span>
-                                      );
-                                    })}
+                                    {optionRows.map((r) => (
+                                      <span key={r.key} className="chip on" style={{ fontSize: 'var(--fs-xs)' }}>
+                                        {r.label}
+                                        <button type="button" onClick={r.remove} style={{ marginLeft: 4, border: 'none', background: 'none', cursor: 'pointer', color: 'inherit' }}>✕</button>
+                                      </span>
+                                    ))}
                                   </div>
                                 )}
-                                {/* Per-item modifier locks — lock an add-on (e.g. chips) into THIS combo. */}
-                                {(group.itemIds || []).length > 0 && (
+                                {/* Per-combo option override — lock/hide an add-on for THIS combo only. */}
+                                {optionRows.length > 0 && (
                                   <div style={{ marginTop: 8 }}>
-                                    {(group.itemIds || []).map((id) => {
-                                      const p = allProducts.find((x) => x.id === id);
-                                      const lockKey = `${combo.id}:${group.id}:${id}`;
+                                    {optionRows.map((r) => {
+                                      const lockKey = `${combo.id}:${group.id}:${r.key}`;
                                       const open = comboLockOpen === lockKey;
-                                      const cfg = itemConfigs[id];
-                                      const locks = (group.itemLocks && group.itemLocks[id]) || [];
-                                      const hides = (group.itemHides && group.itemHides[id]) || [];
+                                      const cfg = r.srcItemId ? itemConfigs[r.srcItemId] : null;
+                                      const locks = (group.itemLocks && group.itemLocks[r.key]) || [];
+                                      const hides = (group.itemHides && group.itemHides[r.key]) || [];
                                       const parts = [locks.length ? `${locks.length} locked` : '', hides.length ? `${hides.length} hidden` : ''].filter(Boolean).join(' · ');
                                       return (
-                                        <div key={id} style={{ borderTop: '1px solid var(--admin-border)', paddingTop: 8, marginTop: 8 }}>
+                                        <div key={r.key} style={{ borderTop: '1px solid var(--admin-border)', paddingTop: 8, marginTop: 8 }}>
                                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-                                            <span style={{ fontWeight: 650, fontSize: 'var(--fs-sm)' }}>{p?.name || id}{parts ? <span className="muted"> · {parts}</span> : null}</span>
-                                            <button type="button" className="link" onClick={async () => { if (!open) await ensureItemConfig(id); setComboLockOpen(open ? null : lockKey); }}>{open ? 'Done' : 'Options'}</button>
+                                            <span style={{ fontWeight: 650, fontSize: 'var(--fs-sm)' }}>{r.label}{parts ? <span className="muted"> · {parts}</span> : null}</span>
+                                            <button type="button" className="link" onClick={async () => { if (!open && r.srcItemId) await ensureItemConfig(r.srcItemId); setComboLockOpen(open ? null : lockKey); }}>{open ? 'Done' : 'Override options'}</button>
                                           </div>
                                           {open && (
                                             <div style={{ marginTop: 8 }}>
                                               {!cfg && <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>Loading options…</p>}
-                                              {cfg && (cfg.modifierGroups || []).length === 0 && <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>This item has no add-ons to configure.</p>}
+                                              {cfg && (cfg.modifierGroups || []).length === 0 && <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>This product has no add-ons to override.</p>}
                                               {cfg && (cfg.modifierGroups || []).map((mg) => (
                                                 <div key={mg.id} style={{ marginBottom: 8 }}>
                                                   <div className="muted" style={{ fontSize: 'var(--fs-xs)', textTransform: 'uppercase', letterSpacing: '.4px', marginBottom: 4 }}>{mg.name}</div>
                                                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                                                     {(mg.modifiers || []).map((m) => {
                                                       const st = locks.includes(m.id) ? 'lock' : hides.includes(m.id) ? 'hide' : 'show';
-                                                      const tag = st === 'lock' ? '🔒 Locked' : st === 'hide' ? '🚫 Hidden' : 'Show';
+                                                      const tag = st === 'lock' ? '🔒 Locked' : st === 'hide' ? '🚫 Hidden' : 'Default';
                                                       return (
                                                         <button key={m.id} type="button" className={`chip ${st === 'lock' ? 'on' : ''}`} style={{ fontSize: 'var(--fs-xs)', opacity: st === 'hide' ? 0.55 : 1, textDecoration: st === 'hide' ? 'line-through' : 'none' }}
-                                                          title="Tap to cycle: Show → Hide → Locked in"
-                                                          onClick={() => cycleItemMod(combo.id, group.id, id, m.id)}>
+                                                          title="Tap to cycle: Default (as on the tile) → Hide → Locked in"
+                                                          onClick={() => cycleItemMod(combo.id, group.id, r.key, m.id)}>
                                                           {m.name}{m.price > 0 ? ` +${formatMoney(m.price, data?.currency)}` : ''} · {tag}
                                                         </button>
                                                       );
@@ -2335,7 +2407,7 @@ export default function Admin({ onExit }) {
                                                   </div>
                                                 </div>
                                               ))}
-                                              <p className="muted" style={{ fontSize: 'var(--fs-xs)', marginTop: 4 }}>Tap an add-on to cycle <strong>Show → Hide → Locked in</strong>. Locked = always included (price baked in, hidden from the customer); Hidden = never offered. Only affects this combo — the item's normal menu listing is unchanged.</p>
+                                              <p className="muted" style={{ fontSize: 'var(--fs-xs)', marginTop: 4 }}>The product already shows exactly what its Product Builder tile shows. Here you can override <strong>for this combo only</strong>: tap an add-on to cycle <strong>Default → Hide → Locked in</strong> (e.g. lock chips into this deal). The item's own menu listing is unchanged.</p>
                                             </div>
                                           )}
                                         </div>
@@ -2344,20 +2416,28 @@ export default function Admin({ onExit }) {
                                   </div>
                                 )}
                                 {pickerOpen && (
-                                  <div style={{ border: '1px solid var(--line)', borderRadius: 10, padding: 8, marginTop: 8, maxHeight: 260, overflowY: 'auto' }}>
-                                    <input value={searchText} onChange={(e) => setComboItemSearch((m) => ({ ...m, [pickerKey]: e.target.value }))} placeholder="Search products…"
-                                      style={{ width: '100%', padding: '7px 10px', border: '1px solid var(--line)', borderRadius: 8, marginBottom: 8 }} />
-                                    {filteredProducts.slice(0, 120).map((p) => (
+                                  <div style={{ border: '1px solid var(--line)', borderRadius: 10, padding: 8, marginTop: 8, maxHeight: 300, overflowY: 'auto' }}>
+                                    <div style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+                                      <input value={searchText} onChange={(e) => setComboItemSearch((m) => ({ ...m, [pickerKey]: e.target.value }))} placeholder="Search your products…"
+                                        style={{ flex: '1 1 160px', minWidth: 140, padding: '7px 10px', border: '1px solid var(--line)', borderRadius: 8 }} />
+                                      <select value={secFilter} onChange={(e) => setComboPickerSec((m) => ({ ...m, [pickerKey]: e.target.value }))} style={{ padding: 8, borderRadius: 8, border: '1px solid var(--line)' }}>
+                                        <option value="">All sections</option>
+                                        {presetSections.map((sname) => <option key={sname} value={sname}>{sname}</option>)}
+                                      </select>
+                                    </div>
+                                    {(presets || []).length === 0 && <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>No Product Builder products yet — build some in Product Builder first.</p>}
+                                    {filteredPresets.slice(0, 200).map((p) => (
                                       <label key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 2px', fontSize: 'var(--fs-sm)' }}>
-                                        <input type="checkbox" checked={(group.itemIds || []).includes(p.id)} onChange={() => toggleComboGroupItem(combo.id, group.id, p.id)} />
-                                        {p.name} <span className="muted">· {p.category}</span>
+                                        <input type="checkbox" checked={(group.presetIds || []).includes(p.id)} onChange={() => toggleComboGroupPreset(combo.id, group.id, p.id)} />
+                                        {p.name} <span className="muted">· {p.section || 'Specials'}</span>
                                       </label>
                                     ))}
-                                    {filteredProducts.length === 0 && <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>No products match.</p>}
+                                    {(presets || []).length > 0 && filteredPresets.length === 0 && <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>No products match.</p>}
                                   </div>
                                 )}
                               </div>
-                            )}
+                              );
+                            })()}
                           </div>
                         );
                       })}

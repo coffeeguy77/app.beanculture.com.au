@@ -28,7 +28,11 @@ export default function ComboModal({ item: combo, currency, onClose, onAdd }) {
     setPicked((p) => ({ ...p, [group.id]: option.id }));
     const firstAvail = (option.variations || []).find((v) => !v.soldOut) || option.variations?.[0];
     setVariationPick((p) => ({ ...p, [group.id]: firstAvail?.id }));
-    setModifierPick((p) => ({ ...p, [group.id]: {} }));
+    // Pre-select the tile's default modifiers (Product Builder "default" state),
+    // so the combo step starts configured exactly like the item does on the menu.
+    const initMods = {};
+    for (const [mgId, modIds] of Object.entries(option.defaults || {})) initMods[mgId] = new Set(modIds);
+    setModifierPick((p) => ({ ...p, [group.id]: initMods }));
   }
 
   function toggleModifier(group, modGroup, mod) {

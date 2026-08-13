@@ -57,7 +57,9 @@ async function loadRawCatalog() {
   return { categoryNames, itemsById };
 }
 
-// The set of item ids that satisfy one combo group, per the raw catalog.
+// The set of item ids that satisfy one combo group, per the raw catalog. Covers
+// Product Builder tiles (presetIds → their source Square item), legacy hand-
+// picked raw items (itemIds), and a whole category.
 function groupItemIds(group, idx) {
   const ids = new Set();
   if (group && group.sourceType !== 'items' && group.categoryName) {
@@ -70,6 +72,13 @@ function groupItemIds(group, idx) {
   }
   if (group && group.sourceType !== 'category') {
     for (const id of Array.isArray(group.itemIds) ? group.itemIds : []) ids.add(id);
+  }
+  if (group && Array.isArray(group.presetIds) && group.presetIds.length) {
+    const presets = getSettings().presets || [];
+    for (const pid of group.presetIds) {
+      const p = presets.find((x) => x && x.id === pid);
+      if (p && p.sourceItemId) ids.add(p.sourceItemId);
+    }
   }
   return ids;
 }
@@ -156,8 +165,11 @@ async function applyLockedMods(cart) {
     if (!combo) return line;
     const group = (combo.groups || []).find((g) => g && g.id === line.comboGroupId);
     if (!group || !group.itemLocks) return line;
-    const itemId = variationOwner(idx, line.variationId);
-    const locks = itemId && Array.isArray(group.itemLocks[itemId]) ? group.itemLocks[itemId] : null;
+    // The override is keyed by the option id — a preset id for a tile-based
+    // combo, or the raw Square item id for a legacy one. The line carries that
+    // in comboItemId; fall back to resolving the item from the variation.
+    const optionId = line.comboItemId || variationOwner(idx, line.variationId);
+    const locks = optionId && Array.isArray(group.itemLocks[optionId]) ? group.itemLocks[optionId] : null;
     if (!locks || !locks.length) return line;
     const merged = new Set([...(Array.isArray(line.modifierIds) ? line.modifierIds : []), ...locks]);
     return { ...line, modifierIds: [...merged] };
