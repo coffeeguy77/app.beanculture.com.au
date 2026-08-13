@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { api, formatMoney } from '../api.js';
+import { api, formatMoney, comboDiscountFor } from '../api.js';
 import { TableLockPill, TableEntry } from './TableControls.jsx';
 import WalletButtons from './WalletButtons.jsx';
 import ScheduleWhen from './ScheduleWhen.jsx';
@@ -74,7 +74,10 @@ export default function Checkout({ config, cart, currency, onQty, dineIn, setDin
   const paymentsRef = useRef(null);
   const cardRef = useRef(null);
 
-  const cartTotal = cart.reduce((n, c) => n + c.unitPrice * c.quantity, 0);
+  // Displayed total must match the authoritative server total, which already
+  // subtracts the combo discount — otherwise the "Pay $X" button shows the
+  // undiscounted sum while the real charge (order.totalMoney) is lower.
+  const cartTotal = Math.max(0, cart.reduce((n, c) => n + c.unitPrice * c.quantity, 0) - comboDiscountFor(cart));
   const hasCombo = cart.some((c) => c.comboInstanceId);
   const cartPayload = cart.map((c) => ({
     variationId: c.variationId, quantity: c.quantity, modifierIds: c.modifierIds, note: c.note,

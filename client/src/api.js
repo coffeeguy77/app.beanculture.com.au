@@ -73,3 +73,19 @@ export function formatMoney(amount, currency = 'AUD') {
   if (amount == null) return '';
   return new Intl.NumberFormat('en-AU', { style: 'currency', currency }).format(amount / 100);
 }
+
+// Total combo discount (cents) across the cart. Each combo instance's lines all
+// carry the same per-unit comboDiscount, so we count it once per instance ×
+// that instance's quantity. Used to make every displayed total match the
+// authoritative server total (which already applies the discount).
+export function comboDiscountFor(cart) {
+  const seen = new Set();
+  let d = 0;
+  for (const c of cart || []) {
+    if (c.comboInstanceId && c.comboDiscount && !seen.has(c.comboInstanceId)) {
+      seen.add(c.comboInstanceId);
+      d += c.comboDiscount * (c.quantity || 1);
+    }
+  }
+  return d;
+}

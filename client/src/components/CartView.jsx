@@ -1,5 +1,5 @@
 import React from 'react';
-import { formatMoney } from '../api.js';
+import { formatMoney, comboDiscountFor } from '../api.js';
 
 // See CartPanel.jsx for why: groups combo-linked lines into one card.
 function groupCart(cart) {
@@ -18,7 +18,8 @@ function groupCart(cart) {
 }
 
 export default function CartView({ cart, currency, onQty, onRemove, onClear, onComboQty, onRemoveCombo, dineIn, table, onCheckout, onBack, kitchenBanner, unavailableKeys }) {
-  const total = cart.reduce((n, c) => n + c.unitPrice * c.quantity, 0);
+  const comboSavings = comboDiscountFor(cart);
+  const total = Math.max(0, cart.reduce((n, c) => n + c.unitPrice * c.quantity, 0) - comboSavings);
   const hasUnavailable = cart.some((c) => unavailableKeys?.has(c.key));
   const grouped = groupCart(cart);
   if (cart.length === 0) {
@@ -42,12 +43,14 @@ export default function CartView({ cart, currency, onQty, onRemove, onClear, onC
         {grouped.map((g) => {
           if (g.type === 'combo') {
             const qty = g.lines[0]?.quantity || 1;
-            const comboTotal = g.lines.reduce((n, l) => n + l.unitPrice * l.quantity, 0);
+            const comboDisc = (g.lines[0]?.comboDiscount || 0) * qty;
+            const comboTotal = Math.max(0, g.lines.reduce((n, l) => n + l.unitPrice * l.quantity, 0) - comboDisc);
             return (
               <li key={g.instanceId} className="cart-line cart-line-combo">
                 <div className="cart-line-main">
                   <div className="cart-line-name">🍔 {g.name}</div>
                   <div className="cart-line-sub">{g.lines.map((l) => l.itemName).join(' + ')}</div>
+                  {comboDisc > 0 && <div className="cart-line-sub cl-combo-save">Combo saving −{formatMoney(comboDisc, currency)}</div>}
                 </div>
                 <div className="cart-line-right">
                   <div className="stepper sm">
@@ -90,6 +93,7 @@ export default function CartView({ cart, currency, onQty, onRemove, onClear, onC
       </ul>
       {hasUnavailable && <p className="cart-unavailable-note">Remove the unavailable item{cart.filter((c) => unavailableKeys?.has(c.key)).length > 1 ? 's' : ''} above to check out.</p>}
       <div className="totals">
+        {comboSavings > 0 && <div className="row cl-combo-save"><span>Combo savings</span><span>−{formatMoney(comboSavings, currency)}</span></div>}
         <div className="row grand"><span>Total</span><span>{formatMoney(total, currency)}</span></div>
       </div>
       {kitchenBanner}

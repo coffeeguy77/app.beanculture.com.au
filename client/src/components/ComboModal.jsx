@@ -104,6 +104,9 @@ export default function ComboModal({ item: combo, currency, onClose, onAdd }) {
         comboGroupId: g.id,
         comboName: combo.name,
         comboGroupLabel: g.label,
+        // Per-combo-unit discount (cents), same on every line of the instance
+        // so the cart can subtract it once per combo when showing the total.
+        comboDiscount: discount,
       };
     });
     onAdd(entries, { comboName: combo.name, quantity: qty });

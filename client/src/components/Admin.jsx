@@ -2198,11 +2198,11 @@ export default function Admin({ onExit }) {
                         </label>
                         {combo.image && <button type="button" className="link" style={{ fontSize: 'var(--fs-xs)' }} onClick={() => updCombo(combo.id, { image: '' })}>Remove photo</button>}
                       </div>
-                      <div style={{ flex: '1 1 260px', minWidth: 200, display: 'grid', gap: 8 }}>
-                        <input value={combo.name || ''} onChange={(e) => updCombo(combo.id, { name: e.target.value })} placeholder="Combo name (e.g. Burger Combo)"
-                          style={{ padding: '10px 12px', border: '1px solid var(--line)', borderRadius: 10, fontWeight: 700, fontSize: 'var(--fs-md)' }} />
-                        <textarea value={combo.description || ''} onChange={(e) => updCombo(combo.id, { description: e.target.value })} placeholder="Short description (optional)" rows={2}
-                          style={{ padding: '10px 12px', border: '1px solid var(--line)', borderRadius: 10, fontSize: 'var(--fs-base)', resize: 'vertical' }} />
+                      <div style={{ flex: '1 1 260px', minWidth: 200, display: 'grid', gap: 10 }}>
+                        <label className="field" style={{ margin: 0 }}><span>Combo name</span>
+                          <input value={combo.name || ''} onChange={(e) => updCombo(combo.id, { name: e.target.value })} placeholder="e.g. Tradies Special" style={{ fontWeight: 700 }} /></label>
+                        <label className="field" style={{ margin: 0 }}><span>Description (optional)</span>
+                          <textarea value={combo.description || ''} onChange={(e) => updCombo(combo.id, { description: e.target.value })} placeholder="An egg &amp; bacon roll + small coffee." rows={2} /></label>
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end' }}>
                         <button type="button" className={`chip ${combo.active !== false ? 'on' : ''}`} onClick={() => updCombo(combo.id, { active: combo.active === false })}>
@@ -2233,32 +2233,34 @@ export default function Admin({ onExit }) {
                         const searchText = comboItemSearch[pickerKey] || '';
                         const filteredProducts = allProducts.filter((p) => !searchText || p.name.toLowerCase().includes(searchText.toLowerCase()));
                         return (
-                          <div key={group.id} style={{ border: '1px solid var(--line)', borderRadius: 12, padding: 12, marginBottom: 10 }}>
-                            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                              <span className="muted" style={{ fontSize: 'var(--fs-xs)' }}>{gi + 1}</span>
-                              <input value={group.label || ''} onChange={(e) => updComboGroup(combo.id, group.id, { label: e.target.value })} placeholder="e.g. Choose your burger"
-                                style={{ flex: '1 1 180px', minWidth: 140, padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 10 }} />
-                              <select value={group.sourceType || 'both'} onChange={(e) => updComboGroup(combo.id, group.id, { sourceType: e.target.value })}
-                                style={{ padding: 8, borderRadius: 10, border: '1px solid var(--line)' }}>
-                                <option value="both">Category + hand-picked</option>
-                                <option value="category">Category only</option>
-                                <option value="items">Hand-picked items only</option>
-                              </select>
-                              <button type="button" className="link" style={{ color: 'var(--admin-danger)' }} onClick={() => rmComboGroup(combo.id, group.id)}>Remove</button>
+                          <div key={group.id} className="combo-group">
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                              <span style={{ fontWeight: 700, color: 'var(--admin-heading)' }}>Step {gi + 1}</span>
+                              <button type="button" className="link" style={{ color: 'var(--admin-danger)', padding: 0 }} onClick={() => rmComboGroup(combo.id, group.id)}>Remove step</button>
+                            </div>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
+                              <label className="field" style={{ margin: 0 }}><span>Step name (shown to customers)</span>
+                                <input value={group.label || ''} onChange={(e) => updComboGroup(combo.id, group.id, { label: e.target.value })} placeholder="e.g. Choose your burger" /></label>
+                              <label className="field" style={{ margin: 0 }}><span>Options come from</span>
+                                <select value={group.sourceType || 'both'} onChange={(e) => updComboGroup(combo.id, group.id, { sourceType: e.target.value })}>
+                                  <option value="both">A category + hand-picked items</option>
+                                  <option value="category">A whole category</option>
+                                  <option value="items">Hand-picked items only</option>
+                                </select></label>
                             </div>
 
                             {group.sourceType !== 'items' && (
-                              <label className="field" style={{ marginTop: 10 }}>
+                              <label className="field" style={{ marginTop: 12, marginBottom: 0 }}>
                                 <span>Category (any item in it qualifies)</span>
                                 <input list="combo-category-names" value={group.categoryName || ''} onChange={(e) => updComboGroup(combo.id, group.id, { categoryName: e.target.value })} placeholder="e.g. Burgers" />
                               </label>
                             )}
 
                             {group.sourceType !== 'category' && (
-                              <div style={{ marginTop: 10 }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                  <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>Hand-picked items ({(group.itemIds || []).length})</span>
-                                  <button type="button" className="link" onClick={() => setComboItemPicker(pickerOpen ? null : pickerKey)}>{pickerOpen ? 'Done' : 'Choose items'}</button>
+                              <div style={{ marginTop: 14 }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+                                  <span style={{ fontWeight: 650, fontSize: 'var(--fs-sm)', color: 'var(--admin-text)' }}>Hand-picked items <span className="muted">({(group.itemIds || []).length})</span></span>
+                                  <button type="button" className="btn ghost" style={{ padding: '7px 14px', fontSize: 'var(--fs-sm)' }} onClick={() => setComboItemPicker(pickerOpen ? null : pickerKey)}>{pickerOpen ? 'Done' : '+ Choose items'}</button>
                                 </div>
                                 {(group.itemIds || []).length > 0 && (
                                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>

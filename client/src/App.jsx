@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { api, formatMoney, imgUrl } from './api.js';
+import { api, formatMoney, imgUrl, comboDiscountFor } from './api.js';
 import { applyTheme } from './theme.js';
 import { STOREFRONT_THEMES, resolvePreset, applyStoreTheme, presetSwatch, buildTokens, seasonalAsPreset } from './themes.js';
 import { getUser, setUser as saveUser, getSavedTheme, setSavedTheme, getSeasonOptOut, setSeasonOptOut, getStoredOrder, setStoredOrder, getFavorites, saveFavorites, getStoredThemeBlob, saveStoredTheme, getEffectPreference, setEffectPreference } from './store.js';
@@ -498,7 +498,7 @@ export default function App() {
     : (schedLater ? `Takeaway · ${fmtWhen(preAt)}` : 'Takeaway · Now');
 
   const cartCount = cart.reduce((n, c) => n + c.quantity, 0);
-  const cartTotal = cart.reduce((n, c) => n + c.unitPrice * c.quantity, 0);
+  const cartTotal = Math.max(0, cart.reduce((n, c) => n + c.unitPrice * c.quantity, 0) - comboDiscountFor(cart));
 
   // Apply the storefront theme on load with this precedence, returning the theme
   // object that should drive activeTheme (seasonal effects/perimeter) or null:

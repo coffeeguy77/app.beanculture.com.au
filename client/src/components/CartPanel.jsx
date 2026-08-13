@@ -1,5 +1,5 @@
 import React from 'react';
-import { formatMoney, imgUrl } from '../api.js';
+import { formatMoney, imgUrl, comboDiscountFor } from '../api.js';
 import CartEmptyIllustration from './CartEmptyIllustration.jsx';
 
 // Persistent cart shown as a sidebar on desktop / landscape-tablet layouts.
@@ -23,7 +23,9 @@ function groupCart(cart) {
 }
 
 export default function CartPanel({ cart, currency, onQty, onRemove, onClear, onComboQty, onRemoveCombo, dineIn, table, onCheckout, summary, unavailableKeys }) {
-  const total = cart.reduce((n, c) => n + c.unitPrice * c.quantity, 0);
+  const gross = cart.reduce((n, c) => n + c.unitPrice * c.quantity, 0);
+  const comboSavings = comboDiscountFor(cart);
+  const total = Math.max(0, gross - comboSavings);
   const count = cart.reduce((n, c) => n + c.quantity, 0);
   const hasUnavailable = cart.some((c) => unavailableKeys?.has(c.key));
   const empty = cart.length === 0;
@@ -59,7 +61,8 @@ export default function CartPanel({ cart, currency, onQty, onRemove, onClear, on
           {grouped.map((g) => {
             if (g.type === 'combo') {
               const qty = g.lines[0]?.quantity || 1;
-              const comboTotal = g.lines.reduce((n, l) => n + l.unitPrice * l.quantity, 0);
+              const comboDisc = (g.lines[0]?.comboDiscount || 0) * qty;
+              const comboTotal = Math.max(0, g.lines.reduce((n, l) => n + l.unitPrice * l.quantity, 0) - comboDisc);
               return (
                 <li key={g.instanceId} className="cart-line cart-line-combo">
                   <div className="cl-main">
@@ -68,6 +71,7 @@ export default function CartPanel({ cart, currency, onQty, onRemove, onClear, on
                       <span className="cl-price">{formatMoney(comboTotal, currency)}</span>
                     </div>
                     <div className="cl-sub">{g.lines.map((l) => l.itemName).join(' + ')}</div>
+                    {comboDisc > 0 && <div className="cl-sub cl-combo-save">Combo saving −{formatMoney(comboDisc, currency)}</div>}
                     <div className="cl-controls">
                       <div className="stepper sm">
                         <button onClick={() => onComboQty(g.instanceId, -1)} aria-label="Decrease">−</button>
@@ -123,6 +127,7 @@ export default function CartPanel({ cart, currency, onQty, onRemove, onClear, on
           <>
             {hasUnavailable && <p className="cart-unavailable-note">Remove the unavailable item{cart.filter((c) => unavailableKeys?.has(c.key)).length > 1 ? 's' : ''} above to check out.</p>}
             <div className="totals">
+              {comboSavings > 0 && <div className="row cl-combo-save"><span>Combo savings</span><span>−{formatMoney(comboSavings, currency)}</span></div>}
               <div className="row grand"><span>Total</span><span>{formatMoney(total, currency)}</span></div>
             </div>
             <button className="btn full" disabled={hasUnavailable} onClick={onCheckout}>
