@@ -4,6 +4,7 @@
 const { squareFetch, LOCATION_ID, idem, CURRENCY } = require('./squareClient');
 const coupons = require('./coupons');
 const combos = require('./combos');
+const payItForward = require('./payItForward');
 
 const DINEIN_FULFILLMENT = (process.env.SQUARE_DINEIN_FULFILLMENT || 'PICKUP').toUpperCase();
 const COMP_COUPON_CODE = (process.env.COMP_COUPON_CODE || '').trim();
@@ -22,7 +23,7 @@ function buildNote({ dineIn, table }) {
   return dineIn ? `DINE-IN · Table ${table || '?'}` : 'TAKEAWAY';
 }
 
-async function createOrder({ cart, dineIn, table, name, coupon, customerId, pickupAt, idempotencyKey, note: customerNote }) {
+async function createOrder({ cart, dineIn, table, name, coupon, customerId, pickupAt, idempotencyKey, note: customerNote, pifVoucher }) {
   if (!Array.isArray(cart) || cart.length === 0) throw new Error('Cart is empty');
   // Bake any per-combo locked modifiers into the combo lines before pricing, so
   // an item the owner locked into a combo (e.g. chips) is always charged even if
@@ -34,8 +35,12 @@ async function createOrder({ cart, dineIn, table, name, coupon, customerId, pick
     !!coupon &&
     String(coupon).trim().toLowerCase() === COMP_COUPON_CODE.toLowerCase();
 
-  const lineItems = cart.map((ci) => {
-    const li = { catalog_object_id: ci.variationId, quantity: String(ci.quantity || 1) };
+  // Every line item gets a stable uid so a Pay It Forward voucher's
+  // LINE_ITEM-scope discount can be attached to exactly the eligible lines
+  // (never the whole order) -- see the pifReservation block below. The uid is
+  // just an array index; it only needs to be unique within this one order.
+  const lineItems = cart.map((ci, i) => {
+    const li = { uid: `li${i}`, catalog_object_id: ci.variationId, quantity: String(ci.quantity || 1) };
     if (Array.isArray(ci.modifierIds) && ci.modifierIds.length) {
       li.modifiers = ci.modifierIds.map((id) => ({ catalog_object_id: id }));
     }
@@ -76,10 +81,33 @@ async function createOrder({ cart, dineIn, table, name, coupon, customerId, pick
     source: { name: 'Bean Culture App' },
   };
   if (customerId) order.customer_id = customerId;
+
+  // A Pay It Forward voucher takes priority over (never stacks with) a combo
+  // or typed coupon, same precedent as combo-beats-coupon below. The balance
+  // is atomically reserved here, BEFORE we touch Square, so two simultaneous
+  // redemption attempts against the same gift can't both succeed. If Square
+  // order creation subsequently fails, the reservation is released in the
+  // catch block below so the customer's balance is never lost to a failed
+  // checkout.
+  let pifReservation = null;
   if (isComp) {
     order.discounts = [
       { uid: 'comp', name: `Test comp (${COMP_COUPON_CODE})`, percentage: '100', scope: 'ORDER' },
     ];
+  } else if (pifVoucher) {
+    const reservation = await payItForward.reserveForCheckout({ tokenOrCode: pifVoucher, cart, redeemedByCustomerId: customerId });
+    if (!reservation.ok) {
+      const err = new Error(pifReservationErrorMessage(reservation));
+      err.pifReason = reservation.reason;
+      err.pifWarning = reservation.warning;
+      throw err;
+    }
+    pifReservation = reservation;
+    const { discount, eligibleIndexes } = payItForward.discountForReservation(reservation);
+    order.discounts = [discount];
+    for (const idx of eligibleIndexes) {
+      if (lineItems[idx]) lineItems[idx].applied_discounts = [{ discount_uid: discount.uid }];
+    }
   } else {
     // Combo Builder discounts are re-derived and re-validated server-side from
     // the cart's comboId/comboInstanceId/comboGroupId tags (see combos.js) —
@@ -96,11 +124,29 @@ async function createOrder({ cart, dineIn, table, name, coupon, customerId, pick
     }
   }
 
-  const data = await squareFetch('/v2/orders', {
-    method: 'POST',
-    body: { order, idempotency_key: idempotencyKey || idem() },
-  });
-  return data.order;
+  try {
+    const data = await squareFetch('/v2/orders', {
+      method: 'POST',
+      body: { order, idempotency_key: idempotencyKey || idem() },
+    });
+    if (pifReservation) await payItForward.confirmReservation(pifReservation.redemptionId, data.order.id);
+    return data.order;
+  } catch (e) {
+    if (pifReservation) await payItForward.releaseReservation(pifReservation.redemptionId).catch(() => {});
+    throw e;
+  }
+}
+
+function pifReservationErrorMessage(reservation) {
+  switch (reservation.reason) {
+    case 'not_found': return 'That gift code or link was not found.';
+    case 'not_redeemable': return `This gift is ${String(reservation.status || '').toLowerCase().replace(/_/g, ' ')} and can no longer be used.`;
+    case 'expired': return 'This gift has expired.';
+    case 'no_eligible_categories': return reservation.warning || 'This gift cannot be used right now — please contact the store.';
+    case 'no_eligible_items_in_cart': return 'Add an eligible coffee to your cart to use this gift.';
+    case 'zero_amount': return 'This gift has no remaining balance.';
+    default: return 'This gift could not be applied to your order.';
+  }
 }
 
 async function getOrder(orderId) {

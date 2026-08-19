@@ -12,6 +12,7 @@ const UserIco = (p) => <Ico {...p}><circle cx="12" cy="8" r="3.6" /><path d="M5.
 const BagIco = (p) => <Ico {...p}><path d="M6 8h12l-1 11.5a1.6 1.6 0 0 1-1.6 1.5H8.6A1.6 1.6 0 0 1 7 19.5L6 8Z" /><path d="M9 8V6.5a3 3 0 0 1 6 0V8" /></Ico>;
 const GiftIco = (p) => <Ico {...p}><rect x="4" y="9.5" width="16" height="11" rx="1.6" /><path d="M4 13h16M12 9.5v11M12 9.5S10.5 5 8.4 5.6C6.7 6 7.4 9 9 9.5m3 0S13.5 5 15.6 5.6C17.3 6 16.6 9 15 9.5" /></Ico>;
 const OutIco = (p) => <Ico {...p}><path d="M15 5H6.5A1.5 1.5 0 0 0 5 6.5v11A1.5 1.5 0 0 0 6.5 19H15" /><path d="M14 12h7m0 0-3-3m3 3-3 3" /></Ico>;
+const CoffeeIco = (p) => <Ico {...p}><path d="M4 8h13v6a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5V8Z" /><path d="M17 9.5h1.5a2.5 2.5 0 0 1 0 5H17" /><path d="M7 4.5c-.6.7-.6 1.3 0 2M10.5 4.5c-.6.7-.6 1.3 0 2" /></Ico>;
 
 /* A single loyalty cup — filled once earned, the last one is the FREE reward. */
 function Cup({ on, free }) {
@@ -29,6 +30,7 @@ function Cup({ on, free }) {
 const NAV = [
   { key: 'account', label: 'My account', Icon: UserIco },
   { key: 'orders', label: 'My orders', Icon: BagIco },
+  { key: 'coffee', label: 'Coffee gifts', Icon: CoffeeIco },
   { key: 'gifts', label: 'Gift cards', Icon: GiftIco },
 ];
 
@@ -52,7 +54,7 @@ function statePill(state) {
 }
 const fmtDate = (iso) => iso ? new Date(iso).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
 
-export default function Account({ user, currency, config, onSignIn, onSignOut, onReorder, onFavorite, onTheme, onBack }) {
+export default function Account({ user, currency, config, onSignIn, onSignOut, onReorder, onFavorite, onTheme, onBack, onSendCoffee, onUseCoffee }) {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [busy, setBusy] = useState(false);
@@ -68,6 +70,8 @@ export default function Account({ user, currency, config, onSignIn, onSignOut, o
   const [visible, setVisible] = useState(6);
   const [detail, setDetail] = useState(null);        // order shown in the detail modal
   const [savedFavs, setSavedFavs] = useState(() => new Set()); // order ids just saved to favourites
+  const [coffeeGifts, setCoffeeGifts] = useState(null); // { sent, received }
+  const [coffeeTab, setCoffeeTab] = useState('received'); // received | sent
 
   useEffect(() => {
     if (user?.phone) api.getLoyalty(user.phone).then(setLoyalty).catch(() => {});
@@ -76,6 +80,9 @@ export default function Account({ user, currency, config, onSignIn, onSignOut, o
       api.getCards(user.customerId).then((r) => setCards(r.cards || [])).catch(() => setCards([]));
       api.getScheduled(user.customerId).then((r) => setScheduled(r.orders || [])).catch(() => setScheduled([]));
       api.giftBalance(user.customerId).then((b) => setBalance(b.balance || 0)).catch(() => setBalance(0));
+    }
+    if (user?.customerId || user?.phone) {
+      api.myGifts(user.customerId, user.phone).then(setCoffeeGifts).catch(() => setCoffeeGifts({ sent: [], received: [] }));
     }
   }, [user]);
 
@@ -246,6 +253,67 @@ export default function Account({ user, currency, config, onSignIn, onSignOut, o
     </section>
   );
 
+function pifStatusPill(status) {
+  const s = (status || '').toUpperCase();
+  if (s === 'REDEEMED') return { label: 'Redeemed', cls: 'done' };
+  if (s === 'PARTIALLY_REDEEMED') return { label: 'Partly used', cls: 'open' };
+  if (s === 'ACTIVE') return { label: 'Ready to use', cls: 'open' };
+  if (s === 'EXPIRED') return { label: 'Expired', cls: 'cancel' };
+  if (s === 'CANCELLED') return { label: 'Cancelled', cls: 'cancel' };
+  if (s === 'REFUNDED') return { label: 'Refunded', cls: 'cancel' };
+  return { label: s.replace(/_/g, ' ').toLowerCase() || '—', cls: '' };
+}
+
+  const CoffeeGiftSection = (
+    <section className="acct-card">
+      <div className="oh-head">
+        <h2>My Coffee Gifts</h2>
+        <div className="oh-tabs">
+          <button className={coffeeTab === 'received' ? 'oh-tab on' : 'oh-tab'} onClick={() => setCoffeeTab('received')}>Received</button>
+          <button className={coffeeTab === 'sent' ? 'oh-tab on' : 'oh-tab'} onClick={() => setCoffeeTab('sent')}>Sent</button>
+        </div>
+      </div>
+      {onSendCoffee && (
+        <button className="btn full" style={{ marginBottom: 14 }} onClick={onSendCoffee}>☕ Send someone a coffee</button>
+      )}
+      {coffeeGifts === null && <p className="muted">Loading…</p>}
+      {coffeeGifts && coffeeTab === 'received' && (coffeeGifts.received || []).length === 0 && <p className="muted">No coffees received yet.</p>}
+      {coffeeGifts && coffeeTab === 'sent' && (coffeeGifts.sent || []).length === 0 && <p className="muted">You haven't sent a coffee gift yet.</p>}
+      <div className="orders-grid">
+        {coffeeGifts && coffeeTab === 'received' && (coffeeGifts.received || []).map((g) => {
+          const pill = pifStatusPill(g.status);
+          const usable = g.status === 'ACTIVE' || g.status === 'PARTIALLY_REDEEMED';
+          return (
+            <div className="order-card" key={g.id}>
+              <div className="oc-top">
+                <div className="oc-title">Coffee from {g.purchaserName || 'someone'} <span className={`oc-state ${pill.cls}`}>{pill.label}</span></div>
+                <div className="oc-total">{formatMoney(g.remainingCents, g.currency || currency)}</div>
+              </div>
+              {g.message && <div className="oc-items">"{g.message}"</div>}
+              {usable && onUseCoffee && (
+                <div className="oc-actions">
+                  <button className="btn ghost" onClick={() => onUseCoffee(g.token, { code: g.code, valueCents: g.valueCents, remainingCents: g.remainingCents })}>Use my coffee</button>
+                </div>
+              )}
+            </div>
+          );
+        })}
+        {coffeeGifts && coffeeTab === 'sent' && (coffeeGifts.sent || []).map((g) => {
+          const pill = pifStatusPill(g.status);
+          return (
+            <div className="order-card" key={g.id}>
+              <div className="oc-top">
+                <div className="oc-title">{g.recipientName || 'A friend'} <span className={`oc-state ${pill.cls}`}>{pill.label}</span></div>
+                <div className="oc-total">{formatMoney(g.valueCents, g.currency || currency)}</div>
+              </div>
+              <div className="oc-meta">{fmtDate(g.createdAt)}{g.status === 'REDEEMED' ? ' · Enjoyed already ☕' : ''}</div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+
   const ScheduledBlock = scheduled && scheduled.length > 0 && (
     <section className="acct-card">
       <h3 style={{ marginTop: 0 }}>Scheduled &amp; repeating</h3>
@@ -318,6 +386,7 @@ export default function Account({ user, currency, config, onSignIn, onSignOut, o
               {OrderHistory}
             </>
           )}
+          {section === 'coffee' && CoffeeGiftSection}
           {section === 'gifts' && GiftSection}
         </div>
 

@@ -62,6 +62,9 @@ const DashboardIcon = svg(<>
 const ComboIcon = svg(<>
   <circle cx="8" cy="8" r="4.2" /><circle cx="16" cy="8" r="4.2" /><circle cx="12" cy="16" r="4.2" />
 </>);
+const PifIcon = svg(<>
+  <path d="M4 8h13v6a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5V8Z" /><path d="M17 9.5h1.5a2.5 2.5 0 0 1 0 5H17" />
+</>);
 const TABS = [
   { id: 'overview', label: 'Dashboard', Icon: DashboardIcon },
   { id: 'store', label: 'Store', Icon: StoreIcon },
@@ -70,6 +73,7 @@ const TABS = [
   { id: 'menubuilder', label: 'Menu Builder', Icon: MenuIcon },
   { id: 'productbuilder', label: 'Product Builder', Icon: BuildIcon },
   { id: 'combobuilder', label: 'Combo Builder', Icon: ComboIcon },
+  { id: 'payitforward', label: 'Pay It Forward', Icon: PifIcon },
   { id: 'banners', label: 'Banners', Icon: BannerIcon },
   { id: 'users', label: 'Users', Icon: InsightsIcon },
   { id: 'coupons', label: 'Coupons', Icon: BannerIcon },
@@ -83,7 +87,7 @@ const TAB_GROUPS = [
   { label: 'Overview', tabs: ['overview', 'insights'] },
   { label: 'Orders & Service', tabs: ['reservations', 'tables'] },
   { label: 'Menu', tabs: ['menubuilder', 'productbuilder', 'combobuilder'] },
-  { label: 'Marketing', tabs: ['banners', 'coupons', 'push'] },
+  { label: 'Marketing', tabs: ['banners', 'coupons', 'push', 'payitforward'] },
   { label: 'Customers', tabs: ['users'] },
   { label: 'Store', tabs: ['store', 'theme'] },
 ];
@@ -94,6 +98,7 @@ function shellWidthClass(tab) {
   if (tab === 'theme') return 'w-wide';
   if (tab === 'insights') return 'w-analytics';
   if (tab === 'menubuilder' || tab === 'productbuilder' || tab === 'combobuilder') return 'w-builder';
+  if (tab === 'payitforward') return 'w-analytics';
   return 'w-standard';
 }
 
@@ -113,6 +118,14 @@ export default function Admin({ onExit }) {
   const [syncMsg, setSyncMsg] = useState('');
   const [adminCat, setAdminCat] = useState([]);
   const [allProducts, setAllProducts] = useState([]);
+  // ---- Pay It Forward (gift-a-coffee) admin state ----
+  const [pifKpisData, setPifKpisData] = useState(null);
+  const [pifEligibility, setPifEligibility] = useState(null);
+  const [pifGifts, setPifGifts] = useState(null);
+  const [pifFilter, setPifFilter] = useState('');
+  const [pifSearch, setPifSearch] = useState('');
+  const [pifDetail, setPifDetail] = useState(null);
+  const [pifBusy, setPifBusy] = useState(false);
   const [sqCats, setSqCats] = useState([]);
   const [catsLocked, setCatsLocked] = useState(true);
   const [expanded, setExpanded] = useState({});
@@ -299,6 +312,31 @@ export default function Admin({ onExit }) {
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [s?.presets]);
+  function loadPifGifts() {
+    api.adminPifGifts(pass, { status: pifFilter || undefined, search: pifSearch || undefined }).then(setPifGifts).catch(() => setPifGifts({ rows: [], total: 0 }));
+  }
+  function loadPifOverview() {
+    api.adminPifKpis(pass).then(setPifKpisData).catch(() => setPifKpisData(null));
+    api.adminPifEligibility(pass).then(setPifEligibility).catch(() => setPifEligibility(null));
+  }
+  async function openPifDetail(id) {
+    try { setPifDetail(await api.adminPifGiftDetail(pass, id)); } catch (e) { alert(e.message); }
+  }
+  async function pifAction(fn, id, ...args) {
+    setPifBusy(true);
+    try {
+      const r = await fn(pass, id, ...args);
+      if (r.gift) setPifDetail((d) => (d ? { ...d, gift: r.gift } : d));
+      loadPifGifts();
+    } catch (e) { alert(e.message); } finally { setPifBusy(false); }
+  }
+  useEffect(() => {
+    if (tab === 'payitforward') {
+      loadPifOverview();
+      loadPifGifts();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, pifFilter, pifSearch]);
   useEffect(() => {
     if (tab === 'push') {
       if (notifyStatus === null) api.adminNotifyStatus(pass).then(setNotifyStatus).catch(() => setNotifyStatus({ sms: false, email: false }));
@@ -2540,6 +2578,177 @@ export default function Admin({ onExit }) {
                 <button type="button" className="btn full" onClick={addCombo}>+ Add combo</button>
               </>
             )}
+
+            {/* ───────── PAY IT FORWARD ───────── */}
+            {tab === 'payitforward' && (() => {
+              const pif = s?.payItForward || {};
+              const setPif = (patch) => set({ payItForward: { ...pif, ...patch } });
+              const toggleCat = (c) => {
+                const ids = new Set(pif.eligibleCategoryIds || []);
+                const names = new Set(pif.eligibleCategoryNames || []);
+                if (ids.has(c.id)) { ids.delete(c.id); names.delete(c.name); }
+                else { ids.add(c.id); names.add(c.name); }
+                setPif({ eligibleCategoryIds: [...ids], eligibleCategoryNames: [...names] });
+              };
+              const cents = (v) => formatMoney(v || 0, data?.currency);
+              const k = pifKpisData;
+              const STATUS_OPTS = ['', 'ACTIVE', 'PARTIALLY_REDEEMED', 'REDEEMED', 'EXPIRED', 'CANCELLED', 'REFUNDED', 'PAYMENT_FAILED'];
+              return (
+                <>
+                  <div className="admin-page-head">
+                    <h1 className="admin-page-title">Pay It Forward</h1>
+                    <p className="admin-page-desc">Buy-a-coffee-for-someone gifting. Purchasing a gift never creates a live café order — only the recipient's actual redemption at checkout does, through your normal ordering &amp; kitchen workflow.</p>
+                  </div>
+
+                  {pifEligibility && pifEligibility.warning && (
+                    <div className="card" style={{ ...card, borderColor: 'var(--admin-danger)', background: 'var(--admin-danger-soft, #fdecec)' }}>
+                      <strong style={{ color: 'var(--admin-danger)' }}>⚠ Pay It Forward category configuration requires attention</strong>
+                      <p className="muted" style={{ marginTop: 4, fontSize: 'var(--fs-sm)' }}>{pifEligibility.warning}</p>
+                    </div>
+                  )}
+
+                  {/* ---- KPI cards ---- */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginBottom: 16 }}>
+                    {[
+                      ['Total value gifted', k ? cents(k.valueGiftedCents) : '—'],
+                      ['Coffees gifted', k ? k.giftsPurchased : '—'],
+                      ['Value redeemed', k ? cents(k.valueRedeemedCents) : '—'],
+                      ['Fully redeemed', k ? k.fullyRedeemed : '—'],
+                      ['Outstanding value', k ? cents(k.outstandingValueCents) : '—'],
+                      ['Outstanding gifts', k ? k.outstandingCount : '—'],
+                      ['Redemption rate', k ? `${Math.round((k.redemptionRate || 0) * 100)}%` : '—'],
+                      ['New customers introduced', k ? k.uniqueRecipients : '—'],
+                    ].map(([label, val]) => (
+                      <div key={label} className="card" style={{ padding: '14px 16px' }}>
+                        <div className="muted" style={{ fontSize: 'var(--fs-xs)', textTransform: 'uppercase', letterSpacing: '.4px' }}>{label}</div>
+                        <div style={{ fontSize: 22, fontWeight: 800, marginTop: 4, color: 'var(--admin-heading)' }}>{val}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* ---- Settings ---- */}
+                  <div className="card" style={card}>
+                    <div className="group-title" style={{ margin: 0 }}>Settings</div>
+                    <label className="field-row" style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <input type="checkbox" checked={pif.enabled !== false && !!pif.enabled} onChange={(e) => setPif({ enabled: e.target.checked })} />
+                      <span>Enable Pay It Forward on the storefront</span>
+                    </label>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginTop: 12 }}>
+                      <label className="field" style={{ margin: 0 }}><span>Minimum gift ($)</span>
+                        <input type="number" min="1" step="0.5" value={(pif.minValueCents || 0) / 100} onChange={(e) => setPif({ minValueCents: Math.round((Number(e.target.value) || 0) * 100) })} /></label>
+                      <label className="field" style={{ margin: 0 }}><span>Maximum gift ($)</span>
+                        <input type="number" min="1" step="0.5" value={(pif.maxValueCents || 0) / 100} onChange={(e) => setPif({ maxValueCents: Math.round((Number(e.target.value) || 0) * 100) })} /></label>
+                      <label className="field" style={{ margin: 0 }}><span>Expiry (days)</span>
+                        <input type="number" min="0" value={pif.expiryDays || 0} onChange={(e) => setPif({ expiryDays: Number(e.target.value) || 0 })} /></label>
+                    </div>
+                    <label className="field" style={{ marginTop: 12 }}><span>Suggested amounts ($, comma separated)</span>
+                      <input value={(pif.suggestedValues || []).map((v) => v / 100).join(', ')}
+                        onChange={(e) => setPif({ suggestedValues: e.target.value.split(',').map((x) => Math.round((parseFloat(x) || 0) * 100)).filter(Boolean) })} /></label>
+                    <label className="field-row" style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <input type="checkbox" checked={pif.allowCustomAmount !== false} onChange={(e) => setPif({ allowCustomAmount: e.target.checked })} />
+                      <span>Allow a custom amount</span>
+                    </label>
+                    <label className="field-row" style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <input type="checkbox" checked={!!pif.allowPointsPayment} onChange={(e) => setPif({ allowPointsPayment: e.target.checked })} />
+                      <span>Allow paying with loyalty points</span>
+                    </label>
+                    <label className="field-row" style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <input type="checkbox" checked={!!pif.showSocialProofStats} onChange={(e) => setPif({ showSocialProofStats: e.target.checked })} />
+                      <span>Show "coffees gifted" stats on the storefront</span>
+                    </label>
+
+                    <div className="group-title" style={{ marginTop: 18 }}>Eligible categories</div>
+                    <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 4 }}>Only items in these Square categories can be discounted by a gift — never food, drinks, or merch outside them. Choosing none disables redemption entirely (fails closed, never open).</p>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
+                      {sqCats.filter((c) => !c.isParent).map((c) => (
+                        <button key={c.id} type="button" className={`chip ${(pif.eligibleCategoryIds || []).includes(c.id) ? 'on' : ''}`} onClick={() => toggleCat(c)}>{c.name}</button>
+                      ))}
+                    </div>
+
+                    <div className="group-title" style={{ marginTop: 18 }}>SMS message</div>
+                    <label className="field"><span>Template — {'{{purchaserName}}'}, {'{{claimUrl}}'}, {'{{code}}'}</span>
+                      <textarea rows={2} value={pif.smsTemplate || ''} onChange={(e) => setPif({ smsTemplate: e.target.value })} /></label>
+
+                    <div className="group-title" style={{ marginTop: 18 }}>Message suggestions</div>
+                    {(pif.messageTemplates || []).map((t, i) => (
+                      <div key={i} style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+                        <input style={{ flex: 1 }} value={t} onChange={(e) => setPif({ messageTemplates: (pif.messageTemplates || []).map((x, xi) => (xi === i ? e.target.value : x)) })} />
+                        <button type="button" className="link" style={{ color: 'var(--admin-danger)' }} onClick={() => setPif({ messageTemplates: (pif.messageTemplates || []).filter((_, xi) => xi !== i) })}>Remove</button>
+                      </div>
+                    ))}
+                    <button type="button" className="btn ghost" style={{ marginTop: 8 }} onClick={() => setPif({ messageTemplates: [...(pif.messageTemplates || []), 'New message'] })}>+ Add suggestion</button>
+                  </div>
+
+                  {/* ---- Gift management table ---- */}
+                  <div className="card" style={card}>
+                    <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <div className="group-title" style={{ margin: 0 }}>Gifts</div>
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                        <input placeholder="Search code, purchaser, recipient…" value={pifSearch} onChange={(e) => setPifSearch(e.target.value)} style={{ minWidth: 220 }} />
+                        <select value={pifFilter} onChange={(e) => setPifFilter(e.target.value)}>
+                          {STATUS_OPTS.map((st) => <option key={st} value={st}>{st ? st.replace(/_/g, ' ') : 'All statuses'}</option>)}
+                        </select>
+                      </div>
+                    </div>
+                    {!pifGifts && <p className="muted" style={{ marginTop: 10 }}>Loading…</p>}
+                    {pifGifts && pifGifts.rows.length === 0 && <p className="muted" style={{ marginTop: 10 }}>No gifts yet.</p>}
+                    {pifGifts && pifGifts.rows.length > 0 && (
+                      <div style={{ overflowX: 'auto', marginTop: 10 }}>
+                        <table className="admin-table">
+                          <thead><tr><th>From</th><th>Recipient</th><th>Value</th><th>Method</th><th>Status</th><th>Purchased</th></tr></thead>
+                          <tbody>
+                            {pifGifts.rows.map((g) => (
+                              <tr key={g.id} style={{ cursor: 'pointer' }} onClick={() => openPifDetail(g.id)}>
+                                <td>{g.purchaserName || '—'}</td>
+                                <td>{g.recipientName || '—'}</td>
+                                <td>{cents(g.valueCents)}</td>
+                                <td style={{ textTransform: 'capitalize' }}>{g.paymentMethod}</td>
+                                <td><span className="pill">{(g.status || '').replace(/_/g, ' ')}</span></td>
+                                <td>{g.createdAt ? new Date(g.createdAt).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' }) : '—'}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* ---- Detail drawer ---- */}
+                  {pifDetail && (
+                    <div className="backdrop" onClick={() => setPifDetail(null)}>
+                      <div className="sheet" style={{ maxWidth: 480 }} onClick={(e) => e.stopPropagation()}>
+                        <button className="sheet-close" onClick={() => setPifDetail(null)} aria-label="Close">✕</button>
+                        <div className="sheet-body">
+                          <h2>{pifDetail.gift.purchaserName || 'Someone'} → {pifDetail.gift.recipientName || 'Someone'}</h2>
+                          <p className="muted">{pifDetail.gift.code} · {cents(pifDetail.gift.remainingCents)} of {cents(pifDetail.gift.valueCents)} remaining · <span style={{ textTransform: 'capitalize' }}>{pifDetail.gift.paymentMethod}</span></p>
+                          {pifDetail.gift.message && <blockquote style={{ background: 'var(--admin-surface-soft)', padding: 10, borderRadius: 10, fontStyle: 'italic' }}>"{pifDetail.gift.message}"</blockquote>}
+
+                          <div className="group-title" style={{ marginTop: 14 }}>Timeline</div>
+                          <ul style={{ listStyle: 'none', padding: 0, margin: '8px 0', display: 'grid', gap: 6 }}>
+                            {(pifDetail.events || []).map((ev) => (
+                              <li key={ev.id} style={{ fontSize: 'var(--fs-sm)' }}>
+                                <span className="muted">{new Date(ev.createdAt).toLocaleString('en-AU', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}</span> — {ev.type.replace(/_/g, ' ')}
+                              </li>
+                            ))}
+                          </ul>
+
+                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 14 }}>
+                            <button type="button" className="btn ghost" disabled={pifBusy} onClick={() => { navigator.clipboard?.writeText(`${window.location.origin}/gift/${pifDetail.gift.token}`); }}>Copy link</button>
+                            <button type="button" className="btn ghost" disabled={pifBusy} onClick={() => pifAction(api.adminPifResendSms, pifDetail.gift.id)}>Resend SMS</button>
+                            {pifDetail.gift.status === 'ACTIVE' && pifDetail.gift.remainingCents === pifDetail.gift.valueCents && (
+                              <button type="button" className="btn ghost" disabled={pifBusy} onClick={() => { if (window.confirm('Cancel this unused gift?')) pifAction(api.adminPifCancel, pifDetail.gift.id); }}>Cancel</button>
+                            )}
+                            {['ACTIVE', 'PARTIALLY_REDEEMED'].includes(pifDetail.gift.status) && (
+                              <button type="button" className="btn ghost" style={{ color: 'var(--admin-danger)' }} disabled={pifBusy} onClick={() => { if (window.confirm('Refund this gift?')) pifAction(api.adminPifRefund, pifDetail.gift.id, 'REFUNDED'); }}>Refund</button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </>
+              );
+            })()}
 
             {/* ───────── BANNERS ───────── */}
             {tab === 'banners' && (

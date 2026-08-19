@@ -109,6 +109,35 @@ const DEFAULTS = {
   // (default "Combos"). A combo with a group that resolves to zero real items
   // is hidden from the storefront entirely rather than showing broken.
   combos: [],
+  // Pay It Forward: buy-a-coffee-for-someone gifting system. Purchasing never
+  // creates a live Square order (card payment charges directly, no order_id;
+  // points payment creates an invisible bookkeeping order that never prints
+  // and never carries a kitchen-routed category) -- only the recipient's
+  // actual redemption at checkout creates a real order through the normal
+  // pipeline. See server/lib/payItForward.js.
+  payItForward: {
+    enabled: false,
+    suggestedValues: [500, 1000, 1500, 2000],
+    allowCustomAmount: true,
+    minValueCents: 500,
+    maxValueCents: 10000,
+    eligibleCategoryIds: [],
+    eligibleCategoryNames: [],
+    expiryDays: 365,
+    allowPointsPayment: true,
+    pointsRequiredPerDollar: null,
+    smsTemplate: "{{purchaserName}} bought you a coffee at Bean Culture! Tap to claim: {{claimUrl}}",
+    messageTemplates: [
+      'Thinking of you \u2014 enjoy one on me!',
+      'Thanks for everything you do.',
+      "Happy Monday, this one's on me.",
+      'Just because.',
+    ],
+    aiMessageSuggestions: false,
+    showSocialProofStats: false,
+    partialRedemptionAllowed: true,
+    noCashChange: true,
+  },
   // Section display names hidden from the storefront (by name). Used to show/hide
   // product-builder sections from "Menu items offered" without deleting them.
   hiddenSections: [],

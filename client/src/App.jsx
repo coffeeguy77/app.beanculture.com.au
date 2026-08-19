@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { api, formatMoney, imgUrl, comboDiscountFor } from './api.js';
 import { applyTheme } from './theme.js';
 import { STOREFRONT_THEMES, resolvePreset, applyStoreTheme, presetSwatch, buildTokens, seasonalAsPreset } from './themes.js';
-import { getUser, setUser as saveUser, getSavedTheme, setSavedTheme, getSeasonOptOut, setSeasonOptOut, getStoredOrder, setStoredOrder, getFavorites, saveFavorites, getStoredThemeBlob, saveStoredTheme, getEffectPreference, setEffectPreference } from './store.js';
+import { getUser, setUser as saveUser, getSavedTheme, setSavedTheme, getSeasonOptOut, setSeasonOptOut, getStoredOrder, setStoredOrder, getFavorites, saveFavorites, getStoredThemeBlob, saveStoredTheme, getEffectPreference, setEffectPreference, getPifVoucher, setPifVoucher as savePifVoucher } from './store.js';
 import HeroSlider from './components/HeroSlider.jsx';
 import OrderTypeBar from './components/OrderTypeBar.jsx';
 import MenuDock from './components/MenuDock.jsx';
@@ -16,6 +16,8 @@ import Checkout from './components/Checkout.jsx';
 import Account from './components/Account.jsx';
 import ThemePicker from './components/ThemePicker.jsx';
 import Admin from './components/Admin.jsx';
+import PayItForward from './components/PayItForward.jsx';
+import GiftClaim from './components/GiftClaim.jsx';
 import Logo from './components/Logo.jsx';
 import EffectOverlay from './components/EffectOverlay.jsx';
 import SeasonalPerimeter from './components/SeasonalPerimeter.jsx';
@@ -201,6 +203,11 @@ export default function App() {
   const [view, setView] = useState('home'); // home | cart | checkout | done | account | admin
   const [activeItem, setActiveItem] = useState(null);
   const [showTheme, setShowTheme] = useState(false);
+  const [showPif, setShowPif] = useState(false);
+  const [pifEnabled, setPifEnabled] = useState(false);
+  const [giftToken, setGiftToken] = useState(null);
+  const [pifVoucher, setPifVoucherState] = useState(() => getPifVoucher());
+  const setPifVoucher = (v) => { setPifVoucherState(v); savePifVoucher(v); };
   const [completed, setCompleted] = useState(null);
   const [activeTheme, setActiveTheme] = useState(null);
   // Effects Engine: the customer's overlay choice, independent from the theme
@@ -313,6 +320,15 @@ export default function App() {
   // Admin route
   useEffect(() => {
     if (window.location.pathname.replace(/\/$/, '') === '/admin') setView('admin');
+  }, []);
+
+  // Pay It Forward claim deep link: /gift/:token
+  useEffect(() => {
+    const m = window.location.pathname.match(/^\/gift\/([^/]+)\/?$/);
+    if (m) { setGiftToken(decodeURIComponent(m[1])); setView('gift'); }
+  }, []);
+  useEffect(() => {
+    api.pifConfig().then((c) => setPifEnabled(!!c.enabled)).catch(() => {});
   }, []);
 
   // Analytics: one visit event per load; apply a custom favicon if configured.
@@ -795,6 +811,22 @@ export default function App() {
 
   if (view === 'admin') return <Admin config={config} onExit={() => { window.history.pushState({}, '', '/'); setView('home'); }} />;
 
+  if (view === 'gift' && giftToken) {
+    return (
+      <GiftClaim
+        token={giftToken}
+        config={config}
+        user={user}
+        onClaimed={(token, info) => {
+          setPifVoucher({ token, ...info });
+          window.history.pushState({}, '', '/');
+          setView('home');
+        }}
+        onExit={() => { window.history.pushState({}, '', '/'); setView('home'); }}
+      />
+    );
+  }
+
   if (view === 'done' && completed) {
     const { payment, order, scheduled, meta = {} } = completed;
     if (scheduled) {
@@ -848,6 +880,7 @@ export default function App() {
       name={name} setName={setName} user={user} canOrder={canOrder}
       preWhen={preWhen} preAt={preAt}
       onPaid={onPaid} onScheduled={onScheduledOrder} onBack={() => setView(wide ? 'home' : 'cart')}
+      pifVoucher={pifVoucher} onClearPifVoucher={() => setPifVoucher(null)}
     />
   );
   const showLayout = view === 'home' || (wide && view === 'checkout');
@@ -1094,6 +1127,9 @@ export default function App() {
             <div className="icon-row">
               <button className="iconbtn" title="About / contact" aria-label="Store info" onClick={() => setView('store')}><StoreIcon size={22} /></button>
               <button className="iconbtn theme-headerbtn" title="Theme" aria-label="Theme" onClick={() => setShowTheme(true)}><ThemeIcon size={22} /></button>
+              {pifEnabled && (
+                <button className="iconbtn pif-headerbtn" title="Pay It Forward — gift a coffee" aria-label="Gift a coffee" onClick={() => setShowPif(true)}>☕</button>
+              )}
               {isMobile && (
                 <button
                   className="iconbtn cart-iconbtn"
@@ -1136,7 +1172,13 @@ export default function App() {
           }}
           onTheme={() => setShowTheme(true)}
           onBack={() => setView('home')}
+          onSendCoffee={() => setShowPif(true)}
+          onUseCoffee={(token, info) => { setPifVoucher({ token, ...(info || {}) }); setView('home'); }}
         />
+      )}
+
+      {showPif && (
+        <PayItForward config={config} user={user} onClose={() => setShowPif(false)} onSent={() => {}} />
       )}
 
       {view === 'favorites' && (

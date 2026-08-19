@@ -115,3 +115,22 @@ export function setSeasonOptOut(v) {
     else localStorage.removeItem(OPTOUT_KEY);
   } catch {}
 }
+
+// A Pay It Forward gift the customer has claimed and is carrying into
+// checkout. Only display info is cached here (token, code, cached value) --
+// the server always re-validates the real balance at checkout time, this is
+// never trusted as the source of truth.
+const PIF_KEY = 'bc_pif_voucher';
+export function getPifVoucher() {
+  try {
+    return JSON.parse(localStorage.getItem(PIF_KEY) || 'null');
+  } catch {
+    return null;
+  }
+}
+export function setPifVoucher(v) {
+  try {
+    if (v) localStorage.setItem(PIF_KEY, JSON.stringify(v));
+    else localStorage.removeItem(PIF_KEY);
+  } catch {}
+}

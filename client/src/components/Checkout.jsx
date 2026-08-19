@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { api, formatMoney, comboDiscountFor } from '../api.js';
+import { track } from '../analytics.js';
 import { TableLockPill, TableEntry } from './TableControls.jsx';
 import WalletButtons from './WalletButtons.jsx';
 import ScheduleWhen from './ScheduleWhen.jsx';
@@ -42,11 +43,13 @@ function dateStr(d) {
 }
 const WEEKDAYS = [['Mon', 1], ['Tue', 2], ['Wed', 3], ['Thu', 4], ['Fri', 5], ['Sat', 6], ['Sun', 0]];
 
-export default function Checkout({ config, cart, currency, onQty, onComboQty, onRemoveCombo, onEditCombo, dineIn, setDineIn, table, setTable, tableLock, onUnlockTable, onScanTable, name, setName, user, canOrder, preWhen, preAt, onPaid, onScheduled, onBack }) {
+export default function Checkout({ config, cart, currency, onQty, onComboQty, onRemoveCombo, onEditCombo, dineIn, setDineIn, table, setTable, tableLock, onUnlockTable, onScanTable, name, setName, user, canOrder, preWhen, preAt, onPaid, onScheduled, onBack, pifVoucher, onClearPifVoucher }) {
   const [status, setStatus] = useState('init');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [coupon, setCoupon] = useState('');
+  const [pifManualCode, setPifManualCode] = useState('');
+  const [pifError, setPifError] = useState('');
   const [note, setNote] = useState('');
   const [paymentsObj, setPaymentsObj] = useState(null);
   const [loyalty, setLoyalty] = useState(null);
@@ -111,6 +114,15 @@ export default function Checkout({ config, cart, currency, onQty, onComboQty, on
   // any combo is in the cart (the server enforces this too, independently).
   const hasCoupon = !hasCombo && coupon.trim().length > 0;
   const usingReward = !!tierId;
+  // A Pay It Forward voucher (claimed via the /gift link, or typed in as a
+  // backup code) takes priority over a combo/coupon, same precedent as
+  // combo-beats-coupon above -- the server enforces this independently too.
+  const effectivePifCode = (pifVoucher && pifVoucher.token) || pifManualCode.trim();
+  const hasPif = !hasCombo && !hasCoupon && !!effectivePifCode;
+  // Best-effort DISPLAY estimate only -- the server re-derives the real,
+  // eligible-items-only discount from a fresh Square catalog read and never
+  // trusts this. The actual charge always comes from order.totalMoney below.
+  const pifEstimateCents = hasPif && pifVoucher ? Math.min(pifVoucher.remainingCents ?? pifVoucher.valueCents ?? 0, cartTotal) : 0;
 
   // Validate the entered coupon against the app's codes so we can show the real
   // discount and take payment for the reduced total (not assume it's a freebie).
@@ -133,7 +145,7 @@ export default function Checkout({ config, cart, currency, onQty, onComboQty, on
       : Math.max(0, Math.round(cartTotal * (1 - (couponInfo.value || 0) / 100))))
     : cartTotal;
   const couponFree = couponValid && discountedTotal === 0;
-  const payTotal = couponValid ? discountedTotal : cartTotal;
+  const payTotal = couponValid ? discountedTotal : Math.max(0, cartTotal - pifEstimateCents);
 
   const isSchedule = when === 'schedule';
   const isRepeat = when === 'repeat';
@@ -222,10 +234,12 @@ export default function Checkout({ config, cart, currency, onQty, onComboQty, on
   }
 
   async function createOrder(pickupAt) {
+    if (hasPif) track('gift_redemption_started', { ref: effectivePifCode });
     return api.createOrder({
       cart: cartPayload, dineIn, table, name, coupon, pickupAt, note,
       customerId: user?.customerId,
       loyalty: tierId && loyalty?.accountId ? { accountId: loyalty.accountId, tierId } : undefined,
+      pifVoucher: hasPif ? effectivePifCode : undefined,
     });
   }
 
@@ -260,12 +274,13 @@ export default function Checkout({ config, cart, currency, onQty, onComboQty, on
       // Pay from prepaid balance (gift card).
       if (cardChoice === 'balance') {
         const pay = await api.pay({ orderId: order.orderId, totalMoney: order.totalMoney, customerId: user.customerId, payWith: 'balance' });
-        if (pay.status === 'COMPLETED' || pay.status === 'APPROVED') return onPaid(pay, order, { pickupAt });
+        if (pay.status === 'COMPLETED' || pay.status === 'APPROVED') { if (hasPif && onClearPifVoucher) { track('gift_redeemed', { ref: effectivePifCode }); onClearPifVoucher(); } return onPaid(pay, order, { pickupAt }); }
         throw new Error(`Payment ${pay.status}`);
       }
 
       if (!order.totalMoney || order.totalMoney.amount === 0) {
         await api.pay({ orderId: order.orderId, totalMoney: order.totalMoney });
+        if (hasPif && onClearPifVoucher) { track('gift_redeemed', { ref: effectivePifCode }); onClearPifVoucher(); }
         onPaid({ status: 'COMPLETED', comped: !usingReward, receiptUrl: null }, order, { pickupAt });
         return;
       }
@@ -284,11 +299,17 @@ export default function Checkout({ config, cart, currency, onQty, onComboQty, on
         sourceId, orderId: order.orderId, totalMoney: order.totalMoney,
         verificationToken, customerId: user?.customerId,
       });
-      if (pay.status === 'COMPLETED' || pay.status === 'APPROVED') onPaid(pay, order, { pickupAt });
+      if (pay.status === 'COMPLETED' || pay.status === 'APPROVED') { if (hasPif && onClearPifVoucher) { track('gift_redeemed', { ref: effectivePifCode }); onClearPifVoucher(); } onPaid(pay, order, { pickupAt }); }
       else throw new Error(`Payment ${pay.status}`);
     } catch (e) {
-      const declined = /insufficient|declin|cvv|card|402|fund/i.test(e.message || '');
-      setError(declined ? 'Your card was declined — your order is still here. Try another card.' : e.message);
+      if (e.pifReason) {
+        setPifError(e.message);
+        track('gift_redemption_failed', { ref: e.pifReason });
+        if (['not_found', 'not_redeemable', 'expired'].includes(e.pifReason) && onClearPifVoucher) onClearPifVoucher();
+      } else {
+        const declined = /insufficient|declin|cvv|card|402|fund/i.test(e.message || '');
+        setError(declined ? 'Your card was declined — your order is still here. Try another card.' : e.message);
+      }
     } finally { setBusy(false); }
   }
 
@@ -299,11 +320,17 @@ export default function Checkout({ config, cart, currency, onQty, onComboQty, on
     try {
       const order = await createOrder(null);
       const pay = await api.pay({ sourceId: token, orderId: order.orderId, totalMoney: order.totalMoney, customerId: user?.customerId });
-      if (pay.status === 'COMPLETED' || pay.status === 'APPROVED') onPaid(pay, order, {});
+      if (pay.status === 'COMPLETED' || pay.status === 'APPROVED') { if (hasPif && onClearPifVoucher) { track('gift_redeemed', { ref: effectivePifCode }); onClearPifVoucher(); } onPaid(pay, order, {}); }
       else throw new Error(`Payment ${pay.status}`);
     } catch (e) {
-      const declined = /insufficient|declin|cvv|card|402|fund/i.test(e.message || '');
-      setError(declined ? 'That payment was declined — your order is still here. Try another method.' : e.message);
+      if (e.pifReason) {
+        setPifError(e.message);
+        track('gift_redemption_failed', { ref: e.pifReason });
+        if (['not_found', 'not_redeemable', 'expired'].includes(e.pifReason) && onClearPifVoucher) onClearPifVoucher();
+      } else {
+        const declined = /insufficient|declin|cvv|card|402|fund/i.test(e.message || '');
+        setError(declined ? 'That payment was declined — your order is still here. Try another method.' : e.message);
+      }
     } finally { setBusy(false); }
   }
 
@@ -408,14 +435,32 @@ export default function Checkout({ config, cart, currency, onQty, onComboQty, on
         </div>
       )}
 
+      {pifVoucher && (
+        <div className="pif-applied-row">
+          <span>☕ Coffee gift applied {pifVoucher.remainingCents != null ? `· up to ${formatMoney(pifVoucher.remainingCents, currency)}` : ''}</span>
+          <button type="button" className="link" onClick={() => { onClearPifVoucher && onClearPifVoucher(); setPifError(''); }}>Remove</button>
+        </div>
+      )}
+      {pifError && <p className="error-text">{pifError}</p>}
+
       {when === 'asap' && (
         hasCombo ? (
           <p className="muted" style={{ marginTop: 16, fontSize: 14 }}>Your combo discount is already applied — promo codes can't be combined with a combo deal.</p>
+        ) : hasPif ? (
+          <p className="muted" style={{ marginTop: 16, fontSize: 14 }}>Your coffee gift is already applied — promo codes can't be combined with it.</p>
         ) : (
-          <label className="field" style={{ marginTop: 16 }}>
-            <span>Promo code (optional)</span>
-            <input value={coupon} onChange={(e) => setCoupon(e.target.value)} placeholder="Enter code" autoCapitalize="characters" />
-          </label>
+          <>
+            <label className="field" style={{ marginTop: 16 }}>
+              <span>Promo code (optional)</span>
+              <input value={coupon} onChange={(e) => setCoupon(e.target.value)} placeholder="Enter code" autoCapitalize="characters" />
+            </label>
+            {!pifVoucher && (
+              <label className="field" style={{ marginTop: 8 }}>
+                <span>Got a Bean Culture coffee gift code? (optional)</span>
+                <input value={pifManualCode} onChange={(e) => { setPifManualCode(e.target.value); setPifError(''); }} placeholder="BC-XXXXX" autoCapitalize="characters" />
+              </label>
+            )}
+          </>
         )
       )}
 
@@ -517,6 +562,13 @@ export default function Checkout({ config, cart, currency, onQty, onComboQty, on
             <div className="row"><span>Subtotal</span><span>{formatMoney(cartTotal, currency)}</span></div>
             <div className="row discount"><span>Coupon {couponInfo.code || coupon.trim().toUpperCase()} · {couponInfo.label}</span><span>−{formatMoney(cartTotal - discountedTotal, currency)}</span></div>
             <div className="row grand"><span>Total</span><span>{formatMoney(payTotal, currency)}</span></div>
+          </>
+        ) : hasPif ? (
+          <>
+            <div className="row"><span>Subtotal</span><span>{formatMoney(cartTotal, currency)}</span></div>
+            <div className="row discount"><span>Coffee gift (estimated)</span><span>−{formatMoney(pifEstimateCents, currency)}</span></div>
+            <div className="row grand"><span>Total</span><span>{formatMoney(payTotal, currency)}</span></div>
+            <p className="muted" style={{ fontSize: 11.5, marginTop: 2 }}>Final amount confirmed at payment — the gift only discounts eligible coffee items.</p>
           </>
         ) : (
           <div className="row grand"><span>Total</span><span>{formatMoney(cartTotal, currency)}</span></div>

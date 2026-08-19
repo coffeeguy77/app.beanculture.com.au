@@ -56,6 +56,22 @@ export const api = {
   track: (events) => req('/api/track', { method: 'POST', body: JSON.stringify({ events }) }),
   adminAnalytics: (pass, days = 30) => req(`/api/admin/analytics?days=${days}&pass=${encodeURIComponent(pass || '')}`),
   adminUpload: (pass, dataUri, folder) => req(`/api/admin/upload?pass=${encodeURIComponent(pass || '')}`, { method: 'POST', body: JSON.stringify({ dataUri, folder }) }),
+  // Pay It Forward: gift-a-coffee
+  pifConfig: () => req('/api/pay-it-forward/config'),
+  pifStats: () => req('/api/pay-it-forward/stats'),
+  pifBuyWithCard: (payload) => req('/api/pay-it-forward/purchase/card', { method: 'POST', body: JSON.stringify(payload) }),
+  pifBuyWithPoints: (payload) => req('/api/pay-it-forward/purchase/points', { method: 'POST', body: JSON.stringify(payload) }),
+  pifGetGift: (token) => req(`/api/gift/${encodeURIComponent(token)}`),
+  pifClaimGift: (token, payload) => req(`/api/gift/${encodeURIComponent(token)}/claim`, { method: 'POST', body: JSON.stringify(payload) }),
+  pifLookup: (code) => req('/api/gift/lookup', { method: 'POST', body: JSON.stringify({ code }) }),
+  myGifts: (customerId, phone) => req(`/api/gifts?customerId=${encodeURIComponent(customerId || '')}&phone=${encodeURIComponent(phone || '')}`),
+  adminPifEligibility: (pass) => req(`/api/admin/pay-it-forward/eligibility?pass=${encodeURIComponent(pass || '')}`),
+  adminPifKpis: (pass, days = 90) => req(`/api/admin/pay-it-forward/kpis?days=${days}&pass=${encodeURIComponent(pass || '')}`),
+  adminPifGifts: (pass, params = {}) => req(`/api/admin/pay-it-forward/gifts?${new URLSearchParams({ ...params, pass: pass || '' }).toString()}`),
+  adminPifGiftDetail: (pass, id) => req(`/api/admin/pay-it-forward/gifts/${encodeURIComponent(id)}?pass=${encodeURIComponent(pass || '')}`),
+  adminPifResendSms: (pass, id) => req(`/api/admin/pay-it-forward/gifts/${encodeURIComponent(id)}/resend-sms?pass=${encodeURIComponent(pass || '')}`, { method: 'POST' }),
+  adminPifCancel: (pass, id) => req(`/api/admin/pay-it-forward/gifts/${encodeURIComponent(id)}/cancel?pass=${encodeURIComponent(pass || '')}`, { method: 'POST' }),
+  adminPifRefund: (pass, id, status) => req(`/api/admin/pay-it-forward/gifts/${encodeURIComponent(id)}/refund?pass=${encodeURIComponent(pass || '')}`, { method: 'POST', body: JSON.stringify({ status }) }),
 };
 
 // Serve Cloudinary images auto-format (WebP/AVIF), auto-quality and sized to the

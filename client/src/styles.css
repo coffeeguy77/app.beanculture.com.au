@@ -2751,3 +2751,54 @@ body:has(.store-shell) { background: var(--bc-canvas-deep, #160f12); }
 .fx-radio:hover { background: var(--brand-soft); }
 .fx-radio input[type="radio"] { width: 18px; height: 18px; accent-color: var(--brand); flex: none; }
 .fx-radio span[aria-hidden] { font-size: 16px; width: 20px; text-align: center; flex: none; }
+
+/* ── Pay It Forward: gift-a-coffee ────────────────────────────────────────
+   Reuses the .sheet/.backdrop/.chip/.field/.segmented/.gc-* visual language
+   already established by GiftCards.jsx -- this is a variation on the same
+   theme, not a new one, per the "no generic SaaS page" design brief. */
+.pif-headerbtn { font-size: 19px; line-height: 1; }
+.pif-sheet { max-width: 460px; border-radius: 22px; }
+@media (min-width: 720px) { .backdrop:has(.pif-sheet) { align-items: center; } }
+.pif-hero-title { font-family: Georgia, serif; font-size: 22px; margin: 0 0 2px; }
+.pif-nav-row { display: flex; justify-content: space-between; align-items: center; margin-top: 14px; gap: 10px; }
+.pif-nav-row .btn { flex: 1; }
+.pif-summary { background: var(--brand-soft); color: var(--brand); border-radius: 14px; padding: 12px 14px; font-weight: 700; font-size: 14.5px; margin-bottom: 10px; text-align: center; }
+.pif-result .tick { background: var(--brand-soft); color: var(--brand); }
+.pif-applied-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  background: var(--brand-soft); color: var(--brand); border-radius: 12px;
+  padding: 10px 14px; font-size: 13.5px; font-weight: 700; margin-top: 14px;
+}
+.pif-applied-row .link { color: var(--brand); text-decoration: underline; font-weight: 600; }
+.chip.disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* Claim page (app.beanculture.com.au/gift/:token) — mobile-first, on-brand,
+   deliberately warmer/more emotional than the normal checkout flow. */
+.pif-claim-page {
+  min-height: 100vh; display: flex; flex-direction: column; align-items: center;
+  padding: 20px 18px calc(40px + env(safe-area-inset-bottom));
+  background: linear-gradient(180deg, var(--brand-soft), var(--bg) 60%);
+}
+.pif-claim-card {
+  width: 100%; max-width: 420px; margin: 24px auto 0; background: var(--surface);
+  border-radius: 24px; box-shadow: var(--shadow-md, 0 10px 30px rgba(0,0,0,0.08));
+  padding: 32px 26px; text-align: center;
+}
+.pif-claim-icon { font-size: 44px; line-height: 1; margin-bottom: 10px; }
+.pif-claim-card h1 { font-family: Georgia, serif; font-size: 24px; margin: 0 0 10px; letter-spacing: 0.2px; }
+.pif-claim-from { font-size: 15px; margin: 0 0 6px; }
+.pif-claim-msg {
+  margin: 12px 0; padding: 14px 16px; background: var(--brand-soft); color: var(--ink);
+  border-radius: 14px; font-style: italic; font-size: 14px; border: none;
+}
+.pif-claim-value {
+  font-family: Georgia, serif; font-weight: 700; font-size: 22px; color: var(--brand);
+  margin: 14px 0 6px; letter-spacing: 0.3px;
+}
+.pif-claim-card .field { text-align: left; margin-top: 12px; }
+.pif-consent {
+  display: flex; align-items: flex-start; gap: 10px; text-align: left; font-size: 13px;
+  color: var(--muted); margin: 16px 0 4px; cursor: pointer;
+}
+.pif-consent input { margin-top: 2px; width: 17px; height: 17px; accent-color: var(--brand); flex: none; }
+.pif-claim-btn { margin-top: 16px; }

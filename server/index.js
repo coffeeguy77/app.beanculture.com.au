@@ -18,6 +18,7 @@ const cards = require('./lib/cards');
 const giftcards = require('./lib/giftcards');
 const scheduler = require('./lib/scheduled');
 const notify = require('./lib/notify');
+const payItForward = require('./lib/payItForward');
 
 const PREORDER_TZ = process.env.PREORDER_TZ || process.env.SEASON_TZ || 'Australia/Sydney';
 const PREORDER_MAX_DAYS = Number(process.env.PREORDER_MAX_DAYS || 14);
@@ -163,14 +164,14 @@ app.get('/api/history', async (req, res) => {
 // ---- Create an order (with optional loyalty redemption) ----
 app.post('/api/orders', async (req, res) => {
   try {
-    const { cart, dineIn, table, name, coupon, customerId, pickupAt, note, loyalty: loy } = req.body || {};
+    const { cart, dineIn, table, name, coupon, customerId, pickupAt, note, loyalty: loy, pifVoucher } = req.body || {};
     if (!name || !String(name).trim()) {
       return res.status(400).json({ error: 'Name is required' });
     }
     if (dineIn && !table) {
       return res.status(400).json({ error: 'Table number is required for dine-in orders' });
     }
-    const order = await orders.createOrder({ cart, dineIn: !!dineIn, table, name, coupon, customerId, pickupAt, note });
+    const order = await orders.createOrder({ cart, dineIn: !!dineIn, table, name, coupon, customerId, pickupAt, note, pifVoucher });
 
     let rewardApplied = false;
     if (loy && loy.accountId && loy.tierId) {
@@ -196,7 +197,7 @@ app.post('/api/orders', async (req, res) => {
     });
   } catch (err) {
     console.error('order error', err.message);
-    res.status(400).json({ error: 'Could not create order', detail: err.message });
+    res.status(400).json({ error: err.pifReason ? err.message : 'Could not create order', detail: err.message, pifReason: err.pifReason || undefined });
   }
 });
 
@@ -373,6 +374,215 @@ app.post('/api/giftcard/redeem', async (req, res) => {
     const { customerId, gan } = req.body || {};
     if (!gan) return res.status(400).json({ error: 'Enter a gift card code' });
     res.json(await giftcards.addToAccount({ customerId, gan }));
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+// ---- Pay It Forward: buy-a-coffee-for-someone gifting ----------------------
+// Purchasing a gift NEVER creates a live cafe order (see server/lib/payItForward.js
+// for the full reasoning) -- only the recipient's actual redemption, wired
+// into the existing /api/orders route above via `pifVoucher`, creates a real
+// Square order through the unmodified ordering pipeline.
+
+// Small in-memory sliding-window limiter for the public claim/lookup
+// endpoints (section 31's rate-limit requirement) -- no new dependency
+// needed, consistent with this app's other hand-rolled abuse guards (the
+// captcha above). Per-IP, resets naturally as old entries age out.
+const pifRateBuckets = new Map();
+function pifRateLimited(req, limit = 20, windowMs = 5 * 60 * 1000) {
+  const key = req.ip || req.headers['x-forwarded-for'] || 'unknown';
+  const now = Date.now();
+  const hits = (pifRateBuckets.get(key) || []).filter((t) => now - t < windowMs);
+  hits.push(now);
+  pifRateBuckets.set(key, hits);
+  if (pifRateBuckets.size > 5000) pifRateBuckets.clear(); // crude memory guard
+  return hits.length > limit;
+}
+
+// Sanitized, public config for the purchase flow -- no admin secrets.
+app.get('/api/pay-it-forward/config', (_req, res) => {
+  const s = getSettings().payItForward || {};
+  res.json({
+    enabled: !!s.enabled,
+    suggestedValues: s.suggestedValues || [],
+    minValueCents: s.minValueCents || 0,
+    maxValueCents: s.maxValueCents || 0,
+    allowCustomAmount: s.allowCustomAmount !== false,
+    allowPointsPayment: !!s.allowPointsPayment,
+    messageTemplates: s.messageTemplates || [],
+    expiryDays: s.expiryDays || null,
+    showSocialProofStats: !!s.showSocialProofStats,
+    currency: sq.CURRENCY,
+  });
+});
+
+// Frontend social-proof stats -- deliberately no names/PII, admin-toggleable.
+app.get('/api/pay-it-forward/stats', async (_req, res) => {
+  try {
+    const s = getSettings().payItForward || {};
+    if (!s.enabled || !s.showSocialProofStats) return res.json({ enabled: false });
+    const k = await payItForward.adminKpis(3650);
+    res.json({
+      enabled: true,
+      coffeesGifted: k ? k.giftsPurchased : 0,
+      coffeesRedeemed: k ? k.fullyRedeemed : 0,
+      outstanding: k ? k.outstandingCount : 0,
+    });
+  } catch (e) {
+    res.json({ enabled: false });
+  }
+});
+
+app.post('/api/pay-it-forward/purchase/card', async (req, res) => {
+  try {
+    const { sourceId, verificationToken, valueCents, purchaserCustomerId, purchaserName, purchaserPhone, purchaserNotify, recipientName, recipientPhone, recipientEmail, message, idempotencyKey } = req.body || {};
+    if (!sourceId) return res.status(400).json({ error: 'Missing payment token' });
+    if (!recipientPhone) return res.status(400).json({ error: 'Recipient mobile number is required' });
+    if (!idempotencyKey) return res.status(400).json({ error: 'Missing idempotency key' });
+    const gift = await payItForward.purchaseWithCard({
+      sourceId, verificationToken, valueCents, purchaserCustomerId, purchaserName, purchaserPhone, purchaserNotify,
+      recipientName, recipientPhone, recipientEmail, message: message ? String(message).slice(0, 500) : '', idempotencyKey,
+    });
+    res.json({ ok: true, token: gift.token, code: gift.code, valueCents: gift.valueCents, claimUrl: payItForward.claimUrl(gift.token) });
+  } catch (e) {
+    console.error('pay-it-forward card purchase error', e.message);
+    res.status(402).json({ error: e.message });
+  }
+});
+
+app.post('/api/pay-it-forward/purchase/points', async (req, res) => {
+  try {
+    const { rewardTierId, loyaltyAccountId, purchaserCustomerId, purchaserName, purchaserPhone, purchaserNotify, recipientName, recipientPhone, recipientEmail, message, idempotencyKey } = req.body || {};
+    if (!recipientPhone) return res.status(400).json({ error: 'Recipient mobile number is required' });
+    if (!rewardTierId || !loyaltyAccountId) return res.status(400).json({ error: 'Missing loyalty details' });
+    if (!idempotencyKey) return res.status(400).json({ error: 'Missing idempotency key' });
+    const gift = await payItForward.purchaseWithPoints({
+      rewardTierId, loyaltyAccountId, purchaserCustomerId, purchaserName, purchaserPhone, purchaserNotify,
+      recipientName, recipientPhone, recipientEmail, message: message ? String(message).slice(0, 500) : '', idempotencyKey,
+    });
+    res.json({ ok: true, token: gift.token, code: gift.code, valueCents: gift.valueCents, claimUrl: payItForward.claimUrl(gift.token) });
+  } catch (e) {
+    console.error('pay-it-forward points purchase error', e.message);
+    res.status(402).json({ error: e.message });
+  }
+});
+
+// ---- Public claim experience ----
+app.get('/api/gift/:token', async (req, res) => {
+  try {
+    if (pifRateLimited(req, 60)) return res.status(429).json({ error: 'Too many requests, please try again shortly.' });
+    const gift = await payItForward.publicGiftView(req.params.token);
+    if (!gift) return res.status(404).json({ error: 'Gift not found' });
+    payItForward.markViewed(req.params.token).catch(() => {});
+    res.json({ gift });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+app.post('/api/gift/:token/claim', async (req, res) => {
+  try {
+    if (pifRateLimited(req, 20)) return res.status(429).json({ error: 'Too many requests, please try again shortly.' });
+    const { recipientPhone, recipientName, marketingConsent } = req.body || {};
+    let recipientCustomerId;
+    if (recipientPhone) {
+      const c = await customers.findOrCreate({ phone: recipientPhone, name: recipientName });
+      recipientCustomerId = c && c.id;
+    }
+    const gift = await payItForward.claim(req.params.token, {
+      recipientCustomerId, marketingConsent: marketingConsent === true, marketingConsentSource: 'claim_page',
+    });
+    if (!gift) return res.status(404).json({ error: 'Gift not found' });
+    res.json({ ok: true, customerId: recipientCustomerId || null });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+// Manual backup-code lookup (rate-limited per section 8/31).
+app.post('/api/gift/lookup', async (req, res) => {
+  try {
+    if (pifRateLimited(req, 10)) return res.status(429).json({ error: 'Too many attempts, please try again shortly.' });
+    const { code } = req.body || {};
+    if (!code) return res.status(400).json({ error: 'Enter a gift code' });
+    const gift = await payItForward.publicGiftView(String(code).trim().toUpperCase());
+    if (!gift) return res.status(404).json({ error: 'That code was not found' });
+    res.json({ gift });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+// ---- Customer account: My Coffee Gifts (Sent/Received) ----
+app.get('/api/gifts', async (req, res) => {
+  try {
+    const { customerId, phone } = req.query;
+    if (!customerId && !phone) return res.json({ sent: [], received: [] });
+    res.json(await payItForward.giftsForCustomer(customerId, phone));
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+// ---- Admin: Pay It Forward dashboard, gift management, settings support ----
+app.get('/api/admin/pay-it-forward/eligibility', async (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const { ok, warning, resolvedCategoryIds } = await payItForward.adminEligibility();
+    res.json({ ok, warning: warning || null, resolvedCategoryCount: resolvedCategoryIds.size });
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+app.get('/api/admin/pay-it-forward/kpis', async (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    res.json(await payItForward.adminKpis(Number(req.query.days) || 90));
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+app.get('/api/admin/pay-it-forward/gifts', async (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const { status, search, limit, offset } = req.query;
+    res.json(await payItForward.adminList({ status: status || undefined, search: search || undefined, limit: Number(limit) || 100, offset: Number(offset) || 0 }));
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+app.get('/api/admin/pay-it-forward/gifts/:id', async (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const detail = await payItForward.adminDetail(req.params.id);
+    if (!detail) return res.status(404).json({ error: 'Not found' });
+    res.json(detail);
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+app.post('/api/admin/pay-it-forward/gifts/:id/resend-sms', async (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    res.json({ gift: await payItForward.adminResendSms(req.params.id) });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+app.post('/api/admin/pay-it-forward/gifts/:id/cancel', async (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const gift = await payItForward.adminCancel(req.params.id);
+    if (!gift) return res.status(400).json({ error: 'This gift cannot be cancelled (already used or not active).' });
+    res.json({ gift });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+app.post('/api/admin/pay-it-forward/gifts/:id/refund', async (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const { status } = req.body || {};
+    res.json({ gift: await payItForward.adminRefund(req.params.id, status || 'REFUNDED') });
   } catch (e) {
     res.status(400).json({ error: e.message });
   }
@@ -870,6 +1080,10 @@ app.listen(PORT, () => console.log(`Bean Culture app on :${PORT} (Square env: ${
 db.init().finally(() => {
   scheduler.start();
   seedPresetNavFooter();
+  // Non-destructive Pay It Forward expiry sweep (status change only, rows
+  // are never deleted) -- runs shortly after boot, then hourly.
+  setTimeout(() => payItForward.sweepExpired().catch((e) => console.warn('[payItForward] expiry sweep failed:', e.message)), 20000);
+  setInterval(() => payItForward.sweepExpired().catch((e) => console.warn('[payItForward] expiry sweep failed:', e.message)), 60 * 60 * 1000);
   // Auto-sync the product builder with Square a few times a day (incl. each
   // morning) so newly-added variations appear and deleted ones are cleaned up
   // without anyone pressing Sync. First run shortly after boot.
