@@ -403,9 +403,16 @@ function pifRateLimited(req, limit = 20, windowMs = 5 * 60 * 1000) {
 // Sanitized, public config for the purchase flow -- no admin secrets.
 app.get('/api/pay-it-forward/config', (_req, res) => {
   const s = getSettings().payItForward || {};
+  // Normalise presets to { label, valueCents }. Accept legacy bare numbers
+  // (cents) so old saved settings keep working; drop anything without a value.
+  const presets = (s.suggestedValues || [])
+    .map((v) => (v && typeof v === 'object')
+      ? { label: String(v.label || '').trim(), valueCents: Math.round(v.valueCents || v.value || 0) }
+      : { label: '', valueCents: Math.round(Number(v) || 0) })
+    .filter((p) => p.valueCents > 0);
   res.json({
     enabled: !!s.enabled,
-    suggestedValues: s.suggestedValues || [],
+    suggestedValues: presets,
     minValueCents: s.minValueCents || 0,
     maxValueCents: s.maxValueCents || 0,
     allowCustomAmount: s.allowCustomAmount !== false,

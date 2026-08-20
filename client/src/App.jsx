@@ -21,7 +21,7 @@ import GiftClaim from './components/GiftClaim.jsx';
 import Logo from './components/Logo.jsx';
 import EffectOverlay from './components/EffectOverlay.jsx';
 import SeasonalPerimeter from './components/SeasonalPerimeter.jsx';
-import { AccountIcon, ThemeIcon, StoreIcon, SlotIcon, CartIcon, HeartIcon } from './components/icons.jsx';
+import { AccountIcon, ThemeIcon, StoreIcon, SlotIcon, CartIcon, HeartIcon, CupIcon } from './components/icons.jsx';
 import Favorites from './components/Favorites.jsx';
 import StorePage from './components/StorePage.jsx';
 import ReservationForm from './components/ReservationForm.jsx';
@@ -1128,7 +1128,7 @@ export default function App() {
               <button className="iconbtn" title="About / contact" aria-label="Store info" onClick={() => setView('store')}><StoreIcon size={22} /></button>
               <button className="iconbtn theme-headerbtn" title="Theme" aria-label="Theme" onClick={() => setShowTheme(true)}><ThemeIcon size={22} /></button>
               {pifEnabled && (
-                <button className="iconbtn pif-headerbtn" title="Pay It Forward — gift a coffee" aria-label="Gift a coffee" onClick={() => setShowPif(true)}>☕</button>
+                <button className="iconbtn pif-headerbtn" title="Pay It Forward — gift a coffee" aria-label="Gift a coffee" onClick={() => setShowPif(true)}><CupIcon size={22} /></button>
               )}
               {isMobile && (
                 <button
@@ -1233,6 +1233,7 @@ export default function App() {
                   else { const el = document.querySelector('.menu'); if (el) el.scrollIntoView({ behavior: 'smooth' }); }
                 }
                 else if (link.type === 'account') setView('account');
+                else if (link.type === 'payitforward') setShowPif(true);
                 else if (link.type === 'url' && link.value) {
                   const u = /^https?:\/\//i.test(link.value) ? link.value : `https://${link.value}`;
                   window.open(u, '_blank', 'noopener,noreferrer');

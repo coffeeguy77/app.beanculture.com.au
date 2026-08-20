@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { api, formatMoney } from '../api.js';
 import { track } from '../analytics.js';
+import { CupIcon } from './icons.jsx';
 
 function loadSquareSdk(environment) {
   const src = environment === 'sandbox'
@@ -51,7 +52,9 @@ export default function PayItForward({ config, user, onClose, onSent }) {
     track('pay_it_forward_opened');
     api.pifConfig().then((c) => {
       setPifConfig(c);
-      setAmount((c.suggestedValues && c.suggestedValues[0]) || 500);
+      const first = (c.suggestedValues || [])[0];
+      const firstVal = first && typeof first === 'object' ? (first.valueCents || first.value || 0) : Number(first) || 0;
+      setAmount(firstVal || 500);
     }).catch(() => setPifConfig({ enabled: false }));
   }, []);
 
@@ -173,7 +176,7 @@ export default function PayItForward({ config, user, onClose, onSent }) {
         <div className="sheet-body">
           {step === 'done' && result ? (
             <div className="gc-result pif-result">
-              <div className="tick" style={{ width: 54, height: 54, fontSize: 28 }}>☕</div>
+              <div className="tick" style={{ width: 54, height: 54, display: 'grid', placeItems: 'center' }}><CupIcon size={28} /></div>
               <h3 className="serif" style={{ margin: '10px 0 4px' }}>Coffee sent!</h3>
               <p className="muted" style={{ fontSize: 13 }}>You've just made {recipientName || 'their'} day a little better. We've texted them the link.</p>
               <div className="gc-code">{result.code}</div>
@@ -182,15 +185,27 @@ export default function PayItForward({ config, user, onClose, onSent }) {
             </div>
           ) : (
             <>
-              <h2 className="pif-hero-title">Buy Someone a Coffee ☕</h2>
+              <div style={{ display: 'flex', justifyContent: 'center', color: 'var(--brand)', marginBottom: 4 }}><CupIcon size={40} /></div>
+              <h2 className="pif-hero-title">Buy Someone a Coffee</h2>
               <p className="muted" style={{ fontSize: 13, marginTop: -6 }}>A small coffee can make someone's day.</p>
 
               {step === 'amount' && (
                 <>
                   <div className="gc-amounts">
-                    {(pifConfig.suggestedValues || []).map((a) => (
-                      <button key={a} type="button" className={`chip ${!customAmount && amount === a ? 'on' : ''}`} onClick={() => { setAmount(a); setCustomAmount(false); }}>{formatMoney(a, currency)}</button>
-                    ))}
+                    {(pifConfig.suggestedValues || []).map((p, i) => {
+                      const val = p && typeof p === 'object' ? Math.round(p.valueCents || p.value || 0) : Math.round(Number(p) || 0);
+                      const label = p && typeof p === 'object' ? String(p.label || '') : '';
+                      return (
+                        <button key={i} type="button" className={`chip ${!customAmount && amount === val ? 'on' : ''}`} onClick={() => { setAmount(val); setCustomAmount(false); }}>
+                          {label ? (
+                            <span style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.15, alignItems: 'center' }}>
+                              <span style={{ fontWeight: 700 }}>{label}</span>
+                              <span style={{ fontSize: 12, opacity: 0.8 }}>{formatMoney(val, currency)}</span>
+                            </span>
+                          ) : formatMoney(val, currency)}
+                        </button>
+                      );
+                    })}
                     {pifConfig.allowCustomAmount && (
                       <button type="button" className={`chip ${customAmount ? 'on' : ''}`} onClick={() => setCustomAmount(true)}>Choose amount</button>
                     )}

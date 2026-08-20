@@ -7,7 +7,21 @@ import Insights from './Insights.jsx';
 import EffectBuilder from './EffectBuilder.jsx';
 import { formatMoney, api } from '../api.js';
 
-const LINK_TYPES = ['scroll', 'category', 'item', 'account', 'url', 'none'];
+const LINK_TYPES = ['scroll', 'category', 'item', 'account', 'payitforward', 'url', 'none'];
+// Friendly labels for the banner "destination" dropdowns.
+const LINK_TYPE_LABELS = {
+  scroll: 'Scroll to menu',
+  category: 'Category',
+  item: 'Product',
+  account: 'Account',
+  payitforward: 'Pay It Forward (gift a coffee)',
+  url: 'Web link',
+  none: 'Nothing',
+};
+// Pay It Forward presets are { label, valueCents }; accept a legacy bare number.
+const pifPreset = (v) => (v && typeof v === 'object')
+  ? { label: v.label || '', valueCents: Math.round(v.valueCents || v.value || 0) }
+  : { label: '', valueCents: Math.round(Number(v) || 0) };
 // Built-in festive themes ship with the app and can be turned Off but not deleted.
 const BUILTIN_SEASONAL = ['christmas', 'newyear', 'australiaday', 'lunarnewyear', 'valentines', 'stpatricks', 'easter', 'anzac', 'mothersday', 'floriade', 'fathersday', 'halloween'];
 
@@ -2611,7 +2625,7 @@ export default function Admin({ onExit }) {
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginBottom: 16 }}>
                     {[
                       ['Total value gifted', k ? cents(k.valueGiftedCents) : '—'],
-                      ['Coffees gifted', k ? k.giftsPurchased : '—'],
+                      ['Coffees purchased', k ? k.giftsPurchased : '—'],
                       ['Value redeemed', k ? cents(k.valueRedeemedCents) : '—'],
                       ['Fully redeemed', k ? k.fullyRedeemed : '—'],
                       ['Outstanding value', k ? cents(k.outstandingValueCents) : '—'],
@@ -2641,9 +2655,22 @@ export default function Admin({ onExit }) {
                       <label className="field" style={{ margin: 0 }}><span>Expiry (days)</span>
                         <input type="number" min="0" value={pif.expiryDays || 0} onChange={(e) => setPif({ expiryDays: Number(e.target.value) || 0 })} /></label>
                     </div>
-                    <label className="field" style={{ marginTop: 12 }}><span>Suggested amounts ($, comma separated)</span>
-                      <input value={(pif.suggestedValues || []).map((v) => v / 100).join(', ')}
-                        onChange={(e) => setPif({ suggestedValues: e.target.value.split(',').map((x) => Math.round((parseFloat(x) || 0) * 100)).filter(Boolean) })} /></label>
+                    <div className="group-title" style={{ marginTop: 16 }}>Coffee presets</div>
+                    <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 4 }}>Named buttons shoppers pick from — e.g. “Small Coffee” for $5.50. Set the price to match your real coffee prices.</p>
+                    {(pif.suggestedValues || []).map(pifPreset).map((r, i) => (
+                      <div key={i} style={{ display: 'flex', gap: 8, marginTop: 8, alignItems: 'center' }}>
+                        <input style={{ flex: 2, padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 10 }} placeholder="Label (e.g. Small Coffee)" value={r.label}
+                          onChange={(e) => setPif({ suggestedValues: (pif.suggestedValues || []).map(pifPreset).map((x, idx) => idx === i ? { ...x, label: e.target.value } : x) })} />
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4, flex: 1 }}>
+                          <span className="muted">$</span>
+                          <input style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 10 }} type="number" min="0" step="0.5" placeholder="5.50"
+                            value={r.valueCents ? r.valueCents / 100 : ''}
+                            onChange={(e) => setPif({ suggestedValues: (pif.suggestedValues || []).map(pifPreset).map((x, idx) => idx === i ? { ...x, valueCents: Math.round((parseFloat(e.target.value) || 0) * 100) } : x) })} />
+                        </div>
+                        <button type="button" className="chip" title="Remove preset" onClick={() => setPif({ suggestedValues: (pif.suggestedValues || []).map(pifPreset).filter((_, idx) => idx !== i) })}>✕</button>
+                      </div>
+                    ))}
+                    <button type="button" className="chip" style={{ marginTop: 10 }} onClick={() => setPif({ suggestedValues: [...(pif.suggestedValues || []).map(pifPreset), { label: '', valueCents: 0 }] })}>+ Add preset</button>
                     <label className="field-row" style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 10 }}>
                       <input type="checkbox" checked={pif.allowCustomAmount !== false} onChange={(e) => setPif({ allowCustomAmount: e.target.checked })} />
                       <span>Allow a custom amount</span>
@@ -2798,7 +2825,7 @@ export default function Admin({ onExit }) {
                       <input style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 10, marginBottom: 6 }} value={sl.cta || ''} onChange={(e) => updSlide(i, { cta: e.target.value })} placeholder="Button text (optional)" />
                       <div style={{ ...row, marginBottom: 6 }}>
                         <select value={sl.link?.type || 'scroll'} onChange={(e) => updSlide(i, { link: { ...sl.link, type: e.target.value } })} style={{ padding: 8, borderRadius: 10, border: '1px solid var(--line)' }}>
-                          {LINK_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                          {LINK_TYPES.map((t) => <option key={t} value={t}>{LINK_TYPE_LABELS[t] || t}</option>)}
                         </select>
                         {sl.link?.type === 'category' && (
                           <select value={sl.link?.value || ''} onChange={(e) => updSlide(i, { link: { ...sl.link, value: e.target.value } })} style={{ flex: 1, padding: 8, borderRadius: 10, border: '1px solid var(--line)' }}>
@@ -3161,7 +3188,7 @@ export default function Admin({ onExit }) {
                             <div style={{ ...row, gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
                               <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>Tapping goes to</span>
                               <select value={t.banner?.link?.type || 'scroll'} onChange={(e) => updSeasonalBanner(i, { link: { ...(t.banner?.link || {}), type: e.target.value } })} style={{ padding: 8, borderRadius: 10, border: '1px solid var(--line)' }}>
-                                {LINK_TYPES.map((lt) => <option key={lt} value={lt}>{lt}</option>)}
+                                {LINK_TYPES.map((lt) => <option key={lt} value={lt}>{LINK_TYPE_LABELS[lt] || lt}</option>)}
                               </select>
                               {t.banner?.link?.type === 'category' && (
                                 <select value={t.banner?.link?.value || ''} onChange={(e) => updSeasonalBanner(i, { link: { ...(t.banner?.link || {}), value: e.target.value } })} style={{ flex: 1, minWidth: 120, padding: 8, borderRadius: 10, border: '1px solid var(--line)' }}>

@@ -117,7 +117,12 @@ const DEFAULTS = {
   // pipeline. See server/lib/payItForward.js.
   payItForward: {
     enabled: false,
-    suggestedValues: [500, 1000, 1500, 2000],
+    // Named coffee presets: { label, valueCents }. A bare number is also accepted
+    // (legacy) and rendered as a plain dollar chip.
+    suggestedValues: [
+      { label: 'Small Coffee', valueCents: 550 },
+      { label: 'Large Coffee', valueCents: 650 },
+    ],
     allowCustomAmount: true,
     minValueCents: 500,
     maxValueCents: 10000,

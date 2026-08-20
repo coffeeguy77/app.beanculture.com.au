@@ -274,7 +274,7 @@ function pifStatusPill(status) {
         </div>
       </div>
       {onSendCoffee && (
-        <button className="btn full" style={{ marginBottom: 14 }} onClick={onSendCoffee}>☕ Send someone a coffee</button>
+        <button className="btn full" style={{ marginBottom: 14 }} onClick={onSendCoffee}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, justifyContent: 'center' }}><CoffeeIco size={17} /> Send someone a coffee</span></button>
       )}
       {coffeeGifts === null && <p className="muted">Loading…</p>}
       {coffeeGifts && coffeeTab === 'received' && (coffeeGifts.received || []).length === 0 && <p className="muted">No coffees received yet.</p>}
