@@ -143,6 +143,16 @@ const DEFAULTS = {
     partialRedemptionAllowed: true,
     noCashChange: true,
   },
+  // Loyalty automation. autoEnrollOnSignIn: create a Square Loyalty account on
+  // passwordless sign-in. autoEnrollGiftRecipients: enrol a Pay It Forward
+  // recipient (by the phone we SMS'd) at redemption so the gifted coffee earns
+  // points on their card. firstTransactionBonusPoints: points granted once on a
+  // customer's first order (0 = off).
+  loyalty: {
+    autoEnrollOnSignIn: true,
+    autoEnrollGiftRecipients: true,
+    firstTransactionBonusPoints: 1,
+  },
   // Section display names hidden from the storefront (by name). Used to show/hide
   // product-builder sections from "Menu items offered" without deleting them.
   hiddenSections: [],

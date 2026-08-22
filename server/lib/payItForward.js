@@ -350,6 +350,15 @@ async function reserveForCheckout({ tokenOrCode, cart, redeemedByCustomerId }) {
   };
 }
 
+// Recipient phone/name for a voucher token or BC- code — used to auto-enrol a
+// gift recipient in loyalty at redemption so the gifted coffee earns points.
+async function recipientForVoucher(tokenOrCode) {
+  if (!tokenOrCode) return null;
+  const gift = String(tokenOrCode).startsWith('BC-') ? await db.pifGetByCode(tokenOrCode) : await db.pifGetByToken(tokenOrCode);
+  if (!gift) return null;
+  return { recipientPhone: gift.recipientPhone, recipientName: gift.recipientName, status: gift.status };
+}
+
 async function confirmReservation(redemptionId, orderId) {
   const result = await db.pifConfirmRedemption(redemptionId, orderId);
   if (result) notifyPurchaserOfRedemption(result).catch((e) => console.warn('[payItForward] purchaser notify failed:', e.message));
@@ -444,3 +453,5 @@ module.exports = {
   adminList, adminDetail, adminResendSms, adminCancel, adminRefund, adminKpis, adminEligibility,
   sweepExpired, claimUrl, sendGiftSms,
 };
+
+module.exports.recipientForVoucher = recipientForVoucher;

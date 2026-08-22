@@ -135,6 +135,10 @@ app.post('/api/auth', async (req, res) => {
   try {
     const { phone, name } = req.body || {};
     const who = await customers.findOrCreate({ phone, name });
+    // Auto-enrol the customer in Square Loyalty on sign-in (best-effort).
+    if (getSettings().loyalty?.autoEnrollOnSignIn) {
+      loyalty.enrollAccount({ phone: who.phone, customerId: who.customerId }).catch(() => {});
+    }
     res.json(who);
   } catch (e) {
     res.status(400).json({ error: e.message });
@@ -165,14 +169,31 @@ app.get('/api/history', async (req, res) => {
 // ---- Create an order (with optional loyalty redemption) ----
 app.post('/api/orders', async (req, res) => {
   try {
-    const { cart, dineIn, table, name, coupon, customerId, pickupAt, note, loyalty: loy, pifVoucher } = req.body || {};
+    const { cart, dineIn, table, name, coupon, customerId, phone, pickupAt, note, loyalty: loy, pifVoucher } = req.body || {};
     if (!name || !String(name).trim()) {
       return res.status(400).json({ error: 'Name is required' });
     }
     if (dineIn && !table) {
       return res.status(400).json({ error: 'Table number is required for dine-in orders' });
     }
-    const order = await orders.createOrder({ cart, dineIn: !!dineIn, table, name, coupon, customerId, pickupAt, note, pifVoucher });
+    const lset = getSettings().loyalty || {};
+    // A Pay It Forward recipient who isn't signed in: enrol them by the phone we
+    // texted the gift to, and stamp the order with their customer id so the free
+    // gifted coffee earns points on their card.
+    let effectiveCustomerId = customerId;
+    let orderPhone = phone;
+    if (!effectiveCustomerId && pifVoucher && lset.autoEnrollGiftRecipients) {
+      try {
+        const rcpt = await payItForward.recipientForVoucher(pifVoucher);
+        if (rcpt && rcpt.recipientPhone) {
+          const cust = await customers.findOrCreate({ phone: rcpt.recipientPhone, name: rcpt.recipientName });
+          effectiveCustomerId = cust.customerId;
+          orderPhone = cust.phone;
+          await loyalty.enrollAccount({ phone: cust.phone, customerId: cust.customerId });
+        }
+      } catch (e) { console.error('pif recipient enrol failed', e.message); }
+    }
+    const order = await orders.createOrder({ cart, dineIn: !!dineIn, table, name, coupon, customerId: effectiveCustomerId, pickupAt, note, pifVoucher });
 
     let rewardApplied = false;
     if (loy && loy.accountId && loy.tierId) {
@@ -186,6 +207,25 @@ app.post('/api/orders', async (req, res) => {
       } catch (e) {
         console.error('loyalty reward failed', e.message);
       }
+    }
+
+    // First-transaction welcome point (best-effort, fire-and-forget so it never
+    // delays the order response). Granted once when this is the customer's first
+    // order.
+    if (lset.firstTransactionBonusPoints > 0 && effectiveCustomerId) {
+      (async () => {
+        try {
+          const hist = await orders.getHistory(effectiveCustomerId, 5);
+          if ((hist?.length || 0) === 1) {
+            let ph = orderPhone;
+            if (!ph) { const c = await customers.get(effectiveCustomerId); ph = c && c.phone_number; }
+            if (ph) {
+              const acct = (await loyalty.getAccountByPhone(ph)) || (await loyalty.enrollAccount({ phone: ph, customerId: effectiveCustomerId }));
+              if (acct && acct.id) await loyalty.adjustPoints({ accountId: acct.id, points: lset.firstTransactionBonusPoints, reason: 'Welcome — first order' });
+            }
+          }
+        } catch (e) { console.error('welcome point failed', e.message); }
+      })();
     }
 
     const fresh = rewardApplied ? await orders.getOrder(order.id) : order;

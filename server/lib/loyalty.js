@@ -204,4 +204,39 @@ async function signupStats(days = 30) {
   return { totalMembers: accounts.length, newInRange: inRange, daily };
 }
 
-module.exports = { getProgram, getAccountByPhone, getCustomerLoyalty, createReward, deleteReward, listLoyaltyUsers, signupStats };
+// Enroll a phone number in the loyalty program (idempotent). Returns
+// { id, balance, customerId, existed } or null if the program is inactive.
+async function enrollAccount({ phone, customerId }) {
+  const program = await getProgram();
+  if (!program.active || !program.programId) return null;
+  const existing = await getAccountByPhone(phone);
+  if (existing) return { id: existing.id, balance: existing.balance, customerId: existing.customerId, existed: true };
+  const e164 = normalizePhone(phone);
+  if (!e164) return null;
+  try {
+    const data = await squareFetch('/v2/loyalty/accounts', {
+      method: 'POST',
+      body: { idempotency_key: idem(), loyalty_account: {
+        program_id: program.programId,
+        mapping: { phone_number: e164 },
+        ...(customerId ? { customer_id: customerId } : {}),
+      } },
+    });
+    const a = data.loyalty_account;
+    return a ? { id: a.id, balance: a.balance || 0, customerId: a.customer_id, existed: false } : null;
+  } catch (e) { console.error('[loyalty] enroll failed', e.message); return null; }
+}
+
+// Grant (or deduct) points on a loyalty account (best-effort).
+async function adjustPoints({ accountId, points, reason }) {
+  if (!accountId || !points) return false;
+  try {
+    await squareFetch(`/v2/loyalty/accounts/${accountId}/adjust`, {
+      method: 'POST',
+      body: { idempotency_key: idem(), adjust_points: { points, reason: String(reason || 'Bonus').slice(0, 120) } },
+    });
+    return true;
+  } catch (e) { console.error('[loyalty] adjust failed', e.message); return false; }
+}
+
+module.exports = { getProgram, getAccountByPhone, getCustomerLoyalty, createReward, deleteReward, listLoyaltyUsers, signupStats, enrollAccount, adjustPoints };

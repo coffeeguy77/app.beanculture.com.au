@@ -45,4 +45,12 @@ async function findOrCreate({ phone, name }) {
   };
 }
 
-module.exports = { findOrCreate, normalizePhone };
+// Retrieve a Square customer by id (best-effort) — used to resolve a signed-in
+// customer's phone for loyalty lookups.
+async function get(id) {
+  if (!id) return null;
+  try { const data = await squareFetch(`/v2/customers/${id}`); return data.customer || null; }
+  catch { return null; }
+}
+
+module.exports = { findOrCreate, normalizePhone, get };
