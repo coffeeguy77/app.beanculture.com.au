@@ -1088,7 +1088,13 @@ export default function App() {
 
   return (
     <div className={`app store-shell${(view === 'store' || view === 'reserve' || (!wide && view === 'checkout')) ? ' app-flush' : ''}`}
-      style={{ '--dock-icon-scale': config.dockIconScale || 1, '--footer-icon-scale': config.footerIconScale || 1 }}>
+      style={{
+        '--dock-icon-scale': config.dockIconScale || 1,
+        '--footer-icon-scale': config.footerIconScale || 1,
+        '--site-max-w': (config.siteMaxWidth === 'full' || config.siteMaxWidth === 0)
+          ? 'none'
+          : `${Number(config.siteMaxWidth) || 1920}px`,
+      }}>
       {resolvedEffectPreset && (
         <EffectOverlay
           preset={resolvedEffectPreset}

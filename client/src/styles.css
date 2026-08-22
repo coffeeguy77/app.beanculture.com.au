@@ -100,11 +100,11 @@ img { max-width: 100%; }
   color: #fff; cursor: pointer; position: relative; overflow: hidden; box-shadow: var(--shadow-sm);
 }
 /* All banners share one fixed-size box (the track's aspect-ratio, default 3:2).
-   The image fills the box 100% (cover); build banners to the box shape so
-   nothing is cropped. */
+   The image COVERS the box (scaled, never stretched); build banners to the box
+   shape (default 3:2) so nothing important is cropped. */
 .hero-track { align-items: stretch; }
 .hero-slide.has-img { padding: 0; display: block; background: var(--brand-soft); border: none; }
-.hero-img { width: 100%; height: 100%; display: block; object-fit: fill; border-radius: 20px; }
+.hero-img { width: 100%; height: 100%; display: block; object-fit: cover; border-radius: 20px; }
 .hero-slide.has-img .hero-copy {
   position: absolute; left: 0; right: 0; bottom: 0; padding: 20px;
   display: flex; flex-direction: column; align-items: flex-start;
@@ -954,7 +954,7 @@ img { max-width: 100%; }
 
 /* Desktop + landscape tablet: two-column app with a persistent cart sidebar. */
 @media (min-width: 900px) {
-  .app { max-width: 1440px; padding-bottom: 28px; }
+  .app { max-width: var(--site-max-w, 1440px); padding-bottom: 28px; }
 
   .layout {
     display: grid;
@@ -1633,11 +1633,11 @@ body:has(.store-shell) { background: #F7F4EF; }
   position: sticky; top: var(--header-h, 84px); z-index: calc(var(--z-header, 40) - 1);
   background: color-mix(in srgb, var(--s-bg) 90%, #fff);
 }
-.hours-inner { max-width: 1440px; margin: 0 auto; padding: 6px 24px 0; }
+.hours-inner { max-width: var(--site-max-w, 1440px); margin: 0 auto; padding: 6px 24px 0; }
 
 .site-header-inner {
   display: flex; align-items: center; gap: 16px;
-  height: 84px; max-width: 1440px; margin: 0 auto; padding: 0 20px;
+  height: 84px; max-width: var(--site-max-w, 1440px); margin: 0 auto; padding: 0 20px;
 }
 .sh-logo { flex: 0 0 auto; }
 .site-header .logo-wrap img, .site-header .logo-wrap svg { height: 56px; width: auto; }
@@ -1790,7 +1790,7 @@ body:has(.store-shell) { background: #F7F4EF; }
 }
 
 /* ── Two-column ordering layout ── */
-.store-layout { max-width: 1440px; margin: 0 auto; }
+.store-layout { max-width: var(--site-max-w, 1440px); margin: 0 auto; }
 /* Only the dock sticks under the shell; the search field scrolls away. */
 .store-main .search { position: static; background: transparent; }
 /* Search reads as a real control: taller, more inset for the (larger) icon,

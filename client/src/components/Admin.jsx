@@ -1451,6 +1451,15 @@ export default function Admin({ onExit }) {
                   <label className="field"><span>Store name</span><input value={s.storeName || ''} onChange={(e) => set({ storeName: e.target.value })} /></label>
                   <label className="field" style={{ marginTop: 10 }}><span>Announcement bar (blank = hidden)</span>
                     <input value={s.announcement || ''} onChange={(e) => set({ announcement: e.target.value })} placeholder="e.g. Public holiday hours today" /></label>
+                  <label className="field" style={{ marginTop: 10 }}><span>Maximum site width (desktop)</span>
+                    <select value={s.siteMaxWidth === 'full' ? 'full' : String(s.siteMaxWidth || 1920)}
+                      onChange={(e) => set({ siteMaxWidth: e.target.value === 'full' ? 'full' : Number(e.target.value) })}>
+                      <option value="1440">1440px — narrow</option>
+                      <option value="1920">1920px — recommended</option>
+                      <option value="2560">2560px — wide</option>
+                      <option value="full">Full width (no cap)</option>
+                    </select></label>
+                  <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 4 }}>Caps the whole storefront on large screens so the hero banner and content don’t over-stretch. “Full width” removes the cap for edge-to-edge designs.</p>
                 </div>
 
                 <div className="card" style={card}>

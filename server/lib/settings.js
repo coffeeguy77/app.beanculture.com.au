@@ -251,6 +251,10 @@ const DEFAULTS = {
   // Banner auto-scroll: on/off and speed (seconds between slides).
   heroAutoplay: true,
   heroInterval: 5,
+  // Maximum storefront width on large screens (px). Caps the whole customer
+  // site (header, hero, order bar, content) so nothing over-stretches on wide
+  // monitors. Use the string 'full' for an uncapped, edge-to-edge layout.
+  siteMaxWidth: 1920,
   // Menu layout: 'onepage' (all categories on one scroll) or 'single' (one
   // category/group at a time, chosen from the footer).
   layoutMode: 'onepage',

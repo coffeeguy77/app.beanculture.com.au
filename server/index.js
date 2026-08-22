@@ -83,6 +83,7 @@ app.get('/api/config', async (_req, res) => {
     heroRatio: settings.heroRatio,
     heroAutoplay: settings.heroAutoplay,
     heroInterval: settings.heroInterval,
+    siteMaxWidth: settings.siteMaxWidth,
     layoutMode: settings.layoutMode,
     topMenuStyle: settings.topMenuStyle,
     footer: settings.footer,
