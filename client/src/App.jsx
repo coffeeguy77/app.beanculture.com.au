@@ -470,7 +470,11 @@ export default function App() {
     const r = document.documentElement;
     r.style.setProperty('--dock-icon-scale', String(config?.dockIconScale || 1));
     r.style.setProperty('--footer-icon-scale', String(config?.footerIconScale || 1));
-  }, [config?.dockIconScale, config?.footerIconScale]);
+    // Global site width cap — set on :root so both the storefront AND the admin
+    // panel (a separate view) follow the same "Maximum site width" setting.
+    const smw = config?.siteMaxWidth;
+    r.style.setProperty('--site-max-w', (smw === 'full' || smw === 0) ? 'none' : `${Number(smw) || 1920}px`);
+  }, [config?.dockIconScale, config?.footerIconScale, config?.siteMaxWidth]);
   const canOrder = config?.hours?.canOrderNow !== false;
   const preorder = config?.hours?.preorder;
   const storeOpen = config?.hours?.open !== false;
