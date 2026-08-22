@@ -541,6 +541,38 @@ function CheckoutFunnel({ totals }) {
 const SOURCE_LABELS = { qr: 'QR code (table)', direct: 'Direct / typed URL', social: 'Social', search: 'Search', referral: 'Referral link' };
 function sourceLabel(s) { return SOURCE_LABELS[s] || (s ? s.charAt(0).toUpperCase() + s.slice(1) : 'Unknown'); }
 
+function ProductHeatmap({ items }) {
+  const list = (items || []).filter((p) => (p.views || p.carts || p.purchased));
+  if (!list.length) return <DashboardCard title="Product heat map" subtitle="Views → cart → bought" span="3"><EmptyState>No product activity yet.</EmptyState></DashboardCard>;
+  const maxV = Math.max(1, ...list.map((p) => p.views || 0));
+  const maxC = Math.max(1, ...list.map((p) => p.carts || 0));
+  const maxB = Math.max(1, ...list.map((p) => p.purchased || 0));
+  const heat = (v, m) => ({ background: `rgba(181,86,110,${(v > 0 ? 0.10 + 0.70 * (v / m) : 0).toFixed(3)})` });
+  return (
+    <DashboardCard title="Product heat map" subtitle="Views → added to cart → bought, with view-to-buy conversion" span="3">
+      <div className="ins-heat-wrap">
+        <table className="ins-heat">
+          <thead><tr><th>Product</th><th>Views</th><th>Added</th><th>Bought</th><th>Conv.</th></tr></thead>
+          <tbody>
+            {list.map((p, i) => {
+              const conv = p.views ? Math.round((p.purchased / p.views) * 100) : 0;
+              return (
+                <tr key={p.name + i}>
+                  <td className="ins-heat-name" title={p.name}>{p.name}</td>
+                  <td style={heat(p.views, maxV)}>{num(p.views)}</td>
+                  <td style={heat(p.carts, maxC)}>{num(p.carts)}</td>
+                  <td style={heat(p.purchased, maxB)}>{num(p.purchased)}</td>
+                  <td className="ins-heat-conv">{conv}%</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </DashboardCard>
+  );
+}
+
 function ProductRankingCard({ title, items }) {
   const list = items || [];
   const max = Math.max(1, ...list.map((p) => p.n || 0));
@@ -710,6 +742,9 @@ export default function Insights({ days, onDays, dashboard, analytics, customers
             </div>
             <div className="ins-grid ins-grid-2">
               <ProductRankingCard title="How they found us" items={(analytics.sources || []).map((s) => ({ name: sourceLabel(s.source), n: s.n }))} />
+            </div>
+            <div className="ins-grid">
+              <ProductHeatmap items={analytics.products} />
             </div>
           </>
         )}

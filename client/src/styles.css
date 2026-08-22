@@ -2802,3 +2802,13 @@ body:has(.store-shell) { background: var(--bc-canvas-deep, #160f12); }
 }
 .pif-consent input { margin-top: 2px; width: 17px; height: 17px; accent-color: var(--brand); flex: none; }
 .pif-claim-btn { margin-top: 16px; }
+
+/* Product heat map (admin Insights) */
+.ins-heat-wrap { overflow-x: auto; margin-top: 4px; }
+.ins-heat { width: 100%; border-collapse: separate; border-spacing: 0 2px; font-size: var(--fs-sm, 13px); }
+.ins-heat th, .ins-heat td { padding: 7px 10px; text-align: right; white-space: nowrap; }
+.ins-heat th:first-child, .ins-heat td:first-child { text-align: left; }
+.ins-heat thead th { font-size: var(--fs-xs, 11px); text-transform: uppercase; letter-spacing: .4px; color: var(--admin-text-muted, #9c8890); font-weight: 700; }
+.ins-heat-name { max-width: 240px; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
+.ins-heat td { border-radius: 5px; }
+.ins-heat-conv { font-weight: 800; }

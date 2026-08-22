@@ -311,7 +311,7 @@ async function getAnalytics(days = 30) {
   if (!pool) return null;
   const since = `now() - interval '${Math.max(1, Math.min(365, days))} days'`;
   const q = (sql) => pool.query(sql.replace('$SINCE', since));
-  const [tot, daily, topView, topBuy, contact, sources] = await Promise.all([
+  const [tot, daily, topView, topBuy, contact, sources, products] = await Promise.all([
     q(`SELECT
         count(*) FILTER (WHERE type='view') AS views,
         count(DISTINCT session) FILTER (WHERE type='view') AS visitors,
@@ -330,6 +330,14 @@ async function getAnalytics(days = 30) {
     q(`SELECT ref, sum(qty) AS n FROM analytics_events WHERE type='purchase_item' AND ts >= $SINCE AND ref IS NOT NULL GROUP BY ref ORDER BY n DESC LIMIT 8`),
     q(`SELECT type, count(*) AS n FROM analytics_events WHERE type LIKE 'contact_%' AND ts >= $SINCE GROUP BY type`),
     q(`SELECT coalesce(nullif(ref,''),'direct') AS source, count(*) AS n FROM analytics_events WHERE type='view' AND ts >= $SINCE GROUP BY 1 ORDER BY n DESC LIMIT 12`),
+    q(`SELECT ref AS name,
+        count(*) FILTER (WHERE type='product_view') AS views,
+        count(*) FILTER (WHERE type='add_cart') AS carts,
+        coalesce(sum(qty) FILTER (WHERE type='purchase_item'),0) AS purchased,
+        coalesce(sum(amount) FILTER (WHERE type='purchase_item'),0) AS revenue
+       FROM analytics_events
+       WHERE ref IS NOT NULL AND ref <> '' AND type IN ('product_view','add_cart','purchase_item') AND ts >= $SINCE
+       GROUP BY ref ORDER BY views DESC, purchased DESC LIMIT 50`),
   ]);
   const t = tot.rows[0] || {};
   const num = (x) => Number(x || 0);
@@ -345,6 +353,7 @@ async function getAnalytics(days = 30) {
     topPurchased: topBuy.rows.map((r) => ({ name: r.ref, n: num(r.n) })),
     contact: contact.rows.map((r) => ({ type: r.type, n: num(r.n) })),
     sources: sources.rows.map((r) => ({ source: r.source, n: num(r.n) })),
+    products: products.rows.map((r) => ({ name: r.name, views: num(r.views), carts: num(r.carts), purchased: num(r.purchased), revenue: num(r.revenue) })),
   };
 }
 
