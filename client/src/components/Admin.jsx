@@ -1463,6 +1463,21 @@ export default function Admin({ onExit }) {
                 </div>
 
                 <div className="card" style={card}>
+                  <div className="group-title">Loyalty automation</div>
+                  <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 0 }}>Grow your Square loyalty membership automatically. Needs an active Square loyalty program.</p>
+                  <label className="field-row" style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 6 }}>
+                    <input type="checkbox" checked={(s.loyalty?.autoEnrollOnSignIn) !== false} onChange={(e) => set({ loyalty: { ...(s.loyalty || {}), autoEnrollOnSignIn: e.target.checked } })} />
+                    <span>Auto-enrol members when they sign in</span>
+                  </label>
+                  <label className="field-row" style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 6 }}>
+                    <input type="checkbox" checked={(s.loyalty?.autoEnrollGiftRecipients) !== false} onChange={(e) => set({ loyalty: { ...(s.loyalty || {}), autoEnrollGiftRecipients: e.target.checked } })} />
+                    <span>Auto-enrol Pay It Forward recipients (gifted coffee earns points)</span>
+                  </label>
+                  <label className="field" style={{ marginTop: 10 }}><span>Welcome points on first order (0 = off)</span>
+                    <input type="number" min="0" step="1" value={s.loyalty?.firstTransactionBonusPoints ?? 1} onChange={(e) => set({ loyalty: { ...(s.loyalty || {}), firstTransactionBonusPoints: Math.max(0, Math.round(Number(e.target.value) || 0)) } })} /></label>
+                </div>
+
+                <div className="card" style={card}>
                   <div className="group-title">Contact &amp; location</div>
                   <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 0 }}>Shown on the storefront with tap-to-call and directions (both tracked in Insights).</p>
                   <label className="field"><span>Address</span><input value={s.contact?.address || ''} onChange={(e) => setContact('address', e.target.value)} placeholder="123 Main St, Suburb NSW" /></label>
