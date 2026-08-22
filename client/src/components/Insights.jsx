@@ -537,6 +537,10 @@ function CheckoutFunnel({ totals }) {
   );
 }
 
+// Friendly labels for arrival-source keys captured on the 'view' event.
+const SOURCE_LABELS = { qr: 'QR code (table)', direct: 'Direct / typed URL', social: 'Social', search: 'Search', referral: 'Referral link' };
+function sourceLabel(s) { return SOURCE_LABELS[s] || (s ? s.charAt(0).toUpperCase() + s.slice(1) : 'Unknown'); }
+
 function ProductRankingCard({ title, items }) {
   const list = items || [];
   const max = Math.max(1, ...list.map((p) => p.n || 0));
@@ -703,6 +707,9 @@ export default function Insights({ days, onDays, dashboard, analytics, customers
                 <ProductRankingCard title="Most viewed" items={analytics.topViewed} />
                 <ProductRankingCard title="Most purchased" items={analytics.topPurchased} />
               </div>
+            </div>
+            <div className="ins-grid ins-grid-2">
+              <ProductRankingCard title="How they found us" items={(analytics.sources || []).map((s) => ({ name: sourceLabel(s.source), n: s.n }))} />
             </div>
           </>
         )}

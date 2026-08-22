@@ -41,6 +41,29 @@ function readTable() {
   return t ? t.trim() : '';
 }
 
+// Attribution: how this visitor arrived. Table QR codes carry ?src=qr; campaigns
+// can use ?utm_source=…; otherwise we infer social/search/referral from the
+// referrer, falling back to 'direct' (typed URL / bookmark / installed app).
+function readSource() {
+  try {
+    const p = new URLSearchParams(window.location.search);
+    const src = (p.get('src') || '').trim().toLowerCase();
+    if (src) return src.slice(0, 24);
+    const utm = (p.get('utm_source') || '').trim().toLowerCase();
+    if (utm) return utm.slice(0, 24);
+    const ref = document.referrer || '';
+    if (ref) {
+      const h = new URL(ref).hostname.replace(/^www\./, '');
+      if (h && h !== window.location.hostname) {
+        if (/facebook|fb\.|instagram|t\.co|twitter|x\.com|tiktok|linkedin|reddit/.test(h)) return 'social';
+        if (/google|bing|duckduckgo|yahoo|ecosia/.test(h)) return 'search';
+        return 'referral';
+      }
+    }
+    return 'direct';
+  } catch { return 'direct'; }
+}
+
 // Category name → icon name, shared by the footer dock and the "Browse menu"
 // category dock so both use one consistent mapping.
 function iconFor(n) {
@@ -334,7 +357,7 @@ export default function App() {
   // Analytics: one visit event per load; apply a custom favicon if configured.
   useEffect(() => {
     if (!config) return;
-    track('view');
+    track('view', { ref: readSource() });
     if (config.faviconUrl) {
       let link = document.querySelector('link[rel="icon"]');
       if (!link) { link = document.createElement('link'); link.rel = 'icon'; document.head.appendChild(link); }

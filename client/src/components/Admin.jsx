@@ -259,7 +259,7 @@ export default function Admin({ onExit }) {
       for (let n = from; n <= to && nums.length < 200; n++) nums.push(n);
       const codes = await Promise.all(
         nums.map(async (n) => {
-          const url = `${origin}/?table=${n}`;
+          const url = `${origin}/?table=${n}&src=qr`;
           const img = await QRCode.toDataURL(url, {
             margin: 1, width: 512, errorCorrectionLevel: 'M',
             color: { dark: qrFg, light: qrBg },
