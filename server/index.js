@@ -1104,6 +1104,7 @@ app.get('/.well-known/apple-developer-merchantid-domain-association', (_req, res
 // forever (a new deploy = new filenames). index.html + the service worker must
 // stay fresh so new deploys are picked up immediately; icons/images cache a day.
 app.use(express.static(clientDist, {
+  index: false,
   setHeaders: (res, filePath) => {
     if (/[\\/]assets[\\/].+\.(js|css|woff2?)$/.test(filePath)) {
       res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
@@ -1114,9 +1115,81 @@ app.use(express.static(clientDist, {
     }
   },
 }));
-app.get('*', (_req, res) => {
+// ---- SEO: inject verification, Google Analytics, meta + social + JSON-LD into
+// the served HTML from env vars + store settings (no client rebuild needed),
+// and serve robots.txt + sitemap.xml. Set GOOGLE_SITE_VERIFICATION and
+// GA_MEASUREMENT_ID (G-XXXX) in Railway; description/image fall back to your
+// store settings. ----
+const fs = require('fs');
+let _indexHtmlCache = null;
+function indexHtml() {
+  if (_indexHtmlCache == null) {
+    try { _indexHtmlCache = fs.readFileSync(path.join(clientDist, 'index.html'), 'utf8'); }
+    catch { _indexHtmlCache = '<!doctype html><html><head></head><body><div id="root"></div></body></html>'; }
+  }
+  return _indexHtmlCache;
+}
+function seoEsc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+function baseUrl(req) {
+  const env = process.env.PUBLIC_BASE_URL;
+  if (env) return env.replace(/\/$/, '');
+  const proto = String(req.headers['x-forwarded-proto'] || 'https').split(',')[0];
+  return `${proto}://${req.headers.host}`;
+}
+function seoHead(req) {
+  const s = getSettings();
+  const name = s.storeName || 'Bean Culture';
+  const desc = String(process.env.SEO_DESCRIPTION || s.bio || s.supportMessage || `Order ahead from ${name} — skip the queue.`).replace(/\s+/g, ' ').trim().slice(0, 300);
+  const url = baseUrl(req);
+  const img = process.env.SEO_IMAGE || s.storePhoto || `${url}/icons/icon-512.png`;
+  const tel = (s.contact && s.contact.phone) || '';
+  const addr = (s.contact && s.contact.address) || '';
+  const gsv = process.env.GOOGLE_SITE_VERIFICATION || '';
+  const ga = (process.env.GA_MEASUREMENT_ID || '').trim();
+  const p = [];
+  p.push(`<meta name="description" content="${seoEsc(desc)}">`);
+  p.push(`<link rel="canonical" href="${seoEsc(url)}/">`);
+  p.push('<meta name="robots" content="index,follow">');
+  if (gsv) p.push(`<meta name="google-site-verification" content="${seoEsc(gsv)}">`);
+  p.push('<meta property="og:type" content="website">');
+  p.push(`<meta property="og:site_name" content="${seoEsc(name)}">`);
+  p.push(`<meta property="og:title" content="${seoEsc(name)}">`);
+  p.push(`<meta property="og:description" content="${seoEsc(desc)}">`);
+  p.push(`<meta property="og:url" content="${seoEsc(url)}/">`);
+  if (img) p.push(`<meta property="og:image" content="${seoEsc(img)}">`);
+  p.push('<meta name="twitter:card" content="summary_large_image">');
+  p.push(`<meta name="twitter:title" content="${seoEsc(name)}">`);
+  p.push(`<meta name="twitter:description" content="${seoEsc(desc)}">`);
+  if (img) p.push(`<meta name="twitter:image" content="${seoEsc(img)}">`);
+  const ld = { '@context': 'https://schema.org', '@type': 'CafeOrCoffeeShop', name, url: url + '/', image: img };
+  if (tel) ld.telephone = tel;
+  if (addr) ld.address = { '@type': 'PostalAddress', streetAddress: addr };
+  p.push(`<script type="application/ld+json">${JSON.stringify(ld).replace(/</g, '\\u003c')}</script>`);
+  if (ga) {
+    p.push(`<script async src="https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(ga)}"></script>`);
+    p.push(`<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config',${JSON.stringify(ga)});</script>`);
+  }
+  return p.join('\n    ');
+}
+
+app.get('/robots.txt', (req, res) => {
+  const url = baseUrl(req);
+  res.type('text/plain').send(`User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /gift/\nSitemap: ${url}/sitemap.xml\n`);
+});
+
+app.get('/sitemap.xml', (req, res) => {
+  const url = baseUrl(req);
+  const today = new Date().toISOString().slice(0, 10);
+  const locs = [`${url}/`];
+  const body = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n` +
+    locs.map((u) => `  <url><loc>${seoEsc(u)}</loc><lastmod>${today}</lastmod><changefreq>weekly</changefreq><priority>1.0</priority></url>`).join('\n') +
+    `\n</urlset>\n`;
+  res.type('application/xml').send(body);
+});
+
+app.get('*', (req, res) => {
   res.setHeader('Cache-Control', 'no-cache');
-  res.sendFile(path.join(clientDist, 'index.html'));
+  res.type('html').send(indexHtml().replace('</head>', `    ${seoHead(req)}\n  </head>`));
 });
 
 const PORT = process.env.PORT || 8080;
