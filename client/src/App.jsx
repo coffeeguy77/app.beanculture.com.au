@@ -350,6 +350,30 @@ export default function App() {
     const m = window.location.pathname.match(/^\/gift\/([^/]+)\/?$/);
     if (m) { setGiftToken(decodeURIComponent(m[1])); setView('gift'); }
   }, []);
+
+  // SEO deep links: /item/<slug> opens the product, /menu/<slug> opens the
+  // category. Runs once the menu is loaded (matches the server's slug scheme).
+  useEffect(() => {
+    if (!menu) return;
+    const slg = (str) => String(str || '').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+    const path = window.location.pathname;
+    let m = path.match(/^\/item\/([^/]+)\/?$/i);
+    if (m) {
+      const slug = decodeURIComponent(m[1]).toLowerCase();
+      for (const c of (menu.categories || [])) {
+        const it = (c.items || []).find((x) => slg(x.name) === slug);
+        if (it) { setView('home'); setActiveItem({ ...it, category: c.category }); break; }
+      }
+      return;
+    }
+    m = path.match(/^\/menu\/([^/]+)\/?$/i);
+    if (m) {
+      const slug = decodeURIComponent(m[1]).toLowerCase();
+      const c = (menu.categories || []).find((cc) => slg(cc.category) === slug);
+      if (c) { setView('home'); setActiveCat(c.category); }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [menu]);
   useEffect(() => {
     api.pifConfig().then((c) => setPifEnabled(!!c.enabled)).catch(() => {});
   }, []);

@@ -2919,3 +2919,12 @@ body:has(.store-shell) { background: var(--bc-canvas-deep, #160f12); }
 .pif-voucher-label { font-size: 11px; color: #9a6b78; }
 .pif-voucher-code { font-weight: 800; font-size: 18px; letter-spacing: 1px; color: #7c1a37; }
 .pif-copy { width: 36px; height: 36px; flex: none; border: none; border-radius: 10px; background: #fbe6ec; color: #7c1a37; cursor: pointer; font-size: 15px; }
+
+
+/* Server-injected crawlable content for SEO product/category/home pages. Shown
+   only until the app boots (React replaces #root), and to non-JS crawlers. */
+.seo-boot { max-width: 680px; margin: 40px auto; padding: 0 20px; font-family: system-ui, -apple-system, sans-serif; color: #6d1a33; line-height: 1.55; }
+.seo-boot h1 { font-size: 24px; margin: 0 0 10px; }
+.seo-boot h2 { font-size: 18px; margin: 18px 0 6px; }
+.seo-boot a { color: #b5566e; }
+.seo-boot ul { margin: 4px 0 12px; padding-left: 18px; }

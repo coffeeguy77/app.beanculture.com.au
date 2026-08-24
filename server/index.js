@@ -1136,36 +1136,81 @@ function baseUrl(req) {
   const proto = String(req.headers['x-forwarded-proto'] || 'https').split(',')[0];
   return `${proto}://${req.headers.host}`;
 }
-function seoHead(req) {
+// ── SEO helpers: slugs, cached menu snapshot, per-page meta + crawlable body ──
+function slugify(str) {
+  return String(str || '').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80);
+}
+let seoMenuCache = { data: null, at: 0 };
+async function seoMenu() {
+  const now = Date.now();
+  if (seoMenuCache.data && now - seoMenuCache.at < 60000) return seoMenuCache.data;
+  try { const m = await catalog.getMenu(); seoMenuCache = { data: m, at: now }; return m; }
+  catch { return seoMenuCache.data || { categories: [] }; }
+}
+function bustSeoMenu() { seoMenuCache = { data: null, at: 0 }; }
+function lowestPrice(item) {
+  const prices = ((item && item.variations) || []).map((v) => v.price).filter((n) => typeof n === 'number');
+  return prices.length ? Math.min(...prices) : null;
+}
+function money(cents) {
+  if (cents == null) return '';
+  try { return new Intl.NumberFormat('en-AU', { style: 'currency', currency: sq.CURRENCY || 'AUD' }).format(cents / 100); }
+  catch { return '$' + (cents / 100).toFixed(2); }
+}
+function resolvePath(menu, pathname) {
+  const cats = (menu && menu.categories) || [];
+  let m = pathname.match(/^\/item\/([^/]+)\/?$/i);
+  if (m) {
+    const slug = decodeURIComponent(m[1]).toLowerCase();
+    for (const c of cats) for (const it of (c.items || [])) if (slugify(it.name) === slug) return { type: 'item', item: it, category: c.category };
+    return { type: 'item', notFound: true };
+  }
+  m = pathname.match(/^\/menu\/([^/]+)\/?$/i);
+  if (m) {
+    const slug = decodeURIComponent(m[1]).toLowerCase();
+    const c = cats.find((c) => slugify(c.category) === slug);
+    return c ? { type: 'category', category: c } : { type: 'category', notFound: true };
+  }
+  return null;
+}
+
+function seoHead(req, o = {}) {
   const s = getSettings();
-  const name = s.storeName || 'Bean Culture';
+  const storeName = s.storeName || 'Bean Culture';
   const seo = s.seo || {};
-  const desc = String(seo.metaDescription || process.env.SEO_DESCRIPTION || s.bio || s.supportMessage || `Order ahead from ${name} — skip the queue.`).replace(/\s+/g, ' ').trim().slice(0, 300);
-  const url = baseUrl(req);
-  const img = seo.ogImage || process.env.SEO_IMAGE || s.storePhoto || `${url}/icons/icon-512.png`;
+  const name = o.title || storeName;
+  const desc = String(o.description || seo.metaDescription || process.env.SEO_DESCRIPTION || s.bio || s.supportMessage || `Order ahead from ${storeName} — skip the queue.`).replace(/\s+/g, ' ').trim().slice(0, 300);
+  const base = baseUrl(req);
+  const url = o.url || (base + '/');
+  const img = o.image || seo.ogImage || process.env.SEO_IMAGE || s.storePhoto || `${base}/icons/icon-512.png`;
   const tel = (s.contact && s.contact.phone) || '';
   const addr = (s.contact && s.contact.address) || '';
   const gsv = String(seo.googleVerification || process.env.GOOGLE_SITE_VERIFICATION || '').trim();
   const ga = String(seo.gaMeasurementId || process.env.GA_MEASUREMENT_ID || '').trim();
   const p = [];
   p.push(`<meta name="description" content="${seoEsc(desc)}">`);
-  p.push(`<link rel="canonical" href="${seoEsc(url)}/">`);
+  p.push(`<link rel="canonical" href="${seoEsc(url)}">`);
   p.push('<meta name="robots" content="index,follow">');
   if (gsv) p.push(/<(meta|script|link)/i.test(gsv) ? gsv : `<meta name="google-site-verification" content="${seoEsc(gsv)}">`);
-  p.push('<meta property="og:type" content="website">');
-  p.push(`<meta property="og:site_name" content="${seoEsc(name)}">`);
+  p.push(`<meta property="og:type" content="${o.ogType || 'website'}">`);
+  p.push(`<meta property="og:site_name" content="${seoEsc(storeName)}">`);
   p.push(`<meta property="og:title" content="${seoEsc(name)}">`);
   p.push(`<meta property="og:description" content="${seoEsc(desc)}">`);
-  p.push(`<meta property="og:url" content="${seoEsc(url)}/">`);
+  p.push(`<meta property="og:url" content="${seoEsc(url)}">`);
   if (img) p.push(`<meta property="og:image" content="${seoEsc(img)}">`);
   p.push('<meta name="twitter:card" content="summary_large_image">');
   p.push(`<meta name="twitter:title" content="${seoEsc(name)}">`);
   p.push(`<meta name="twitter:description" content="${seoEsc(desc)}">`);
   if (img) p.push(`<meta name="twitter:image" content="${seoEsc(img)}">`);
-  const ld = { '@context': 'https://schema.org', '@type': 'CafeOrCoffeeShop', name, url: url + '/', image: img };
-  if (tel) ld.telephone = tel;
-  if (addr) ld.address = { '@type': 'PostalAddress', streetAddress: addr };
-  p.push(`<script type="application/ld+json">${JSON.stringify(ld).replace(/</g, '\\u003c')}</script>`);
+  let lds = o.jsonld;
+  if (!lds || !lds.length) {
+    const ld = { '@context': 'https://schema.org', '@type': 'CafeOrCoffeeShop', name: storeName, url: base + '/', image: img };
+    if (tel) ld.telephone = tel;
+    if (addr) ld.address = { '@type': 'PostalAddress', streetAddress: addr };
+    lds = [ld];
+  }
+  for (const ld of lds) p.push(`<script type="application/ld+json">${JSON.stringify(ld).replace(/</g, '\\u003c')}</script>`);
   if (ga) {
     p.push(`<script async src="https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(ga)}"></script>`);
     p.push(`<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config',${JSON.stringify(ga)});</script>`);
@@ -1174,24 +1219,102 @@ function seoHead(req) {
   return p.join('\n    ');
 }
 
+// Per-page SEO head + crawlable body for /item and /menu pages.
+function pageSeoAndBody(req, hit, menu) {
+  const s = getSettings();
+  const storeName = s.storeName || 'Bean Culture';
+  const base = baseUrl(req);
+  if (!hit || hit.notFound) return null;
+  if (hit.type === 'item' && hit.item) {
+    const it = hit.item;
+    const price = lowestPrice(it);
+    const url = `${base}/item/${slugify(it.name)}`;
+    const title = `${it.name} — ${storeName}`;
+    const desc = (it.description ? String(it.description) : `${it.name} at ${storeName}. Order ahead and skip the queue.`).replace(/\s+/g, ' ').trim().slice(0, 300);
+    const productLd = {
+      '@context': 'https://schema.org', '@type': 'Product', name: it.name, url,
+      brand: { '@type': 'Brand', name: storeName },
+    };
+    if (it.description) productLd.description = String(it.description).slice(0, 500);
+    if (it.image) productLd.image = it.image;
+    if (price != null) productLd.offers = { '@type': 'Offer', price: (price / 100).toFixed(2), priceCurrency: sq.CURRENCY || 'AUD', availability: it.soldOut ? 'https://schema.org/OutOfStock' : 'https://schema.org/InStock', url };
+    const head = seoHead(req, { title, description: desc, image: it.image || undefined, url, ogType: 'product', jsonld: [productLd] });
+    const body = `<main class="seo-boot"><h1>${seoEsc(it.name)}</h1>${it.description ? `<p>${seoEsc(it.description)}</p>` : ''}<p><strong>${seoEsc(money(price))}</strong> &middot; ${seoEsc(hit.category || '')} &middot; ${seoEsc(storeName)}</p><p><a href="/">See the full ${seoEsc(storeName)} menu</a></p></main>`;
+    return { head, body, title };
+  }
+  if (hit.type === 'category' && hit.category) {
+    const c = hit.category;
+    const items = (c.items || []);
+    const url = `${base}/menu/${slugify(c.category)}`;
+    const title = `${c.category} — ${storeName}`;
+    const desc = `${c.category} at ${storeName} — ${items.slice(0, 6).map((i) => i.name).join(', ')}. Order ahead online.`.replace(/\s+/g, ' ').trim().slice(0, 300);
+    const listLd = { '@context': 'https://schema.org', '@type': 'ItemList', name: title, url,
+      itemListElement: items.slice(0, 50).map((i, idx) => ({ '@type': 'ListItem', position: idx + 1, name: i.name, url: `${base}/item/${slugify(i.name)}` })) };
+    const head = seoHead(req, { title, description: desc, url, jsonld: [listLd] });
+    const body = `<main class="seo-boot"><h1>${seoEsc(c.category)}</h1><ul>${items.map((i) => `<li><a href="/item/${slugify(i.name)}">${seoEsc(i.name)}</a>${(i.variations && i.variations.length) ? ' — ' + seoEsc(money(lowestPrice(i))) : ''}</li>`).join('')}</ul><p><a href="/">Full menu</a></p></main>`;
+    return { head, body, title };
+  }
+  return null;
+}
+
+// Homepage crawlable menu outline (React replaces #root on boot).
+function homeBody(menu, req) {
+  const s = getSettings(); const storeName = s.storeName || 'Bean Culture';
+  const cats = (menu && menu.categories) || [];
+  if (!cats.length) return '';
+  const secs = cats.map((c) => `<section><h2><a href="/menu/${slugify(c.category)}">${seoEsc(c.category)}</a></h2><ul>${(c.items || []).map((i) => `<li><a href="/item/${slugify(i.name)}">${seoEsc(i.name)}</a>${(i.variations && i.variations.length) ? ' — ' + seoEsc(money(lowestPrice(i))) : ''}</li>`).join('')}</ul></section>`).join('');
+  return `<main class="seo-boot"><h1>${seoEsc(storeName)} — Menu</h1>${secs}</main>`;
+}
+
 app.get('/robots.txt', (req, res) => {
   const url = baseUrl(req);
   res.type('text/plain').send(`User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /gift/\nSitemap: ${url}/sitemap.xml\n`);
 });
 
-app.get('/sitemap.xml', (req, res) => {
+app.get('/sitemap.xml', async (req, res) => {
   const url = baseUrl(req);
   const today = new Date().toISOString().slice(0, 10);
-  const locs = [`${url}/`];
+  const menu = await seoMenu();
+  const cats = (menu && menu.categories) || [];
+  const entries = [{ loc: `${url}/`, pri: '1.0', freq: 'daily' }];
+  const seenC = new Set(), seenI = new Set();
+  for (const c of cats) {
+    const cs = slugify(c.category); if (cs && !seenC.has(cs)) { seenC.add(cs); entries.push({ loc: `${url}/menu/${cs}`, pri: '0.8', freq: 'weekly' }); }
+    for (const it of (c.items || [])) { const is = slugify(it.name); if (is && !seenI.has(is)) { seenI.add(is); entries.push({ loc: `${url}/item/${is}`, pri: '0.6', freq: 'weekly' }); } }
+  }
   const body = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n` +
-    locs.map((u) => `  <url><loc>${seoEsc(u)}</loc><lastmod>${today}</lastmod><changefreq>weekly</changefreq><priority>1.0</priority></url>`).join('\n') +
+    entries.map((e) => `  <url><loc>${seoEsc(e.loc)}</loc><lastmod>${today}</lastmod><changefreq>${e.freq}</changefreq><priority>${e.pri}</priority></url>`).join('\n') +
     `\n</urlset>\n`;
   res.type('application/xml').send(body);
 });
 
-app.get('*', (req, res) => {
+// Admin: regenerate (bust) the sitemap/menu cache; returns the URL count.
+app.post('/api/admin/seo/rebuild-sitemap', async (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  bustSeoMenu();
+  const menu = await seoMenu();
+  const cats = (menu && menu.categories) || [];
+  const cS = new Set(), iS = new Set();
+  for (const c of cats) { const cs = slugify(c.category); if (cs) cS.add(cs); for (const it of (c.items || [])) { const is = slugify(it.name); if (is) iS.add(is); } }
+  res.json({ ok: true, urls: 1 + cS.size + iS.size, categories: cS.size, products: iS.size, at: new Date().toISOString() });
+});
+
+app.get('*', async (req, res) => {
   res.setHeader('Cache-Control', 'no-cache');
-  res.type('html').send(indexHtml().replace('</head>', `    ${seoHead(req)}\n  </head>`));
+  let head = seoHead(req), body = '', title = '';
+  try {
+    if (/^\/(item|menu)\//i.test(req.path)) {
+      const menu = await seoMenu();
+      const pg = pageSeoAndBody(req, resolvePath(menu, req.path), menu);
+      if (pg) { head = pg.head; body = pg.body; title = pg.title; }
+    } else if (req.path === '/' || req.path === '') {
+      body = homeBody(await seoMenu(), req);
+    }
+  } catch { /* fall back to base head */ }
+  let html = indexHtml().replace('</head>', `    ${head}\n  </head>`);
+  if (title) html = html.replace(/<title>[\s\S]*?<\/title>/i, `<title>${seoEsc(title)}</title>`);
+  if (body) html = html.replace('<div id="root">', `<div id="root">${body}`);
+  res.type('html').send(html);
 });
 
 const PORT = process.env.PORT || 8080;

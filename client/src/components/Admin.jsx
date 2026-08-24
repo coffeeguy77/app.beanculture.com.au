@@ -126,6 +126,7 @@ export default function Admin({ onExit }) {
     try { return atob(localStorage.getItem('bc-admin-pass') || '') || ''; } catch { return ''; }
   });
   const [needPass, setNeedPass] = useState(false);
+  const [sitemapInfo, setSitemapInfo] = useState('');
   const [data, setData] = useState(null);
   const [s, setS] = useState(null); // editable settings
   const [error, setError] = useState('');
@@ -3025,7 +3026,18 @@ export default function Admin({ onExit }) {
               <>
                 <div className="admin-page-head">
                   <h1 className="admin-page-title">SEO &amp; verification</h1>
-                  <p className="admin-page-desc">Search-engine listing, site verification and analytics. These are injected into every page&rsquo;s &lt;head&gt; automatically &mdash; no redeploy needed. Submit your sitemap at <code>/sitemap.xml</code>.</p>
+                  <p className="admin-page-desc">Search-engine listing, site verification and analytics &mdash; injected into every page&rsquo;s &lt;head&gt; automatically, no redeploy needed.</p>
+                </div>
+                <div className="card" style={card}>
+                  <div className="group-title">Sitemap</div>
+                  <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 0 }}>Your live sitemap lists the homepage plus every menu category and product, so search engines can find each one. Submit this URL in Google Search Console (Sitemaps), and Regenerate after big menu changes.</p>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginTop: 6 }}>
+                    <code style={{ border: '1px solid var(--line)', borderRadius: 8, padding: '8px 10px', flex: 1, minWidth: 220, overflowX: 'auto' }}>{`${typeof window !== 'undefined' ? window.location.origin : ''}/sitemap.xml`}</code>
+                    <button type="button" className="btn ghost" style={{ padding: '8px 12px' }} onClick={() => { try { navigator.clipboard.writeText(`${window.location.origin}/sitemap.xml`); setSitemapInfo('Copied to clipboard.'); } catch (e) { setSitemapInfo('Copy failed \u2014 select it manually.'); } }}>Copy</button>
+                    <a className="btn ghost" style={{ padding: '8px 12px' }} href="/sitemap.xml" target="_blank" rel="noreferrer">Open</a>
+                    <button type="button" className="btn" style={{ padding: '8px 12px' }} onClick={async () => { setSitemapInfo('Regenerating\u2026'); try { const r = await fetch(`/api/admin/seo/rebuild-sitemap?pass=${encodeURIComponent(pass)}`, { method: 'POST' }); const j = await r.json(); setSitemapInfo(j.ok ? `Regenerated \u2014 ${j.urls} URLs (${j.categories} categories, ${j.products} products).` : (j.error || 'Failed.')); } catch (e) { setSitemapInfo('Failed: ' + e.message); } }}>Regenerate</button>
+                  </div>
+                  {sitemapInfo && <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 8 }}>{sitemapInfo}</p>}
                 </div>
                 <div className="card" style={card}>
                   <div className="group-title">Google Search Console verification</div>
