@@ -153,6 +153,17 @@ const DEFAULTS = {
     autoEnrollGiftRecipients: true,
     firstTransactionBonusPoints: 1,
   },
+  // SEO / search-console — editable in Admin -> SEO. Injected into the served
+  // HTML head (see seoHead in server/index.js); env vars remain a fallback.
+  // googleVerification accepts a full <meta> tag or just the token. headHtml is
+  // arbitrary <head> code (other verifications / tracking) injected verbatim.
+  seo: {
+    googleVerification: '',
+    gaMeasurementId: '',
+    metaDescription: '',
+    ogImage: '',
+    headHtml: '',
+  },
   // Section display names hidden from the storefront (by name). Used to show/hide
   // product-builder sections from "Menu items offered" without deleting them.
   hiddenSections: [],

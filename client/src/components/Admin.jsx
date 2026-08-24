@@ -79,9 +79,11 @@ const ComboIcon = svg(<>
 const PifIcon = svg(<>
   <path d="M4 8h13v6a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5V8Z" /><path d="M17 9.5h1.5a2.5 2.5 0 0 1 0 5H17" />
 </>);
+const SeoIcon = svg(<><circle cx="11" cy="11" r="7" /><path d="M20.5 20.5l-4-4" /><path d="M11 8v6M8 11h6" /></>);
 const TABS = [
   { id: 'overview', label: 'Dashboard', Icon: DashboardIcon },
   { id: 'store', label: 'Store', Icon: StoreIcon },
+  { id: 'seo', label: 'SEO', Icon: SeoIcon },
   { id: 'reservations', label: 'Reservations', Icon: CalendarIcon },
   { id: 'insights', label: 'Insights', Icon: InsightsIcon },
   { id: 'menubuilder', label: 'Menu Builder', Icon: MenuIcon },
@@ -3019,6 +3021,37 @@ export default function Admin({ onExit }) {
             )}
 
             {/* ───────── PUSH (broadcast SMS / email) ───────── */}
+            {tab === 'seo' && (
+              <>
+                <div className="admin-page-head">
+                  <h1 className="admin-page-title">SEO &amp; verification</h1>
+                  <p className="admin-page-desc">Search-engine listing, site verification and analytics. These are injected into every page&rsquo;s &lt;head&gt; automatically &mdash; no redeploy needed. Submit your sitemap at <code>/sitemap.xml</code>.</p>
+                </div>
+                <div className="card" style={card}>
+                  <div className="group-title">Google Search Console verification</div>
+                  <label className="field" style={{ marginTop: 8 }}><span>Verification tag or code</span>
+                    <input value={s.seo?.googleVerification || ''} onChange={(e) => set({ seo: { ...(s.seo || {}), googleVerification: e.target.value } })} placeholder={'<meta name="google-site-verification" content="…" />'} /></label>
+                  <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 4 }}>In Search Console choose the &ldquo;HTML tag&rdquo; method and paste the whole tag here (or just the code). Save, then click Verify in Search Console.</p>
+                </div>
+                <div className="card" style={card}>
+                  <div className="group-title">Google Analytics (GA4)</div>
+                  <label className="field" style={{ marginTop: 8 }}><span>Measurement ID</span>
+                    <input value={s.seo?.gaMeasurementId || ''} onChange={(e) => set({ seo: { ...(s.seo || {}), gaMeasurementId: e.target.value.trim() } })} placeholder="G-XXXXXXXXXX" /></label>
+                </div>
+                <div className="card" style={card}>
+                  <div className="group-title">Listing &amp; social preview</div>
+                  <label className="field" style={{ marginTop: 8 }}><span>Meta description (blank = uses your store bio)</span>
+                    <textarea rows={2} value={s.seo?.metaDescription || ''} onChange={(e) => set({ seo: { ...(s.seo || {}), metaDescription: e.target.value.slice(0, 300) } })} placeholder="Freshly roasted coffee, order ahead & skip the queue." /></label>
+                  <label className="field" style={{ marginTop: 10 }}><span>Social share image URL (blank = uses your store photo)</span>
+                    <input value={s.seo?.ogImage || ''} onChange={(e) => set({ seo: { ...(s.seo || {}), ogImage: e.target.value.trim() } })} placeholder="https://…/share.jpg" /></label>
+                </div>
+                <div className="card" style={card}>
+                  <div className="group-title">Custom head code (advanced)</div>
+                  <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 0 }}>Pasted verbatim into every page&rsquo;s &lt;head&gt; &mdash; use for other verifications (Bing, Facebook, Pinterest) or tracking snippets. Only paste code you trust.</p>
+                  <label className="field"><textarea rows={5} value={s.seo?.headHtml || ''} onChange={(e) => set({ seo: { ...(s.seo || {}), headHtml: e.target.value } })} placeholder={'<meta name="facebook-domain-verification" content="…" />'} style={{ fontFamily: 'monospace', fontSize: 12 }} /></label>
+                </div>
+              </>
+            )}
             {tab === 'push' && (
               <div className="card" style={card}>
                 <div className="group-title">Push · message your customers</div>

@@ -1139,18 +1139,19 @@ function baseUrl(req) {
 function seoHead(req) {
   const s = getSettings();
   const name = s.storeName || 'Bean Culture';
-  const desc = String(process.env.SEO_DESCRIPTION || s.bio || s.supportMessage || `Order ahead from ${name} — skip the queue.`).replace(/\s+/g, ' ').trim().slice(0, 300);
+  const seo = s.seo || {};
+  const desc = String(seo.metaDescription || process.env.SEO_DESCRIPTION || s.bio || s.supportMessage || `Order ahead from ${name} — skip the queue.`).replace(/\s+/g, ' ').trim().slice(0, 300);
   const url = baseUrl(req);
-  const img = process.env.SEO_IMAGE || s.storePhoto || `${url}/icons/icon-512.png`;
+  const img = seo.ogImage || process.env.SEO_IMAGE || s.storePhoto || `${url}/icons/icon-512.png`;
   const tel = (s.contact && s.contact.phone) || '';
   const addr = (s.contact && s.contact.address) || '';
-  const gsv = process.env.GOOGLE_SITE_VERIFICATION || '';
-  const ga = (process.env.GA_MEASUREMENT_ID || '').trim();
+  const gsv = String(seo.googleVerification || process.env.GOOGLE_SITE_VERIFICATION || '').trim();
+  const ga = String(seo.gaMeasurementId || process.env.GA_MEASUREMENT_ID || '').trim();
   const p = [];
   p.push(`<meta name="description" content="${seoEsc(desc)}">`);
   p.push(`<link rel="canonical" href="${seoEsc(url)}/">`);
   p.push('<meta name="robots" content="index,follow">');
-  if (gsv) p.push(`<meta name="google-site-verification" content="${seoEsc(gsv)}">`);
+  if (gsv) p.push(/<(meta|script|link)/i.test(gsv) ? gsv : `<meta name="google-site-verification" content="${seoEsc(gsv)}">`);
   p.push('<meta property="og:type" content="website">');
   p.push(`<meta property="og:site_name" content="${seoEsc(name)}">`);
   p.push(`<meta property="og:title" content="${seoEsc(name)}">`);
@@ -1169,6 +1170,7 @@ function seoHead(req) {
     p.push(`<script async src="https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(ga)}"></script>`);
     p.push(`<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config',${JSON.stringify(ga)});</script>`);
   }
+  if (seo.headHtml && String(seo.headHtml).trim()) p.push(String(seo.headHtml));
   return p.join('\n    ');
 }
 
