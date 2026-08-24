@@ -73,6 +73,7 @@ export default function PayItForward({ config, user, onClose, onSent }) {
   const paymentsRef = useRef(null);
   const cardRef = useRef(null);
   const cardElRef = useRef(null);
+  const attachingRef = useRef(false);
   const idemRef = useRef(newIdempotencyKey());
   const currency = config.currency || 'AUD';
 
@@ -96,20 +97,35 @@ export default function PayItForward({ config, user, onClose, onSent }) {
   }, [step, user, loyalty]);
 
   const attachCard = useCallback(async () => {
-    if (cardRef.current || !paymentsRef.current || !cardElRef.current) return;
+    // Two paths call this — the ref callback (setCardEl) and the step effect.
+    // Both can pass the cardRef guard while the async attach is still pending,
+    // which used to mount a second Square iframe (the duplicate card box).
+    // attachingRef makes attach single-flight; the innerHTML clear removes any
+    // stray iframe left behind by a prior mount before we attach a fresh one.
+    if (cardRef.current || attachingRef.current) return;
+    if (!paymentsRef.current || !cardElRef.current) return;
+    attachingRef.current = true;
     try {
+      try { cardElRef.current.innerHTML = ''; } catch {}
       const card = await paymentsRef.current.card();
-      if (!cardElRef.current) { try { card.destroy(); } catch {} return; }
+      if (!cardElRef.current || cardRef.current) { try { card.destroy(); } catch {} return; }
       await card.attach(cardElRef.current);
       cardRef.current = card;
       setReady(true);
     } catch (e) { setError(e.message); }
+    finally { attachingRef.current = false; }
+  }, []);
+  const teardownCard = useCallback(() => {
+    try { cardRef.current?.destroy(); } catch {}
+    cardRef.current = null;
+    attachingRef.current = false;
+    setReady(false);
   }, []);
   const setCardEl = useCallback((el) => {
     cardElRef.current = el;
     if (el) attachCard();
-    else { try { cardRef.current?.destroy(); } catch {} cardRef.current = null; setReady(false); }
-  }, [attachCard]);
+    else teardownCard();
+  }, [attachCard, teardownCard]);
 
   useEffect(() => {
     if (step !== 'card') return;
@@ -119,11 +135,11 @@ export default function PayItForward({ config, user, onClose, onSent }) {
         const Square = await loadSquareSdk(config.environment);
         if (cancelled) return;
         if (!config.applicationId || !config.locationId) throw new Error('Payments not configured.');
-        paymentsRef.current = Square.payments(config.applicationId, config.locationId);
+        if (!paymentsRef.current) paymentsRef.current = Square.payments(config.applicationId, config.locationId);
         if (!cancelled) attachCard();
       } catch (e) { if (!cancelled) setError(e.message); }
     })();
-    return () => { cancelled = true; try { cardRef.current?.destroy(); } catch {} cardRef.current = null; };
+    return () => { cancelled = true; teardownCard(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step]);
 
