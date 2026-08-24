@@ -105,7 +105,7 @@ const TAB_GROUPS = [
   { label: 'Menu', tabs: ['menubuilder', 'productbuilder', 'combobuilder'] },
   { label: 'Marketing', tabs: ['banners', 'coupons', 'push', 'payitforward'] },
   { label: 'Customers', tabs: ['users'] },
-  { label: 'Store', tabs: ['store', 'theme'] },
+  { label: 'Store', tabs: ['store', 'seo', 'theme'] },
 ];
 // Page-width class per tab: Standard for simple forms, Wide for Theme,
 // Analytics for Insights' charts, Builder for the two builder pages (whose
