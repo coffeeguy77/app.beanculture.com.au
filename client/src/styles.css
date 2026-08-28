@@ -2996,6 +2996,9 @@ body:has(.store-shell) { background: var(--bc-canvas-deep, #160f12); }
   width: 56px; height: 56px; border-radius: 16px; object-fit: cover;
   display: block; margin: 0 auto 12px; box-shadow: var(--shadow-sm);
 }
+/* Real PWA app icon (icon-192.png) — the very icon that lands on the home
+   screen. Slightly larger; the PNG carries its own corner rounding. */
+.aai-appicon { width: 64px; height: 64px; border-radius: 15px; object-fit: contain; }
 .aai-logo-fallback {
   display: grid; place-items: center; background: var(--brand); color: #fff;
   font-family: Georgia, serif; font-weight: 700; font-size: 26px;

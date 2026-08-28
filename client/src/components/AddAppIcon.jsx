@@ -1,5 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { imgUrl } from '../api.js';
+import React, { useEffect, useState } from 'react';
 
 // Visual "Add app icon" guide — shows the tap-by-tap steps to add the web app
 // to a phone/desktop home screen, per platform. Where the browser supports it
@@ -83,6 +82,7 @@ export default function AddAppIcon({ config, storeName = 'Bean Culture', onClose
   const [tab, setTab] = useState(detectPlatform);
   const [deferred, setDeferred] = useState(null);
   const [installedNote, setInstalledNote] = useState('');
+  const [iconOk, setIconOk] = useState(true);
 
   useEffect(() => {
     const onPrompt = (e) => { e.preventDefault(); setDeferred(e); };
@@ -98,7 +98,6 @@ export default function AddAppIcon({ config, storeName = 'Bean Culture', onClose
     };
   }, [onClose]);
 
-  const logo = config?.logoUrl ? imgUrl(config.logoUrl, 200) : null;
   const p = PLATFORMS[tab] || PLATFORMS.iphone;
   const name = config?.storeName || storeName;
 
@@ -115,8 +114,8 @@ export default function AddAppIcon({ config, storeName = 'Bean Culture', onClose
         <button className="aai-close" onClick={onClose} aria-label="Close">✕</button>
 
         <div className="aai-head">
-          {logo
-            ? <img className="aai-logo" src={logo} alt="" />
+          {iconOk
+            ? <img className="aai-logo aai-appicon" src="/icons/icon-192.png" alt={`${name} app icon`} onError={() => setIconOk(false)} />
             : <span className="aai-logo aai-logo-fallback">{(name[0] || 'B').toUpperCase()}</span>}
           <h2 className="aai-title">Add {name} to your home screen</h2>
           <p className="aai-sub">One tap to open it any time — no app store, no download.</p>
