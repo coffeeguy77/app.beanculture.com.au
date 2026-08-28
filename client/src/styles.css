@@ -2928,3 +2928,112 @@ body:has(.store-shell) { background: var(--bc-canvas-deep, #160f12); }
 .seo-boot h2 { font-size: 18px; margin: 18px 0 6px; }
 .seo-boot a { color: #b5566e; }
 .seo-boot ul { margin: 4px 0 12px; padding-left: 18px; }
+
+/* ── Mobile header: stack the logo on its own centred line, with the action
+   buttons (home · heart · store · pay-it-forward · cart · account) centred in a
+   single row beneath it. Fixes small Android / sub-iPhone-Max screens where the
+   single-row header pushed the right-hand buttons off the edge. ── */
+@media (max-width: 767px) {
+  .site-nav { display: none; }
+  .site-header-inner {
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    height: auto;
+    min-height: 0;
+    padding: 8px 12px;
+    gap: 6px;
+    row-gap: 6px;
+  }
+  /* Logo takes the whole first line and centres. */
+  .site-header .sh-logo {
+    flex: 0 0 100%;
+    justify-content: center;
+    overflow: visible;
+  }
+  .site-header .sh-logo img,
+  .site-header .sh-logo svg { margin: 0 auto; }
+  /* Second line: home + heart (direct children) sit next to the right-hand
+     group (store/pif/cart/account); clear the margin-left:auto so the whole
+     set centres as one row instead of splitting to the edges. */
+  .site-header-inner > .home-headerbtn,
+  .site-header-inner > .fav-headerbtn { flex: 0 0 auto; }
+  .site-header-right { margin-left: 0; flex: 0 0 auto; }
+  .site-header .icon-row { gap: 6px; }
+}
+
+/* ── "Add app icon" entry in the Account section (sits under Themes) ── */
+.acct-appicon {
+  display: flex; align-items: center; gap: 12px; width: 100%;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 18px;
+  box-shadow: var(--shadow-sm); padding: 16px 18px; margin: 10px 0 14px;
+  font-family: inherit; font-size: 16px; font-weight: 700; color: var(--ink);
+  cursor: pointer; text-align: left;
+}
+.acct-appicon svg { color: var(--brand); flex: none; }
+.acct-appicon-chev { margin-left: auto; color: var(--brand); font-size: 22px; line-height: 1; opacity: .7; }
+.acct-appicon:active { transform: scale(0.995); }
+
+/* ── Add-app-icon guide (visual home-screen install steps) ── */
+.aai-backdrop { align-items: flex-end; }
+.aai-sheet {
+  background: var(--surface); color: var(--ink);
+  width: 100%; max-width: var(--app-w, 480px); max-height: 92vh; overflow-y: auto;
+  border-radius: 24px 24px 0 0; position: relative; animation: slideup .22s ease;
+  padding: 26px 22px calc(24px + env(safe-area-inset-bottom));
+}
+@media (min-width: 720px) {
+  .aai-backdrop { align-items: center; }
+  .aai-sheet { border-radius: 24px; max-width: 460px; padding-bottom: 26px; }
+}
+.aai-close {
+  position: absolute; top: 14px; right: 14px; width: 34px; height: 34px; border-radius: 50%;
+  border: none; background: color-mix(in srgb, var(--ink) 9%, transparent); color: var(--ink);
+  font-size: 17px; cursor: pointer; z-index: 2;
+}
+.aai-head { text-align: center; margin-bottom: 16px; }
+.aai-logo {
+  width: 56px; height: 56px; border-radius: 16px; object-fit: cover;
+  display: block; margin: 0 auto 12px; box-shadow: var(--shadow-sm);
+}
+.aai-logo-fallback {
+  display: grid; place-items: center; background: var(--brand); color: #fff;
+  font-family: Georgia, serif; font-weight: 700; font-size: 26px;
+}
+.aai-title { margin: 0 0 6px; font-family: Georgia, serif; font-size: 20px; line-height: 1.25; }
+.aai-sub { margin: 0; color: var(--muted); font-size: 14px; }
+.aai-tabs {
+  display: flex; gap: 4px; margin: 2px auto 10px; max-width: 320px;
+  background: color-mix(in srgb, var(--ink) 7%, transparent); border-radius: 999px; padding: 4px;
+}
+.aai-tab {
+  flex: 1; border: none; background: none; cursor: pointer; padding: 9px 8px; border-radius: 999px;
+  font-family: inherit; font-size: 13.5px; font-weight: 700; color: var(--muted);
+  transition: background .15s ease, color .15s ease;
+}
+.aai-tab.on { background: var(--surface); color: var(--brand); box-shadow: var(--shadow-sm); }
+.aai-hint {
+  text-align: center; margin: 0 0 14px; font-size: 11.5px; letter-spacing: .4px;
+  color: var(--muted); text-transform: uppercase;
+}
+.aai-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+.aai-step {
+  display: grid; grid-template-columns: auto auto 1fr; align-items: center; gap: 14px;
+  background: color-mix(in srgb, var(--brand) 7%, var(--surface));
+  border: 1px solid var(--line); border-radius: 16px; padding: 13px 15px;
+}
+.aai-step-num {
+  width: 26px; height: 26px; border-radius: 50%; background: var(--brand); color: #fff;
+  display: grid; place-items: center; font-weight: 800; font-size: 14px; flex: none;
+}
+.aai-step-glyph { color: var(--brand); display: grid; place-items: center; }
+.aai-step-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.aai-step-title { font-weight: 700; font-size: 15px; }
+.aai-step-body { font-size: 12.5px; color: var(--muted); line-height: 1.45; }
+.aai-install {
+  margin-top: 16px; width: 100%; display: inline-flex; align-items: center; justify-content: center;
+  gap: 10px; border: none; border-radius: 14px; padding: 14px; cursor: pointer;
+  background: var(--brand); color: #fff; font-family: inherit; font-weight: 800; font-size: 15px;
+}
+.aai-install svg { color: #fff; }
+.aai-done { text-align: center; margin: 12px 0 0; color: var(--brand); font-weight: 700; font-size: 14px; }

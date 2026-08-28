@@ -21,7 +21,7 @@ import GiftClaim from './components/GiftClaim.jsx';
 import Logo from './components/Logo.jsx';
 import EffectOverlay from './components/EffectOverlay.jsx';
 import SeasonalPerimeter from './components/SeasonalPerimeter.jsx';
-import { AccountIcon, ThemeIcon, StoreIcon, SlotIcon, CartIcon, HeartIcon, CupIcon } from './components/icons.jsx';
+import { AccountIcon, ThemeIcon, StoreIcon, SlotIcon, CartIcon, HeartIcon, CupIcon, HomeIcon } from './components/icons.jsx';
 import Favorites from './components/Favorites.jsx';
 import StorePage from './components/StorePage.jsx';
 import ReservationForm from './components/ReservationForm.jsx';
@@ -1161,6 +1161,15 @@ export default function App() {
         <div className="site-header-inner">
           <button className="logo-wrap sh-logo" onClick={goMenu} aria-label="Home">
             {config.logoUrl ? <img src={imgUrl(config.logoUrl, 400)} alt={config.storeName || 'Home'} className="topbar-logo" fetchpriority="high" /> : <Logo />}
+          </button>
+          <button
+            type="button"
+            className="iconbtn home-headerbtn"
+            aria-label="Home"
+            title="Home"
+            onClick={goMenu}
+          >
+            <HomeIcon size={20} />
           </button>
           <button
             type="button"

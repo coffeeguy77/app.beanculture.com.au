@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { api, formatMoney } from '../api.js';
 import GiftCards from './GiftCards.jsx';
 import InstallButton from './InstallButton.jsx';
+import AddAppIcon from './AddAppIcon.jsx';
 import { HeartIcon, ThemeIcon } from './icons.jsx';
 
 /* ── little stroke icons (match the store page line style) ───────────────── */
@@ -69,6 +70,7 @@ export default function Account({ user, currency, config, onSignIn, onSignOut, o
   const [filter, setFilter] = useState('all');       // all | open | completed
   const [visible, setVisible] = useState(6);
   const [detail, setDetail] = useState(null);        // order shown in the detail modal
+  const [showInstall, setShowInstall] = useState(false); // "Add app icon" guide
   const [savedFavs, setSavedFavs] = useState(() => new Set()); // order ids just saved to favourites
   const [coffeeGifts, setCoffeeGifts] = useState(null); // { sent, received }
   const [coffeeTab, setCoffeeTab] = useState('received'); // received | sent
@@ -370,6 +372,15 @@ function pifStatusPill(status) {
               <ThemeIcon size={20} /> <span>Themes</span>
             </button>
           )}
+          {/* Add app icon: visual home-screen install guide (all screen sizes). */}
+          <button type="button" className="acct-appicon" onClick={() => setShowInstall(true)}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <rect x="5" y="2.5" width="14" height="19" rx="3" />
+              <path d="M12 8.2v5.6M9.2 11h5.6" />
+            </svg>
+            <span>Add app icon</span>
+            <span className="acct-appicon-chev" aria-hidden="true">›</span>
+          </button>
           {section === 'account' && (
             <>
               <header className="acct-welcome">
@@ -397,6 +408,11 @@ function pifStatusPill(status) {
           <InstallButton />
         </div>
       </div>
+
+      {/* Add-app-icon guide */}
+      {showInstall && (
+        <AddAppIcon config={config} storeName={config?.storeName || 'Bean Culture'} onClose={() => setShowInstall(false)} />
+      )}
 
       {/* Gift-card flow */}
       {gift && config && (

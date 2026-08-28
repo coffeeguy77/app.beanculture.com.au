@@ -25,6 +25,18 @@ export function ThemeIcon({ size = 22 }) {
   );
 }
 
+// Home (returns to the main menu screen) — a simple pitched-roof house, kept
+// deliberately distinct from the awning-style storefront icon below.
+export function HomeIcon({ size = 22 }) {
+  return (
+    <svg {...base(size)}>
+      <path d="M4 11 12 4l8 7" />
+      <path d="M6 9.7V20h12V9.7" />
+      <path d="M10 20v-5.2h4V20" />
+    </svg>
+  );
+}
+
 // Storefront (Store / About page)
 export function StoreIcon({ size = 22 }) {
   return (
