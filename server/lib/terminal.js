@@ -57,12 +57,15 @@ async function createCheckout({ amountMoney, deviceId, orderId, referenceId, not
     },
     deadline_duration: 'PT5M', // customer has 5 minutes to tap/insert
   };
-  if (orderId) checkout.order_id = orderId;
+  if (orderId) { checkout.order_id = orderId; checkout.show_itemized_cart = true; }
+  console.log('[terminal] createCheckout →', JSON.stringify({ deviceId, orderId, amount: amountMoney && amountMoney.amount }));
   const data = await squareFetch('/v2/terminals/checkouts', {
     method: 'POST',
     body: { idempotency_key: idem(), checkout },
   });
-  return data.checkout; // { id, status: 'PENDING', ... }
+  const c = data.checkout || {};
+  console.log('[terminal] checkout created ←', JSON.stringify({ id: c.id, status: c.status, deviceId: c.device_options && c.device_options.device_id }));
+  return c; // { id, status: 'PENDING', ... }
 }
 
 async function getCheckout(id) {

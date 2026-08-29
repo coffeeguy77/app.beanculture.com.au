@@ -1097,6 +1097,7 @@ app.post('/api/pos/order', async (req, res) => {
       } catch (e) {
         // Checkout couldn't start — cancel the just-created order so no orphan
         // hits the kitchen, and surface the reason.
+        console.warn('[pos] terminal checkout FAILED:', e.message);
         await orders.cancelOrder(order.id).catch(() => {});
         return res.status(502).json({ error: `Could not start the card payment: ${e.message}` });
       }
@@ -1138,6 +1139,7 @@ async function reconcileCheckout(id, checkoutObj, fallbackOrderId) {
   const c = checkoutObj || await terminal.getCheckout(id);
   const phase = terminal.phaseOf(c);
   const paymentId = (c.payment_ids && c.payment_ids[0]) || null;
+  console.log('[terminal] reconcile', JSON.stringify({ id, sqStatus: c.status, phase, cancelReason: c.cancel_reason || null, deviceId: c.device_options && c.device_options.device_id }));
   const row = await db.posPaymentGet(id).catch(() => null);
   const orderId = (row && row.square_order_id) || fallbackOrderId || null;
   const pos = getSettings().pos || {};
@@ -1199,8 +1201,12 @@ app.get('/api/pos/terminal/pair/:id', async (req, res) => {
 });
 app.get('/api/pos/terminal/devices', async (req, res) => {
   if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
-  try { res.json({ devices: await terminal.listDevices(), current: (getSettings().pos || {}).terminalDeviceId || '' }); }
-  catch (e) { res.status(502).json({ error: e.message }); }
+  try {
+    const devices = await terminal.listDevices();
+    const current = (getSettings().pos || {}).terminalDeviceId || '';
+    console.log('[terminal] devices', JSON.stringify({ current, devices: devices.map((d) => ({ id: d.id, name: d.name, status: d.status })) }));
+    res.json({ devices, current });
+  } catch (e) { res.status(502).json({ error: e.message }); }
 });
 // Assign the reader this venue uses for card payments (persists to settings).
 app.post('/api/pos/terminal/select', async (req, res) => {
