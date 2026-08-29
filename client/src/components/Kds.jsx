@@ -34,7 +34,7 @@ function chime() {
 const two = (n) => String(n).padStart(2, '0');
 const fmtAge = (sec) => `${Math.floor(sec / 60)}:${two(sec % 60)}`;
 
-const DEFAULT_LAYOUT = { cols: 'auto', density: 'comfortable', text: 'normal' };
+const DEFAULT_LAYOUT = { cols: 'auto', density: 'comfortable', text: 'normal', allDay: 'hide' };
 function loadLayout() {
   try { return { ...DEFAULT_LAYOUT, ...(JSON.parse(localStorage.getItem(LAYOUT_KEY) || '{}') || {}) }; }
   catch { return { ...DEFAULT_LAYOUT }; }
@@ -63,6 +63,7 @@ export default function Kds({ onExit }) {
   const cols = layout.cols || 'auto';
   const density = layout.density || 'comfortable';
   const textSize = layout.text || 'normal';
+  const allDayMode = layout.allDay || 'hide';
   const setLayoutKey = (k, v) => setLayout((L) => ({ ...L, [k]: v }));
 
   async function loadConfig(p) {
@@ -224,7 +225,6 @@ export default function Kds({ onExit }) {
           <button className={`kds-icon${showLayout ? ' on' : ''}`} title="Layout" onClick={() => setShowLayout((v) => !v)}>▦</button>
           <button className="kds-icon" title={soundOn ? 'Mute new-order sound' : 'Unmute'} onClick={() => setMuted((m) => !m)}>{soundOn ? '🔔' : '🔕'}</button>
           <button className="kds-icon" title="Refresh" onClick={() => loadTickets()}>⟳</button>
-          <button className="kds-icon" title="Exit" onClick={onExit}>✕</button>
         </div>
       </header>
 
@@ -242,6 +242,9 @@ export default function Kds({ onExit }) {
             <Seg lbl="Text size" value={textSize}
               options={[{ v: 'normal', t: 'Normal' }, { v: 'large', t: 'Large' }]}
               onPick={(v) => setLayoutKey('text', v)} />
+            <Seg lbl="All-day summary" value={allDayMode}
+              options={[{ v: 'hide', t: 'Hide' }, { v: 'show', t: 'Show' }]}
+              onPick={(v) => setLayoutKey('allDay', v)} />
             <p className="kds-pop-hint">Auto adapts to this screen’s size and orientation. Saved on this device.</p>
 
             {!standalone && (
@@ -260,7 +263,7 @@ export default function Kds({ onExit }) {
         </>
       )}
 
-      {allDay.length > 0 && (
+      {allDayMode === 'show' && allDay.length > 0 && (
         <div className="kds-allday">
           <span className="kds-allday-label">All day</span>
           {allDay.slice(0, 12).map(([name, n]) => (
