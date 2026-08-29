@@ -59,6 +59,70 @@ export function ClockIcon({ size = 22 }) {
   );
 }
 
+// Location pin (customer store selector) — matches the stroke-icon set.
+export function PinIcon({ size = 22 }) {
+  return (
+    <svg {...base(size)}>
+      <path d="M12 21c4.5-4.2 6.8-7.6 6.8-10.6A6.8 6.8 0 0 0 12 3.6a6.8 6.8 0 0 0-6.8 6.8C5.2 13.4 7.5 16.8 12 21z" />
+      <circle cx="12" cy="10.3" r="2.4" />
+    </svg>
+  );
+}
+
+// Weather (current-temperature chip). Stroke/outline style to match the site;
+// `condition` picks the glyph, falling back to a plain sun.
+export function WeatherIcon({ condition, size = 20 }) {
+  const cloud = <path d="M7.5 18h9a3.3 3.3 0 0 0 .3-6.6A5 5 0 0 0 7.5 12 3 3 0 0 0 7.5 18z" />;
+  switch (condition) {
+    case 'partly':
+      return (
+        <svg {...base(size)}>
+          <circle cx="8" cy="8" r="3" />
+          <path d="M8 2.5V4M3.3 8H1.8M13 3l-1 1M3 3l1 1M2.5 13H1" />
+          <path d="M9.5 18.5h8a3 3 0 0 0 .3-6A4.5 4.5 0 0 0 9.7 13 2.75 2.75 0 0 0 9.5 18.5z" />
+        </svg>
+      );
+    case 'cloudy':
+      return <svg {...base(size)}>{cloud}</svg>;
+    case 'fog':
+      return (
+        <svg {...base(size)}>
+          <path d="M7 13.5h9a3.1 3.1 0 0 0 .3-6.2A4.7 4.7 0 0 0 7 8 2.8 2.8 0 0 0 7 13.5z" />
+          <path d="M4 17h16M6 20h12" />
+        </svg>
+      );
+    case 'rain':
+      return (
+        <svg {...base(size)}>
+          {cloud}
+          <path d="M9 20l-1 2M13 20l-1 2M17 20l-1 2" />
+        </svg>
+      );
+    case 'snow':
+      return (
+        <svg {...base(size)}>
+          {cloud}
+          <path d="M9 21h.01M13 21h.01M17 21h.01" />
+        </svg>
+      );
+    case 'storm':
+      return (
+        <svg {...base(size)}>
+          {cloud}
+          <path d="M13 19l-3 3h3l-1.5 2.5" />
+        </svg>
+      );
+    case 'sunny':
+    default:
+      return (
+        <svg {...base(size)}>
+          <circle cx="12" cy="12" r="4.2" />
+          <path d="M12 2.5V5M12 19v2.5M4.2 4.2l1.8 1.8M18 18l1.8 1.8M2.5 12H5M19 12h2.5M4.2 19.8 6 18M18 6l1.8-1.8" />
+        </svg>
+      );
+  }
+}
+
 // Coffee mug (item image fallback)
 export function MugIcon({ size = 30 }) {
   return (

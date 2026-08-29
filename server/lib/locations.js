@@ -66,7 +66,10 @@ function hiddenSet(locId) {
 // (Square.payments) is already initialised with a Square location id — it must
 // tokenise against the store the customer chose so the charge lands there.
 function publicList() {
-  return active().map((l) => ({ id: l.id, name: l.name, address: l.address, squareLocationId: l.squareLocationId }));
+  // `_default` flags the synthesised single-store fallback so the client can
+  // tell a genuinely-configured single store (show its name in the header) from
+  // a plain single-site deploy that never touched Locations (show nothing).
+  return active().map((l) => ({ id: l.id, name: l.name, address: l.address, squareLocationId: l.squareLocationId, _default: !!l._default }));
 }
 
 module.exports = { list, active, resolve, squareIdFor, hiddenSet, publicList, slug };

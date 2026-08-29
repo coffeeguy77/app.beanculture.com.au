@@ -23,7 +23,7 @@ import GiftClaim from './components/GiftClaim.jsx';
 import Logo from './components/Logo.jsx';
 import EffectOverlay from './components/EffectOverlay.jsx';
 import SeasonalPerimeter from './components/SeasonalPerimeter.jsx';
-import { AccountIcon, ThemeIcon, StoreIcon, SlotIcon, CartIcon, HeartIcon, CupIcon, HomeIcon } from './components/icons.jsx';
+import { AccountIcon, ThemeIcon, StoreIcon, SlotIcon, CartIcon, HeartIcon, CupIcon, HomeIcon, PinIcon, WeatherIcon } from './components/icons.jsx';
 import Favorites from './components/Favorites.jsx';
 import StorePage from './components/StorePage.jsx';
 import ReservationForm from './components/ReservationForm.jsx';
@@ -1191,10 +1191,14 @@ export default function App() {
   };
   // Optional subtle current-temperature chip (admin toggle). Reads config.weather
   // only — the server resolves everything; no weather logic lives here.
-  const WX_EMOJI = { sunny: '☀️', partly: '⛅', cloudy: '☁️', fog: '🌫️', rain: '🌧️', snow: '❄️', storm: '⛈️' };
   const wx = config.weather;
   const weatherChip = (wx && wx.temp != null)
-    ? <span className="wx-chip" title={wx.conditionLabel || ''}>{wx.condition && WX_EMOJI[wx.condition] ? `${WX_EMOJI[wx.condition]} ` : ''}{wx.temp}&deg;C</span>
+    ? (
+      <span className="wx-chip" title={wx.conditionLabel || ''}>
+        <WeatherIcon condition={wx.condition} size={20} />
+        <span className="wx-temp">{wx.temp}&deg;C</span>
+      </span>
+    )
     : null;
   const notices = [];
   if (!storeOpen) {
@@ -1307,18 +1311,40 @@ export default function App() {
           </div>
         </div>
       </header>
-      {config && (config.locations || []).length > 1 && chosenLocation && (view === 'home' || !isMobile) && (
-        <div className="store-bar">
-          <button type="button" className="store-chip" onClick={() => setShowStorePicker(true)}>
-            <span className="store-chip-pin">📍</span>
-            <span className="store-chip-name">{chosenLocation.name}</span>
-            <span className="store-chip-caret">▾</span>
-          </button>
-        </div>
-      )}
-      {(notices.length > 0 || weatherChip) && (view === 'home' || !isMobile) && (
+      {(() => {
+        const locsArr = (config && config.locations) || [];
+        const multi = locsArr.length > 1;
+        // Show the store name for a real single store the owner configured, but
+        // not for the synthesised single-site default (nothing to choose).
+        const showChip = chosenLocation && (multi || (locsArr.length === 1 && !locsArr[0]._default));
+        if (!(showChip || weatherChip) || !(view === 'home' || !isMobile)) return null;
+        return (
+          <div className="store-bar">
+            {showChip && (multi ? (
+              <button type="button" className="store-chip switchable" onClick={() => setShowStorePicker(true)} title="Change store">
+                <span className="store-chip-icon"><StoreIcon size={22} /></span>
+                <span className="store-chip-text">
+                  <span className="store-chip-label">Ordering from</span>
+                  <span className="store-chip-name">{chosenLocation.name}</span>
+                </span>
+                <span className="store-chip-change">Change<span className="store-chip-caret" aria-hidden="true">▾</span></span>
+              </button>
+            ) : (
+              <div className="store-chip">
+                <span className="store-chip-icon"><StoreIcon size={22} /></span>
+                <span className="store-chip-text">
+                  <span className="store-chip-label">Ordering from</span>
+                  <span className="store-chip-name">{chosenLocation.name}</span>
+                </span>
+              </div>
+            ))}
+            {weatherChip}
+          </div>
+        );
+      })()}
+      {notices.length > 0 && (view === 'home' || !isMobile) && (
         <div ref={hoursRef} className="hours-bar">
-          <div className="hours-inner hours-inner-wx"><SiteNotice notices={notices} />{weatherChip}</div>
+          <div className="hours-inner"><SiteNotice notices={notices} /></div>
         </div>
       )}
 

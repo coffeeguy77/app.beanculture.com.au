@@ -183,6 +183,7 @@ export default function Admin({ onExit }) {
   const [exclSearch, setExclSearch] = useState('');    // product search in the exclusions picker
   const [offeredIds, setOfferedIds] = useState(null);  // Set of item ids actually offered in the app menu
   const [sqLocations, setSqLocations] = useState([]);  // this Square account's locations (id + name)
+  const [sqConfiguredId, setSqConfiguredId] = useState(''); // env/main Square location id (the current single store)
   const [collapsedSecs, setCollapsedSecs] = useState({}); // preset section name -> collapsed
   const [deleteLock, setDeleteLock] = useState(true); // guard against accidental section deletes
   const [removedCats, setRemovedCats] = useState(() => new Set()); // categories removed this session
@@ -450,6 +451,7 @@ export default function Admin({ onExit }) {
       const r = await fetch(`/api/admin/square-locations?pass=${encodeURIComponent(pass)}`);
       const d = await r.json();
       if (r.ok && Array.isArray(d.locations)) setSqLocations(d.locations);
+      if (r.ok && d.configuredLocationId) setSqConfiguredId(d.configuredLocationId);
     } catch {}
   }
 
@@ -906,6 +908,14 @@ export default function Admin({ onExit }) {
   const locs = Array.isArray(s?.locations) ? s.locations : [];
   const setLocs = (arr) => set({ locations: arr });
   const addLoc = () => setLocs([...locs, { id: 'loc' + Date.now().toString(36), name: 'New store', squareLocationId: '', address: '', active: true, hiddenItemIds: [] }]);
+  // Seed the current single store (the env/main Square location) as the FIRST
+  // store, so adding a second store never silently drops it. Prefills the name
+  // + Square id from the account's configured main location.
+  const mainSq = sqLocations.find((sl) => sl.id === sqConfiguredId) || null;
+  const addMainLoc = () => setLocs([
+    { id: 'loc' + Date.now().toString(36), name: (mainSq && mainSq.name) || 'Bean Culture', squareLocationId: sqConfiguredId || '', address: (mainSq && mainSq.address) || '', active: true, hiddenItemIds: [] },
+    ...locs,
+  ]);
   const updLoc = (id, patch) => setLocs(locs.map((l) => (l.id === id ? { ...l, ...patch } : l)));
   const rmLoc = (id) => setLocs(locs.filter((l) => l.id !== id));
   const toggleLocItem = (locId, itemId) => {
@@ -915,7 +925,14 @@ export default function Admin({ onExit }) {
     updLoc(locId, { hiddenItemIds: [...hidden] });
   };
   // Offered products (with names) for the per-location availability toggles.
-  const offeredProducts = allProducts.filter((p) => !offeredIds || offeredIds === false || offeredIds.has(p.id));
+  // Prefer the app's offered menu when we have it, but fall back to the full
+  // Square product list whenever the menu-derived filter isn't a populated Set
+  // (null/false while loading or unavailable, or an empty Set) — a pop-up store
+  // may well sell items that aren't in the main app menu, so there must always
+  // be something to tick.
+  const offeredProducts = (offeredIds instanceof Set && offeredIds.size)
+    ? allProducts.filter((p) => offeredIds.has(p.id))
+    : allProducts;
 
   const availItems = availability.items || {};
   const availExcl = availability.exclusions || { enabled: true, days: {} };
@@ -3156,10 +3173,20 @@ export default function Admin({ onExit }) {
                   <div className="group-title">Your stores</div>
                   <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 0 }}>
                     {locs.length === 0
-                      ? 'You’re running as a single store right now. Add your existing store first (pick its Square location), then add the new one. Once any store is listed here, the app uses this list.'
-                      : 'Each store maps to one of your Square locations. Set up each location’s bank account in the Square dashboard so its takings deposit separately. Remember to press '}
+                      ? 'You’re running as a single store right now. Add your existing store first (the button below prefills it), then add the new one. The customer store picker only appears once TWO or more active stores are listed — with a single store the app just uses it. Once any store is listed here, the app uses this list.'
+                      : 'Each store maps to one of your Square locations. Set up each location’s bank account in the Square dashboard so its takings deposit separately. The customer store picker appears once two or more stores are active. Remember to press '}
                     {locs.length > 0 && <strong>Save changes</strong>}{locs.length > 0 ? '.' : ''}
                   </p>
+                  {locs.length === 0 && (
+                    <button type="button" className="btn" style={{ marginBottom: 12 }} onClick={addMainLoc}>
+                      ➕ Add my current store{mainSq ? ` (${mainSq.name})` : ''} first
+                    </button>
+                  )}
+                  {locs.length === 1 && (
+                    <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 0, color: 'var(--warn, #b26b00)' }}>
+                      Only one store is listed, so customers won’t see a store picker yet. Add your second store below to switch on the picker.
+                    </p>
+                  )}
 
                   {locs.map((l) => (
                     <div key={l.id} className="avail-sched" style={{ marginBottom: 12 }}>
@@ -3190,7 +3217,8 @@ export default function Admin({ onExit }) {
                           <summary>Items available at {l.name || 'this store'} ({offeredProducts.length - (l.hiddenItemIds || []).length}/{offeredProducts.length})</summary>
                           <p className="muted" style={{ fontSize: 'var(--fs-xs)', margin: '6px 0' }}>Untick anything this store doesn't make (e.g. hot food at a takeaway site). Unticked items are hidden from this store's menu.</p>
                           <div className="loc-avail-list">
-                            {offeredProducts.length === 0 && <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>Loading products…</span>}
+                            {allProducts.length === 0 && offeredIds === null && <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>Loading products…</span>}
+                            {allProducts.length === 0 && offeredIds !== null && <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>No products found in Square for this account.</span>}
                             {offeredProducts.map((p) => {
                               const hidden = (l.hiddenItemIds || []).includes(p.id);
                               return (
