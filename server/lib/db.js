@@ -183,6 +183,24 @@ async function init(attempt = 1) {
     `);
     await pool.query('CREATE INDEX IF NOT EXISTS kds_updated ON kds_tickets (updated_at)');
 
+    // Counter-POS order audit (reconciliation / reports). Square remains the
+    // source of truth for the money; this is a local cross-reference log.
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS pos_orders (
+        id bigserial primary key,
+        square_order_id text,
+        square_payment_id text,
+        source text,
+        tender text,
+        amount integer default 0,
+        status text,
+        device_name text,
+        created_at timestamptz default now()
+      )
+    `);
+    await pool.query('CREATE INDEX IF NOT EXISTS pos_orders_created ON pos_orders (created_at)');
+    await pool.query('CREATE UNIQUE INDEX IF NOT EXISTS pos_orders_sqid ON pos_orders (square_order_id) WHERE square_order_id IS NOT NULL');
+
     const r = await pool.query("SELECT data FROM app_settings WHERE id = 'main'");
     cache = (r.rows[0] && r.rows[0].data) || {};
     ready = true;
@@ -793,9 +811,25 @@ async function kdsSetStatus(orderId, zone, status) {
   return r.rows[0];
 }
 
+// Record a counter-POS sale for reconciliation. Idempotent on square_order_id.
+async function posRecordOrder({ squareOrderId, squarePaymentId, source, tender, amount, status, deviceName }) {
+  if (!pool) return null;
+  const r = await pool.query(
+    `INSERT INTO pos_orders (square_order_id, square_payment_id, source, tender, amount, status, device_name)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
+     ON CONFLICT (square_order_id) DO UPDATE SET
+       square_payment_id = COALESCE(EXCLUDED.square_payment_id, pos_orders.square_payment_id),
+       tender = EXCLUDED.tender, status = EXCLUDED.status
+     RETURNING id`,
+    [squareOrderId, squarePaymentId || null, source || null, tender || null, amount || 0, status || null, deviceName || null]
+  );
+  return r.rows[0];
+}
+
 module.exports = {
   init, getOverrides, saveOverrides,
   kdsGetStates, kdsSetStatus,
+  posRecordOrder,
   insertScheduled, listScheduledByCustomer, cancelScheduled, claimDue, updateScheduled,
   track, getAnalytics,
   insertMessage, listMessages, markMessageHandled,

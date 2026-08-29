@@ -1,9 +1,6 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import { formatMoney, imgUrl } from '../api.js';
-
-function makeKey(item, variationId, modifierIds, note) {
-  return [item.id, variationId, [...modifierIds].sort().join(','), note].join('|');
-}
+import { useItemConfig } from '../hooks/useItemConfig.js';
 
 // Square descriptions arrive as a run-on paragraph with known coffee labels
 // (Origin, Tasting Notes, Process, ...) broken onto their own lines server-side
@@ -49,65 +46,15 @@ function parseDescription(text) {
 }
 
 export default function ItemModal({ item, currency, onClose, onAdd }) {
-  const firstAvail = item.variations.find((v) => !v.soldOut) || item.variations[0];
-  const [variationId, setVariationId] = useState(firstAvail?.id);
-  // Preset tiles arrive with default-on options; seed the selection from them.
-  const [selected, setSelected] = useState(() => {
-    const init = {};
-    const d = item.defaults || {};
-    for (const gid of Object.keys(d)) init[gid] = new Set(d[gid]);
-    return init;
-  });
-  const [qty, setQty] = useState(1);
-  const [note, setNote] = useState('');
-
-  const variation = item.variations.find((v) => v.id === variationId) || firstAvail;
-
-  function toggleModifier(group, mod) {
-    setSelected((prev) => {
-      const cur = new Set(prev[group.id] || []);
-      // "Pick exactly one" groups (max 1) act as single-select even if Square
-      // tags them MULTIPLE — the tick moves rather than needing a manual un-tick.
-      if (group.selectionType === 'SINGLE' || group.max === 1) {
-        // Pill behaviour: tapping the already-chosen option deselects it back
-        // to "none picked" instead of being stuck once chosen, like a radio
-        // button would be. Required groups (group.min > 0) are enforced at
-        // Add-to-cart time instead, so a customer can still freely clear their
-        // pick and reconsider while the sheet is open.
-        if (cur.has(mod.id)) cur.clear();
-        else { cur.clear(); cur.add(mod.id); }
-      } else if (cur.has(mod.id)) cur.delete(mod.id);
-      else {
-        if (group.max > 0 && cur.size >= group.max) return prev;
-        cur.add(mod.id);
-      }
-      return { ...prev, [group.id]: cur };
-    });
-  }
-
-  // Groups the customer hasn't satisfied yet (min selections not met) -- used
-  // to block Add-to-cart and to flag the offending group inline.
-  const unmetGroups = (item.modifierGroups || []).filter((group) => {
-    const need = group.min || 0;
-    if (need <= 0) return false;
-    const have = (selected[group.id]?.size) || 0;
-    return have < need;
-  });
-
-  const { modifierIds, modifierNames, modifierPrice } = useMemo(() => {
-    const ids = [], names = [];
-    let price = 0;
-    for (const group of item.modifierGroups || []) {
-      const chosen = selected[group.id];
-      if (!chosen) continue;
-      for (const mod of group.modifiers) {
-        if (chosen.has(mod.id)) { ids.push(mod.id); names.push(mod.name); price += mod.price || 0; }
-      }
-    }
-    return { modifierIds: ids, modifierNames: names, modifierPrice: price };
-  }, [selected, item]);
-
-  const unitPrice = (variation?.price || 0) + modifierPrice;
+  // Selection / validation / pricing / cart-item build all come from the shared
+  // hook, so the customer sheet and the staff POS produce identical results.
+  const {
+    variationId, setVariationId, variation,
+    selected, toggleModifier,
+    unmetGroups, unitPrice,
+    qty, setQty, note, setNote,
+    buildCartItem,
+  } = useItemConfig(item);
 
   const { intro, facts } = useMemo(() => parseDescription(item.description), [item.description]);
   const originFact = facts.find((f) => /^origin/i.test(f.label));
@@ -133,20 +80,7 @@ export default function ItemModal({ item, currency, onClose, onAdd }) {
   const footerSummary = summaryParts.join(' · ');
 
   function handleAdd() {
-    // Locked modifiers (from a preset) are always applied and hidden; their
-    // price is already baked into the variation price, so only add their ids.
-    const lockIds = item.lockedModifierIds || [];
-    const lockNames = item.lockedModifierNames || [];
-    const allIds = [...modifierIds, ...lockIds];
-    const allNames = [...modifierNames, ...lockNames];
-    onAdd({
-      key: makeKey(item, variationId, allIds, note),
-      itemId: item.presetSourceItemId || item.id, itemName: item.name,
-      category: item.category || null,
-      image: item.image || null,
-      variationId, variationName: variation?.name || '',
-      modifierIds: allIds, modifierNames: allNames, unitPrice, quantity: qty, note: note.trim(),
-    });
+    onAdd(buildCartItem());
   }
 
   let sectionNum = 0;

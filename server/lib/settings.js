@@ -363,6 +363,15 @@ const DEFAULTS = {
     sound: true,        // chime on a new ticket
     showPrepStep: true, // show a "Start" (preparing) step before the bump
   },
+  // ── Kiosk POS + adaptive KDS (/pos). A staff register that idles on the KDS.
+  //    Phase 1: cash + send-to-kitchen tenders; Square Terminal card is next.
+  pos: {
+    enabled: true,
+    deviceName: 'Front counter',
+    mode: 'pos_kds',        // 'pos_kds' (idle on KDS) | 'pos' | 'kds'
+    autoReturnSec: 3,       // success screen delay before returning to the KDS
+    sourceName: 'Bean Culture POS', // Square order source tag for counter sales
+  },
   // ── Smart Campaigns: contextual merchandising driven by rules (Weather first;
   //    future: time, holidays, stock, loyalty…). A single server-side resolver
   //    turns these into banner placements the homepage + categories consume — no

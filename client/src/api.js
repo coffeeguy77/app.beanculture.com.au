@@ -72,6 +72,9 @@ export const api = {
   adminPifResendSms: (pass, id) => req(`/api/admin/pay-it-forward/gifts/${encodeURIComponent(id)}/resend-sms?pass=${encodeURIComponent(pass || '')}`, { method: 'POST' }),
   adminPifCancel: (pass, id) => req(`/api/admin/pay-it-forward/gifts/${encodeURIComponent(id)}/cancel?pass=${encodeURIComponent(pass || '')}`, { method: 'POST' }),
   adminPifRefund: (pass, id, status) => req(`/api/admin/pay-it-forward/gifts/${encodeURIComponent(id)}/refund?pass=${encodeURIComponent(pass || '')}`, { method: 'POST', body: JSON.stringify({ status }) }),
+  // Kiosk POS
+  posConfig: (pass) => req(`/api/pos/config?pass=${encodeURIComponent(pass || '')}`),
+  posOrder: (pass, payload) => req(`/api/pos/order?pass=${encodeURIComponent(pass || '')}`, { method: 'POST', body: JSON.stringify(payload) }),
 };
 
 // Serve Cloudinary images auto-format (WebP/AVIF), auto-quality and sized to the

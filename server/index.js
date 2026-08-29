@@ -1034,6 +1034,69 @@ function kdsBroadcast(reason) {
 }
 
 // Zone config + display thresholds for the screen (no order data).
+// ── Kiosk POS ──────────────────────────────────────────────────────────────
+// Staff register + adaptive KDS (/pos). Reuses the customer catalogue, the
+// shared item-config logic, orders.createOrder and the KDS. Phase 1 tenders:
+// cash (Square CASH payment) and send-to-kitchen (unpaid OPEN order). Card via
+// Square Terminal is the next phase.
+app.get('/api/pos/config', (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  const p = getSettings().pos || {};
+  res.json({
+    deviceName: p.deviceName || 'Front counter',
+    mode: ['pos_kds', 'pos', 'kds'].includes(p.mode) ? p.mode : 'pos_kds',
+    autoReturnSec: Number(p.autoReturnSec) >= 0 ? Number(p.autoReturnSec) : 3,
+    staff: 'Staff',
+    dbEnabled: db.enabled,
+  });
+});
+
+app.post('/api/pos/order', async (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const { cart, dineIn, table, name, tender, cashGiven } = req.body || {};
+    if (!Array.isArray(cart) || cart.length === 0) return res.status(400).json({ error: 'Cart is empty' });
+    if (!['cash', 'unpaid'].includes(tender)) return res.status(400).json({ error: 'Unsupported tender' });
+    const pos = getSettings().pos || {};
+
+    // Server-authoritative order: Square re-prices from the variation/modifier
+    // ids, so the client total is display-only and cannot be tampered with.
+    const order = await orders.createOrder({
+      cart, dineIn: !!dineIn, table: table || '', name: name || '',
+      source: pos.sourceName || 'Bean Culture POS',
+    });
+    const amount = order.total_money ? order.total_money.amount : 0;
+    const currency = (order.total_money && order.total_money.currency) || sq.CURRENCY;
+
+    let payment = null;
+    if (tender === 'cash') {
+      const given = Math.max(amount, Math.round(Number(cashGiven) || amount));
+      payment = await orders.createCashPayment({
+        orderId: order.id,
+        amountMoney: { amount, currency },
+        buyerSuppliedMoney: { amount: given, currency },
+      });
+    }
+    // 'unpaid' leaves the order OPEN in Square; it still appears on the KDS.
+
+    // Best-effort audit row (only when a DB is configured).
+    try {
+      if (db.enabled && typeof db.posRecordOrder === 'function') {
+        await db.posRecordOrder({
+          squareOrderId: order.id, squarePaymentId: payment ? payment.id : null,
+          source: pos.sourceName || 'Bean Culture POS', tender, amount,
+          status: tender === 'cash' ? 'paid' : 'unpaid',
+          deviceName: pos.deviceName || 'Front counter',
+        });
+      }
+    } catch (e) { console.warn('[pos] audit record failed:', e.message); }
+
+    res.json({ orderId: order.id, total: amount, currency, tender, paymentId: payment ? payment.id : null });
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+
 app.get('/api/admin/kds/config', (req, res) => {
   if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
   const cfg = kds.kdsSettings();

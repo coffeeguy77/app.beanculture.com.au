@@ -40,7 +40,7 @@ function loadLayout() {
   catch { return { ...DEFAULT_LAYOUT }; }
 }
 
-export default function Kds({ onExit }) {
+export default function Kds({ onExit, embedded }) {
   const [pass, setPass] = useState(() => { try { return atob(localStorage.getItem('bc-admin-pass') || '') || ''; } catch { return ''; } });
   const [passInput, setPassInput] = useState('');
   const [needPass, setNeedPass] = useState(false);
@@ -193,7 +193,7 @@ export default function Kds({ onExit }) {
 
   const label = (t) => t.customerName || (t.dineIn ? (t.table ? `Table ${t.table}` : 'Dine-in') : `#${t.orderId.slice(-4)}`);
 
-  const rootClass = `kds-root${density === 'compact' ? ' kds-compact' : ''}${textSize === 'large' ? ' kds-lg' : ''}`;
+  const rootClass = `kds-root${embedded ? ' kds-embedded' : ''}${density === 'compact' ? ' kds-compact' : ''}${textSize === 'large' ? ' kds-lg' : ''}`;
   const gridStyle = cols === 'auto' ? undefined : { gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` };
 
   const Seg = ({ label: lbl, value, options, onPick }) => (

@@ -23,7 +23,7 @@ function buildNote({ dineIn, table }) {
   return dineIn ? `DINE-IN · Table ${table || '?'}` : 'TAKEAWAY';
 }
 
-async function createOrder({ cart, dineIn, table, name, coupon, customerId, pickupAt, idempotencyKey, note: customerNote, pifVoucher }) {
+async function createOrder({ cart, dineIn, table, name, coupon, customerId, pickupAt, idempotencyKey, note: customerNote, pifVoucher, source }) {
   if (!Array.isArray(cart) || cart.length === 0) throw new Error('Cart is empty');
   // Bake any per-combo locked modifiers into the combo lines before pricing, so
   // an item the owner locked into a combo (e.g. chips) is always charged even if
@@ -78,7 +78,9 @@ async function createOrder({ cart, dineIn, table, name, coupon, customerId, pick
     line_items: lineItems,
     fulfillments: [fulfillment],
     note: (buildNote({ dineIn, table }) + (cleanNote ? ` · ${cleanNote}` : '')).slice(0, 500),
-    source: { name: 'Bean Culture App' },
+    // Tag the origin so the KDS/reports can tell counter sales from app orders.
+    // Any "Bean Culture …" name is still highlighted as an in-house order.
+    source: { name: source || 'Bean Culture App' },
   };
   if (customerId) order.customer_id = customerId;
 
@@ -210,6 +212,23 @@ async function payZeroOrder(orderId, orderVersion) {
   return data.order;
 }
 
+// Record a CASH tender against an order (counter POS). Square's Payments API
+// accepts source_id 'CASH' with cash_details.buyer_supplied_money; autocomplete
+// settles the order so it reads as paid and reconciles in Square reporting.
+async function createCashPayment({ orderId, amountMoney, buyerSuppliedMoney }) {
+  const body = {
+    source_id: 'CASH',
+    idempotency_key: idem(),
+    amount_money: amountMoney,
+    order_id: orderId,
+    location_id: LOCATION_ID,
+    autocomplete: true,
+    cash_details: { buyer_supplied_money: buyerSuppliedMoney || amountMoney },
+  };
+  const data = await squareFetch('/v2/payments', { method: 'POST', body });
+  return data.payment;
+}
+
 async function getHistory(customerId, limit = 25) {
   if (!customerId) return [];
   const data = await squareFetch('/v2/orders/search', {
@@ -303,4 +322,4 @@ async function createReservationOrder({ name, phone, email, partySize, at, notes
   return data.order;
 }
 
-module.exports = { createOrder, getOrder, createPayment, authorizePayment, completePayment, cancelPayment, payZeroOrder, getHistory, createReservationOrder };
+module.exports = { createOrder, getOrder, createPayment, authorizePayment, completePayment, cancelPayment, payZeroOrder, createCashPayment, getHistory, createReservationOrder };
