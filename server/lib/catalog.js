@@ -733,8 +733,10 @@ async function getMenu(opts = {}) {
 
   // Availability overlay: kitchen sold-outs, day exclusions, and time+day menu
   // schedules — customer-facing only (the admin's full-menu view keeps every
-  // category/item visible so the pickers work).
-  if (applySelection) {
+  // category/item visible so the pickers work). skipAvailability lets the admin
+  // list the OFFERED products (selection applied) without the time/sold-out
+  // overlay, so managing sold-outs still shows every offered item off-hours.
+  if (applySelection && !opts.skipAvailability) {
     sections = applyAvailability(sections, getSettings());
   }
 

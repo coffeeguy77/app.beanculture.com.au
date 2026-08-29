@@ -986,6 +986,28 @@ app.post('/api/admin/availability/item', async (req, res) => {
   }
 });
 
+// ---- Admin: the ids of products actually OFFERED in the app menu ----
+// Selection applied (only offered items) but WITHOUT the time/sold-out overlay,
+// so the Sold-Out and Day-Exclusion tools show every offered product even when a
+// menu schedule is currently hiding its category. The admin filters the full
+// Square product list down to these ids so it never wades through items the app
+// doesn't sell.
+app.get('/api/admin/offered-products', async (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  res.setHeader('Cache-Control', 'no-store');
+  try {
+    const menu = await catalog.getMenu({ skipAvailability: true });
+    const ids = new Set();
+    for (const sec of (menu.categories || [])) {
+      if (sec.isCombo) continue; // combos are derived, not individually stocked
+      for (const it of (sec.items || [])) if (it && it.id) ids.add(it.id);
+    }
+    res.json({ ids: [...ids] });
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+
 // ═══════════════════════════════════════════════════════════════════════════
 //  Kitchen Display System (/kds bump screen)
 // ═══════════════════════════════════════════════════════════════════════════

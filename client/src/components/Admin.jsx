@@ -179,6 +179,7 @@ export default function Admin({ onExit }) {
   const [availBusy, setAvailBusy] = useState('');      // item id currently toggling
   const [exclDay, setExclDay] = useState(6);           // weekday being edited (default Saturday)
   const [exclSearch, setExclSearch] = useState('');    // product search in the exclusions picker
+  const [offeredIds, setOfferedIds] = useState(null);  // Set of item ids actually offered in the app menu
   const [collapsedSecs, setCollapsedSecs] = useState({}); // preset section name -> collapsed
   const [deleteLock, setDeleteLock] = useState(true); // guard against accidental section deletes
   const [removedCats, setRemovedCats] = useState(() => new Set()); // categories removed this session
@@ -374,6 +375,7 @@ export default function Admin({ onExit }) {
   }, [tab, pifFilter, pifSearch]);
   useEffect(() => {
     if (tab === 'smartcampaigns' && weatherStatus === null && !weatherBusy) loadWeather();
+    if (tab === 'availability' && offeredIds === null) loadOfferedIds();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
   useEffect(() => {
@@ -427,6 +429,16 @@ export default function Admin({ onExit }) {
     try { const d = await api.adminCustomers(pass); setUsers(d.users || []); }
     catch (e) { alert('Could not load users: ' + e.message); }
     finally { setUsersBusy(false); }
+  }
+  // Ids of products actually offered in the app menu (to refine the Sold Out /
+  // Day Exclusion lists so they don't wade through every Square product).
+  async function loadOfferedIds() {
+    try {
+      const r = await fetch(`/api/admin/offered-products?pass=${encodeURIComponent(pass)}`);
+      const d = await r.json();
+      if (r.ok && Array.isArray(d.ids)) { setOfferedIds(new Set(d.ids)); return; }
+      setOfferedIds(false); // couldn't refine — fall back to the full list
+    } catch { setOfferedIds(false); }
   }
   // ---- Smart Campaigns / weather ----
   async function loadWeather() {
@@ -2929,11 +2941,14 @@ export default function Admin({ onExit }) {
                     </p>
                     <input className="avail-search" placeholder="Search items…" value={availSearch} onChange={(e) => setAvailSearch(e.target.value)} />
                     <div className="avail-list">
-                      {allProducts.length === 0 && <p className="muted" style={{ fontSize: 'var(--fs-sm)', padding: 8 }}>Loading items…</p>}
+                      {(allProducts.length === 0 || offeredIds === null) && <p className="muted" style={{ fontSize: 'var(--fs-sm)', padding: 8 }}>Loading items…</p>}
                       {(() => {
+                        if (offeredIds === null) return null;
                         const q = availSearch.trim().toLowerCase();
-                        const list = allProducts.filter((p) => !q || p.name.toLowerCase().includes(q) || (p.category || '').toLowerCase().includes(q));
-                        if (allProducts.length && !list.length) return <p className="muted" style={{ fontSize: 'var(--fs-sm)', padding: 8 }}>No matching items.</p>;
+                        // Only products actually offered in the app menu (false = lookup failed → show all).
+                        const offered = offeredIds ? allProducts.filter((p) => offeredIds.has(p.id)) : allProducts;
+                        const list = offered.filter((p) => !q || p.name.toLowerCase().includes(q) || (p.category || '').toLowerCase().includes(q));
+                        if (offered.length && !list.length) return <p className="muted" style={{ fontSize: 'var(--fs-sm)', padding: 8 }}>No matching items.</p>;
                         const STATUS = {
                           available: { label: 'Available', cls: 'ok' },
                           today: { label: 'Sold out today', cls: 'warn' },
@@ -2995,7 +3010,9 @@ export default function Admin({ onExit }) {
                       const list = exclListFor(exclDay);
                       const byId = (id) => allProducts.find((p) => p.id === id);
                       const q = exclSearch.trim().toLowerCase();
-                      const matches = q ? allProducts.filter((p) => !list.includes(p.id) && (p.name.toLowerCase().includes(q) || (p.category || '').toLowerCase().includes(q))) : [];
+                      // Add-picker only offers products actually in the app menu.
+                      const offered = offeredIds ? allProducts.filter((p) => offeredIds.has(p.id)) : allProducts;
+                      const matches = q ? offered.filter((p) => !list.includes(p.id) && (p.name.toLowerCase().includes(q) || (p.category || '').toLowerCase().includes(q))) : [];
                       return (
                         <>
                           <div style={{ fontWeight: 700, margin: '10px 0 6px' }}>{DOW_LABELS[exclDay]} &mdash; sold out by default</div>
