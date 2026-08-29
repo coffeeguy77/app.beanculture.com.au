@@ -101,11 +101,10 @@ app.get('/api/config', async (_req, res) => {
     // Optional subtle temperature display. Never blocks app load: we serve the
     // cached reading instantly and refresh in the background. null when the
     // toggle is off or no reading is available yet.
-    weather: (() => {
+    weather: await (async () => {
       const sc = settings.smartCampaigns || {};
       if (!sc.showTemperature) return null;
-      weather.kickoff();
-      const pub = weather.publicWeather(weather.peek());
+      const pub = weather.publicWeather(await weather.forConfig());
       if (pub && sc.showCondition === false) { pub.condition = null; pub.conditionLabel = null; }
       return pub;
     })(),
@@ -1517,6 +1516,13 @@ app.listen(PORT, () => console.log(`Bean Culture app on :${PORT} (Square env: ${
 db.init().finally(() => {
   scheduler.start();
   seedPresetNavFooter();
+  // Keep the weather cache warm whenever the temperature display or a weather
+  // campaign is in use, so the customer chip / campaigns always have a fresh
+  // reading without any request having to wait on the provider.
+  weather.startWarmer(() => {
+    const sc = getSettings().smartCampaigns || {};
+    return sc.showTemperature === true || (Array.isArray(sc.weather) && sc.weather.some((c) => c && c.active !== false));
+  });
   // Non-destructive Pay It Forward expiry sweep (status change only, rows
   // are never deleted) -- runs shortly after boot, then hourly.
   setTimeout(() => payItForward.sweepExpired().catch((e) => console.warn('[payItForward] expiry sweep failed:', e.message)), 20000);

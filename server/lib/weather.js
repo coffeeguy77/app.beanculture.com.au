@@ -157,6 +157,32 @@ function peek() {
 }
 function kickoff() { getWeather().catch(() => {}); }
 
+// For /api/config: return the cached reading instantly if warm; if the cache is
+// cold, wait a SHORT bounded time for a fresh fetch so the temperature appears on
+// the very first load after it's enabled — but never block app load for long. A
+// background warmer (see startWarmer) normally keeps the cache warm so this rarely
+// has to wait at all.
+async function forConfig(capMs = 3000) {
+  const p = peek();
+  if (p && p.ok) return p;
+  if (!storeCoords()) return p; // no coordinates → nothing to fetch
+  const timed = new Promise((res) => setTimeout(() => res(null), capMs));
+  const fetched = await Promise.race([getWeather().then((w) => (w && w.ok ? w : null)).catch(() => null), timed]);
+  return fetched || peek();
+}
+
+// Keep the cache warm so the customer temperature chip and (later) weather
+// campaigns always have a fresh reading without blocking any request. Gated by a
+// predicate so we only call the provider when the feature is actually in use.
+let warmTimer = null;
+function startWarmer(shouldRun, everyMs = 10 * 60 * 1000) {
+  if (warmTimer) return;
+  const tick = () => { try { if (shouldRun()) getWeather().catch(() => {}); } catch {} };
+  setTimeout(tick, 4000);            // warm shortly after boot
+  warmTimer = setInterval(tick, everyMs);
+  if (warmTimer.unref) warmTimer.unref();
+}
+
 // A trimmed object safe to expose to the customer app (no internals).
 function publicWeather(w) {
   if (!w || !w.ok) return null;
@@ -171,4 +197,4 @@ function publicWeather(w) {
 
 function _resetCacheForTest() { cache = null; inflight = null; }
 
-module.exports = { getWeather, peek, kickoff, publicWeather, mapCondition, storeCoords, PROVIDER, _resetCacheForTest };
+module.exports = { getWeather, peek, kickoff, forConfig, startWarmer, publicWeather, mapCondition, storeCoords, PROVIDER, _resetCacheForTest };
