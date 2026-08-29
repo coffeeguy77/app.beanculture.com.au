@@ -3468,14 +3468,58 @@ body:has(.store-shell) { background: var(--bc-canvas-deep, #160f12); }
 .pos-body.configuring .pos-cart.slim .pos-fulfil { display: none; }
 
 /* Smaller tablets: shrink rail + cart, keep everything reachable */
+/* These only appear on phones (see the 760px block) */
+.pos-mobilebar { display: none; }
+.pos-cart-back { display: none; }
+.pos-cart-scrim { display: none; }
+
 @media (max-width: 1000px) {
   .pos-rail { width: 140px; }
   .pos-cart { width: 280px; }
   .pos-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
 }
+
+/* ── Phones: the cart becomes a slide-over opened from a bottom bar, so the
+   menu gets the full width instead of three columns fighting for it. ── */
 @media (max-width: 760px) {
-  .pos-service, .pos-staff { display: none; }
-  .pos-rail { width: 108px; }
-  .pos-cart { width: 240px; }
-  .pos-tile { min-height: 92px; }
+  .pos-service, .pos-staff, .pos-term { display: none; }
+  .pos-header { gap: 8px; padding: 0 10px; }
+  .pos-brand { font-size: 14px; letter-spacing: .08em; white-space: nowrap; }
+  .pos-logo { height: 26px; max-width: 130px; }
+  .pos-modeswitch { padding: 3px; }
+  .pos-seg { padding: 7px 13px; font-size: 13px; }
+  .pos-icon { width: 32px; height: 32px; font-size: 15px; }
+
+  .pos-rail { width: 96px; padding: 8px 6px; }
+  .pos-cat { padding: 12px 10px; font-size: 13px; }
+  .pos-main-head { flex-wrap: wrap; gap: 8px; padding: 12px 12px 6px; }
+  .pos-search { margin-left: 0; width: 100%; max-width: none; order: 3; }
+  .pos-grid { grid-template-columns: repeat(auto-fill, minmax(128px, 1fr)); padding: 6px 12px 88px; }
+  .pos-tile { min-height: 84px; padding: 12px; }
+
+  /* Off-canvas cart */
+  .pos-cart, .pos-cart.slim { position: fixed; top: 56px; right: 0; bottom: 0; width: min(90vw, 400px);
+    transform: translateX(106%); transition: transform .22s ease; z-index: 45; box-shadow: -12px 0 40px rgba(0,0,0,.3); }
+  .pos-cart.open { transform: none; }
+  .pos-cart-back { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; margin-right: 2px; border: none; background: none; font-size: 26px; line-height: 1; color: var(--pos-accent); cursor: pointer; }
+  .pos-cart-scrim { display: block; position: fixed; top: 56px; left: 0; right: 0; bottom: 0; background: rgba(20,6,12,.4); z-index: 44; }
+
+  /* Bottom bar */
+  .pos-mobilebar { display: flex; align-items: center; gap: 12px; position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
+    padding: 10px 14px calc(10px + env(safe-area-inset-bottom)); background: var(--pos-surface); border-top: 1px solid var(--pos-line); box-shadow: 0 -6px 20px rgba(0,0,0,.08); }
+  .pos-mobilebar-info { display: flex; flex-direction: column; line-height: 1.1; }
+  .pos-mobilebar-count { font-size: 12px; color: var(--pos-muted); }
+  .pos-mobilebar-total { font-family: 'Fraunces', Georgia, serif; font-size: 20px; font-weight: 700; }
+  .pos-mobilebar .pos-btn { margin-left: auto; }
+
+  /* Configure workspace fills the width */
+  .pos-rail.return { width: 56px; }
+  .pos-rail-back { padding: 12px 4px; font-size: 0; }
+  .pos-rail-back::before { content: '←'; font-size: 20px; }
+  .pos-cfg-head { padding: 12px 14px 10px; }
+  .pos-cfg-name { font-size: 20px; }
+  .pos-cfg-body { padding: 12px 14px 16px; }
+  .pos-opt-grid { grid-template-columns: repeat(auto-fill, minmax(128px, 1fr)); }
+  .pos-cfg-foot { flex-wrap: wrap; padding: 10px 14px; }
+  .pos-cfg-foot .pos-btn.primary { flex: 1 1 100%; margin-left: 0; order: 3; }
 }

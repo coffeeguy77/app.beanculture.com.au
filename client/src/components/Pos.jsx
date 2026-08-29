@@ -146,6 +146,7 @@ export default function Pos({ onExit }) {
   const [success, setSuccess] = useState(null);    // { orderId, tender, change }
   const [cardPay, setCardPay] = useState(() => { try { return JSON.parse(localStorage.getItem('bc-pos-active-checkout') || 'null'); } catch { return null; } });
   const [showSetup, setShowSetup] = useState(false);
+  const [cartOpen, setCartOpen] = useState(false); // mobile slide-over cart
   const returnTimer = useRef(null);
 
   const deviceMode = cfg?.mode || 'pos_kds';        // pos_kds | pos | kds
@@ -214,6 +215,7 @@ export default function Pos({ onExit }) {
 
   function finishSuccess(shortId, orderId, tenderType, change) {
     setSuccess({ orderId, shortId, tender: tenderType, change });
+    setCartOpen(false);
     clearCart();
     const delay = Math.max(1500, (cfg?.autoReturnSec || 3) * 1000);
     returnTimer.current = setTimeout(() => {
@@ -408,9 +410,11 @@ export default function Pos({ onExit }) {
           </main>
         )}
 
-        {/* Right: cart panel (full in browse, slim while configuring) */}
-        <aside className={`pos-cart${configureMode ? ' slim' : ''}`}>
+        {/* Right: cart panel (full in browse, slim while configuring; a
+            slide-over on phones, toggled by the bottom bar) */}
+        <aside className={`pos-cart${configureMode ? ' slim' : ''}${cartOpen ? ' open' : ''}`}>
           <div className="pos-cart-head">
+            <button className="pos-cart-back" onClick={() => setCartOpen(false)} aria-label="Back to menu">‹</button>
             <span>Current order</span>
             {cart.length > 0 && <button className="pos-cart-clear" onClick={clearCart}>Clear</button>}
           </div>
@@ -460,7 +464,23 @@ export default function Pos({ onExit }) {
             </button>
           </div>
         </aside>
+
+        {/* Phone: dim the menu behind the slide-over cart */}
+        {cartOpen && <div className="pos-cart-scrim" onClick={() => setCartOpen(false)} />}
       </div>
+
+      {/* Phone-only bottom bar: opens the order (hidden on wide screens / while configuring) */}
+      {!configureMode && (
+        <div className="pos-mobilebar">
+          <div className="pos-mobilebar-info">
+            <span className="pos-mobilebar-count">{cartCount(cart)} item{cartCount(cart) === 1 ? '' : 's'}</span>
+            <span className="pos-mobilebar-total">{formatMoney(total, currency)}</span>
+          </div>
+          <button className="pos-btn primary big" disabled={!cart.length} onClick={() => setCartOpen(true)}>
+            View order
+          </button>
+        </div>
+      )}
 
       {/* Tender overlay */}
       {tender && (
