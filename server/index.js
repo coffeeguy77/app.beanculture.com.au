@@ -1503,11 +1503,30 @@ app.post('/api/admin/seo/rebuild-sitemap', async (req, res) => {
   res.json({ ok: true, urls: 1 + cS.size + iS.size, categories: cS.size, products: iS.size, at: new Date().toISOString() });
 });
 
+// Rewrite the served HTML shell so that installing a PWA from /kds creates a
+// dedicated "Bean Culture KDS" home-screen app (start_url:/kds) rather than the
+// customer app. We only need to point the manifest + Apple web-app hints at the
+// KDS variants; installing from any other path keeps the customer manifest.
+function kdsShell(html) {
+  return html
+    .replace(/<link rel="manifest" href="\/manifest\.webmanifest"\s*\/?>/,
+             '<link rel="manifest" href="/kds.webmanifest" />')
+    .replace(/<link rel="apple-touch-icon"[^>]*>/,
+             '<link rel="apple-touch-icon" href="/icons/kds-icon-180.png?v=20260829" />')
+    .replace(/<meta name="apple-mobile-web-app-title" content="[^"]*"\s*\/?>/,
+             '<meta name="apple-mobile-web-app-title" content="Bean Culture KDS" />')
+    .replace(/<meta name="theme-color" content="[^"]*"\s*\/?>/,
+             '<meta name="theme-color" content="#12161b" />');
+}
+
 app.get('*', async (req, res) => {
   res.setHeader('Cache-Control', 'no-cache');
+  const isKds = req.path === '/kds' || req.path === '/bump' || req.path.startsWith('/kds/');
   let head = seoHead(req), body = '', title = '';
   try {
-    if (/^\/(item|menu)\//i.test(req.path)) {
+    if (isKds) {
+      title = 'Bean Culture · Kitchen screen';
+    } else if (/^\/(item|menu)\//i.test(req.path)) {
       const menu = await seoMenu();
       const pg = pageSeoAndBody(req, resolvePath(menu, req.path), menu);
       if (pg) { head = pg.head; body = pg.body; title = pg.title; }
@@ -1518,6 +1537,7 @@ app.get('*', async (req, res) => {
   let html = indexHtml().replace('</head>', `    ${head}\n  </head>`);
   if (title) html = html.replace(/<title>[\s\S]*?<\/title>/i, `<title>${seoEsc(title)}</title>`);
   if (body) html = html.replace('<div id="root">', `<div id="root">${body}`);
+  if (isKds) html = kdsShell(html);
   res.type('html').send(html);
 });
 

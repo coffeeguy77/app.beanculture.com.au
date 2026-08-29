@@ -3196,6 +3196,67 @@ body:has(.store-shell) { background: var(--bc-canvas-deep, #160f12); }
 .kds-recall-label { font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .6px; color: #7f8b98; }
 .kds-recall-chip { border: 1px solid #333d47; background: #1e242b; color: #cfd8e2; border-radius: 999px; padding: 7px 14px; font-size: 14px; font-weight: 700; cursor: pointer; }
 
+/* ── KDS: layout popover (per-device columns / density / text / install) ── */
+.kds-pop-scrim { position: fixed; inset: 0; z-index: 20; background: rgba(0,0,0,.35); }
+.kds-pop { position: absolute; top: 60px; right: 12px; z-index: 21; width: min(94vw, 340px); background: #1b2129; border: 1px solid #2c343d; border-radius: 16px; box-shadow: 0 24px 70px rgba(0,0,0,.55); padding: 16px; }
+.kds-pop-title { font-size: 16px; font-weight: 800; margin-bottom: 12px; }
+.kds-pop-subtitle { font-size: 13px; font-weight: 800; margin-bottom: 8px; color: #cfd8e2; }
+.kds-pop-hint { font-size: 12px; color: #8a97a4; margin: 8px 0 0; line-height: 1.45; }
+.kds-pop-hint b { color: #cfd8e2; }
+.kds-pop-install { margin-top: 14px; padding-top: 14px; border-top: 1px solid #2a323b; }
+.kds-seg-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+.kds-seg-label { font-size: 13px; font-weight: 700; color: #9aa6b2; flex: none; }
+.kds-seg { display: inline-flex; background: #12161b; border: 1px solid #2c343d; border-radius: 10px; padding: 3px; gap: 2px; flex-wrap: wrap; justify-content: flex-end; }
+.kds-seg-btn { border: none; background: none; color: #cfd8e2; border-radius: 8px; padding: 7px 11px; font-family: inherit; font-size: 13px; font-weight: 700; cursor: pointer; min-width: 34px; }
+.kds-seg-btn.on { background: #2b6cb0; color: #fff; }
+.kds-icon.on { background: #2b6cb0; border-color: #2b6cb0; }
+
+/* ── KDS: density = Compact (tighter cards, more per screen) ── */
+.kds-root.kds-compact .kds-grid { gap: 8px; padding: 8px; }
+.kds-root.kds-compact .kds-card-head { padding: 8px 10px 4px; }
+.kds-root.kds-compact .kds-card-title { font-size: 15px; }
+.kds-root.kds-compact .kds-age { font-size: 18px; }
+.kds-root.kds-compact .kds-items { padding: 2px 10px 6px; gap: 5px; }
+.kds-root.kds-compact .kds-item-name { font-size: 15px; }
+.kds-root.kds-compact .kds-qty { font-size: 15px; min-width: 26px; }
+.kds-root.kds-compact .kds-card-foot { padding: 7px 9px; gap: 6px; }
+.kds-root.kds-compact .kds-btn { padding: 10px; font-size: 14px; }
+.kds-root.kds-compact .kds-grid.kds-auto { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+
+/* ── KDS: text size = Large (readable across a busy kitchen) ── */
+.kds-root.kds-lg .kds-card-title { font-size: 22px; }
+.kds-root.kds-lg .kds-age { font-size: 28px; }
+.kds-root.kds-lg .kds-item-name { font-size: 20px; }
+.kds-root.kds-lg .kds-qty { font-size: 21px; }
+.kds-root.kds-lg .kds-mods, .kds-root.kds-lg .kds-note { font-size: 16px; }
+.kds-root.kds-lg .kds-btn { font-size: 19px; padding: 16px; }
+
+/* ── KDS: responsive (Auto) — phone portrait = 1 col, landscape = 2 col ── */
+@media (max-width: 760px) {
+  .kds-top { gap: 8px; padding: 8px 10px; flex-wrap: wrap; }
+  .kds-zone { padding: 8px 13px; font-size: 14px; }
+  .kds-top-right { gap: 6px; }
+  .kds-live { display: none; }              /* reclaim space; ●/○ still shown via icon colour if needed */
+  .kds-icon { width: 40px; height: 40px; font-size: 17px; }
+  .kds-allday { gap: 10px; padding: 6px 12px; font-size: 13px; }
+  .kds-grid.kds-auto { grid-template-columns: 1fr; gap: 10px; padding: 10px; }
+  .kds-card-head { padding: 10px 12px 6px; }
+  .kds-card-title { font-size: 17px; }
+  .kds-age { font-size: 20px; }
+  .kds-items { padding: 2px 12px 8px; }
+  .kds-card-foot { padding: 9px 10px; }
+  .kds-btn.bump { padding: 15px; font-size: 17px; }   /* thumb-friendly primary action */
+  .kds-recall { padding: 8px 12px; }
+}
+@media (max-width: 900px) and (orientation: landscape) {
+  .kds-grid.kds-auto { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .kds-top { flex-wrap: nowrap; }
+}
+@media (max-width: 480px) {
+  .kds-zone { padding: 7px 11px; font-size: 13px; }
+  .kds-zone-count { margin-left: 6px; padding: 1px 6px; font-size: 12px; }
+}
+
 /* ── Admin: Smart Campaigns (weather) list + editor ── */
 .camp-row { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--admin-border, var(--line)); }
 .camp-row:last-of-type { border-bottom: none; }

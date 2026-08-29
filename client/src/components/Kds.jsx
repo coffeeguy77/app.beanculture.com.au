@@ -4,8 +4,14 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 // zone, see live tickets, colour by age, bump when done. Live updates arrive via
 // Server-Sent Events (instant when Square webhooks are configured); a slow safety
 // poll guarantees it never goes stale even with no webhook.
+//
+// Layout is chosen per device (localStorage), because the same /kds URL is opened
+// on very different screens — a wall tablet, a phone in portrait, a phone in
+// landscape. "Auto" adapts to width + orientation; Columns/Density/Text let a
+// station override it. See the layout popover (▦) in the top bar.
 
 const ALL = '__all__';
+const LAYOUT_KEY = 'bc-kds-layout';
 
 // Short WebAudio chime for new tickets — no asset needed.
 function chime() {
@@ -28,6 +34,12 @@ function chime() {
 const two = (n) => String(n).padStart(2, '0');
 const fmtAge = (sec) => `${Math.floor(sec / 60)}:${two(sec % 60)}`;
 
+const DEFAULT_LAYOUT = { cols: 'auto', density: 'comfortable', text: 'normal' };
+function loadLayout() {
+  try { return { ...DEFAULT_LAYOUT, ...(JSON.parse(localStorage.getItem(LAYOUT_KEY) || '{}') || {}) }; }
+  catch { return { ...DEFAULT_LAYOUT }; }
+}
+
 export default function Kds({ onExit }) {
   const [pass, setPass] = useState(() => { try { return atob(localStorage.getItem('bc-admin-pass') || '') || ''; } catch { return ''; } });
   const [passInput, setPassInput] = useState('');
@@ -39,11 +51,19 @@ export default function Kds({ onExit }) {
   const [now, setNow] = useState(Date.now());
   const [live, setLive] = useState(false);
   const [muted, setMuted] = useState(() => { try { return localStorage.getItem('bc-kds-muted') === '1'; } catch { return false; } });
+  const [layout, setLayout] = useState(loadLayout);
+  const [showLayout, setShowLayout] = useState(false);
+  const [deferredPrompt, setDeferredPrompt] = useState(null);
   const seenRef = useRef(new Set());
   const firstLoad = useRef(true);
 
   const zones = useMemo(() => [{ id: ALL, name: 'All orders' }, ...((cfg && cfg.zones) || [])], [cfg]);
   const soundOn = cfg ? cfg.sound !== false && !muted : false;
+
+  const cols = layout.cols || 'auto';
+  const density = layout.density || 'comfortable';
+  const textSize = layout.text || 'normal';
+  const setLayoutKey = (k, v) => setLayout((L) => ({ ...L, [k]: v }));
 
   async function loadConfig(p) {
     const r = await fetch(`/api/admin/kds/config?pass=${encodeURIComponent(p)}`);
@@ -96,6 +116,14 @@ export default function Kds({ onExit }) {
 
   useEffect(() => { try { localStorage.setItem('bc-kds-zone', zone); } catch {} }, [zone]);
   useEffect(() => { try { localStorage.setItem('bc-kds-muted', muted ? '1' : '0'); } catch {} }, [muted]);
+  useEffect(() => { try { localStorage.setItem(LAYOUT_KEY, JSON.stringify(layout)); } catch {} }, [layout]);
+
+  // Capture the install prompt so "Add KDS app" can offer it (Android/desktop).
+  useEffect(() => {
+    const onPrompt = (e) => { e.preventDefault(); setDeferredPrompt(e); };
+    window.addEventListener('beforeinstallprompt', onPrompt);
+    return () => window.removeEventListener('beforeinstallprompt', onPrompt);
+  }, []);
 
   async function bump(orderId, status) {
     setTickets((ts) => ts.map((t) => (t.orderId === orderId ? { ...t, zoneStatus: { ...t.zoneStatus, [zone]: status } } : t)));
@@ -105,6 +133,13 @@ export default function Kds({ onExit }) {
         body: JSON.stringify({ orderId, zone, status }),
       });
     } catch { loadTickets(); }
+  }
+
+  async function installKds() {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    try { await deferredPrompt.userChoice; } catch {}
+    setDeferredPrompt(null);
   }
 
   // Age → urgency level
@@ -132,6 +167,10 @@ export default function Kds({ onExit }) {
     return [...map.entries()].sort((a, b) => b[1] - a[1]);
   }, [active, zone]);
 
+  const isIos = typeof navigator !== 'undefined' && /iphone|ipad|ipod/i.test(navigator.userAgent);
+  const standalone = typeof window !== 'undefined' &&
+    (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone);
+
   // ── Passcode gate ──
   if (needPass) {
     return (
@@ -153,8 +192,22 @@ export default function Kds({ onExit }) {
 
   const label = (t) => t.customerName || (t.dineIn ? (t.table ? `Table ${t.table}` : 'Dine-in') : `#${t.orderId.slice(-4)}`);
 
+  const rootClass = `kds-root${density === 'compact' ? ' kds-compact' : ''}${textSize === 'large' ? ' kds-lg' : ''}`;
+  const gridStyle = cols === 'auto' ? undefined : { gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` };
+
+  const Seg = ({ label: lbl, value, options, onPick }) => (
+    <div className="kds-seg-row">
+      <span className="kds-seg-label">{lbl}</span>
+      <div className="kds-seg">
+        {options.map((o) => (
+          <button key={o.v} className={`kds-seg-btn${value === o.v ? ' on' : ''}`} onClick={() => onPick(o.v)}>{o.t}</button>
+        ))}
+      </div>
+    </div>
+  );
+
   return (
-    <div className="kds-root">
+    <div className={rootClass}>
       <header className="kds-top">
         <div className="kds-zones">
           {zones.map((z) => {
@@ -168,11 +221,44 @@ export default function Kds({ onExit }) {
         </div>
         <div className="kds-top-right">
           <span className={`kds-live${live ? ' on' : ''}`} title={live ? 'Live' : 'Reconnecting…'}>{live ? '● Live' : '○ Polling'}</span>
+          <button className={`kds-icon${showLayout ? ' on' : ''}`} title="Layout" onClick={() => setShowLayout((v) => !v)}>▦</button>
           <button className="kds-icon" title={soundOn ? 'Mute new-order sound' : 'Unmute'} onClick={() => setMuted((m) => !m)}>{soundOn ? '🔔' : '🔕'}</button>
           <button className="kds-icon" title="Refresh" onClick={() => loadTickets()}>⟳</button>
           <button className="kds-icon" title="Exit" onClick={onExit}>✕</button>
         </div>
       </header>
+
+      {showLayout && (
+        <>
+          <div className="kds-pop-scrim" onClick={() => setShowLayout(false)} />
+          <div className="kds-pop" role="dialog" aria-label="Layout">
+            <div className="kds-pop-title">Screen layout</div>
+            <Seg lbl="Columns" value={cols}
+              options={[{ v: 'auto', t: 'Auto' }, { v: '1', t: '1' }, { v: '2', t: '2' }, { v: '3', t: '3' }, { v: '4', t: '4' }]}
+              onPick={(v) => setLayoutKey('cols', v)} />
+            <Seg lbl="Density" value={density}
+              options={[{ v: 'comfortable', t: 'Comfortable' }, { v: 'compact', t: 'Compact' }]}
+              onPick={(v) => setLayoutKey('density', v)} />
+            <Seg lbl="Text size" value={textSize}
+              options={[{ v: 'normal', t: 'Normal' }, { v: 'large', t: 'Large' }]}
+              onPick={(v) => setLayoutKey('text', v)} />
+            <p className="kds-pop-hint">Auto adapts to this screen’s size and orientation. Saved on this device.</p>
+
+            {!standalone && (
+              <div className="kds-pop-install">
+                <div className="kds-pop-subtitle">Add KDS app to this device</div>
+                {deferredPrompt ? (
+                  <button className="kds-btn primary" onClick={installKds}>＋ Install Bean Culture KDS</button>
+                ) : isIos ? (
+                  <p className="kds-pop-hint">In Safari, tap the <b>Share</b> icon → <b>Add to Home Screen</b>. It installs as “Bean Culture KDS” and opens straight to this screen.</p>
+                ) : (
+                  <p className="kds-pop-hint">Open your browser menu and choose <b>Install app</b> / <b>Add to Home screen</b> — it saves as “Bean Culture KDS”, opening straight to this screen.</p>
+                )}
+              </div>
+            )}
+          </div>
+        </>
+      )}
 
       {allDay.length > 0 && (
         <div className="kds-allday">
@@ -185,7 +271,7 @@ export default function Kds({ onExit }) {
 
       {err && <div className="kds-err">{err}</div>}
 
-      <div className="kds-grid">
+      <div className={`kds-grid${cols === 'auto' ? ' kds-auto' : ''}`} style={gridStyle}>
         {active.length === 0 && !err && <div className="kds-empty">No open tickets in this zone. New orders appear here automatically.</div>}
         {active.map((t) => {
           const sec = ageOf(t);
