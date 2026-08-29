@@ -19,12 +19,15 @@ const giftcards = require('./lib/giftcards');
 const scheduler = require('./lib/scheduled');
 const notify = require('./lib/notify');
 const payItForward = require('./lib/payItForward');
+const kds = require('./lib/kds');
 
 const PREORDER_TZ = process.env.PREORDER_TZ || process.env.SEASON_TZ || 'Australia/Sydney';
 const PREORDER_MAX_DAYS = Number(process.env.PREORDER_MAX_DAYS || 14);
 
 const app = express();
-app.use(express.json({ limit: '12mb' }));
+// Keep the raw request body so the Square webhook route can verify its HMAC
+// signature (the signature is computed over the exact bytes Square sent).
+app.use(express.json({ limit: '12mb', verify: (req, _res, buf) => { req.rawBody = buf; } }));
 
 function adminOk(req) {
   const pass = process.env.ADMIN_PASSCODE || '';
@@ -968,6 +971,94 @@ app.post('/api/admin/availability/item', async (req, res) => {
     res.json({ ok: true, items: ov.availability.items });
   } catch (e) {
     res.status(400).json({ error: e.message });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Kitchen Display System (/kds bump screen)
+// ═══════════════════════════════════════════════════════════════════════════
+// Live updates: Square webhooks (when configured) ping every connected screen
+// via SSE for instant refresh; each screen also polls on a slow safety timer so
+// a missed webhook — or no webhook configured at all — is never fatal.
+const kdsClients = new Set(); // open SSE responses
+function kdsBroadcast(reason) {
+  const line = `event: changed\ndata: ${JSON.stringify({ reason, at: Date.now() })}\n\n`;
+  for (const res of kdsClients) { try { res.write(line); } catch {} }
+}
+
+// Zone config + display thresholds for the screen (no order data).
+app.get('/api/admin/kds/config', (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  const cfg = kds.kdsSettings();
+  res.json({ ...cfg, allZone: kds.ALL_ZONE, dbEnabled: db.enabled });
+});
+
+// The live ticket feed.
+app.get('/api/admin/kds/tickets', async (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  res.setHeader('Cache-Control', 'no-store');
+  try {
+    const data = await kds.fetchTickets();
+    res.json(data);
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+
+// Set a station's status for one ticket (new | preparing | done). Recall = 'new'.
+app.post('/api/admin/kds/bump', async (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const { orderId, zone, status } = req.body || {};
+    if (!orderId || !zone) return res.status(400).json({ error: 'Missing orderId or zone' });
+    if (!['new', 'preparing', 'done'].includes(status)) return res.status(400).json({ error: 'Bad status' });
+    const row = await db.kdsSetStatus(orderId, zone, status);
+    kdsBroadcast('bump');
+    res.json({ ok: true, row });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+// Server-Sent Events stream — screens subscribe and get a ping whenever tickets
+// change. EventSource can't send headers, so auth rides in the query string.
+app.get('/api/admin/kds/stream', (req, res) => {
+  if (!adminOk(req)) return res.status(401).end();
+  res.set({
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache, no-transform',
+    Connection: 'keep-alive',
+    'X-Accel-Buffering': 'no',
+  });
+  res.flushHeaders?.();
+  res.write('retry: 3000\n\n');
+  res.write(`event: hello\ndata: ${Date.now()}\n\n`);
+  kdsClients.add(res);
+  const keepAlive = setInterval(() => { try { res.write(': ping\n\n'); } catch {} }, 25000);
+  req.on('close', () => { clearInterval(keepAlive); kdsClients.delete(res); });
+});
+
+// Square webhook receiver — verifies the HMAC signature, then just nudges the
+// screens to refetch (it never mutates data, so a spoofed ping is harmless, but
+// we still verify when a signature key is configured).
+app.post('/api/square/webhook', (req, res) => {
+  try {
+    const key = process.env.SQUARE_WEBHOOK_SIGNATURE_KEY || '';
+    if (key) {
+      const sig = req.get('x-square-hmacsha256-signature') || '';
+      const url = process.env.SQUARE_WEBHOOK_URL || `https://${req.get('host')}${req.originalUrl}`;
+      const body = req.rawBody ? req.rawBody.toString('utf8') : JSON.stringify(req.body || {});
+      const expected = crypto.createHmac('sha256', key).update(url + body).digest('base64');
+      const a = Buffer.from(sig); const b = Buffer.from(expected);
+      const ok = a.length === b.length && crypto.timingSafeEqual(a, b);
+      if (!ok) return res.status(401).json({ error: 'bad signature' });
+    }
+    const type = (req.body && req.body.type) || '';
+    // Order/payment/refund events all mean "tickets may have changed".
+    if (!type || /order|payment|refund/i.test(type)) kdsBroadcast(type || 'webhook');
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(200).json({ ok: false }); // never make Square retry-storm us
   }
 });
 

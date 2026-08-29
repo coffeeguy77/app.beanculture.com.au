@@ -16,6 +16,7 @@ import Checkout from './components/Checkout.jsx';
 import Account from './components/Account.jsx';
 import ThemePicker from './components/ThemePicker.jsx';
 import Admin from './components/Admin.jsx';
+import Kds from './components/Kds.jsx';
 import PayItForward from './components/PayItForward.jsx';
 import GiftClaim from './components/GiftClaim.jsx';
 import Logo from './components/Logo.jsx';
@@ -342,7 +343,9 @@ export default function App() {
 
   // Admin route
   useEffect(() => {
-    if (window.location.pathname.replace(/\/$/, '') === '/admin') setView('admin');
+    const p = window.location.pathname.replace(/\/$/, '');
+    if (p === '/admin') setView('admin');
+    else if (p === '/kds' || p === '/bump') setView('kds');
   }, []);
 
   // Pay It Forward claim deep link: /gift/:token
@@ -861,6 +864,8 @@ export default function App() {
   }
 
   if (view === 'admin') return <Admin config={config} onExit={() => { window.history.pushState({}, '', '/'); setView('home'); }} />;
+
+  if (view === 'kds') return <Kds onExit={() => { window.history.pushState({}, '', '/'); setView('home'); }} />;
 
   if (view === 'gift' && giftToken) {
     return (

@@ -745,6 +745,35 @@ async function getMenu(opts = {}) {
   return { currency: CURRENCY, categories: sections };
 }
 
+// Map every Square item VARIATION id -> the display-name categories its parent
+// item belongs to. Used by the kitchen display to route each order line item to
+// a station/zone (Square order line items carry only the variation id, not a
+// category). Cached briefly like the rest of the catalog reads.
+let varCatCache = { data: null, at: 0 };
+async function getVariationCategoryMap() {
+  const now = Date.now();
+  if (varCatCache.data && now - varCatCache.at < 60000) return varCatCache.data;
+  const objects = await listAllCatalog('ITEM,CATEGORY');
+  const catNames = new Map();
+  for (const o of objects) {
+    if (o.is_deleted) continue;
+    if (o.type === 'CATEGORY') catNames.set(o.id, cleanName(o.category_data?.name || ''));
+  }
+  const map = {};
+  for (const o of objects) {
+    if (o.is_deleted || o.type !== 'ITEM') continue;
+    const d = o.item_data || {};
+    const catIds = [];
+    if (Array.isArray(d.categories)) for (const c of d.categories) if (c && c.id) catIds.push(c.id);
+    if (d.reporting_category?.id) catIds.push(d.reporting_category.id);
+    if (d.category_id) catIds.push(d.category_id);
+    const names = [...new Set(catIds.map((id) => catNames.get(id)).filter(Boolean))];
+    for (const v of (d.variations || [])) if (v && v.id) map[v.id] = names;
+  }
+  varCatCache = { data: map, at: now };
+  return map;
+}
+
 // Flat list of EVERY offerable Square product (id, name, image, category name),
 // regardless of which categories are loaded in the app — used by the admin
 // "product sections" picker so any product can be hand-picked into a section.
@@ -1029,4 +1058,5 @@ module.exports = {
   searchItemsByName, createReservationCatalogItem, inspectItem, setReportingCategory,
   findOrCreateCategory, setupReservationPrinting, listAllCatalog,
   venueNow, nextOpenDate, applyAvailability, scheduleActiveNow,
+  getVariationCategoryMap,
 };

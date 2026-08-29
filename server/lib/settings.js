@@ -352,6 +352,17 @@ const DEFAULTS = {
     //                 start:'07:00', end:'11:00', enabled:true }
     schedules: [],
   },
+  // ── Kitchen Display / bump screen (/kds). Stations each show only their
+  //    categories' items; an implicit "All orders" lane always exists. Age
+  //    thresholds drive the green→amber→red urgency colours.
+  kds: {
+    zones: [],          // [{ id, name, categories:[displayName] }]
+    lookbackHours: 8,   // how far back to pull live tickets
+    amberMin: 6,        // ticket turns amber after this many minutes
+    redMin: 12,         // ticket turns red after this many minutes
+    sound: true,        // chime on a new ticket
+    showPrepStep: true, // show a "Start" (preparing) step before the bump
+  },
 };
 
 // ---------------------------------------------------------------------------

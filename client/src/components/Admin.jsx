@@ -82,11 +82,14 @@ const PifIcon = svg(<>
 const SeoIcon = svg(<><circle cx="11" cy="11" r="7" /><path d="M20.5 20.5l-4-4" /><path d="M11 8v6M8 11h6" /></>);
 // Sold-out / availability (no-entry circle with a slash)
 const SoldOutIcon = svg(<><circle cx="12" cy="12" r="8.5" /><line x1="6" y1="6" x2="18" y2="18" /></>);
+// Kitchen screen (monitor)
+const KdsIcon = svg(<><rect x="3" y="4" width="18" height="12" rx="2" /><path d="M8 20h8M12 16v4" /></>);
 const TABS = [
   { id: 'overview', label: 'Dashboard', Icon: DashboardIcon },
   { id: 'store', label: 'Store', Icon: StoreIcon },
   { id: 'seo', label: 'SEO', Icon: SeoIcon },
   { id: 'reservations', label: 'Reservations', Icon: CalendarIcon },
+  { id: 'kds', label: 'Kitchen Screen', Icon: KdsIcon },
   { id: 'insights', label: 'Insights', Icon: InsightsIcon },
   { id: 'menubuilder', label: 'Menu Builder', Icon: MenuIcon },
   { id: 'productbuilder', label: 'Product Builder', Icon: BuildIcon },
@@ -104,7 +107,7 @@ const TABS = [
 // TABS/tab-id state — no change to what each tab renders or how it saves.
 const TAB_GROUPS = [
   { label: 'Overview', tabs: ['overview', 'insights'] },
-  { label: 'Orders & Service', tabs: ['reservations', 'tables'] },
+  { label: 'Orders & Service', tabs: ['reservations', 'kds', 'tables'] },
   { label: 'Menu', tabs: ['menubuilder', 'productbuilder', 'combobuilder', 'availability'] },
   { label: 'Marketing', tabs: ['banners', 'coupons', 'push', 'payitforward'] },
   { label: 'Customers', tabs: ['users'] },
@@ -901,6 +904,20 @@ export default function Admin({ onExit }) {
     ...adminCat.map((c) => c.category),
     ...productSections.map((ps) => ps.name),
   ].filter(Boolean))];
+
+  // ---- Kitchen Screen (KDS) config ----
+  const kdsCfg = s?.kds || {};
+  const kdsZones = Array.isArray(kdsCfg.zones) ? kdsCfg.zones : [];
+  const setKds = (patch) => set({ kds: { ...kdsCfg, ...patch } });
+  const setKdsZones = (list) => setKds({ zones: list });
+  const addKdsZone = () => setKdsZones([...kdsZones, { id: 'z_' + Math.random().toString(36).slice(2, 8), name: 'New station', categories: [] }]);
+  const updateKdsZone = (id, patch) => setKdsZones(kdsZones.map((z) => (z.id === id ? { ...z, ...patch } : z)));
+  const removeKdsZone = (id) => setKdsZones(kdsZones.filter((z) => z.id !== id));
+  const toggleKdsZoneCat = (id, name) => {
+    const z = kdsZones.find((x) => x.id === id); if (!z) return;
+    const cats = Array.isArray(z.categories) ? z.categories : [];
+    updateKdsZone(id, { categories: cats.includes(name) ? cats.filter((c) => c !== name) : [...cats, name] });
+  };
   // Existing section names offered as quick-pick chips (or type a new one).
   const existingSectionNames = [...new Set([
     ...presets.map((p) => (p.section || '').trim()),
@@ -2697,6 +2714,84 @@ export default function Admin({ onExit }) {
                 </datalist>
 
                 <button type="button" className="btn full" onClick={addCombo}>+ Add combo</button>
+              </>
+            )}
+
+            {/* ───────── KITCHEN SCREEN (KDS) ───────── */}
+            {tab === 'kds' && (
+              <>
+                <div className="admin-page-head">
+                  <h1 className="admin-page-title">Kitchen Screen</h1>
+                  <p className="admin-page-desc">A live bump screen for the kitchen and baristas. Open it on any wall tablet, sign in with your staff passcode, and pick a station. Tickets colour by age and can be split per station so each screen shows only its own items.</p>
+                </div>
+
+                <div className="card" style={card}>
+                  <div className="group-title">Open the screen</div>
+                  <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 0 }}>Open this address on any device (a kitchen tablet, a spare laptop). It asks for the same staff passcode you use here, then remembers the station you pick.</p>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <code style={{ border: '1px solid var(--line)', borderRadius: 8, padding: '8px 10px', flex: 1, minWidth: 200 }}>{`${typeof window !== 'undefined' ? window.location.origin : ''}/kds`}</code>
+                    <a className="btn" style={{ padding: '8px 14px' }} href="/kds" target="_blank" rel="noreferrer">Open kitchen screen ↗</a>
+                  </div>
+                </div>
+
+                <div className="card" style={card}>
+                  <div className="group-title">Stations</div>
+                  <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 0 }}>Each station shows only its categories&rsquo; items &mdash; so the barista screen shows drinks and the kitchen screen shows food, even on one shared order. An <strong>All orders</strong> view (everything) always exists, so you don&rsquo;t have to set stations up to get started. Remember to press <strong>Save changes</strong>.</p>
+                  {kdsZones.length === 0 && <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>No stations yet &mdash; the screen will show a single &ldquo;All orders&rdquo; view until you add some.</p>}
+                  {kdsZones.map((z) => (
+                    <div key={z.id} className="avail-sched">
+                      <div className="avail-sched-head">
+                        <input className="avail-sched-name" value={z.name || ''} placeholder="Station name (e.g. Kitchen)" onChange={(e) => updateKdsZone(z.id, { name: e.target.value })} />
+                        <button type="button" className="avail-del" title="Delete station" onClick={() => removeKdsZone(z.id)}>✕</button>
+                      </div>
+                      <div className="avail-sched-cats" style={{ borderTop: 'none', paddingTop: 4 }}>
+                        <div className="muted" style={{ fontSize: 'var(--fs-xs)', marginBottom: 4 }}>Categories on this station</div>
+                        {scheduleCatOptions.length === 0 && <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>No categories loaded yet.</span>}
+                        <div className="avail-chipwrap">
+                          {scheduleCatOptions.map((name) => (
+                            <button key={name} type="button" className={`chip${(z.categories || []).includes(name) ? ' on' : ''}`} onClick={() => toggleKdsZoneCat(z.id, name)}>
+                              {(z.categories || []).includes(name) ? '✓ ' : '+ '}{name}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  <button type="button" className="btn full" style={{ marginTop: 12 }} onClick={addKdsZone}>+ Add station</button>
+                </div>
+
+                <div className="card" style={card}>
+                  <div className="group-title">Display</div>
+                  <div className="admin-two-col">
+                    <label className="field"><span>Turn amber after (minutes)</span>
+                      <input type="number" min="0" value={kdsCfg.amberMin ?? 6} onChange={(e) => setKds({ amberMin: Math.max(0, parseInt(e.target.value, 10) || 0) })} /></label>
+                    <label className="field"><span>Turn red after (minutes)</span>
+                      <input type="number" min="0" value={kdsCfg.redMin ?? 12} onChange={(e) => setKds({ redMin: Math.max(0, parseInt(e.target.value, 10) || 0) })} /></label>
+                  </div>
+                  <label className="field" style={{ marginTop: 10 }}><span>Show tickets from the last (hours)</span>
+                    <input type="number" min="1" max="48" value={kdsCfg.lookbackHours ?? 8} onChange={(e) => setKds({ lookbackHours: Math.max(1, Math.min(48, parseInt(e.target.value, 10) || 8)) })} /></label>
+                  <label className="avail-switch" style={{ marginTop: 12 }}>
+                    <input type="checkbox" checked={kdsCfg.sound !== false} onChange={(e) => setKds({ sound: e.target.checked })} />
+                    <span>Chime when a new ticket arrives</span>
+                  </label>
+                  <label className="avail-switch" style={{ marginTop: 10 }}>
+                    <input type="checkbox" checked={kdsCfg.showPrepStep !== false} onChange={(e) => setKds({ showPrepStep: e.target.checked })} />
+                    <span>Show a &ldquo;Start&rdquo; step before bumping</span>
+                  </label>
+                  <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 10 }}>Remember to press <strong>Save changes</strong>.</p>
+                </div>
+
+                <div className="card" style={card}>
+                  <div className="group-title">Instant updates (optional)</div>
+                  <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 0 }}>The screen already updates on its own every few seconds. To make new orders appear <em>the instant</em> they&rsquo;re placed, add a Square webhook &mdash; then order changes push straight to every screen.</p>
+                  <ol className="muted" style={{ fontSize: 'var(--fs-sm)', paddingLeft: 18, lineHeight: 1.7 }}>
+                    <li>In your Square Developer dashboard, open your app &rarr; <strong>Webhooks &rarr; Subscriptions &rarr; Add endpoint</strong>.</li>
+                    <li>Set the URL to: <code style={{ border: '1px solid var(--line)', borderRadius: 6, padding: '2px 6px' }}>{`${typeof window !== 'undefined' ? window.location.origin : ''}/api/square/webhook`}</code></li>
+                    <li>Subscribe to the events <code>order.created</code>, <code>order.updated</code>, and <code>payment.updated</code>.</li>
+                    <li>Copy the endpoint&rsquo;s <strong>Signature Key</strong> and set it in Railway as the variable <code>SQUARE_WEBHOOK_SIGNATURE_KEY</code>, then redeploy.</li>
+                  </ol>
+                  <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 0 }}>That&rsquo;s it &mdash; no code changes needed. Until then, the screen stays current with its own refresh, so it works right away either way.</p>
+                </div>
               </>
             )}
 

@@ -168,6 +168,21 @@ async function init(attempt = 1) {
     await pool.query('CREATE INDEX IF NOT EXISTS pif_events_gift ON pay_it_forward_events (gift_id)');
     await pool.query('CREATE INDEX IF NOT EXISTS pif_events_ts ON pay_it_forward_events (created_at)');
 
+    // Kitchen-display per-(order,zone) bump state. Orders themselves live in
+    // Square; this only records what each station has done with each ticket.
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS kds_tickets (
+        order_id text not null,
+        zone text not null,
+        status text not null default 'new',
+        started_at timestamptz,
+        bumped_at timestamptz,
+        updated_at timestamptz default now(),
+        primary key (order_id, zone)
+      )
+    `);
+    await pool.query('CREATE INDEX IF NOT EXISTS kds_updated ON kds_tickets (updated_at)');
+
     const r = await pool.query("SELECT data FROM app_settings WHERE id = 'main'");
     cache = (r.rows[0] && r.rows[0].data) || {};
     ready = true;
@@ -744,8 +759,43 @@ async function pifKpis(days = 90) {
   };
 }
 
+// ---- Kitchen display (per order+zone bump state) ----
+async function kdsGetStates(orderIds) {
+  if (!pool || !orderIds || !orderIds.length) return {};
+  const r = await pool.query(
+    'SELECT order_id, zone, status, started_at, bumped_at FROM kds_tickets WHERE order_id = ANY($1)',
+    [orderIds]
+  );
+  const out = {};
+  for (const x of r.rows) {
+    (out[x.order_id] = out[x.order_id] || {})[x.zone] = {
+      status: x.status, startedAt: x.started_at, bumpedAt: x.bumped_at,
+    };
+  }
+  return out;
+}
+async function kdsSetStatus(orderId, zone, status) {
+  if (!pool) throw new Error('The kitchen screen needs the database to remember bumps.');
+  const r = await pool.query(
+    `INSERT INTO kds_tickets (order_id, zone, status, started_at, bumped_at, updated_at)
+     VALUES ($1, $2, $3,
+       CASE WHEN $3 = 'preparing' THEN now() ELSE NULL END,
+       CASE WHEN $3 = 'done' THEN now() ELSE NULL END,
+       now())
+     ON CONFLICT (order_id, zone) DO UPDATE SET
+       status = $3,
+       started_at = CASE WHEN $3 = 'preparing' AND kds_tickets.started_at IS NULL THEN now() ELSE kds_tickets.started_at END,
+       bumped_at = CASE WHEN $3 = 'done' THEN now() ELSE NULL END,
+       updated_at = now()
+     RETURNING order_id, zone, status`,
+    [orderId, zone, status]
+  );
+  return r.rows[0];
+}
+
 module.exports = {
   init, getOverrides, saveOverrides,
+  kdsGetStates, kdsSetStatus,
   insertScheduled, listScheduledByCustomer, cancelScheduled, claimDue, updateScheduled,
   track, getAnalytics,
   insertMessage, listMessages, markMessageHandled,
