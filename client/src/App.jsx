@@ -381,6 +381,15 @@ export default function App() {
     api.pifConfig().then((c) => setPifEnabled(!!c.enabled)).catch(() => {});
   }, []);
 
+  // Count a Smart Campaign impression once whenever the active set changes. Kept
+  // as a TOP-LEVEL hook (before any early return) so the hook order never varies.
+  const smartImpressionKey = ((config && config.smartCampaigns && config.smartCampaigns.heroSlides) || [])
+    .map((s) => s.campaignId).filter(Boolean).join(',');
+  useEffect(() => {
+    if (!smartImpressionKey) return;
+    for (const id of smartImpressionKey.split(',')) track('campaign_impression', { ref: id });
+  }, [smartImpressionKey]);
+
   // Analytics: one visit event per load; apply a custom favicon if configured.
   useEffect(() => {
     if (!config) return;
@@ -963,13 +972,6 @@ export default function App() {
     ...(seasonBanner ? [{ id: 'season-banner', ...seasonBanner }] : []),
     ...(config.hero || []),
   ];
-  // Count a Smart Campaign impression once whenever the active set changes.
-  const smartImpressionKey = smartSlides.map((s) => s.campaignId).filter(Boolean).join(',');
-  useEffect(() => {
-    if (!smartImpressionKey) return;
-    for (const id of smartImpressionKey.split(',')) track('campaign_impression', { ref: id });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [smartImpressionKey]);
 
   // Shared banner-destination handler — used by both the homepage hero and the
   // category Smart-Campaign banners, so campaign attribution + navigation live in
