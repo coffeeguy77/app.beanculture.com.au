@@ -75,6 +75,12 @@ export const api = {
   // Kiosk POS
   posConfig: (pass) => req(`/api/pos/config?pass=${encodeURIComponent(pass || '')}`),
   posOrder: (pass, payload) => req(`/api/pos/order?pass=${encodeURIComponent(pass || '')}`, { method: 'POST', body: JSON.stringify(payload) }),
+  posCheckoutStatus: (pass, id, orderId) => req(`/api/pos/checkout/${encodeURIComponent(id)}?pass=${encodeURIComponent(pass || '')}&orderId=${encodeURIComponent(orderId || '')}`),
+  posCheckoutCancel: (pass, id, orderId) => req(`/api/pos/checkout/${encodeURIComponent(id)}/cancel?pass=${encodeURIComponent(pass || '')}`, { method: 'POST', body: JSON.stringify({ orderId }) }),
+  posTerminalPair: (pass, name) => req(`/api/pos/terminal/pair?pass=${encodeURIComponent(pass || '')}`, { method: 'POST', body: JSON.stringify({ name }) }),
+  posTerminalPairStatus: (pass, id) => req(`/api/pos/terminal/pair/${encodeURIComponent(id)}?pass=${encodeURIComponent(pass || '')}`),
+  posTerminalDevices: (pass) => req(`/api/pos/terminal/devices?pass=${encodeURIComponent(pass || '')}`),
+  posTerminalSelect: (pass, deviceId, name) => req(`/api/pos/terminal/select?pass=${encodeURIComponent(pass || '')}`, { method: 'POST', body: JSON.stringify({ deviceId, name }) }),
 };
 
 // Serve Cloudinary images auto-format (WebP/AVIF), auto-quality and sized to the

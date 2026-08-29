@@ -20,6 +20,7 @@ const scheduler = require('./lib/scheduled');
 const notify = require('./lib/notify');
 const payItForward = require('./lib/payItForward');
 const kds = require('./lib/kds');
+const terminal = require('./lib/terminal');
 const weather = require('./lib/weather');
 const smartCampaigns = require('./lib/smartCampaigns');
 
@@ -1041,12 +1042,17 @@ function kdsBroadcast(reason) {
 // Square Terminal is the next phase.
 app.get('/api/pos/config', (req, res) => {
   if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
-  const p = getSettings().pos || {};
+  const s = getSettings();
+  const p = s.pos || {};
   res.json({
     deviceName: p.deviceName || 'Front counter',
     mode: ['pos_kds', 'pos', 'kds'].includes(p.mode) ? p.mode : 'pos_kds',
     autoReturnSec: Number(p.autoReturnSec) >= 0 ? Number(p.autoReturnSec) : 3,
     staff: 'Staff',
+    logoUrl: s.logoUrl || '',
+    storeName: s.storeName || 'Bean Culture',
+    terminalDeviceId: p.terminalDeviceId || '',
+    terminalName: p.terminalName || '',
     dbEnabled: db.enabled,
   });
 });
@@ -1056,8 +1062,11 @@ app.post('/api/pos/order', async (req, res) => {
   try {
     const { cart, dineIn, table, name, tender, cashGiven } = req.body || {};
     if (!Array.isArray(cart) || cart.length === 0) return res.status(400).json({ error: 'Cart is empty' });
-    if (!['cash', 'unpaid'].includes(tender)) return res.status(400).json({ error: 'Unsupported tender' });
+    if (!['cash', 'unpaid', 'card'].includes(tender)) return res.status(400).json({ error: 'Unsupported tender' });
     const pos = getSettings().pos || {};
+    if (tender === 'card' && !pos.terminalDeviceId) {
+      return res.status(400).json({ error: 'No card terminal is paired. Pair one in POS setup first.' });
+    }
 
     // Server-authoritative order: Square re-prices from the variation/modifier
     // ids, so the client total is display-only and cannot be tampered with.
@@ -1067,6 +1076,31 @@ app.post('/api/pos/order', async (req, res) => {
     });
     const amount = order.total_money ? order.total_money.amount : 0;
     const currency = (order.total_money && order.total_money.currency) || sq.CURRENCY;
+
+    // ── Card: start a Terminal checkout and hand the client a checkout id to
+    //    watch. Authoritative completion arrives by webhook + polling, never
+    //    from the browser, so a disconnect can't lose or double a charge. ──
+    if (tender === 'card') {
+      try {
+        const checkout = await terminal.createCheckout({
+          amountMoney: { amount, currency },
+          deviceId: pos.terminalDeviceId,
+          orderId: order.id,
+          referenceId: order.id,
+          note: `${pos.deviceName || 'POS'} · ${name || (dineIn ? 'Dine-in' : 'Takeaway')}`,
+        });
+        try { await db.posPaymentUpsert({ checkoutId: checkout.id, squareOrderId: order.id, deviceId: pos.terminalDeviceId, amount, status: 'waiting' }); } catch {}
+        return res.json({
+          orderId: order.id, checkoutId: checkout.id, total: amount, currency,
+          tender: 'card', status: 'waiting', terminalName: pos.terminalName || pos.deviceName || 'Terminal',
+        });
+      } catch (e) {
+        // Checkout couldn't start — cancel the just-created order so no orphan
+        // hits the kitchen, and surface the reason.
+        await orders.cancelOrder(order.id).catch(() => {});
+        return res.status(502).json({ error: `Could not start the card payment: ${e.message}` });
+      }
+    }
 
     let payment = null;
     if (tender === 'cash') {
@@ -1095,6 +1129,93 @@ app.post('/api/pos/order', async (req, res) => {
   } catch (e) {
     res.status(502).json({ error: e.message });
   }
+});
+
+// Reconcile a Terminal checkout to our state machine. Idempotent — safe to call
+// from the client poll AND the webhook; whichever arrives first wins, the other
+// is a no-op. `fallbackOrderId` covers DB-less deployments (no persisted row).
+async function reconcileCheckout(id, checkoutObj, fallbackOrderId) {
+  const c = checkoutObj || await terminal.getCheckout(id);
+  const phase = terminal.phaseOf(c);
+  const paymentId = (c.payment_ids && c.payment_ids[0]) || null;
+  const row = await db.posPaymentGet(id).catch(() => null);
+  const orderId = (row && row.square_order_id) || fallbackOrderId || null;
+  const pos = getSettings().pos || {};
+  if (phase === 'paid') {
+    await db.posPaymentSetStatus(id, 'paid', paymentId).catch(() => {});
+    if (orderId) {
+      try {
+        await db.posRecordOrder({
+          squareOrderId: orderId, squarePaymentId: paymentId,
+          source: pos.sourceName || 'Bean Culture POS', tender: 'card',
+          amount: (c.amount_money && c.amount_money.amount) || (row ? row.amount : 0),
+          status: 'paid', deviceName: pos.deviceName || 'Front counter',
+        });
+      } catch {}
+    }
+  } else if (phase === 'canceled') {
+    await db.posPaymentSetStatus(id, 'canceled', null).catch(() => {});
+    if (orderId) await orders.cancelOrder(orderId).catch(() => {}); // drop it off the KDS
+  } else {
+    await db.posPaymentSetStatus(id, phase, paymentId).catch(() => {});
+  }
+  return { status: phase, orderId, paymentId, amount: (c.amount_money && c.amount_money.amount) || 0 };
+}
+
+// Poll a checkout's status (client fallback to the webhook; never trusts only
+// the browser for the source of truth — this always re-reads Square).
+app.get('/api/pos/checkout/:id', async (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const out = await reconcileCheckout(req.params.id, null, req.query.orderId);
+    res.json(out);
+  } catch (e) { res.status(502).json({ error: e.message }); }
+});
+
+// Cancel an in-progress checkout (staff pressed Cancel).
+app.post('/api/pos/checkout/:id/cancel', async (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const c = await terminal.cancelCheckout(req.params.id);
+    const out = await reconcileCheckout(req.params.id, c, (req.body && req.body.orderId));
+    res.json(out);
+  } catch (e) { res.status(502).json({ error: e.message }); }
+});
+
+// ── Terminal pairing (from POS setup) ──
+app.post('/api/pos/terminal/pair', async (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const dc = await terminal.createDeviceCode((req.body && req.body.name) || (getSettings().pos || {}).deviceName);
+    res.json({ id: dc.id, code: dc.code, status: dc.status, deviceId: dc.device_id || '' });
+  } catch (e) { res.status(502).json({ error: e.message }); }
+});
+app.get('/api/pos/terminal/pair/:id', async (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const dc = await terminal.getDeviceCode(req.params.id);
+    res.json({ id: dc.id, code: dc.code, status: dc.status, deviceId: dc.device_id || '', name: dc.name || '' });
+  } catch (e) { res.status(502).json({ error: e.message }); }
+});
+app.get('/api/pos/terminal/devices', async (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  try { res.json({ devices: await terminal.listDevices(), current: (getSettings().pos || {}).terminalDeviceId || '' }); }
+  catch (e) { res.status(502).json({ error: e.message }); }
+});
+// Assign the reader this venue uses for card payments (persists to settings).
+app.post('/api/pos/terminal/select', async (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  if (!db.enabled) return res.status(400).json({ error: 'A database is required to save the terminal selection.' });
+  try {
+    const { deviceId, name } = req.body || {};
+    if (!deviceId) return res.status(400).json({ error: 'Missing device id' });
+    const ov = db.getOverrides() || {};
+    ov.pos = ov.pos || {};
+    ov.pos.terminalDeviceId = String(deviceId);
+    ov.pos.terminalName = String(name || '').slice(0, 60);
+    await db.saveOverrides(ov);
+    res.json({ ok: true, terminalDeviceId: ov.pos.terminalDeviceId, terminalName: ov.pos.terminalName });
+  } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
 app.get('/api/admin/kds/config', (req, res) => {
@@ -1166,6 +1287,12 @@ app.post('/api/square/webhook', (req, res) => {
     const type = (req.body && req.body.type) || '';
     // Order/payment/refund events all mean "tickets may have changed".
     if (!type || /order|payment|refund/i.test(type)) kdsBroadcast(type || 'webhook');
+    // Terminal checkout updates drive the POS card state machine. Reconcile in
+    // the background so Square still gets a fast 200 (handler stays idempotent).
+    if (/terminal\.checkout/i.test(type)) {
+      const c = req.body && req.body.data && req.body.data.object && req.body.data.object.checkout;
+      if (c && c.id) reconcileCheckout(c.id, c).catch((e) => console.warn('[pos] webhook reconcile failed:', e.message));
+    }
     res.json({ ok: true });
   } catch (e) {
     res.status(200).json({ ok: false }); // never make Square retry-storm us

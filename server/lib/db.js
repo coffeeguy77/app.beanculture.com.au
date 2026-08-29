@@ -201,6 +201,23 @@ async function init(attempt = 1) {
     await pool.query('CREATE INDEX IF NOT EXISTS pos_orders_created ON pos_orders (created_at)');
     await pool.query('CREATE UNIQUE INDEX IF NOT EXISTS pos_orders_sqid ON pos_orders (square_order_id) WHERE square_order_id IS NOT NULL');
 
+    // Terminal (card) checkout attempts — the payment state machine, kept
+    // server-side so an interrupted browser can never lose or double-charge.
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS pos_payments (
+        checkout_id text primary key,
+        square_order_id text,
+        device_id text,
+        amount integer default 0,
+        status text default 'waiting',
+        square_payment_id text,
+        created_at timestamptz default now(),
+        updated_at timestamptz default now()
+      )
+    `);
+    await pool.query('CREATE INDEX IF NOT EXISTS pos_payments_order ON pos_payments (square_order_id)');
+    await pool.query('CREATE INDEX IF NOT EXISTS pos_payments_status ON pos_payments (status)');
+
     const r = await pool.query("SELECT data FROM app_settings WHERE id = 'main'");
     cache = (r.rows[0] && r.rows[0].data) || {};
     ready = true;
@@ -826,10 +843,46 @@ async function posRecordOrder({ squareOrderId, squarePaymentId, source, tender, 
   return r.rows[0];
 }
 
+// ── Terminal checkout state (card payments) ──
+async function posPaymentUpsert({ checkoutId, squareOrderId, deviceId, amount, status }) {
+  if (!pool) return null;
+  const r = await pool.query(
+    `INSERT INTO pos_payments (checkout_id, square_order_id, device_id, amount, status)
+     VALUES ($1, $2, $3, $4, $5)
+     ON CONFLICT (checkout_id) DO UPDATE SET
+       square_order_id = COALESCE(EXCLUDED.square_order_id, pos_payments.square_order_id),
+       device_id = COALESCE(EXCLUDED.device_id, pos_payments.device_id),
+       amount = EXCLUDED.amount, status = EXCLUDED.status, updated_at = now()
+     RETURNING *`,
+    [checkoutId, squareOrderId || null, deviceId || null, amount || 0, status || 'waiting']
+  );
+  return r.rows[0];
+}
+async function posPaymentSetStatus(checkoutId, status, squarePaymentId) {
+  if (!pool) return null;
+  const r = await pool.query(
+    `UPDATE pos_payments SET status = $2,
+       square_payment_id = COALESCE($3, square_payment_id), updated_at = now()
+     WHERE checkout_id = $1 RETURNING *`,
+    [checkoutId, status, squarePaymentId || null]
+  );
+  return r.rows[0];
+}
+async function posPaymentGet(checkoutId) {
+  if (!pool) return null;
+  const r = await pool.query('SELECT * FROM pos_payments WHERE checkout_id = $1', [checkoutId]);
+  return r.rows[0] || null;
+}
+async function posPaymentByOrder(squareOrderId) {
+  if (!pool) return null;
+  const r = await pool.query('SELECT * FROM pos_payments WHERE square_order_id = $1 ORDER BY created_at DESC LIMIT 1', [squareOrderId]);
+  return r.rows[0] || null;
+}
+
 module.exports = {
   init, getOverrides, saveOverrides,
   kdsGetStates, kdsSetStatus,
-  posRecordOrder,
+  posRecordOrder, posPaymentUpsert, posPaymentSetStatus, posPaymentGet, posPaymentByOrder,
   insertScheduled, listScheduledByCustomer, cancelScheduled, claimDue, updateScheduled,
   track, getAnalytics,
   insertMessage, listMessages, markMessageHandled,

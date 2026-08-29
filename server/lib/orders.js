@@ -229,6 +229,22 @@ async function createCashPayment({ orderId, amountMoney, buyerSuppliedMoney }) {
   return data.payment;
 }
 
+// Cancel an unpaid OPEN order (e.g. a card checkout the customer abandoned) so
+// it drops off the KDS (the ticket feed filters out CANCELED orders).
+async function cancelOrder(orderId) {
+  try {
+    const cur = await squareFetch(`/v2/orders/${orderId}`);
+    const version = cur.order && cur.order.version;
+    const state = cur.order && cur.order.state;
+    if (state === 'COMPLETED' || state === 'CANCELED') return cur.order; // nothing to do
+    const data = await squareFetch(`/v2/orders/${orderId}`, {
+      method: 'PUT',
+      body: { order: { version, state: 'CANCELED' }, idempotency_key: idem() },
+    });
+    return data.order;
+  } catch (e) { return null; }
+}
+
 async function getHistory(customerId, limit = 25) {
   if (!customerId) return [];
   const data = await squareFetch('/v2/orders/search', {
@@ -322,4 +338,4 @@ async function createReservationOrder({ name, phone, email, partySize, at, notes
   return data.order;
 }
 
-module.exports = { createOrder, getOrder, createPayment, authorizePayment, completePayment, cancelPayment, payZeroOrder, createCashPayment, getHistory, createReservationOrder };
+module.exports = { createOrder, getOrder, createPayment, authorizePayment, completePayment, cancelPayment, payZeroOrder, createCashPayment, cancelOrder, getHistory, createReservationOrder };

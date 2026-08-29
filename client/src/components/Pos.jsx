@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { api, formatMoney } from '../api.js';
+import { api, formatMoney, imgUrl } from '../api.js';
 import { useItemConfig, itemIsQuickAdd, buildQuickCartItem } from '../hooks/useItemConfig.js';
 import Kds from './Kds.jsx';
 
@@ -144,6 +144,8 @@ export default function Pos({ onExit }) {
   const [tender, setTender] = useState(null);      // null | 'choose' | 'cash'
   const [busy, setBusy] = useState(false);
   const [success, setSuccess] = useState(null);    // { orderId, tender, change }
+  const [cardPay, setCardPay] = useState(() => { try { return JSON.parse(localStorage.getItem('bc-pos-active-checkout') || 'null'); } catch { return null; } });
+  const [showSetup, setShowSetup] = useState(false);
   const returnTimer = useRef(null);
 
   const deviceMode = cfg?.mode || 'pos_kds';        // pos_kds | pos | kds
@@ -210,10 +212,21 @@ export default function Pos({ onExit }) {
     setConfiguring({ item: found, initial: { variationId: line.variationId, modifierIds: line.modifierIds, note: line.note, quantity: line.quantity }, editKey: line.key });
   }
 
+  function finishSuccess(shortId, orderId, tenderType, change) {
+    setSuccess({ orderId, shortId, tender: tenderType, change });
+    clearCart();
+    const delay = Math.max(1500, (cfg?.autoReturnSec || 3) * 1000);
+    returnTimer.current = setTimeout(() => {
+      setSuccess(null);
+      if (deviceMode === 'pos_kds') setMode('kitchen');
+    }, delay);
+  }
+
   async function submit(tenderType, cashGiven) {
     if (!cart.length || busy) return;
     setBusy(true); setErr('');
     try {
+      const amount = cartTotal(cart);
       const payload = {
         cart: cart.map((c) => ({ variationId: c.variationId, quantity: c.quantity, modifierIds: c.modifierIds, note: c.note })),
         dineIn, table: dineIn ? table : '', name: orderName.trim(),
@@ -221,20 +234,54 @@ export default function Pos({ onExit }) {
         cashGiven: tenderType === 'cash' ? cashGiven : undefined,
       };
       const res = await api.posOrder(pass, payload);
-      const change = tenderType === 'cash' ? Math.max(0, (cashGiven || 0) - cartTotal(cart)) : 0;
       setTender(null);
-      setSuccess({ orderId: res.orderId, shortId: (res.orderId || '').slice(-4).toUpperCase(), tender: tenderType, change });
-      clearCart();
-      // Combined devices return to the KDS after a short success state.
-      const delay = Math.max(1500, (cfg?.autoReturnSec || 3) * 1000);
-      returnTimer.current = setTimeout(() => {
-        setSuccess(null);
-        if (deviceMode === 'pos_kds') setMode('kitchen');
-      }, delay);
+      if (tenderType === 'card') {
+        // Card runs on the Terminal: hand off to the waiting overlay, which
+        // watches the checkout to completion. Persist so a reload can resume.
+        const cp = { checkoutId: res.checkoutId, orderId: res.orderId, terminalName: res.terminalName || 'Terminal', amount, status: 'waiting' };
+        setCardPay(cp);
+        try { localStorage.setItem('bc-pos-active-checkout', JSON.stringify(cp)); } catch {}
+      } else {
+        const change = tenderType === 'cash' ? Math.max(0, (cashGiven || 0) - amount) : 0;
+        finishSuccess((res.orderId || '').slice(-4).toUpperCase(), res.orderId, tenderType, change);
+      }
     } catch (e) {
       setErr(e.message);
     } finally { setBusy(false); }
   }
+
+  function clearActiveCheckout() { try { localStorage.removeItem('bc-pos-active-checkout'); } catch {} }
+
+  async function cancelCard() {
+    if (!cardPay) return;
+    setCardPay((c) => c && { ...c, status: 'canceling' });
+    try { await api.posCheckoutCancel(pass, cardPay.checkoutId, cardPay.orderId); } catch {}
+    clearActiveCheckout();
+    setCardPay((c) => c && { ...c, status: 'canceled' });
+  }
+
+  // Watch an in-progress card checkout to a terminal state (webhook + poll on
+  // the server; the browser only reads authoritative status, never decides it).
+  useEffect(() => {
+    if (!cardPay || cardPay.status !== 'waiting') return;
+    let alive = true;
+    const check = async () => {
+      try {
+        const s = await api.posCheckoutStatus(pass, cardPay.checkoutId, cardPay.orderId);
+        if (!alive) return;
+        if (s.status === 'paid') {
+          clearActiveCheckout(); setCardPay(null);
+          finishSuccess((cardPay.orderId || '').slice(-4).toUpperCase(), cardPay.orderId, 'card', 0);
+        } else if (s.status === 'canceled') {
+          clearActiveCheckout(); setCardPay((c) => c && { ...c, status: 'canceled' });
+        }
+      } catch {}
+    };
+    const iv = setInterval(check, 2500);
+    check();
+    return () => { alive = false; clearInterval(iv); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cardPay && cardPay.checkoutId, cardPay && cardPay.status]);
 
   // ── Passcode gate ──
   if (needPass) {
@@ -268,7 +315,9 @@ export default function Pos({ onExit }) {
 
   const header = (
     <header className="pos-header">
-      <div className="pos-brand">BEAN CULTURE</div>
+      {cfg.logoUrl
+        ? <img className="pos-logo" src={imgUrl(cfg.logoUrl, 240)} alt={cfg.storeName || 'Bean Culture'} />
+        : <div className="pos-brand">BEAN CULTURE</div>}
       <div className="pos-service">{dineIn ? 'Dine-in' : 'Takeaway'} · Now</div>
       <div className="pos-modeswitch">
         <button className={`pos-seg${mode === 'register' ? ' on' : ''}`}
@@ -280,8 +329,11 @@ export default function Pos({ onExit }) {
         </button>
       </div>
       <div className="pos-header-right">
-        <span className="pos-term" title="Card terminal">● Terminal: next update</span>
+        <span className={`pos-term${cfg.terminalDeviceId ? ' on' : ''}`} title="Card terminal">
+          ● {cfg.terminalDeviceId ? (cfg.terminalName || 'Terminal ready') : 'No terminal'}
+        </span>
         <span className="pos-staff">{cfg.staff || 'Staff'}</span>
+        <button className="pos-icon" title="POS setup" onClick={() => setShowSetup(true)}>⚙</button>
         <button className="pos-icon" title="Exit POS" onClick={onExit}>✕</button>
       </div>
     </header>
@@ -413,8 +465,39 @@ export default function Pos({ onExit }) {
       {/* Tender overlay */}
       {tender && (
         <TenderOverlay tender={tender} setTender={setTender} total={total} currency={currency}
-          busy={busy} onCash={(given) => submit('cash', given)} onKitchen={() => submit('unpaid')} onClose={() => setTender(null)} />
+          busy={busy} cardEnabled={!!cfg.terminalDeviceId}
+          onCard={() => submit('card')} onCash={(given) => submit('cash', given)} onKitchen={() => submit('unpaid')} onClose={() => setTender(null)} />
       )}
+
+      {/* Card — Terminal waiting / result */}
+      {cardPay && (
+        <div className="pos-scrim">
+          <div className="pos-card-wait" onClick={(e) => e.stopPropagation()}>
+            {cardPay.status === 'canceled' ? (
+              <>
+                <div className="pos-card-x">✕</div>
+                <div className="pos-success-title">Payment canceled</div>
+                <div className="pos-success-id">The order was not charged. Your items are still in the cart.</div>
+                <button className="pos-btn primary big" onClick={() => { setCardPay(null); }}>Back to order</button>
+              </>
+            ) : (
+              <>
+                <div className="pos-card-spinner" />
+                <div className="pos-success-title">Waiting for customer</div>
+                <div className="pos-card-amount">{formatMoney(cardPay.amount, currency)}</div>
+                <div className="pos-success-id">Follow the prompts on <b>{cardPay.terminalName}</b>.</div>
+                <button className="pos-btn ghost big" disabled={cardPay.status === 'canceling'} onClick={cancelCard}>
+                  {cardPay.status === 'canceling' ? 'Canceling…' : 'Cancel payment'}
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Terminal setup / pairing */}
+      {showSetup && <TerminalSetup pass={pass} cfg={cfg} onClose={() => setShowSetup(false)}
+        onSelected={(deviceId, name) => setCfg((c) => ({ ...c, terminalDeviceId: deviceId, terminalName: name }))} />}
 
       {/* Success overlay */}
       {success && (
@@ -435,7 +518,7 @@ export default function Pos({ onExit }) {
 }
 
 // ── Tender: choose method, then cash keypad with change ──
-function TenderOverlay({ tender, setTender, total, currency, busy, onCash, onKitchen, onClose }) {
+function TenderOverlay({ tender, setTender, total, currency, busy, cardEnabled, onCard, onCash, onKitchen, onClose }) {
   const [given, setGiven] = useState(0);
   const change = Math.max(0, given - total);
   // Suggested notes: exact, next round $ up, and common AUD notes above total.
@@ -450,9 +533,10 @@ function TenderOverlay({ tender, setTender, total, currency, busy, onCash, onKit
           <>
             <div className="pos-tender-title">Take payment · {formatMoney(total, currency)}</div>
             <div className="pos-tender-methods">
-              <button className="pos-tender-method disabled" disabled title="Coming in the next update">
+              <button className={`pos-tender-method${cardEnabled ? '' : ' disabled'}`} disabled={!cardEnabled || busy}
+                title={cardEnabled ? '' : 'Pair a Square Terminal in POS setup (⚙)'} onClick={onCard}>
                 <span className="pos-tender-m-name">Card — Terminal</span>
-                <span className="pos-tender-m-sub">Next update</span>
+                <span className="pos-tender-m-sub">{cardEnabled ? 'Tap, insert or swipe' : 'No terminal paired'}</span>
               </button>
               <button className="pos-tender-method" onClick={() => setTender('cash')}>
                 <span className="pos-tender-m-name">Cash</span>
@@ -490,6 +574,104 @@ function TenderOverlay({ tender, setTender, total, currency, busy, onCash, onKit
             </div>
           </>
         )}
+      </div>
+    </div>
+  );
+}
+
+// ── Terminal pairing / selection (from the POS ⚙ setup) ──
+function TerminalSetup({ pass, cfg, onClose, onSelected }) {
+  const [devices, setDevices] = useState([]);
+  const [current, setCurrent] = useState(cfg.terminalDeviceId || '');
+  const [name, setName] = useState(cfg.deviceName || 'Front counter');
+  const [pairing, setPairing] = useState(null); // { id, code, status }
+  const [msg, setMsg] = useState('');
+  const [err, setErr] = useState('');
+
+  async function loadDevices() {
+    try { const d = await api.posTerminalDevices(pass); setDevices(d.devices || []); setCurrent(d.current || current); }
+    catch (e) { setErr(e.message); }
+  }
+  useEffect(() => { loadDevices(); /* eslint-disable-next-line */ }, []);
+
+  async function startPair() {
+    setErr(''); setMsg('');
+    try { const p = await api.posTerminalPair(pass, name); setPairing({ id: p.id, code: p.code, status: p.status }); }
+    catch (e) { setErr(e.message); }
+  }
+
+  // Poll the device code until the Terminal is paired, then auto-select it.
+  useEffect(() => {
+    if (!pairing || pairing.status === 'PAIRED') return;
+    let alive = true;
+    const iv = setInterval(async () => {
+      try {
+        const s = await api.posTerminalPairStatus(pass, pairing.id);
+        if (!alive) return;
+        if (s.status === 'PAIRED' && s.deviceId) {
+          setPairing({ ...pairing, status: 'PAIRED', deviceId: s.deviceId });
+          await select(s.deviceId, name);
+        } else if (s.status === 'EXPIRED') {
+          setPairing(null); setErr('That pairing code expired — generate a new one.');
+        }
+      } catch {}
+    }, 3000);
+    return () => { alive = false; clearInterval(iv); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pairing && pairing.id, pairing && pairing.status]);
+
+  async function select(deviceId, label) {
+    setErr(''); setMsg('');
+    try {
+      const r = await api.posTerminalSelect(pass, deviceId, label || 'Terminal');
+      setCurrent(r.terminalDeviceId);
+      onSelected && onSelected(r.terminalDeviceId, r.terminalName);
+      setMsg('Terminal ready for card payments.');
+      setPairing(null);
+      loadDevices();
+    } catch (e) { setErr(e.message); }
+  }
+
+  return (
+    <div className="pos-scrim" onClick={onClose}>
+      <div className="pos-setup" onClick={(e) => e.stopPropagation()}>
+        <div className="pos-tender-title">Card terminal setup</div>
+
+        {current
+          ? <div className="pos-setup-current">In use: <b>{cfg.terminalName || current}</b></div>
+          : <div className="pos-setup-current muted">No terminal paired yet.</div>}
+
+        {devices.length > 0 && (
+          <div className="pos-setup-list">
+            <div className="pos-setup-label">Paired readers</div>
+            {devices.map((d) => (
+              <button key={d.id} className={`pos-setup-device${current === d.id ? ' on' : ''}`} onClick={() => select(d.id, d.name)}>
+                <span><b>{d.name}</b>{d.model ? ` · ${d.model}` : ''}</span>
+                <span className="pos-setup-dstatus">{current === d.id ? 'In use' : d.status || 'Paired'}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        <div className="pos-setup-pair">
+          <div className="pos-setup-label">Pair a new Square Terminal</div>
+          {pairing ? (
+            <div className="pos-setup-code-box">
+              <div className="pos-setup-code">{pairing.code}</div>
+              <p className="pos-pop-hint">On your Square Terminal: <b>Settings → Sign in → Use a device code</b>, then enter this code. Waiting for it to pair…</p>
+              <button className="pos-link" onClick={() => setPairing(null)}>Cancel</button>
+            </div>
+          ) : (
+            <div className="pos-setup-pair-row">
+              <input className="pos-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Reader name" />
+              <button className="pos-btn primary" onClick={startPair}>Get pairing code</button>
+            </div>
+          )}
+        </div>
+
+        {msg && <div className="pos-setup-ok">{msg}</div>}
+        {err && <div className="pos-err">{err}</div>}
+        <button className="pos-btn ghost big" style={{ width: '100%', marginTop: 12 }} onClick={onClose}>Done</button>
       </div>
     </div>
   );
