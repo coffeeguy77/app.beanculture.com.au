@@ -3366,6 +3366,9 @@ body:has(.store-shell) { background: var(--bc-canvas-deep, #160f12); }
 .pos-line-qty span { min-width: 22px; text-align: center; font-weight: 700; }
 .pos-cart-foot { border-top: 1px solid var(--pos-line); padding: 14px 18px; }
 .pos-total-row { display: flex; justify-content: space-between; align-items: baseline; font-family: 'Fraunces', Georgia, serif; }
+.pos-total-row.saving { font-family: 'DM Sans', sans-serif; font-size: 13px; color: var(--pos-green); margin-bottom: 4px; }
+.pos-line.combo { background: var(--pos-surface2); border: 1px solid var(--pos-line); border-radius: 12px; padding: 10px 12px; margin: 6px 0; border-bottom: 1px solid var(--pos-line); }
+.pos-line.combo .pos-line-name { color: var(--pos-accent); }
 .pos-total-row span:first-child { font-size: 15px; }
 .pos-total { font-size: 24px; font-weight: 700; }
 .pos-gst { font-size: 12px; color: var(--pos-muted); margin-top: 1px; }

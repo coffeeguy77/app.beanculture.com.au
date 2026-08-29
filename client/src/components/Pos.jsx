@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { api, formatMoney, imgUrl } from '../api.js';
+import { api, formatMoney, imgUrl, comboDiscountFor } from '../api.js';
 import { useItemConfig, itemIsQuickAdd, buildQuickCartItem } from '../hooks/useItemConfig.js';
 import Kds from './Kds.jsx';
+import ComboModal from './ComboModal.jsx';
 
 // Kiosk POS + adaptive KDS (/pos). One authenticated staff screen that is a fast
 // counter register while a sale is being built and the live KDS the rest of the
@@ -134,6 +135,7 @@ export default function Pos({ onExit }) {
   const [mode, setMode] = useState('register');    // register | kitchen
   const [activeCat, setActiveCat] = useState(null);
   const [configuring, setConfiguring] = useState(null); // { item, initial? }
+  const [combo, setCombo] = useState(null);             // a combo item being built (uses ComboModal)
   const [query, setQuery] = useState('');
 
   const [cart, setCart] = useState(() => { try { return JSON.parse(localStorage.getItem(CART_KEY) || '[]') || []; } catch { return []; } });
@@ -199,6 +201,7 @@ export default function Pos({ onExit }) {
 
   function pickProduct(item, catName) {
     const withCat = { ...item, category: item.category || catName };
+    if (withCat.isCombo) { setCombo(withCat); return; }         // combos use ComboModal
     if (itemIsQuickAdd(withCat)) { addLine(buildQuickCartItem(withCat)); return; }
     setConfiguring({ item: withCat });
   }
@@ -211,6 +214,38 @@ export default function Pos({ onExit }) {
     }
     if (!found) return;
     setConfiguring({ item: found, initial: { variationId: line.variationId, modifierIds: line.modifierIds, note: line.note, quantity: line.quantity }, editKey: line.key });
+  }
+
+  // ── Combos: several linked lines sharing a comboInstanceId, adjusted/removed
+  //    as one unit; the discount is re-derived + applied server-side from the
+  //    comboId/comboInstanceId/comboGroupId tags we send. ──
+  function addCombo(entries) { setCart((prev) => [...prev, ...entries]); setCombo(null); }
+  function bumpCombo(instanceId, delta) {
+    setCart((prev) => {
+      const next = prev.map((c) => (c.comboInstanceId === instanceId ? { ...c, quantity: Math.max(0, c.quantity + delta) } : c));
+      return next.some((c) => c.comboInstanceId === instanceId && c.quantity > 0) ? next.filter((c) => c.quantity > 0) : next.filter((c) => c.comboInstanceId !== instanceId);
+    });
+  }
+  function removeCombo(instanceId) { setCart((prev) => prev.filter((c) => c.comboInstanceId !== instanceId)); }
+  function editCombo(instanceId) {
+    const line = cart.find((c) => c.comboInstanceId === instanceId);
+    if (!line) return;
+    const comboItem = (menu.categories || []).flatMap((c) => (c.items || [])).find((i) => i.isCombo && i.comboId === line.comboId);
+    removeCombo(instanceId);
+    if (comboItem) setCombo(comboItem);
+  }
+
+  // Group the flat cart into display rows: single items + one card per combo.
+  function groupCart(list) {
+    const out = []; const seen = new Map();
+    for (const c of list) {
+      if (c.comboInstanceId) {
+        let g = seen.get(c.comboInstanceId);
+        if (!g) { g = { type: 'combo', instanceId: c.comboInstanceId, name: c.comboName || 'Combo', quantity: c.quantity, discount: c.comboDiscount || 0, lines: [] }; seen.set(c.comboInstanceId, g); out.push(g); }
+        g.lines.push(c);
+      } else out.push({ type: 'item', line: c });
+    }
+    return out;
   }
 
   function finishSuccess(shortId, orderId, tenderType, change) {
@@ -228,9 +263,13 @@ export default function Pos({ onExit }) {
     if (!cart.length || busy) return;
     setBusy(true); setErr('');
     try {
-      const amount = cartTotal(cart);
+      const amount = cartTotal(cart) - comboDiscountFor(cart);
       const payload = {
-        cart: cart.map((c) => ({ variationId: c.variationId, quantity: c.quantity, modifierIds: c.modifierIds, note: c.note })),
+        cart: cart.map((c) => ({
+          variationId: c.variationId, quantity: c.quantity, modifierIds: c.modifierIds, note: c.note,
+          // Combo tags — the server re-derives + applies the combo discount from these.
+          ...(c.comboInstanceId ? { comboId: c.comboId, comboInstanceId: c.comboInstanceId, comboGroupId: c.comboGroupId, comboItemId: c.comboItemId || c.itemId } : {}),
+        })),
         dineIn, table: dineIn ? table : '', name: orderName.trim(),
         tender: tenderType,
         cashGiven: tenderType === 'cash' ? cashGiven : undefined,
@@ -312,7 +351,8 @@ export default function Pos({ onExit }) {
     : ((cats.find((c) => c.category === activeCat) || cats[0] || {}).items || [])
         .map((it) => ({ ...it, category: activeCat || (cats[0] && cats[0].category) }));
 
-  const total = cartTotal(cart);
+  const comboSaving = comboDiscountFor(cart);
+  const total = cartTotal(cart) - comboSaving;
   const configureMode = mode === 'register' && configuring;
 
   const header = (
@@ -434,28 +474,49 @@ export default function Pos({ onExit }) {
 
           <div className="pos-cart-items">
             {cart.length === 0 && <div className="pos-cart-empty">No items yet. Tap a product to start.</div>}
-            {cart.map((c) => (
-              <div key={c.key} className="pos-line">
-                <div className="pos-line-main" onClick={() => !configureMode && editLine(c)}>
+            {groupCart(cart).map((row) => row.type === 'combo' ? (
+              <div key={row.instanceId} className="pos-line combo">
+                <div className="pos-line-main" onClick={() => !configureMode && editCombo(row.instanceId)}>
                   <div className="pos-line-top">
-                    <span className="pos-line-name">{c.itemName}</span>
-                    <span className="pos-line-price">{formatMoney(c.unitPrice * c.quantity, currency)}</span>
+                    <span className="pos-line-name">🍽 {row.name}</span>
+                    <span className="pos-line-price">{formatMoney((row.lines.reduce((s, l) => s + l.unitPrice, 0) - row.discount) * row.quantity, currency)}</span>
                   </div>
-                  {(c.variationName || c.modifierNames.length > 0) && (
-                    <div className="pos-line-mods">{[c.variationName, ...c.modifierNames].filter(Boolean).join(' · ')}</div>
-                  )}
-                  {c.note && <div className="pos-line-note">“{c.note}”</div>}
+                  {row.lines.map((l, i) => (
+                    <div key={i} className="pos-line-mods">
+                      {l.itemName}{l.variationName ? ` · ${l.variationName}` : ''}{l.modifierNames && l.modifierNames.length ? ` · ${l.modifierNames.join(', ')}` : ''}
+                    </div>
+                  ))}
+                  {row.discount > 0 && <div className="pos-line-note">Combo saving −{formatMoney(row.discount * row.quantity, currency)}</div>}
                 </div>
                 <div className="pos-line-qty">
-                  <button onClick={() => bumpQty(c.key, -1)} aria-label="Decrease">−</button>
-                  <span>{c.quantity}</span>
-                  <button onClick={() => bumpQty(c.key, 1)} aria-label="Increase">+</button>
+                  <button onClick={() => bumpCombo(row.instanceId, -1)} aria-label="Decrease">−</button>
+                  <span>{row.quantity}</span>
+                  <button onClick={() => bumpCombo(row.instanceId, 1)} aria-label="Increase">+</button>
+                </div>
+              </div>
+            ) : (
+              <div key={row.line.key} className="pos-line">
+                <div className="pos-line-main" onClick={() => !configureMode && editLine(row.line)}>
+                  <div className="pos-line-top">
+                    <span className="pos-line-name">{row.line.itemName}</span>
+                    <span className="pos-line-price">{formatMoney(row.line.unitPrice * row.line.quantity, currency)}</span>
+                  </div>
+                  {(row.line.variationName || row.line.modifierNames.length > 0) && (
+                    <div className="pos-line-mods">{[row.line.variationName, ...row.line.modifierNames].filter(Boolean).join(' · ')}</div>
+                  )}
+                  {row.line.note && <div className="pos-line-note">“{row.line.note}”</div>}
+                </div>
+                <div className="pos-line-qty">
+                  <button onClick={() => bumpQty(row.line.key, -1)} aria-label="Decrease">−</button>
+                  <span>{row.line.quantity}</span>
+                  <button onClick={() => bumpQty(row.line.key, 1)} aria-label="Increase">+</button>
                 </div>
               </div>
             ))}
           </div>
 
           <div className="pos-cart-foot">
+            {comboSaving > 0 && <div className="pos-total-row saving"><span>Combo savings</span><span>−{formatMoney(comboSaving, currency)}</span></div>}
             <div className="pos-total-row"><span>Total</span><span className="pos-total">{formatMoney(total, currency)}</span></div>
             <div className="pos-gst">GST included</div>
             {err && <div className="pos-err">{err}</div>}
@@ -468,6 +529,9 @@ export default function Pos({ onExit }) {
         {/* Phone: dim the menu behind the slide-over cart */}
         {cartOpen && <div className="pos-cart-scrim" onClick={() => setCartOpen(false)} />}
       </div>
+
+      {/* Combo builder (reuses the customer combo modal) */}
+      {combo && <ComboModal item={combo} currency={currency} onClose={() => setCombo(null)} onAdd={(entries) => addCombo(entries)} />}
 
       {/* Phone-only bottom bar: opens the order (hidden on wide screens / while configuring) */}
       {!configureMode && (
