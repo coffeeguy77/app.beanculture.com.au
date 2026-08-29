@@ -1709,13 +1709,31 @@ function kdsShell(html) {
              '<meta name="theme-color" content="#12161b" />');
 }
 
+// Same idea for the Kiosk POS: installing from /pos gives a dedicated
+// "Bean Culture POS" home-screen app (start_url:/pos), separate from both the
+// customer app and the KDS.
+function posShell(html) {
+  return html
+    .replace(/<link rel="manifest" href="\/manifest\.webmanifest"\s*\/?>/,
+             '<link rel="manifest" href="/pos.webmanifest" />')
+    .replace(/<link rel="apple-touch-icon"[^>]*>/,
+             '<link rel="apple-touch-icon" href="/icons/pos-icon-180.png?v=20260829" />')
+    .replace(/<meta name="apple-mobile-web-app-title" content="[^"]*"\s*\/?>/,
+             '<meta name="apple-mobile-web-app-title" content="Bean Culture POS" />')
+    .replace(/<meta name="theme-color" content="[^"]*"\s*\/?>/,
+             '<meta name="theme-color" content="#3d0e20" />');
+}
+
 app.get('*', async (req, res) => {
   res.setHeader('Cache-Control', 'no-cache');
   const isKds = req.path === '/kds' || req.path === '/bump' || req.path.startsWith('/kds/');
+  const isPos = req.path === '/pos' || req.path.startsWith('/pos/');
   let head = seoHead(req), body = '', title = '';
   try {
     if (isKds) {
       title = 'Bean Culture · Kitchen screen';
+    } else if (isPos) {
+      title = 'Bean Culture · POS';
     } else if (/^\/(item|menu)\//i.test(req.path)) {
       const menu = await seoMenu();
       const pg = pageSeoAndBody(req, resolvePath(menu, req.path), menu);
@@ -1728,6 +1746,7 @@ app.get('*', async (req, res) => {
   if (title) html = html.replace(/<title>[\s\S]*?<\/title>/i, `<title>${seoEsc(title)}</title>`);
   if (body) html = html.replace('<div id="root">', `<div id="root">${body}`);
   if (isKds) html = kdsShell(html);
+  else if (isPos) html = posShell(html);
   res.type('html').send(html);
 });
 
