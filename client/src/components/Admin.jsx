@@ -80,6 +80,8 @@ const PifIcon = svg(<>
   <path d="M4 8h13v6a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5V8Z" /><path d="M17 9.5h1.5a2.5 2.5 0 0 1 0 5H17" />
 </>);
 const SeoIcon = svg(<><circle cx="11" cy="11" r="7" /><path d="M20.5 20.5l-4-4" /><path d="M11 8v6M8 11h6" /></>);
+// Sold-out / availability (no-entry circle with a slash)
+const SoldOutIcon = svg(<><circle cx="12" cy="12" r="8.5" /><line x1="6" y1="6" x2="18" y2="18" /></>);
 const TABS = [
   { id: 'overview', label: 'Dashboard', Icon: DashboardIcon },
   { id: 'store', label: 'Store', Icon: StoreIcon },
@@ -89,6 +91,7 @@ const TABS = [
   { id: 'menubuilder', label: 'Menu Builder', Icon: MenuIcon },
   { id: 'productbuilder', label: 'Product Builder', Icon: BuildIcon },
   { id: 'combobuilder', label: 'Combo Builder', Icon: ComboIcon },
+  { id: 'availability', label: 'Sold Out & Menus', Icon: SoldOutIcon },
   { id: 'payitforward', label: 'Pay It Forward', Icon: PifIcon },
   { id: 'banners', label: 'Banners', Icon: BannerIcon },
   { id: 'users', label: 'Users', Icon: InsightsIcon },
@@ -102,7 +105,7 @@ const TABS = [
 const TAB_GROUPS = [
   { label: 'Overview', tabs: ['overview', 'insights'] },
   { label: 'Orders & Service', tabs: ['reservations', 'tables'] },
-  { label: 'Menu', tabs: ['menubuilder', 'productbuilder', 'combobuilder'] },
+  { label: 'Menu', tabs: ['menubuilder', 'productbuilder', 'combobuilder', 'availability'] },
   { label: 'Marketing', tabs: ['banners', 'coupons', 'push', 'payitforward'] },
   { label: 'Customers', tabs: ['users'] },
   { label: 'Store', tabs: ['store', 'seo', 'theme'] },
@@ -113,7 +116,7 @@ const TAB_GROUPS = [
 function shellWidthClass(tab) {
   if (tab === 'theme') return 'w-wide';
   if (tab === 'insights') return 'w-analytics';
-  if (tab === 'menubuilder' || tab === 'productbuilder' || tab === 'combobuilder') return 'w-builder';
+  if (tab === 'menubuilder' || tab === 'productbuilder' || tab === 'combobuilder' || tab === 'availability') return 'w-builder';
   if (tab === 'payitforward') return 'w-analytics';
   return 'w-standard';
 }
@@ -161,6 +164,12 @@ export default function Admin({ onExit }) {
   const [genSection, setGenSection] = useState('Breakfast'); // quick-generate: target section
   const [genBusy, setGenBusy] = useState(false);
   const [menuSub, setMenuSub] = useState('categories'); // Menu tab sub-section
+  // ---- Sold Out & Menus tab ----
+  const [availSub, setAvailSub] = useState('items');   // items | exclusions | schedules
+  const [availSearch, setAvailSearch] = useState('');  // product search in the sold-out list
+  const [availBusy, setAvailBusy] = useState('');      // item id currently toggling
+  const [exclDay, setExclDay] = useState(6);           // weekday being edited (default Saturday)
+  const [exclSearch, setExclSearch] = useState('');    // product search in the exclusions picker
   const [collapsedSecs, setCollapsedSecs] = useState({}); // preset section name -> collapsed
   const [deleteLock, setDeleteLock] = useState(true); // guard against accidental section deletes
   const [removedCats, setRemovedCats] = useState(() => new Set()); // categories removed this session
@@ -823,6 +832,75 @@ export default function Admin({ onExit }) {
   // Per-section top/footer nav inclusion (product-builder sections).
   const presetSectionNav = s?.presetSectionNav || {};
   const setSectionNav = (name, patch) => set({ presetSectionNav: { ...presetSectionNav, [name]: { ...(presetSectionNav[name] || {}), ...patch } } });
+
+  // ---- Availability: sold-out overrides, day exclusions, menu schedules ----
+  const DOW_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const availability = s?.availability || {};
+  const availItems = availability.items || {};
+  const availExcl = availability.exclusions || { enabled: true, days: {} };
+  const availSchedules = Array.isArray(availability.schedules) ? availability.schedules : [];
+  const todayISO = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+  const todayDow = new Date().getDay();
+  const exclListFor = (dow) => (availExcl.days && availExcl.days[String(dow)]) || [];
+  const isExcludedToday = (id) => availExcl.enabled !== false && exclListFor(todayDow).includes(id);
+  // Effective status shown in the sold-out list: off | today | on | excluded | available
+  const itemStatus = (id) => {
+    const o = availItems[id];
+    const active = o && o.mode && !((o.mode === 'today' || o.mode === 'on') && o.until && todayISO() >= o.until);
+    if (active && o.mode === 'off') return 'off';
+    if (active && o.mode === 'today') return 'today';
+    if (active && o.mode === 'on') return 'on';
+    if (isExcludedToday(id)) return 'excluded';
+    return 'available';
+  };
+  // Fast per-item toggle — hits the dedicated endpoint (persists immediately, no
+  // full Save needed) and mirrors the server's truth back into local state.
+  async function toggleItemAvail(id, mode) {
+    setAvailBusy(id);
+    try {
+      const r = await fetch(`/api/admin/availability/item?pass=${encodeURIComponent(pass)}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, mode }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || 'Failed');
+      setS((cur) => ({ ...cur, availability: { ...(cur.availability || {}), items: d.items || {} } }));
+    } catch (e) { setSavedMsg('Failed: ' + e.message); setTimeout(() => setSavedMsg(''), 4000); }
+    finally { setAvailBusy(''); }
+  }
+  // Exclusions + schedules persist through the normal Save-changes bar.
+  const setExclList = (dow, list) => set({
+    availability: {
+      ...availability,
+      exclusions: { ...availExcl, enabled: availExcl.enabled !== false, days: { ...(availExcl.days || {}), [String(dow)]: list } },
+    },
+  });
+  const toggleExcl = (dow, id) => {
+    const list = exclListFor(dow);
+    setExclList(dow, list.includes(id) ? list.filter((x) => x !== id) : [...list, id]);
+  };
+  const setExclEnabled = (on) => set({ availability: { ...availability, exclusions: { ...availExcl, enabled: on, days: availExcl.days || {} } } });
+  const setSchedules = (list) => set({ availability: { ...availability, schedules: list } });
+  const addSchedule = () => setSchedules([...availSchedules, {
+    id: 'sch_' + Math.random().toString(36).slice(2, 8),
+    name: 'New menu', categories: [], days: [1, 2, 3, 4, 5], start: '07:00', end: '11:00', enabled: true,
+  }]);
+  const updateSchedule = (id, patch) => setSchedules(availSchedules.map((sc) => (sc.id === id ? { ...sc, ...patch } : sc)));
+  const removeSchedule = (id) => setSchedules(availSchedules.filter((sc) => sc.id !== id));
+  const toggleSchedDay = (id, dow) => {
+    const sc = availSchedules.find((x) => x.id === id); if (!sc) return;
+    const days = Array.isArray(sc.days) ? sc.days : [];
+    updateSchedule(id, { days: days.includes(dow) ? days.filter((d) => d !== dow) : [...days, dow].sort() });
+  };
+  const toggleSchedCat = (id, name) => {
+    const sc = availSchedules.find((x) => x.id === id); if (!sc) return;
+    const cats = Array.isArray(sc.categories) ? sc.categories : [];
+    updateSchedule(id, { categories: cats.includes(name) ? cats.filter((c) => c !== name) : [...cats, name] });
+  };
+  // Category names a schedule can target (app categories + custom product sections).
+  const scheduleCatOptions = [...new Set([
+    ...adminCat.map((c) => c.category),
+    ...productSections.map((ps) => ps.name),
+  ].filter(Boolean))];
   // Existing section names offered as quick-pick chips (or type a new one).
   const existingSectionNames = [...new Set([
     ...presets.map((p) => (p.section || '').trim()),
@@ -1086,9 +1164,10 @@ export default function Admin({ onExit }) {
               {list.length === 0 && allProducts.length > 0 && <p className="muted" style={{ fontSize: 'var(--fs-sm)', padding: 8 }}>No matching items.</p>}
               {list.map((p) => {
                 const cats = p.categories || (p.category ? [p.category] : []);
+                const off = itemStatus(p.id) === 'off'; // kitchen marked Unavailable
                 return (
                   <button key={p.id} onClick={() => onPick(p.id)} type="button"
-                    style={{ display: 'flex', width: '100%', textAlign: 'left', gap: 8, alignItems: 'center', padding: '6px 8px', border: 'none', borderBottom: '1px solid var(--line)', background: currentId === p.id ? 'var(--brand-soft)' : 'transparent', cursor: 'pointer' }}>
+                    style={{ display: 'flex', width: '100%', textAlign: 'left', gap: 8, alignItems: 'center', padding: '6px 8px', border: 'none', borderBottom: '1px solid var(--line)', borderLeft: off ? '3px solid var(--admin-danger, #c0392b)' : '3px solid transparent', background: off ? 'rgba(192,57,43,0.08)' : (currentId === p.id ? 'var(--brand-soft)' : 'transparent'), cursor: 'pointer' }}>
                     {p.image
                       ? <img src={p.image} alt="" style={{ width: 30, height: 30, borderRadius: 6, objectFit: 'cover', flex: 'none' }} />
                       : <span style={{ width: 30, height: 30, borderRadius: 6, background: 'var(--brand-soft)', flex: 'none', display: 'grid', placeItems: 'center', fontSize: 'var(--fs-md)' }}>🍽️</span>}
@@ -1096,6 +1175,7 @@ export default function Admin({ onExit }) {
                       <span style={{ fontSize: 'var(--fs-md)', display: 'block' }}>{p.name}</span>
                       {cats.length ? <span className="muted" style={{ fontSize: 'var(--fs-xs)' }}>{cats.join(' · ')}</span> : null}
                     </span>
+                    {off && <span style={{ flex: 'none', fontSize: 'var(--fs-xs)', fontWeight: 800, color: 'var(--admin-danger, #c0392b)', border: '1px solid var(--admin-danger, #c0392b)', borderRadius: 6, padding: '2px 6px' }}>UNAVAILABLE</span>}
                   </button>
                 );
               })}
@@ -2617,6 +2697,177 @@ export default function Admin({ onExit }) {
                 </datalist>
 
                 <button type="button" className="btn full" onClick={addCombo}>+ Add combo</button>
+              </>
+            )}
+
+            {/* ───────── SOLD OUT & MENUS ───────── */}
+            {tab === 'availability' && (
+              <>
+                <div className="admin-page-head">
+                  <h1 className="admin-page-title">Sold Out &amp; Menus</h1>
+                  <p className="admin-page-desc">Flag an item sold out in seconds, set a busy-day exclusion list, and run time-based menus (breakfast, lunch, weekend). Every change shows on the customer menu straight away.</p>
+                </div>
+
+                <div className="avail-subtabs">
+                  {[['items', 'Sold-out items'], ['exclusions', 'Day exclusions'], ['schedules', 'Menu schedules']].map(([k, l]) => (
+                    <button key={k} type="button" className={`avail-subtab${availSub === k ? ' on' : ''}`} onClick={() => setAvailSub(k)}>{l}</button>
+                  ))}
+                </div>
+
+                {/* ── 1. SOLD-OUT ITEMS ── */}
+                {availSub === 'items' && (
+                  <div className="card" style={card}>
+                    <div className="group-title">Sold-out items</div>
+                    <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 0 }}>
+                      Tap <strong>Sold out</strong> when you run out for the day &mdash; it comes back automatically the next time you open. Tap <strong>Unavailable</strong> to take it off indefinitely (shows red here and in the Product Builder, so you know to check before turning it back on). These save instantly &mdash; no need to press Save changes.
+                    </p>
+                    <input className="avail-search" placeholder="Search items…" value={availSearch} onChange={(e) => setAvailSearch(e.target.value)} />
+                    <div className="avail-list">
+                      {allProducts.length === 0 && <p className="muted" style={{ fontSize: 'var(--fs-sm)', padding: 8 }}>Loading items…</p>}
+                      {(() => {
+                        const q = availSearch.trim().toLowerCase();
+                        const list = allProducts.filter((p) => !q || p.name.toLowerCase().includes(q) || (p.category || '').toLowerCase().includes(q));
+                        if (allProducts.length && !list.length) return <p className="muted" style={{ fontSize: 'var(--fs-sm)', padding: 8 }}>No matching items.</p>;
+                        const STATUS = {
+                          available: { label: 'Available', cls: 'ok' },
+                          today: { label: 'Sold out today', cls: 'warn' },
+                          off: { label: 'Unavailable', cls: 'bad' },
+                          on: { label: 'Available (made today)', cls: 'ok' },
+                          excluded: { label: `Sold out (${DOW_LABELS[todayDow]} list)`, cls: 'warn' },
+                        };
+                        return list.map((p) => {
+                          const st = itemStatus(p.id);
+                          const badge = STATUS[st] || STATUS.available;
+                          const busy = availBusy === p.id;
+                          const availActive = st === 'available' || st === 'on';
+                          return (
+                            <div key={p.id} className={`avail-row${st === 'off' ? ' is-off' : ''}`}>
+                              {p.image
+                                ? <img src={p.image} alt="" className="avail-thumb" />
+                                : <span className="avail-thumb avail-thumb-ph">🍽️</span>}
+                              <span className="avail-meta">
+                                <span className="avail-name">{p.name}</span>
+                                <span className={`avail-pill ${badge.cls}`}>{badge.label}</span>
+                              </span>
+                              <span className="avail-actions">
+                                <button type="button" disabled={busy} className={`avail-btn ok${availActive ? ' on' : ''}`}
+                                  onClick={() => toggleItemAvail(p.id, st === 'excluded' ? 'on' : 'clear')}>Available</button>
+                                <button type="button" disabled={busy} className={`avail-btn warn${st === 'today' ? ' on' : ''}`}
+                                  onClick={() => toggleItemAvail(p.id, 'today')}>Sold out</button>
+                                <button type="button" disabled={busy} className={`avail-btn bad${st === 'off' ? ' on' : ''}`}
+                                  onClick={() => toggleItemAvail(p.id, 'off')}>Unavailable</button>
+                              </span>
+                            </div>
+                          );
+                        });
+                      })()}
+                    </div>
+                  </div>
+                )}
+
+                {/* ── 2. DAY EXCLUSIONS ── */}
+                {availSub === 'exclusions' && (
+                  <div className="card" style={card}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                      <div className="group-title" style={{ margin: 0 }}>Day exclusion lists</div>
+                      <label className="avail-switch">
+                        <input type="checkbox" checked={availExcl.enabled !== false} onChange={(e) => setExclEnabled(e.target.checked)} />
+                        <span>{availExcl.enabled !== false ? 'On' : 'Off'}</span>
+                      </label>
+                    </div>
+                    <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 6 }}>
+                      Pick a day, then add the products that should start <strong>sold out</strong> on that day every week (for busy days like Saturday). If you have capacity, staff can flip one back on for the day from the <strong>Sold-out items</strong> tab. Remember to press <strong>Save changes</strong>.
+                    </p>
+                    <div className="avail-daychips">
+                      {DOW_LABELS.map((d, i) => (
+                        <button key={i} type="button" className={`avail-daychip${exclDay === i ? ' on' : ''}`} onClick={() => setExclDay(i)}>
+                          {d}{exclListFor(i).length ? <span className="avail-daycount">{exclListFor(i).length}</span> : null}
+                        </button>
+                      ))}
+                    </div>
+                    {(() => {
+                      const list = exclListFor(exclDay);
+                      const byId = (id) => allProducts.find((p) => p.id === id);
+                      const q = exclSearch.trim().toLowerCase();
+                      const matches = q ? allProducts.filter((p) => !list.includes(p.id) && (p.name.toLowerCase().includes(q) || (p.category || '').toLowerCase().includes(q))) : [];
+                      return (
+                        <>
+                          <div style={{ fontWeight: 700, margin: '10px 0 6px' }}>{DOW_LABELS[exclDay]} &mdash; sold out by default</div>
+                          {list.length === 0 && <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>No products excluded on {DOW_LABELS[exclDay]} yet.</p>}
+                          <div className="avail-chipwrap">
+                            {list.map((id) => {
+                              const p = byId(id);
+                              return (
+                                <span key={id} className="avail-chip">
+                                  {p ? p.name : id}
+                                  <button type="button" aria-label="Remove" onClick={() => toggleExcl(exclDay, id)}>✕</button>
+                                </span>
+                              );
+                            })}
+                          </div>
+                          <input className="avail-search" placeholder={`Add a product to ${DOW_LABELS[exclDay]}…`} value={exclSearch} onChange={(e) => setExclSearch(e.target.value)} style={{ marginTop: 10 }} />
+                          {q && (
+                            <div className="avail-list" style={{ maxHeight: 220 }}>
+                              {matches.length === 0 && <p className="muted" style={{ fontSize: 'var(--fs-sm)', padding: 8 }}>No matching items.</p>}
+                              {matches.slice(0, 40).map((p) => (
+                                <button key={p.id} type="button" className="avail-add" onClick={() => { toggleExcl(exclDay, p.id); setExclSearch(''); }}>
+                                  {p.image ? <img src={p.image} alt="" className="avail-thumb" /> : <span className="avail-thumb avail-thumb-ph">🍽️</span>}
+                                  <span className="avail-name">{p.name}</span>
+                                  {p.category ? <span className="muted" style={{ fontSize: 'var(--fs-xs)' }}>{p.category}</span> : null}
+                                  <span className="avail-add-plus">＋</span>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
+                  </div>
+                )}
+
+                {/* ── 3. MENU SCHEDULES ── */}
+                {availSub === 'schedules' && (
+                  <div className="card" style={card}>
+                    <div className="group-title">Menu schedules</div>
+                    <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 0 }}>
+                      Run a menu only at certain times on certain days. A category listed in a schedule shows <strong>only</strong> inside its window (e.g. Breakfast 7:00&ndash;11:00, Mon&ndash;Fri); outside it, it disappears from the customer menu. Categories not used in any schedule always show. Remember to press <strong>Save changes</strong>.
+                    </p>
+                    {availSchedules.length === 0 && <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>No schedules yet. Add one to run time-based menus.</p>}
+                    {availSchedules.map((sc) => (
+                      <div key={sc.id} className="avail-sched">
+                        <div className="avail-sched-head">
+                          <input className="avail-sched-name" value={sc.name || ''} placeholder="Menu name (e.g. Breakfast)" onChange={(e) => updateSchedule(sc.id, { name: e.target.value })} />
+                          <label className="avail-switch">
+                            <input type="checkbox" checked={sc.enabled !== false} onChange={(e) => updateSchedule(sc.id, { enabled: e.target.checked })} />
+                            <span>{sc.enabled !== false ? 'On' : 'Off'}</span>
+                          </label>
+                          <button type="button" className="avail-del" title="Delete schedule" onClick={() => removeSchedule(sc.id)}>✕</button>
+                        </div>
+                        <div className="avail-sched-times">
+                          <label>From <input type="time" value={sc.start || '07:00'} onChange={(e) => updateSchedule(sc.id, { start: e.target.value })} /></label>
+                          <label>To <input type="time" value={sc.end || '11:00'} onChange={(e) => updateSchedule(sc.id, { end: e.target.value })} /></label>
+                        </div>
+                        <div className="avail-sched-days">
+                          {DOW_LABELS.map((d, i) => (
+                            <button key={i} type="button" className={`avail-daychip sm${(sc.days || []).includes(i) ? ' on' : ''}`} onClick={() => toggleSchedDay(sc.id, i)}>{d[0]}</button>
+                          ))}
+                        </div>
+                        <div className="avail-sched-cats">
+                          <div className="muted" style={{ fontSize: 'var(--fs-xs)', marginBottom: 4 }}>Categories in this menu</div>
+                          {scheduleCatOptions.length === 0 && <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>No categories loaded yet.</span>}
+                          <div className="avail-chipwrap">
+                            {scheduleCatOptions.map((name) => (
+                              <button key={name} type="button" className={`chip${(sc.categories || []).includes(name) ? ' on' : ''}`} onClick={() => toggleSchedCat(sc.id, name)}>
+                                {(sc.categories || []).includes(name) ? '✓ ' : '+ '}{name}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                    <button type="button" className="btn full" style={{ marginTop: 12 }} onClick={addSchedule}>+ Add menu schedule</button>
+                  </div>
+                )}
               </>
             )}
 

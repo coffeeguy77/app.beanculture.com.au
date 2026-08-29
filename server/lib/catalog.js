@@ -5,7 +5,7 @@
 // - Syncs live (short cache) so menu/stock changes in Square reflect fast.
 
 const { squareFetch, LOCATION_ID, CURRENCY, moneyToNumber, idem } = require('./squareClient');
-const { getSettings } = require('./settings');
+const { getSettings, isClosedDate } = require('./settings');
 
 const PARENT_CATEGORY = (process.env.SQUARE_PARENT_CATEGORY || 'APPs').trim();
 // Fallback allowlist if no parent category is found (comma-separated names).
@@ -42,6 +42,122 @@ function cleanName(name) {
   if (!name) return name;
   const cleaned = name.replace(/^app[s]?\b[\s:_\-–—]*/i, '').trim();
   return cleaned || name;
+}
+
+// ── Availability overlay ───────────────────────────────────────────────────
+// Manual sold-out overrides, per-weekday exclusion lists, and time+day menu
+// schedules — all evaluated in the venue's local time. Kept catalog-side so it
+// applies to every consumer (storefront, SEO, sitemap) consistently.
+const AV_TZ = process.env.PREORDER_TZ || process.env.SEASON_TZ || 'Australia/Sydney';
+const DOW_KEYS = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT']; // index = JS getUTCDay()
+
+// Current date/time in the venue's timezone: { date:'YYYY-MM-DD', minutes, dow }.
+function venueNow(tz = AV_TZ) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hour12: false,
+  }).formatToParts(new Date());
+  const g = (t) => parts.find((p) => p.type === t)?.value || '00';
+  const date = `${g('year')}-${g('month')}-${g('day')}`;
+  let hh = parseInt(g('hour'), 10); if (hh === 24) hh = 0; // some engines emit '24' at midnight
+  const minutes = hh * 60 + parseInt(g('minute'), 10);
+  const dow = new Date(`${date}T00:00:00Z`).getUTCDay(); // 0=Sun … 6=Sat for that calendar date
+  return { date, minutes, dow };
+}
+
+function addDaysStr(dateStr, n) {
+  const d = new Date(`${dateStr}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
+// The venue-local date on which we next open AFTER `fromDate` (a YYYY-MM-DD),
+// honouring the admin's storeHours open days and any closures. Used to auto-clear
+// a "sold out today" item the next time the venue trades.
+function nextOpenDate(settings, fromDate) {
+  const hours = (settings && settings.storeHours) || {};
+  const closures = (settings && settings.closures) || [];
+  for (let i = 1; i <= 14; i++) {
+    const d = addDaysStr(fromDate, i);
+    const dow = new Date(`${d}T00:00:00Z`).getUTCDay();
+    const open = Array.isArray(hours[DOW_KEYS[dow]]) && hours[DOW_KEYS[dow]].length > 0;
+    if (open && !isClosedDate(closures, d)) return d;
+  }
+  return addDaysStr(fromDate, 1); // fallback: tomorrow
+}
+
+function hhmmToMin(s) {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(String(s || '').trim());
+  return m ? (+m[1]) * 60 + (+m[2]) : null;
+}
+
+// Is a menu schedule active right now? Ticked day-of-week AND now within its
+// [start,end] window (supports windows that cross midnight).
+function scheduleActiveNow(sch, now) {
+  if (!sch || sch.enabled === false) return false;
+  const days = Array.isArray(sch.days) ? sch.days.map(Number) : [];
+  if (!days.includes(now.dow)) return false;
+  const s = hhmmToMin(sch.start), e = hhmmToMin(sch.end);
+  if (s === null || e === null) return false;
+  return s <= e ? (now.minutes >= s && now.minutes < e) : (now.minutes >= s || now.minutes < e);
+}
+
+// Apply the availability overlay to the assembled sections (mutates item soldOut,
+// drops categories that are outside their menu window). Returns the kept sections.
+function applyAvailability(sections, settings, now = venueNow()) {
+  const av = (settings && settings.availability) || {};
+  const items = av.items || {};
+  const excl = av.exclusions || {};
+  const exclList = (excl.enabled !== false && excl.days)
+    ? (excl.days[String(now.dow)] || excl.days[DOW_KEYS[now.dow]] || [])
+    : [];
+  const exclSet = new Set(Array.isArray(exclList) ? exclList : []);
+  const schedules = Array.isArray(av.schedules) ? av.schedules.filter((s) => s && s.enabled !== false) : [];
+
+  // Which category names are governed by a schedule, and which are active now.
+  const scheduledCats = new Set();
+  const activeCats = new Set();
+  for (const sch of schedules) {
+    const active = scheduleActiveNow(sch, now);
+    for (const c of (Array.isArray(sch.categories) ? sch.categories : [])) {
+      const key = String(c).toLowerCase();
+      scheduledCats.add(key);
+      if (active) activeCats.add(key);
+    }
+  }
+
+  // Manual override effect for one item id: true=force sold out, false=force
+  // available, null=no active override (expired overrides auto-clear).
+  const overrideFor = (id) => {
+    const o = items[id];
+    if (!o || !o.mode) return null;
+    if ((o.mode === 'today' || o.mode === 'on') && o.until && now.date >= o.until) return null;
+    if (o.mode === 'off' || o.mode === 'today') return true;
+    if (o.mode === 'on') return false;
+    return null;
+  };
+
+  const kept = [];
+  for (const sec of sections) {
+    const catKey = String(sec.category).toLowerCase();
+    // Menu schedule: a category that belongs to any schedule is shown ONLY while
+    // one of its schedules is active. Categories in no schedule always show.
+    if (scheduledCats.has(catKey) && !activeCats.has(catKey)) continue;
+
+    for (const it of (sec.items || [])) {
+      const forced = overrideFor(it.id);
+      let sold = it.soldOut;
+      if (forced === true) sold = true;
+      else if (forced === false) sold = false;
+      else if (exclSet.has(it.id)) sold = true;
+      if (sold !== it.soldOut) {
+        it.soldOut = sold;
+        if (Array.isArray(it.variations)) it.variations = it.variations.map((v) => ({ ...v, soldOut: sold }));
+      }
+    }
+    kept.push(sec);
+  }
+  return kept;
 }
 
 async function listAllCatalog(types) {
@@ -615,6 +731,13 @@ async function getMenu(opts = {}) {
     sections.sort((a, b) => rank(a) - rank(b));
   }
 
+  // Availability overlay: kitchen sold-outs, day exclusions, and time+day menu
+  // schedules — customer-facing only (the admin's full-menu view keeps every
+  // category/item visible so the pickers work).
+  if (applySelection) {
+    sections = applyAvailability(sections, getSettings());
+  }
+
   console.log(
     `[menu] ${restrictToChildren ? childIds.size + ' shown categories' : 'no restriction (all)'} | ${sections.length} sections: ${sections.map((e) => `${e.category}(${e.items.length})`).join(', ')}`
   );
@@ -905,4 +1028,5 @@ module.exports = {
   getMenu, getFullMenu, getAllCategories, getAllProducts, getItemConfig, cleanName,
   searchItemsByName, createReservationCatalogItem, inspectItem, setReportingCategory,
   findOrCreateCategory, setupReservationPrinting, listAllCatalog,
+  venueNow, nextOpenDate, applyAvailability, scheduleActiveNow,
 };

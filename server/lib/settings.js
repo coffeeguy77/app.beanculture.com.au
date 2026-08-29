@@ -334,6 +334,24 @@ const DEFAULTS = {
       link: { type: 'account', value: '' },
     },
   ],
+  // ── Availability: kitchen/front-of-house sold-out overrides, per-weekday
+  //    exclusion lists, and time+day "menu schedules". All evaluated in the
+  //    venue's local time — see catalog.js applyAvailability().
+  availability: {
+    // Per-item manual overrides, keyed by Square item id:
+    //   { mode:'off' }                        → unavailable indefinitely (RED in builder)
+    //   { mode:'today', until:'YYYY-MM-DD' }  → sold out until we next open
+    //   { mode:'on',    until:'YYYY-MM-DD' }  → forced available today (defeats the
+    //                                           day-exclusion list — "make on demand")
+    items: {},
+    // Auto sold-out lists per weekday (0=Sun … 6=Sat) — e.g. a busy-Saturday list.
+    exclusions: { enabled: true, days: {} },
+    // Time-of-day + day-of-week menu windows. A category named in a schedule shows
+    // ONLY while one of its schedules is active now; categories in no schedule
+    // always show.  { id, name, categories:[displayName], days:[0..6],
+    //                 start:'07:00', end:'11:00', enabled:true }
+    schedules: [],
+  },
 };
 
 // ---------------------------------------------------------------------------

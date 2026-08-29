@@ -934,6 +934,43 @@ app.post('/api/admin/settings', async (req, res) => {
   }
 });
 
+// ---- Admin: fast per-item sold-out toggle (kitchen / front-of-house) ----
+// Writes only availability.items[id] into the persisted overrides so a busy
+// service can flip stock without round-tripping the whole settings blob.
+//   mode: 'off'   → unavailable indefinitely (highlighted in the product builder)
+//         'today' → sold out until we next open (auto-clears)
+//         'on'    → force available today (overrides the day-exclusion list)
+//         'clear' → remove any override (back to normal)
+app.post('/api/admin/availability/item', async (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const { id, mode } = req.body || {};
+    if (!id || typeof id !== 'string') return res.status(400).json({ error: 'Missing item id' });
+    if (!['off', 'today', 'on', 'clear'].includes(mode)) return res.status(400).json({ error: 'Bad mode' });
+
+    const ov = db.getOverrides() || {};
+    ov.availability = ov.availability || {};
+    ov.availability.items = ov.availability.items || {};
+
+    if (mode === 'clear') {
+      delete ov.availability.items[id];
+    } else if (mode === 'off') {
+      ov.availability.items[id] = { mode: 'off', setAt: new Date().toISOString() };
+    } else {
+      // 'today' and 'on' both auto-clear the next day we open.
+      const settings = getSettings();
+      const until = catalog.nextOpenDate(settings, catalog.venueNow().date);
+      ov.availability.items[id] = { mode, until, setAt: new Date().toISOString() };
+    }
+
+    await db.saveOverrides(ov);
+    menuCache = { data: null, at: 0 };
+    res.json({ ok: true, items: ov.availability.items });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
 // ---- Admin: full catalog (all items per category) for the item chooser ----
 app.get('/api/admin/catalog', async (req, res) => {
   if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
