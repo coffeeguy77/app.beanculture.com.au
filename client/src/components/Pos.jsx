@@ -148,6 +148,7 @@ export default function Pos({ onExit }) {
   const [success, setSuccess] = useState(null);    // { orderId, tender, change }
   const [cardPay, setCardPay] = useState(() => { try { return JSON.parse(localStorage.getItem('bc-pos-active-checkout') || 'null'); } catch { return null; } });
   const [showSetup, setShowSetup] = useState(false);
+  const [posLoc, setPosLoc] = useState(() => { try { return localStorage.getItem('bc-pos-location') || ''; } catch { return ''; } });
   const [cartOpen, setCartOpen] = useState(false); // mobile slide-over cart
   const returnTimer = useRef(null);
 
@@ -155,7 +156,12 @@ export default function Pos({ onExit }) {
 
   async function boot(p) {
     try {
-      const [c, m] = await Promise.all([api.posConfig(p), api.getMenu()]);
+      const c = await api.posConfig(p);
+      // Bind this device to a store (first one by default) when multi-location.
+      const locs = c.locations || [];
+      let loc = posLoc;
+      if (locs.length && !locs.some((l) => l.id === loc)) { loc = locs[0].id; setPosLoc(loc); try { localStorage.setItem('bc-pos-location', loc); } catch {} }
+      const m = await api.getMenu(loc);
       setCfg(c); setMenu(m); setCurrency(m.currency || 'AUD'); setNeedPass(false);
       try { localStorage.setItem('bc-admin-pass', btoa(p)); } catch {}
       const cats = (m.categories || []);
@@ -167,6 +173,16 @@ export default function Pos({ onExit }) {
       if (/unauthor/i.test(e.message)) { setNeedPass(true); return false; }
       setErr(e.message); return false;
     }
+  }
+
+  async function switchStore(id) {
+    setPosLoc(id);
+    try { localStorage.setItem('bc-pos-location', id); } catch {}
+    try {
+      const m = await api.getMenu(id);
+      setMenu(m); setActiveCat((m.categories || [])[0]?.category || null); setConfiguring(null); setQuery('');
+    } catch (e) { setErr(e.message); }
+    clearCart(); // a different store may not offer the current items
   }
 
   useEffect(() => {
@@ -271,6 +287,7 @@ export default function Pos({ onExit }) {
           ...(c.comboInstanceId ? { comboId: c.comboId, comboInstanceId: c.comboInstanceId, comboGroupId: c.comboGroupId, comboItemId: c.comboItemId || c.itemId } : {}),
         })),
         dineIn, table: dineIn ? table : '', name: orderName.trim(),
+        locationId: posLoc || undefined,
         tender: tenderType,
         cashGiven: tenderType === 'cash' ? cashGiven : undefined,
       };
@@ -371,6 +388,11 @@ export default function Pos({ onExit }) {
         </button>
       </div>
       <div className="pos-header-right">
+        {(cfg.locations || []).length > 1 && (
+          <select className="pos-locsel" value={posLoc} onChange={(e) => switchStore(e.target.value)} title="Store">
+            {cfg.locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+          </select>
+        )}
         <span className={`pos-term${cfg.terminalDeviceId ? ' on' : ''}`} title="Card terminal">
           ● {cfg.terminalDeviceId ? (cfg.terminalName || 'Terminal ready') : 'No terminal'}
         </span>

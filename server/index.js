@@ -21,6 +21,7 @@ const notify = require('./lib/notify');
 const payItForward = require('./lib/payItForward');
 const kds = require('./lib/kds');
 const terminal = require('./lib/terminal');
+const locations = require('./lib/locations');
 const weather = require('./lib/weather');
 const smartCampaigns = require('./lib/smartCampaigns');
 
@@ -65,6 +66,9 @@ app.get('/api/config', async (_req, res) => {
     environment: sq.ENV,
     currency: sq.CURRENCY,
     storeName: settings.storeName,
+    // Stores the customer can order from. Single-site deploys get one entry.
+    locations: locations.publicList(),
+    multiLocation: locations.active().length > 1,
     announcement: settings.announcement,
     contact: settings.contact,
     logoUrl: settings.logoUrl,
@@ -136,14 +140,21 @@ app.get('/api/config', async (_req, res) => {
 
 // ---- Menu (live from Square Catalog, short cache) ----
 let menuCache = { data: null, at: 0 };
+// Per-location menu cache (locations differ only by which items they offer).
+let menuByLoc = {};
+function bustMenuCache() { menuCache = { data: null, at: 0 }; menuByLoc = {}; }
 const MENU_TTL_MS = Number(process.env.MENU_TTL_MS || 45_000);
-app.get('/api/menu', async (_req, res) => {
+app.get('/api/menu', async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   try {
     const now = Date.now();
-    if (menuCache.data && now - menuCache.at < MENU_TTL_MS) return res.json(menuCache.data);
-    const menu = await catalog.getMenu();
-    menuCache = { data: menu, at: now };
+    // Resolve the requested store (falls back to the default/main location).
+    const loc = locations.resolve(req.query.location).id;
+    const hit = menuByLoc[loc];
+    if (hit && hit.data && now - hit.at < MENU_TTL_MS) return res.json(hit.data);
+    const menu = await catalog.getMenu({ location: loc });
+    menuByLoc[loc] = { data: menu, at: now };
+    if (loc === locations.resolve(null).id) menuCache = { data: menu, at: now }; // keep legacy field warm
     res.json(menu);
   } catch (err) {
     console.error('menu error', err.message);
@@ -198,7 +209,8 @@ app.get('/api/history', async (req, res) => {
 // ---- Create an order (with optional loyalty redemption) ----
 app.post('/api/orders', async (req, res) => {
   try {
-    const { cart, dineIn, table, name, coupon, customerId, phone, pickupAt, note, loyalty: loy, pifVoucher } = req.body || {};
+    const { cart, dineIn, table, name, coupon, customerId, phone, pickupAt, note, loyalty: loy, pifVoucher, locationId } = req.body || {};
+    const squareLocationId = locations.squareIdFor(locationId);
     if (!name || !String(name).trim()) {
       return res.status(400).json({ error: 'Name is required' });
     }
@@ -222,7 +234,7 @@ app.post('/api/orders', async (req, res) => {
         }
       } catch (e) { console.error('pif recipient enrol failed', e.message); }
     }
-    const order = await orders.createOrder({ cart, dineIn: !!dineIn, table, name, coupon, customerId: effectiveCustomerId, pickupAt, note, pifVoucher });
+    const order = await orders.createOrder({ cart, dineIn: !!dineIn, table, name, coupon, customerId: effectiveCustomerId, pickupAt, note, pifVoucher, squareLocationId });
 
     let rewardApplied = false;
     if (loy && loy.accountId && loy.tierId) {
@@ -274,9 +286,10 @@ app.post('/api/orders', async (req, res) => {
 // ---- Pay (card token, or complete a $0 order for comp/full-loyalty) ----
 app.post('/api/pay', async (req, res) => {
   try {
-    const { sourceId, orderId, totalMoney, verificationToken, buyerEmail, customerId, payWith } =
+    const { sourceId, orderId, totalMoney, verificationToken, buyerEmail, customerId, payWith, locationId } =
       req.body || {};
     if (!orderId) return res.status(400).json({ error: 'Missing order id' });
+    const squareLocationId = locations.squareIdFor(locationId);
 
     // $0 order (comp or fully covered by loyalty): complete without a card.
     if (!totalMoney || totalMoney.amount === 0) {
@@ -302,6 +315,7 @@ app.post('/api/pay', async (req, res) => {
       verificationToken,
       buyerEmail,
       customerId,
+      squareLocationId,
     });
     res.json({ status: payment.status, paymentId: payment.id, receiptUrl: payment.receipt_url });
   } catch (err) {
@@ -956,7 +970,7 @@ app.post('/api/admin/settings', async (req, res) => {
     const { settings } = req.body || {};
     if (!settings || typeof settings !== 'object') return res.status(400).json({ error: 'Missing settings' });
     await db.saveOverrides(settings);
-    menuCache = { data: null, at: 0 }; // category/item changes go live immediately
+    bustMenuCache(); // category/item changes go live immediately
     res.json({ ok: true });
   } catch (e) {
     res.status(400).json({ error: e.message });
@@ -993,7 +1007,7 @@ app.post('/api/admin/availability/item', async (req, res) => {
     }
 
     await db.saveOverrides(ov);
-    menuCache = { data: null, at: 0 };
+    bustMenuCache();
     res.json({ ok: true, items: ov.availability.items });
   } catch (e) {
     res.status(400).json({ error: e.message });
@@ -1051,6 +1065,7 @@ app.get('/api/pos/config', (req, res) => {
     staff: 'Staff',
     logoUrl: s.logoUrl || '',
     storeName: s.storeName || 'Bean Culture',
+    locations: locations.publicList(),
     terminalDeviceId: p.terminalDeviceId || '',
     terminalName: p.terminalName || '',
     dbEnabled: db.enabled,
@@ -1060,10 +1075,11 @@ app.get('/api/pos/config', (req, res) => {
 app.post('/api/pos/order', async (req, res) => {
   if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
   try {
-    const { cart, dineIn, table, name, tender, cashGiven } = req.body || {};
+    const { cart, dineIn, table, name, tender, cashGiven, locationId } = req.body || {};
     if (!Array.isArray(cart) || cart.length === 0) return res.status(400).json({ error: 'Cart is empty' });
     if (!['cash', 'unpaid', 'card'].includes(tender)) return res.status(400).json({ error: 'Unsupported tender' });
     const pos = getSettings().pos || {};
+    const squareLocationId = locations.squareIdFor(locationId);
     if (tender === 'card' && !pos.terminalDeviceId) {
       return res.status(400).json({ error: 'No card terminal is paired. Pair one in POS setup first.' });
     }
@@ -1072,7 +1088,7 @@ app.post('/api/pos/order', async (req, res) => {
     // ids, so the client total is display-only and cannot be tampered with.
     const order = await orders.createOrder({
       cart, dineIn: !!dineIn, table: table || '', name: name || '',
-      source: pos.sourceName || 'Bean Culture POS',
+      source: pos.sourceName || 'Bean Culture POS', squareLocationId,
     });
     const amount = order.total_money ? order.total_money.amount : 0;
     const currency = (order.total_money && order.total_money.currency) || sq.CURRENCY;
@@ -1110,6 +1126,7 @@ app.post('/api/pos/order', async (req, res) => {
         orderId: order.id,
         amountMoney: { amount, currency },
         buyerSuppliedMoney: { amount: given, currency },
+        squareLocationId,
       });
     }
     // 'unpaid' leaves the order OPEN in Square; it still appears on the KDS.
@@ -1320,6 +1337,19 @@ app.post('/api/admin/weather/refresh', async (req, res) => {
   try { res.json({ weather: await weather.getWeather({ force }), refreshed: force }); }
   catch (e) { res.json({ weather: { ok: false, reason: e.message } }); }
 });
+// ---- Admin: list this Square account's locations (id + name) so the Locations
+//      setup can offer a dropdown instead of hunting for the id in Square. ----
+app.get('/api/admin/square-locations', async (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const data = await sq.squareFetch('/v2/locations');
+    const list = (data.locations || [])
+      .filter((l) => (l.status || 'ACTIVE') === 'ACTIVE')
+      .map((l) => ({ id: l.id, name: l.name || l.id, address: (l.address && [l.address.address_line_1, l.address.locality].filter(Boolean).join(', ')) || '' }));
+    res.json({ locations: list });
+  } catch (e) { res.status(502).json({ error: e.message }); }
+});
+
 // ---- Admin: read the Square location's coordinates (to prefill store lat/lng) ----
 app.get('/api/admin/square-location-geo', async (req, res) => {
   if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
@@ -1458,7 +1488,7 @@ app.post('/api/admin/broadcast/test', async (req, res) => {
 // ---- Admin: force a menu re-sync (clears the cache immediately) ----
 app.post('/api/admin/sync', (req, res) => {
   if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
-  menuCache = { data: null, at: 0 };
+  bustMenuCache();
   res.json({ ok: true });
 });
 
@@ -1469,7 +1499,7 @@ app.post('/api/admin/catalog/image', async (req, res) => {
     const { objectId, dataUri, caption, primary } = req.body || {};
     if (!objectId || !dataUri) return res.status(400).json({ error: 'objectId and image are required.' });
     const out = await squareImages.uploadItemImage({ objectId, dataUri, caption, primary: primary !== false });
-    menuCache = { data: null, at: 0 }; // show the new image immediately
+    bustMenuCache(); // show the new image immediately
     res.json(out);
   } catch (e) {
     res.status(400).json({ error: e.message });
@@ -1830,7 +1860,7 @@ async function syncPresetsWithSquare() {
     if (!added && !extended && !removedDead) return; // nothing structural changed
     const overrides = { ...(db.getOverrides() || {}), presets: reconciled };
     await db.saveOverrides(overrides);
-    menuCache = { data: null, at: 0 };
+    bustMenuCache();
     console.log(`[sync] presets reconciled with Square — +${added} tiles, +${extended} sizes, -${removedDead} removed`);
   } catch (e) { console.error('[sync] preset auto-sync failed:', e.message); }
 }

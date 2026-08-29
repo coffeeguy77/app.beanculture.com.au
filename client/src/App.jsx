@@ -222,6 +222,15 @@ function useMediaQuery(query) {
 export default function App() {
   const [config, setConfig] = useState(null);
   const [menu, setMenu] = useState(null);
+  // Chosen store (multi-location). '' = server default/main. A ?loc= link (the
+  // walk-around QR) preselects one. Persisted per device.
+  const [locationId, setLocationId] = useState(() => {
+    try {
+      const q = new URLSearchParams(window.location.search).get('loc');
+      return q || localStorage.getItem('bc-location') || '';
+    } catch { return ''; }
+  });
+  const [showStorePicker, setShowStorePicker] = useState(false);
   const [loadErr, setLoadErr] = useState('');
 
   const [user, setUserState] = useState(getUser());
@@ -311,8 +320,34 @@ export default function App() {
         setActiveTheme(active);
       })
       .catch((e) => setLoadErr(e.message));
-    api.getMenu().then(setMenu).catch((e) => setLoadErr(e.message));
   }, []);
+
+  // Menu for the chosen store (refetches when the customer switches stores).
+  useEffect(() => {
+    api.getMenu(locationId).then(setMenu).catch((e) => setLoadErr(e.message));
+  }, [locationId]);
+
+  // Persist the store choice + prompt for one when several stores exist and the
+  // customer hasn't picked yet (and didn't arrive via a ?loc= store link).
+  useEffect(() => {
+    try { if (locationId) localStorage.setItem('bc-location', locationId); } catch {}
+  }, [locationId]);
+  useEffect(() => {
+    if (!config) return;
+    const locs = config.locations || [];
+    if (locs.length > 1) {
+      const chosen = locationId && locs.some((l) => l.id === locationId);
+      if (!chosen) setShowStorePicker(true);
+    }
+  }, [config, locationId]);
+
+  function chooseLocation(id) {
+    setLocationId(id);
+    try { localStorage.setItem('bc-location', id); } catch {}
+    setShowStorePicker(false);
+  }
+  const chosenLocation = ((config && config.locations) || []).find((l) => l.id === locationId)
+    || ((config && config.locations) || [])[0] || null;
 
   // Single-layout default: activate the FIRST top-nav category (e.g. Coffee) so
   // its dock tile renders active on load showing its real live count, and the
@@ -336,7 +371,7 @@ export default function App() {
         buildRef.current = cfg.build || buildRef.current;
         setConfig(cfg);
       }).catch(() => {});
-      api.getMenu().then(setMenu).catch(() => {});
+      api.getMenu(locationId).then(setMenu).catch(() => {});
     };
     document.addEventListener('visibilitychange', onVisible);
     return () => document.removeEventListener('visibilitychange', onVisible);
@@ -942,7 +977,7 @@ export default function App() {
   // On wide layouts the checkout lives in the cart sidebar (true one-page).
   const checkoutEl = (
     <Checkout
-      config={config} cart={cart} currency={currency} onQty={updateQty}
+      config={config} location={chosenLocation} cart={cart} currency={currency} onQty={updateQty}
       onComboQty={updateComboQty} onRemoveCombo={removeCombo} onEditCombo={editCombo}
       dineIn={dineIn} setDineIn={setDineIn} table={table} setTable={setTable}
       tableLock={tableLock} onUnlockTable={unlockTable} onScanTable={applyScannedTable}
@@ -1272,6 +1307,15 @@ export default function App() {
           </div>
         </div>
       </header>
+      {config && (config.locations || []).length > 1 && chosenLocation && (view === 'home' || !isMobile) && (
+        <div className="store-bar">
+          <button type="button" className="store-chip" onClick={() => setShowStorePicker(true)}>
+            <span className="store-chip-pin">📍</span>
+            <span className="store-chip-name">{chosenLocation.name}</span>
+            <span className="store-chip-caret">▾</span>
+          </button>
+        </div>
+      )}
       {(notices.length > 0 || weatherChip) && (view === 'home' || !isMobile) && (
         <div ref={hoursRef} className="hours-bar">
           <div className="hours-inner hours-inner-wx"><SiteNotice notices={notices} />{weatherChip}</div>
@@ -1388,6 +1432,25 @@ export default function App() {
       )}
 
       {!wide && view === 'checkout' && checkoutEl}
+
+      {config && (config.locations || []).length > 1 && showStorePicker && (
+        <div className="backdrop store-picker-backdrop">
+          <div className="sheet store-picker">
+            <h2>Choose your store</h2>
+            <p className="muted">Pick where you're ordering from — the menu and your order go to that store.</p>
+            <div className="store-picker-list">
+              {(config.locations || []).map((l) => (
+                <button key={l.id} type="button"
+                  className={`store-picker-opt${locationId === l.id ? ' on' : ''}`}
+                  onClick={() => chooseLocation(l.id)}>
+                  <span className="store-picker-name">{l.name}</span>
+                  {l.address && <span className="store-picker-addr">{l.address}</span>}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {activeItem && (
         activeItem.isCombo

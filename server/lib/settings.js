@@ -355,6 +355,10 @@ const DEFAULTS = {
   // ── Kitchen Display / bump screen (/kds). Stations each show only their
   //    categories' items; an implicit "All orders" lane always exists. Age
   //    thresholds drive the green→amber→red urgency colours.
+  // ── Multi-location. Empty = single-site (a "main" location is synthesised from
+  //    SQUARE_LOCATION_ID). Each: { id, name, squareLocationId, address, active,
+  //    hiddenItemIds:[] }. See server/lib/locations.js.
+  locations: [],
   kds: {
     zones: [],          // [{ id, name, categories:[displayName] }]
     lookbackHours: 8,   // how far back to pull live tickets

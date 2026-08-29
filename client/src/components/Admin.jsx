@@ -92,6 +92,7 @@ const TABS = [
   { id: 'seo', label: 'SEO', Icon: SeoIcon },
   { id: 'reservations', label: 'Reservations', Icon: CalendarIcon },
   { id: 'kds', label: 'Kitchen Screen', Icon: KdsIcon },
+  { id: 'locations', label: 'Locations', Icon: StoreIcon },
   { id: 'insights', label: 'Insights', Icon: InsightsIcon },
   { id: 'menubuilder', label: 'Menu Builder', Icon: MenuIcon },
   { id: 'productbuilder', label: 'Product Builder', Icon: BuildIcon },
@@ -114,7 +115,7 @@ const TAB_GROUPS = [
   { label: 'Menu', tabs: ['menubuilder', 'productbuilder', 'combobuilder', 'availability'] },
   { label: 'Marketing', tabs: ['banners', 'coupons', 'push', 'payitforward', 'smartcampaigns'] },
   { label: 'Customers', tabs: ['users'] },
-  { label: 'Store', tabs: ['store', 'seo', 'theme'] },
+  { label: 'Store', tabs: ['store', 'locations', 'seo', 'theme'] },
 ];
 // Page-width class per tab: Standard for simple forms, Wide for Theme,
 // Analytics for Insights' charts, Builder for the two builder pages (whose
@@ -181,6 +182,7 @@ export default function Admin({ onExit }) {
   const [exclDay, setExclDay] = useState(6);           // weekday being edited (default Saturday)
   const [exclSearch, setExclSearch] = useState('');    // product search in the exclusions picker
   const [offeredIds, setOfferedIds] = useState(null);  // Set of item ids actually offered in the app menu
+  const [sqLocations, setSqLocations] = useState([]);  // this Square account's locations (id + name)
   const [collapsedSecs, setCollapsedSecs] = useState({}); // preset section name -> collapsed
   const [deleteLock, setDeleteLock] = useState(true); // guard against accidental section deletes
   const [removedCats, setRemovedCats] = useState(() => new Set()); // categories removed this session
@@ -377,6 +379,7 @@ export default function Admin({ onExit }) {
   useEffect(() => {
     if (tab === 'smartcampaigns' && weatherStatus === null && !weatherBusy) loadWeather();
     if (tab === 'availability' && offeredIds === null) loadOfferedIds();
+    if (tab === 'locations') { if (offeredIds === null) loadOfferedIds(); if (!sqLocations.length) loadSquareLocations(); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
   useEffect(() => {
@@ -441,6 +444,15 @@ export default function Admin({ onExit }) {
       setOfferedIds(false); // couldn't refine — fall back to the full list
     } catch { setOfferedIds(false); }
   }
+  // ---- Multi-location ----
+  async function loadSquareLocations() {
+    try {
+      const r = await fetch(`/api/admin/square-locations?pass=${encodeURIComponent(pass)}`);
+      const d = await r.json();
+      if (r.ok && Array.isArray(d.locations)) setSqLocations(d.locations);
+    } catch {}
+  }
+
   // ---- Smart Campaigns / weather ----
   async function loadWeather() {
     setWeatherBusy(true);
@@ -890,6 +902,21 @@ export default function Admin({ onExit }) {
   // ---- Availability: sold-out overrides, day exclusions, menu schedules ----
   const DOW_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   const availability = s?.availability || {};
+  // ---- Locations ----
+  const locs = Array.isArray(s?.locations) ? s.locations : [];
+  const setLocs = (arr) => set({ locations: arr });
+  const addLoc = () => setLocs([...locs, { id: 'loc' + Date.now().toString(36), name: 'New store', squareLocationId: '', address: '', active: true, hiddenItemIds: [] }]);
+  const updLoc = (id, patch) => setLocs(locs.map((l) => (l.id === id ? { ...l, ...patch } : l)));
+  const rmLoc = (id) => setLocs(locs.filter((l) => l.id !== id));
+  const toggleLocItem = (locId, itemId) => {
+    const l = locs.find((x) => x.id === locId); if (!l) return;
+    const hidden = new Set(l.hiddenItemIds || []);
+    hidden.has(itemId) ? hidden.delete(itemId) : hidden.add(itemId);
+    updLoc(locId, { hiddenItemIds: [...hidden] });
+  };
+  // Offered products (with names) for the per-location availability toggles.
+  const offeredProducts = allProducts.filter((p) => !offeredIds || offeredIds === false || offeredIds.has(p.id));
+
   const availItems = availability.items || {};
   const availExcl = availability.exclusions || { enabled: true, days: {} };
   const availSchedules = Array.isArray(availability.schedules) ? availability.schedules : [];
@@ -3113,6 +3140,78 @@ export default function Admin({ onExit }) {
                     <li>Copy the endpoint&rsquo;s <strong>Signature Key</strong> and set it in Railway as the variable <code>SQUARE_WEBHOOK_SIGNATURE_KEY</code>, then redeploy.</li>
                   </ol>
                   <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 0 }}>That&rsquo;s it &mdash; no code changes needed. Until then, the screen stays current with its own refresh, so it works right away either way.</p>
+                </div>
+              </>
+            )}
+
+            {/* ───────── LOCATIONS ───────── */}
+            {tab === 'locations' && (
+              <>
+                <div className="admin-page-head">
+                  <h1 className="admin-page-title">Locations</h1>
+                  <p className="admin-page-desc">Run more than one store from one app and one menu. Customers pick their store; their order and its payment are created against that store's Square location, so takings land in that location's Square books (and its own bank account, if you've set one up in Square). You can also hide items a store doesn't offer — handy for a takeaway pop-up with no kitchen.</p>
+                </div>
+
+                <div className="card" style={card}>
+                  <div className="group-title">Your stores</div>
+                  <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 0 }}>
+                    {locs.length === 0
+                      ? 'You’re running as a single store right now. Add your existing store first (pick its Square location), then add the new one. Once any store is listed here, the app uses this list.'
+                      : 'Each store maps to one of your Square locations. Set up each location’s bank account in the Square dashboard so its takings deposit separately. Remember to press '}
+                    {locs.length > 0 && <strong>Save changes</strong>}{locs.length > 0 ? '.' : ''}
+                  </p>
+
+                  {locs.map((l) => (
+                    <div key={l.id} className="avail-sched" style={{ marginBottom: 12 }}>
+                      <div className="avail-sched-head" style={{ gap: 8, flexWrap: 'wrap' }}>
+                        <input className="avail-sched-name" value={l.name || ''} placeholder="Store name (e.g. TulipTops)" onChange={(e) => updLoc(l.id, { name: e.target.value })} />
+                        <label className="switch" style={{ marginLeft: 'auto' }} title="Customers can order from this store">
+                          <input type="checkbox" checked={l.active !== false} onChange={(e) => updLoc(l.id, { active: e.target.checked })} /> <span>Active</span>
+                        </label>
+                        <button type="button" className="avail-del" title="Delete store" onClick={() => rmLoc(l.id)}>✕</button>
+                      </div>
+                      <div style={{ display: 'grid', gap: 8, marginTop: 8 }}>
+                        <label className="field" style={{ margin: 0 }}>
+                          <span>Square location</span>
+                          {sqLocations.length ? (
+                            <select value={l.squareLocationId || ''} onChange={(e) => updLoc(l.id, { squareLocationId: e.target.value })}>
+                              <option value="">— pick this store's Square location —</option>
+                              {sqLocations.map((sl) => <option key={sl.id} value={sl.id}>{sl.name}{sl.address ? ` (${sl.address})` : ''}</option>)}
+                            </select>
+                          ) : (
+                            <input value={l.squareLocationId || ''} placeholder="Square location id" onChange={(e) => updLoc(l.id, { squareLocationId: e.target.value })} />
+                          )}
+                        </label>
+                        <label className="field" style={{ margin: 0 }}><span>Address (shown in the store picker)</span>
+                          <input value={l.address || ''} placeholder="e.g. Tulip Tops, Sutton NSW" onChange={(e) => updLoc(l.id, { address: e.target.value })} />
+                        </label>
+
+                        <details className="loc-avail">
+                          <summary>Items available at {l.name || 'this store'} ({offeredProducts.length - (l.hiddenItemIds || []).length}/{offeredProducts.length})</summary>
+                          <p className="muted" style={{ fontSize: 'var(--fs-xs)', margin: '6px 0' }}>Untick anything this store doesn't make (e.g. hot food at a takeaway site). Unticked items are hidden from this store's menu.</p>
+                          <div className="loc-avail-list">
+                            {offeredProducts.length === 0 && <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>Loading products…</span>}
+                            {offeredProducts.map((p) => {
+                              const hidden = (l.hiddenItemIds || []).includes(p.id);
+                              return (
+                                <label key={p.id} className={`loc-avail-item${hidden ? ' off' : ''}`}>
+                                  <input type="checkbox" checked={!hidden} onChange={() => toggleLocItem(l.id, p.id)} />
+                                  <span>{p.name}</span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        </details>
+                      </div>
+                    </div>
+                  ))}
+
+                  <button type="button" className="btn ghost" onClick={addLoc}>+ Add a store</button>
+                  {locs.length > 0 && (
+                    <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 10 }}>
+                      A walk-around / general-order QR for each store is on the <strong>Tables</strong> tab. Card payments need a Square Terminal paired at each store. Press <strong>Save changes</strong> to make store changes live.
+                    </p>
+                  )}
                 </div>
               </>
             )}

@@ -23,7 +23,8 @@ function buildNote({ dineIn, table }) {
   return dineIn ? `DINE-IN · Table ${table || '?'}` : 'TAKEAWAY';
 }
 
-async function createOrder({ cart, dineIn, table, name, coupon, customerId, pickupAt, idempotencyKey, note: customerNote, pifVoucher, source }) {
+async function createOrder({ cart, dineIn, table, name, coupon, customerId, pickupAt, idempotencyKey, note: customerNote, pifVoucher, source, squareLocationId }) {
+  const LOC = squareLocationId || LOCATION_ID;
   if (!Array.isArray(cart) || cart.length === 0) throw new Error('Cart is empty');
   // Bake any per-combo locked modifiers into the combo lines before pricing, so
   // an item the owner locked into a combo (e.g. chips) is always charged even if
@@ -73,7 +74,7 @@ async function createOrder({ cart, dineIn, table, name, coupon, customerId, pick
   const cleanNote = customerNote ? String(customerNote).trim().slice(0, 250) : '';
   if (cleanNote) fulfillment.pickup_details && (fulfillment.pickup_details.note = `${fulfillment.pickup_details.note} · ${cleanNote}`.slice(0, 500));
   const order = {
-    location_id: LOCATION_ID,
+    location_id: LOC,
     ticket_name: buildTicketName({ dineIn, table, name }),
     line_items: lineItems,
     fulfillments: [fulfillment],
@@ -156,13 +157,13 @@ async function getOrder(orderId) {
   return data.order;
 }
 
-async function createPayment({ sourceId, orderId, amountMoney, verificationToken, buyerEmail, customerId }) {
+async function createPayment({ sourceId, orderId, amountMoney, verificationToken, buyerEmail, customerId, squareLocationId }) {
   const body = {
     source_id: sourceId,
     idempotency_key: idem(),
     amount_money: amountMoney,
     order_id: orderId,
-    location_id: LOCATION_ID,
+    location_id: squareLocationId || LOCATION_ID,
     autocomplete: true,
   };
   if (verificationToken) body.verification_token = verificationToken;
@@ -176,13 +177,13 @@ async function createPayment({ sourceId, orderId, amountMoney, verificationToken
 // autocomplete:false holds the amount; online auth is valid ~7 days, then we
 // either complete (capture) at pickup or cancel (void). A decline here means
 // the customer has no funds / the card failed, surfaced immediately.
-async function authorizePayment({ sourceId, orderId, amountMoney, customerId, verificationToken }) {
+async function authorizePayment({ sourceId, orderId, amountMoney, customerId, verificationToken, squareLocationId }) {
   const body = {
     source_id: sourceId,
     idempotency_key: idem(),
     amount_money: amountMoney,
     autocomplete: false,
-    location_id: LOCATION_ID,
+    location_id: squareLocationId || LOCATION_ID,
   };
   if (orderId) body.order_id = orderId;
   if (customerId) body.customer_id = customerId;
@@ -215,13 +216,13 @@ async function payZeroOrder(orderId, orderVersion) {
 // Record a CASH tender against an order (counter POS). Square's Payments API
 // accepts source_id 'CASH' with cash_details.buyer_supplied_money; autocomplete
 // settles the order so it reads as paid and reconciles in Square reporting.
-async function createCashPayment({ orderId, amountMoney, buyerSuppliedMoney }) {
+async function createCashPayment({ orderId, amountMoney, buyerSuppliedMoney, squareLocationId }) {
   const body = {
     source_id: 'CASH',
     idempotency_key: idem(),
     amount_money: amountMoney,
     order_id: orderId,
-    location_id: LOCATION_ID,
+    location_id: squareLocationId || LOCATION_ID,
     autocomplete: true,
     cash_details: { buyer_supplied_money: buyerSuppliedMoney || amountMoney },
   };

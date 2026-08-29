@@ -43,7 +43,7 @@ function dateStr(d) {
 }
 const WEEKDAYS = [['Mon', 1], ['Tue', 2], ['Wed', 3], ['Thu', 4], ['Fri', 5], ['Sat', 6], ['Sun', 0]];
 
-export default function Checkout({ config, cart, currency, onQty, onComboQty, onRemoveCombo, onEditCombo, dineIn, setDineIn, table, setTable, tableLock, onUnlockTable, onScanTable, name, setName, user, canOrder, preWhen, preAt, onPaid, onScheduled, onBack, pifVoucher, onClearPifVoucher }) {
+export default function Checkout({ config, location, cart, currency, onQty, onComboQty, onRemoveCombo, onEditCombo, dineIn, setDineIn, table, setTable, tableLock, onUnlockTable, onScanTable, name, setName, user, canOrder, preWhen, preAt, onPaid, onScheduled, onBack, pifVoucher, onClearPifVoucher }) {
   const [status, setStatus] = useState('init');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -172,8 +172,9 @@ export default function Checkout({ config, cart, currency, onQty, onComboQty, on
       try {
         const Square = await loadSquareSdk(config.environment);
         if (cancelled) return;
-        if (!config.applicationId || !config.locationId) throw new Error('Payment not configured.');
-        const payments = Square.payments(config.applicationId, config.locationId);
+        const sqLoc = (location && location.squareLocationId) || config.locationId;
+        if (!config.applicationId || !sqLoc) throw new Error('Payment not configured.');
+        const payments = Square.payments(config.applicationId, sqLoc);
         paymentsRef.current = payments;
         if (!cancelled) setPaymentsObj(payments);
         const card = await payments.card();
@@ -237,7 +238,7 @@ export default function Checkout({ config, cart, currency, onQty, onComboQty, on
     if (hasPif) track('gift_redemption_started', { ref: effectivePifCode });
     return api.createOrder({
       cart: cartPayload, dineIn, table, name, coupon, pickupAt, note,
-      customerId: user?.customerId,
+      customerId: user?.customerId, locationId: location?.id,
       loyalty: tierId && loyalty?.accountId ? { accountId: loyalty.accountId, tierId } : undefined,
       pifVoucher: hasPif ? effectivePifCode : undefined,
     });
@@ -273,13 +274,13 @@ export default function Checkout({ config, cart, currency, onQty, onComboQty, on
 
       // Pay from prepaid balance (gift card).
       if (cardChoice === 'balance') {
-        const pay = await api.pay({ orderId: order.orderId, totalMoney: order.totalMoney, customerId: user.customerId, payWith: 'balance' });
+        const pay = await api.pay({ orderId: order.orderId, totalMoney: order.totalMoney, customerId: user.customerId, payWith: 'balance', locationId: location?.id });
         if (pay.status === 'COMPLETED' || pay.status === 'APPROVED') { if (hasPif && onClearPifVoucher) { track('gift_redeemed', { ref: effectivePifCode }); onClearPifVoucher(); } return onPaid(pay, order, { pickupAt }); }
         throw new Error(`Payment ${pay.status}`);
       }
 
       if (!order.totalMoney || order.totalMoney.amount === 0) {
-        await api.pay({ orderId: order.orderId, totalMoney: order.totalMoney });
+        await api.pay({ orderId: order.orderId, totalMoney: order.totalMoney, locationId: location?.id });
         if (hasPif && onClearPifVoucher) { track('gift_redeemed', { ref: effectivePifCode }); onClearPifVoucher(); }
         onPaid({ status: 'COMPLETED', comped: !usingReward, receiptUrl: null }, order, { pickupAt });
         return;
@@ -297,7 +298,7 @@ export default function Checkout({ config, cart, currency, onQty, onComboQty, on
 
       const pay = await api.pay({
         sourceId, orderId: order.orderId, totalMoney: order.totalMoney,
-        verificationToken, customerId: user?.customerId,
+        verificationToken, customerId: user?.customerId, locationId: location?.id,
       });
       if (pay.status === 'COMPLETED' || pay.status === 'APPROVED') { if (hasPif && onClearPifVoucher) { track('gift_redeemed', { ref: effectivePifCode }); onClearPifVoucher(); } onPaid(pay, order, { pickupAt }); }
       else throw new Error(`Payment ${pay.status}`);
@@ -319,7 +320,7 @@ export default function Checkout({ config, cart, currency, onQty, onComboQty, on
     setBusy(true); setError('');
     try {
       const order = await createOrder(null);
-      const pay = await api.pay({ sourceId: token, orderId: order.orderId, totalMoney: order.totalMoney, customerId: user?.customerId });
+      const pay = await api.pay({ sourceId: token, orderId: order.orderId, totalMoney: order.totalMoney, customerId: user?.customerId, locationId: location?.id });
       if (pay.status === 'COMPLETED' || pay.status === 'APPROVED') { if (hasPif && onClearPifVoucher) { track('gift_redeemed', { ref: effectivePifCode }); onClearPifVoucher(); } onPaid(pay, order, {}); }
       else throw new Error(`Payment ${pay.status}`);
     } catch (e) {

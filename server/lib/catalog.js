@@ -104,8 +104,11 @@ function scheduleActiveNow(sch, now) {
 
 // Apply the availability overlay to the assembled sections (mutates item soldOut,
 // drops categories that are outside their menu window). Returns the kept sections.
-function applyAvailability(sections, settings, now = venueNow()) {
+function applyAvailability(sections, settings, now = venueNow(), hiddenItemIds = null) {
   const av = (settings && settings.availability) || {};
+  // Per-location: items this store doesn't offer are removed entirely (e.g. most
+  // food at a takeaway-only site), and any category left empty is dropped.
+  const hidden = hiddenItemIds instanceof Set ? hiddenItemIds : null;
   const items = av.items || {};
   const excl = av.exclusions || {};
   const exclList = (excl.enabled !== false && excl.days)
@@ -144,6 +147,11 @@ function applyAvailability(sections, settings, now = venueNow()) {
     // one of its schedules is active. Categories in no schedule always show.
     if (scheduledCats.has(catKey) && !activeCats.has(catKey)) continue;
 
+    // Drop items this location doesn't offer, by preset-source item id or raw id.
+    if (hidden) {
+      sec.items = (sec.items || []).filter((it) => !hidden.has(it.presetSourceItemId || it.id) && !hidden.has(it.id));
+      if (!sec.items.length) continue; // category has nothing here → hide it
+    }
     for (const it of (sec.items || [])) {
       const forced = overrideFor(it.id);
       let sold = it.soldOut;
@@ -737,7 +745,11 @@ async function getMenu(opts = {}) {
   // list the OFFERED products (selection applied) without the time/sold-out
   // overlay, so managing sold-outs still shows every offered item off-hours.
   if (applySelection && !opts.skipAvailability) {
-    sections = applyAvailability(sections, getSettings());
+    let hidden = null;
+    if (opts.location) {
+      try { hidden = require('./locations').hiddenSet(opts.location); } catch {}
+    }
+    sections = applyAvailability(sections, getSettings(), venueNow(), hidden);
   }
 
   console.log(
