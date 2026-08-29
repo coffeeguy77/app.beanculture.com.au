@@ -955,9 +955,48 @@ export default function App() {
     ? (config.seasonalThemes || []).find((x) => x.id === previewSeasonalId)
     : null) || config?.activeSeasonalTheme || null;
   const seasonBanner = eventSeasonal?.banner || null;
-  const heroSlides = seasonBanner
-    ? [{ id: 'season-banner', ...seasonBanner }, ...(config.hero || [])]
-    : (config.hero || []);
+  // Smart Campaign banners (resolved server-side) go FIRST, then the seasonal
+  // banner, then the normal shop banners — an insertion, never a replacement.
+  const smartSlides = (config.smartCampaigns && config.smartCampaigns.heroSlides) || [];
+  const heroSlides = [
+    ...smartSlides,
+    ...(seasonBanner ? [{ id: 'season-banner', ...seasonBanner }] : []),
+    ...(config.hero || []),
+  ];
+  // Count a Smart Campaign impression once whenever the active set changes.
+  const smartImpressionKey = smartSlides.map((s) => s.campaignId).filter(Boolean).join(',');
+  useEffect(() => {
+    if (!smartImpressionKey) return;
+    for (const id of smartImpressionKey.split(',')) track('campaign_impression', { ref: id });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [smartImpressionKey]);
+
+  // Shared banner-destination handler — used by both the homepage hero and the
+  // category Smart-Campaign banners, so campaign attribution + navigation live in
+  // one place. `slide` may carry a campaignId for click attribution.
+  const onBannerLink = (link, slide) => {
+    if (slide && slide.campaignId) track('campaign_click', { ref: slide.campaignId });
+    if (!link || link.type === 'none') return;
+    if (link.type === 'category') { setActiveCat(link.value); setScrollTick((t) => t + 1); }
+    else if (link.type === 'item' && link.value) {
+      let found = null; let foundCat = null;
+      for (const c of (menu.categories || [])) {
+        const it = (c.items || []).find((x) => x.id === link.value);
+        if (it) { found = it; foundCat = c.category; break; }
+      }
+      const shut = found && (found.soldOut || kitchenClosedSet.has((foundCat || '').toLowerCase()));
+      if (found && !shut) setActiveItem({ ...found, category: foundCat });
+      else if (found) { setActiveCat(foundCat); setScrollTick((t) => t + 1); const el = document.querySelector('.menu'); if (el) el.scrollIntoView({ behavior: 'smooth' }); }
+      else { const el = document.querySelector('.menu'); if (el) el.scrollIntoView({ behavior: 'smooth' }); }
+    }
+    else if (link.type === 'account') setView('account');
+    else if (link.type === 'payitforward') setShowPif(true);
+    else if (link.type === 'url' && link.value) {
+      const u = /^https?:\/\//i.test(link.value) ? link.value : `https://${link.value}`;
+      window.open(u, '_blank', 'noopener,noreferrer');
+    }
+    else if (link.type === 'scroll') { const el = document.querySelector('.menu'); if (el) el.scrollIntoView({ behavior: 'smooth' }); }
+  };
   // Resolve the active event's decorative-effect config (schema v2), with a
   // back-compat fallback that maps a pre-v2 record's old effect flags to a
   // preset so saved data never breaks.
@@ -1287,37 +1326,7 @@ export default function App() {
               ratio={config.heroRatio}
               autoplay={config.heroAutoplay !== false}
               interval={config.heroInterval}
-              onLink={(link) => {
-                if (!link || link.type === 'none') return;
-                if (link.type === 'category') { setActiveCat(link.value); setScrollTick((t) => t + 1); }
-                else if (link.type === 'item' && link.value) {
-                  // Open the product directly (e.g. a "steak sandwich" banner → its
-                  // item card), scanning every category for the matching id.
-                  let found = null; let foundCat = null;
-                  for (const c of (menu.categories || [])) {
-                    const it = (c.items || []).find((x) => x.id === link.value);
-                    if (it) { found = it; foundCat = c.category; break; }
-                  }
-                  // A hero banner can point at an item whose category is sold out
-                  // or currently kitchen-closed — don't let the banner bypass that;
-                  // jump to the (now visibly unavailable) category instead of
-                  // opening an Add-to-cart modal for something you can't actually buy.
-                  const shut = found && (found.soldOut || kitchenClosedSet.has((foundCat || '').toLowerCase()));
-                  if (found && !shut) setActiveItem({ ...found, category: foundCat });
-                  else if (found) {
-                    setActiveCat(foundCat); setScrollTick((t) => t + 1);
-                    const el = document.querySelector('.menu'); if (el) el.scrollIntoView({ behavior: 'smooth' });
-                  }
-                  else { const el = document.querySelector('.menu'); if (el) el.scrollIntoView({ behavior: 'smooth' }); }
-                }
-                else if (link.type === 'account') setView('account');
-                else if (link.type === 'payitforward') setShowPif(true);
-                else if (link.type === 'url' && link.value) {
-                  const u = /^https?:\/\//i.test(link.value) ? link.value : `https://${link.value}`;
-                  window.open(u, '_blank', 'noopener,noreferrer');
-                }
-                else if (link.type === 'scroll') { const el = document.querySelector('.menu'); if (el) el.scrollIntoView({ behavior: 'smooth' }); }
-              }}
+              onLink={onBannerLink}
             />
             {!(wide && view === 'checkout') && (
               <OrderTypeBar dineIn={dineIn} setDineIn={setDineIn} table={table} setTable={setTable} lock={tableLock} onUnlock={unlockTable} onScanned={applyScannedTable}
@@ -1338,6 +1347,8 @@ export default function App() {
               scrollKey={scrollTick}
               onScrolled={() => setActiveCat(null)}
               kitchenClosedCats={kitchenClosedCats}
+              smartByCategory={config.smartCampaigns && config.smartCampaigns.byCategory}
+              onSmartLink={onBannerLink}
             />
             {!isMobile && <InstallButton />}
           </div>

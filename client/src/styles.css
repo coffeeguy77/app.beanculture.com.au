@@ -3195,3 +3195,21 @@ body:has(.store-shell) { background: var(--bc-canvas-deep, #160f12); }
 .kds-recall { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 16px; background: #0e1216; border-top: 1px solid #222a32; }
 .kds-recall-label { font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .6px; color: #7f8b98; }
 .kds-recall-chip { border: 1px solid #333d47; background: #1e242b; color: #cfd8e2; border-radius: 999px; padding: 7px 14px; font-size: 14px; font-weight: 700; cursor: pointer; }
+
+/* ── Admin: Smart Campaigns (weather) list + editor ── */
+.camp-row { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--admin-border, var(--line)); }
+.camp-row:last-of-type { border-bottom: none; }
+.camp-main { flex: 1; min-width: 0; }
+.camp-name { font-weight: 700; font-size: var(--fs-md); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.camp-meta { font-size: var(--fs-sm); color: var(--admin-text-muted, var(--muted)); margin-top: 2px; }
+.camp-pill { font-size: 11px; font-weight: 800; border-radius: 999px; padding: 2px 8px; }
+.camp-pill.live { background: color-mix(in srgb, var(--admin-success, #2e7d51) 16%, transparent); color: var(--admin-success, #2e7d51); }
+.camp-pill.off { background: color-mix(in srgb, var(--admin-text-muted, #777) 18%, transparent); color: var(--admin-text-muted, #777); }
+.camp-actions { display: flex; gap: 6px; flex: none; flex-wrap: wrap; justify-content: flex-end; }
+.camp-btn { border: 1px solid var(--admin-border, var(--line)); background: var(--admin-surface, #fff); color: var(--admin-text, var(--ink)); border-radius: 8px; padding: 6px 10px; font-family: inherit; font-size: var(--fs-sm); font-weight: 700; cursor: pointer; }
+.camp-btn.danger { color: var(--admin-danger, #c0392b); border-color: color-mix(in srgb, var(--admin-danger, #c0392b) 40%, var(--admin-border, #ccc)); }
+.camp-art { display: flex; align-items: center; gap: 12px; }
+.camp-art img { width: 160px; max-width: 45%; height: auto; border-radius: 10px; border: 1px solid var(--admin-border, var(--line)); object-fit: cover; }
+.camp-art-ph { width: 160px; height: 70px; border-radius: 10px; border: 1px dashed var(--admin-border, var(--line)); display: grid; place-items: center; color: var(--admin-text-muted, var(--muted)); font-size: var(--fs-sm); }
+.camp-art-btns { display: flex; flex-direction: column; gap: 8px; }
+@media (max-width: 620px) { .camp-row { flex-wrap: wrap; } .camp-actions { width: 100%; justify-content: flex-start; } }

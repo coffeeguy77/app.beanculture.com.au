@@ -21,6 +21,7 @@ const notify = require('./lib/notify');
 const payItForward = require('./lib/payItForward');
 const kds = require('./lib/kds');
 const weather = require('./lib/weather');
+const smartCampaigns = require('./lib/smartCampaigns');
 
 const PREORDER_TZ = process.env.PREORDER_TZ || process.env.SEASON_TZ || 'Australia/Sydney';
 const PREORDER_MAX_DAYS = Number(process.env.PREORDER_MAX_DAYS || 14);
@@ -107,6 +108,19 @@ app.get('/api/config', async (_req, res) => {
       const pub = weather.publicWeather(await weather.forConfig());
       if (pub && sc.showCondition === false) { pub.condition = null; pub.conditionLabel = null; }
       return pub;
+    })(),
+    // Central resolver output: the homepage + category views consume this plan
+    // as plain data. Empty (no-op) when no weather campaign is active — behaviour
+    // is then identical to before. Never blocks: weather is cached/bounded.
+    smartCampaigns: await (async () => {
+      const sc = settings.smartCampaigns || {};
+      const hasCampaigns = Array.isArray(sc.weather) && sc.weather.some((c) => c && c.active !== false && (c.homepage_enabled || c.category_enabled));
+      if (!hasCampaigns) return { heroSlides: [], byCategory: {} };
+      let wx = null; try { wx = await weather.forConfig(); } catch {}
+      try {
+        const plan = smartCampaigns.resolveSmartPlacements({ settings, weather: wx, now: catalog.venueNow() });
+        return { heroSlides: plan.heroSlides, byCategory: plan.byCategory };
+      } catch (e) { console.warn('[smartCampaigns] resolve failed:', e.message); return { heroSlides: [], byCategory: {} }; }
     })(),
     hours: hoursStatus,
     scheduling: {

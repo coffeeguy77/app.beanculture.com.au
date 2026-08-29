@@ -139,6 +139,7 @@ export default function Admin({ onExit }) {
   const [weatherStatus, setWeatherStatus] = useState(null); // Smart Campaigns weather status
   const [weatherBusy, setWeatherBusy] = useState(false);
   const [geoBusy, setGeoBusy] = useState('');
+  const [campEditId, setCampEditId] = useState(null);       // weather campaign being edited (or null)
   const [data, setData] = useState(null);
   const [s, setS] = useState(null); // editable settings
   const [error, setError] = useState('');
@@ -2774,11 +2775,46 @@ export default function Admin({ onExit }) {
               const wx = weatherStatus;
               const emoji = { sunny: '☀️', partly: '⛅', cloudy: '☁️', fog: '🌫️', rain: '🌧️', snow: '❄️', storm: '⛈️' }[wx && wx.condition] || '🌡️';
               const ageTxt = wx && wx.age_seconds != null ? (wx.age_seconds < 90 ? 'just now' : `${Math.round(wx.age_seconds / 60)} min ago`) : '';
+              // ── Weather Campaign CRUD ──
+              const campaigns = Array.isArray(sc.weather) ? sc.weather : [];
+              const opts = sc.options || {};
+              const setOpts = (patch) => setSc({ options: { ...opts, ...patch } });
+              const setCampaigns = (list) => setSc({ weather: list });
+              const nowIso = () => new Date().toISOString();
+              const newId = () => 'wc_' + Math.random().toString(36).slice(2, 8);
+              const blankCampaign = () => ({
+                id: newId(), name: 'New weather campaign', internal_description: '', active: true, priority: 20,
+                trigger_type: 'weather', weather_source: 'current', comparison_operator: 'gte', threshold_min: 28, threshold_max: 33,
+                active_days: [], active_start_time: '', active_end_time: '', start_date: '', end_date: '',
+                homepage_enabled: true, homepage_artwork: '', homepage_mobile_artwork: '', homepage_title: '', homepage_subtitle: '', homepage_alt_text: '', homepage_position: 'first',
+                category_enabled: false, category_id: '', category_artwork: '', category_mobile_artwork: '', category_title: '', category_position: 'before',
+                destination_type: 'category', destination_id: '', destination_url: '', cta_text: '', created_at: nowIso(), updated_at: nowIso(),
+              });
+              const addCampaign = () => { const c = blankCampaign(); setCampaigns([...campaigns, c]); setCampEditId(c.id); };
+              const updateCampaign = (id, patch) => setCampaigns(campaigns.map((c) => (c.id === id ? { ...c, ...patch, updated_at: nowIso() } : c)));
+              const removeCampaign = (id) => { setCampaigns(campaigns.filter((c) => c.id !== id)); if (campEditId === id) setCampEditId(null); };
+              const duplicateCampaign = (id) => { const c = campaigns.find((x) => x.id === id); if (!c) return; const copy = { ...c, id: newId(), name: `${c.name} (copy)`, created_at: nowIso(), updated_at: nowIso() }; setCampaigns([...campaigns, copy]); setCampEditId(copy.id); };
+              const editing = campaigns.find((c) => c.id === campEditId) || null;
+              const OPERATORS = { gte: '≥', gt: '>', lte: '≤', lt: '<', between: 'between' };
+              const SOURCES = { current: 'Current temperature', today_max: "Today's max", tomorrow_max: "Tomorrow's max" };
+              const DESTS = { category: 'Product category', item: 'Specific product', scroll: 'Scroll to menu', account: 'Account', payitforward: 'Pay It Forward', url: 'Web link', none: 'No action' };
+              const ruleText = (c) => `${SOURCES[c.weather_source] || 'Temp'} ${OPERATORS[c.comparison_operator] || '≥'} ${c.comparison_operator === 'between' ? `${c.threshold_min}–${c.threshold_max}` : c.threshold_min}°C`;
+              // Would this campaign trigger with the CURRENT reading right now?
+              const wouldMatchNow = (c) => {
+                if (!wx || !wx.ok) return null;
+                const v = c.weather_source === 'today_max' ? wx.today_max : c.weather_source === 'tomorrow_max' ? wx.tomorrow_max : wx.current_temperature;
+                if (v == null) return null;
+                const a = Number(c.threshold_min), b = Number(c.threshold_max);
+                if (c.comparison_operator === 'between') return v >= Math.min(a, b) && v <= Math.max(a, b);
+                if (c.comparison_operator === 'gte') return v >= a; if (c.comparison_operator === 'gt') return v > a;
+                if (c.comparison_operator === 'lte') return v <= a; if (c.comparison_operator === 'lt') return v < a;
+                return null;
+              };
               return (
                 <>
                   <div className="admin-page-head">
                     <h1 className="admin-page-title">Smart Campaigns</h1>
-                    <p className="admin-page-desc">Contextual merchandising that reacts to the world &mdash; starting with the weather at your store. A hot day can automatically push an iced-coffee banner to the top of the homepage without touching your normal banners. Weather Campaign rules arrive in the next update; this screen sets up the weather feed and the customer temperature display.</p>
+                    <p className="admin-page-desc">Contextual merchandising that reacts to the world &mdash; starting with the weather at your store. Create rules so a hot day automatically pushes (say) an iced-coffee banner to the top of the homepage and a slim banner into a category, without ever touching your seasonal or normal banners.</p>
                   </div>
 
                   <div className="card" style={card}>
@@ -2832,10 +2868,173 @@ export default function Admin({ onExit }) {
                     <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 10 }}>Remember to press <strong>Save changes</strong>.</p>
                   </div>
 
-                  <div className="card" style={{ ...card, borderStyle: 'dashed' }}>
-                    <div className="group-title">Weather Campaigns</div>
-                    <p className="muted" style={{ fontSize: 'var(--fs-sm)', margin: 0 }}>Next update: create rules like <em>&ldquo;Current temp &ge; 28&deg;C &rarr; show an iced-coffee banner first on the homepage and a slim banner in Smoothies&rdquo;</em>, with priorities, scheduling, a weather simulator and analytics. This screen already proves the live weather feed those rules will use.</p>
-                  </div>
+                  {/* ── Global behaviour (only on the list view) ── */}
+                  {!editing && (
+                    <div className="card" style={card}>
+                      <div className="group-title">Behaviour</div>
+                      <label className="field" style={{ marginTop: 8 }}><span>When several campaigns match at once</span>
+                        <select value={opts.mode || 'highest'} onChange={(e) => setOpts({ mode: e.target.value })}>
+                          <option value="highest">Show only the highest-priority campaign</option>
+                          <option value="all">Show all matching campaigns (highest first)</option>
+                        </select></label>
+                      <label className="avail-switch" style={{ marginTop: 12 }}><input type="checkbox" checked={opts.hysteresis !== false} onChange={(e) => setOpts({ hysteresis: e.target.checked })} /><span>Prevent flapping around the threshold</span></label>
+                      <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 8 }}>Keeps a campaign steady instead of flicking on/off when the temperature hovers on the line.</p>
+                    </div>
+                  )}
+
+                  {/* ── Campaign list ── */}
+                  {!editing && (
+                    <div className="card" style={card}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                        <div className="group-title" style={{ margin: 0 }}>Weather Campaigns</div>
+                        <button type="button" className="btn" style={{ padding: '8px 14px' }} onClick={addCampaign}>+ Create campaign</button>
+                      </div>
+                      {campaigns.length === 0 && <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>No campaigns yet. Create one to react to the weather &mdash; e.g. a hot-day iced-coffee banner.</p>}
+                      {campaigns.map((c) => {
+                        const m = wouldMatchNow(c);
+                        const places = [c.homepage_enabled && 'Homepage', c.category_enabled && c.category_id ? c.category_id : null].filter(Boolean).join(' + ') || 'No placement';
+                        return (
+                          <div key={c.id} className="camp-row">
+                            <div className="camp-main">
+                              <div className="camp-name">{c.name || 'Untitled'}
+                                {!c.active && <span className="camp-pill off">Paused</span>}
+                                {c.active && m === true && <span className="camp-pill live">Matching now</span>}
+                              </div>
+                              <div className="camp-meta">{ruleText(c)} · Priority {c.priority} · {places}</div>
+                            </div>
+                            <div className="camp-actions">
+                              <button type="button" className="camp-btn" onClick={() => updateCampaign(c.id, { active: !c.active })}>{c.active ? 'Pause' : 'Enable'}</button>
+                              <button type="button" className="camp-btn" onClick={() => setCampEditId(c.id)}>Edit</button>
+                              <button type="button" className="camp-btn" onClick={() => duplicateCampaign(c.id)}>Duplicate</button>
+                              <button type="button" className="camp-btn danger" onClick={() => removeCampaign(c.id)}>Delete</button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                      {campaigns.length > 0 && <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 10 }}>Changes go live when you press <strong>Save changes</strong>.</p>}
+                    </div>
+                  )}
+
+                  {/* ── Editor ── */}
+                  {editing && (() => {
+                    const c = editing;
+                    const up = (patch) => updateCampaign(c.id, patch);
+                    const matchNow = wouldMatchNow(c);
+                    const toggleDay = (i) => up({ active_days: (c.active_days || []).includes(i) ? c.active_days.filter((d) => d !== i) : [...(c.active_days || []), i].sort() });
+                    const uploadTo = (key) => (e) => { const f = e.target.files && e.target.files[0]; if (f) uploadImage(f, (url) => up({ [key]: url }), 'campaigns'); e.target.value = ''; };
+                    return (
+                      <>
+                        <div className="card" style={card}>
+                          <button type="button" className="link" onClick={() => setCampEditId(null)} style={{ fontSize: 'var(--fs-base)' }}>← Back to campaigns</button>
+                          {matchNow != null && (
+                            <span className={`camp-pill ${matchNow ? 'live' : 'off'}`} style={{ float: 'right' }}>{matchNow ? 'Would show now' : 'Would not show now'}</span>
+                          )}
+                          {/* 1 · Campaign */}
+                          <div className="group-title" style={{ marginTop: 8 }}>1 · Campaign</div>
+                          <label className="field"><span>Name</span><input value={c.name || ''} onChange={(e) => up({ name: e.target.value })} placeholder="Hot Day Smoothies" /></label>
+                          <label className="field" style={{ marginTop: 10 }}><span>Internal note (optional)</span><input value={c.internal_description || ''} onChange={(e) => up({ internal_description: e.target.value })} placeholder="For your reference only" /></label>
+                          <div className="admin-two-col" style={{ marginTop: 10 }}>
+                            <label className="field"><span>Priority (higher wins)</span><input type="number" value={c.priority} onChange={(e) => up({ priority: parseInt(e.target.value, 10) || 0 })} /></label>
+                            <label className="avail-switch" style={{ alignSelf: 'end', paddingBottom: 10 }}><input type="checkbox" checked={c.active !== false} onChange={(e) => up({ active: e.target.checked })} /><span>Enabled</span></label>
+                          </div>
+                        </div>
+
+                        <div className="card" style={card}>
+                          <div className="group-title">2 · Weather rule</div>
+                          <div className="admin-two-col">
+                            <label className="field"><span>Weather source</span>
+                              <select value={c.weather_source} onChange={(e) => up({ weather_source: e.target.value })}>{Object.entries(SOURCES).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></label>
+                            <label className="field"><span>Condition</span>
+                              <select value={c.comparison_operator} onChange={(e) => up({ comparison_operator: e.target.value })}>
+                                <option value="gte">Greater than or equal (≥)</option><option value="gt">Greater than (&gt;)</option>
+                                <option value="lte">Less than or equal (≤)</option><option value="lt">Less than (&lt;)</option><option value="between">Between</option>
+                              </select></label>
+                          </div>
+                          <div className="admin-two-col" style={{ marginTop: 10 }}>
+                            <label className="field"><span>{c.comparison_operator === 'between' ? 'Minimum °C' : 'Temperature °C'}</span><input type="number" value={c.threshold_min} onChange={(e) => up({ threshold_min: Number(e.target.value) })} /></label>
+                            {c.comparison_operator === 'between' && <label className="field"><span>Maximum °C</span><input type="number" value={c.threshold_max} onChange={(e) => up({ threshold_max: Number(e.target.value) })} /></label>}
+                          </div>
+                          <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 8 }}>Rule: <strong>{ruleText(c)}</strong>{wx && wx.ok ? ` · right now it's ${wx.current_temperature}°C` : ''}</p>
+                        </div>
+
+                        <div className="card" style={card}>
+                          <div className="group-title">3 · Schedule (optional)</div>
+                          <div className="muted" style={{ fontSize: 'var(--fs-xs)', margin: '4px 0' }}>Days (none ticked = every day)</div>
+                          <div className="avail-daychips">
+                            {DOW_LABELS.map((d, i) => <button key={i} type="button" className={`avail-daychip sm${(c.active_days || []).includes(i) ? ' on' : ''}`} onClick={() => toggleDay(i)}>{d[0]}</button>)}
+                          </div>
+                          <div className="admin-two-col" style={{ marginTop: 10 }}>
+                            <label className="field"><span>From (optional)</span><input type="time" value={c.active_start_time || ''} onChange={(e) => up({ active_start_time: e.target.value })} /></label>
+                            <label className="field"><span>To (optional)</span><input type="time" value={c.active_end_time || ''} onChange={(e) => up({ active_end_time: e.target.value })} /></label>
+                          </div>
+                          <div className="admin-two-col" style={{ marginTop: 10 }}>
+                            <label className="field"><span>Start date (optional)</span><input type="date" value={c.start_date || ''} onChange={(e) => up({ start_date: e.target.value })} /></label>
+                            <label className="field"><span>End date (optional)</span><input type="date" value={c.end_date || ''} onChange={(e) => up({ end_date: e.target.value })} /></label>
+                          </div>
+                        </div>
+
+                        <div className="card" style={card}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div className="group-title" style={{ margin: 0 }}>4 · Homepage banner</div>
+                            <label className="avail-switch"><input type="checkbox" checked={c.homepage_enabled !== false} onChange={(e) => up({ homepage_enabled: e.target.checked })} /><span>{c.homepage_enabled !== false ? 'On' : 'Off'}</span></label>
+                          </div>
+                          {c.homepage_enabled !== false && (
+                            <>
+                              <div className="muted" style={{ fontSize: 'var(--fs-sm)', margin: '6px 0' }}>Shows first on the homepage (before the seasonal banner). Big 3:2 artwork.</div>
+                              <div className="camp-art">
+                                {c.homepage_artwork ? <img src={imgUrl(c.homepage_artwork, 400)} alt="" /> : <span className="camp-art-ph">No artwork</span>}
+                                <div className="camp-art-btns">
+                                  <label className="btn ghost" style={{ padding: '7px 12px' }}><input type="file" accept="image/*" hidden onChange={uploadTo('homepage_artwork')} />{c.homepage_artwork ? 'Replace' : 'Upload'}</label>
+                                  {c.homepage_artwork && <button type="button" className="btn ghost" style={{ padding: '7px 12px' }} onClick={() => up({ homepage_artwork: '' })}>Remove</button>}
+                                </div>
+                              </div>
+                              <label className="field" style={{ marginTop: 10 }}><span>Title (optional overlay)</span><input value={c.homepage_title || ''} onChange={(e) => up({ homepage_title: e.target.value })} /></label>
+                              <label className="field" style={{ marginTop: 10 }}><span>Subtitle (optional)</span><input value={c.homepage_subtitle || ''} onChange={(e) => up({ homepage_subtitle: e.target.value })} /></label>
+                              <label className="field" style={{ marginTop: 10 }}><span>Alt text (accessibility)</span><input value={c.homepage_alt_text || ''} onChange={(e) => up({ homepage_alt_text: e.target.value })} placeholder={c.name} /></label>
+                              <label className="field" style={{ marginTop: 10 }}><span>Button text (optional)</span><input value={c.cta_text || ''} onChange={(e) => up({ cta_text: e.target.value })} placeholder="Shop Smoothies" /></label>
+                              <label className="field" style={{ marginTop: 10 }}><span>When tapped</span>
+                                <select value={c.destination_type} onChange={(e) => up({ destination_type: e.target.value })}>{Object.entries(DESTS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></label>
+                              {c.destination_type === 'category' && <label className="field" style={{ marginTop: 8 }}><span>Category</span><select value={c.destination_id || ''} onChange={(e) => up({ destination_id: e.target.value })}><option value="">— pick a category —</option>{scheduleCatOptions.map((n) => <option key={n} value={n}>{n}</option>)}</select></label>}
+                              {c.destination_type === 'item' && <div style={{ marginTop: 8 }}>{renderSourcePicker('campdest-' + c.id, c.destination_id, (id) => up({ destination_id: id }))}</div>}
+                              {c.destination_type === 'url' && <label className="field" style={{ marginTop: 8 }}><span>Web link</span><input value={c.destination_url || ''} onChange={(e) => up({ destination_url: e.target.value })} placeholder="https://…" /></label>}
+                            </>
+                          )}
+                        </div>
+
+                        <div className="card" style={card}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div className="group-title" style={{ margin: 0 }}>5 · Category placement (optional)</div>
+                            <label className="avail-switch"><input type="checkbox" checked={c.category_enabled === true} onChange={(e) => up({ category_enabled: e.target.checked })} /><span>{c.category_enabled ? 'On' : 'Off'}</span></label>
+                          </div>
+                          {c.category_enabled && (
+                            <>
+                              <div className="muted" style={{ fontSize: 'var(--fs-sm)', margin: '6px 0' }}>A slim banner inside a category. Uses <strong>separate</strong> artwork (4:1) &mdash; it never overwrites the category&rsquo;s own banner.</div>
+                              <label className="field"><span>Category</span><select value={c.category_id || ''} onChange={(e) => up({ category_id: e.target.value })}><option value="">— pick a category —</option>{scheduleCatOptions.map((n) => <option key={n} value={n}>{n}</option>)}</select></label>
+                              <div className="camp-art" style={{ marginTop: 10 }}>
+                                {c.category_artwork ? <img src={imgUrl(c.category_artwork, 400)} alt="" /> : <span className="camp-art-ph">No slim artwork</span>}
+                                <div className="camp-art-btns">
+                                  <label className="btn ghost" style={{ padding: '7px 12px' }}><input type="file" accept="image/*" hidden onChange={uploadTo('category_artwork')} />{c.category_artwork ? 'Replace' : 'Upload'}</label>
+                                  {c.category_artwork && <button type="button" className="btn ghost" style={{ padding: '7px 12px' }} onClick={() => up({ category_artwork: '' })}>Remove</button>}
+                                </div>
+                              </div>
+                              <label className="field" style={{ marginTop: 10 }}><span>Title (optional overlay)</span><input value={c.category_title || ''} onChange={(e) => up({ category_title: e.target.value })} /></label>
+                              <label className="field" style={{ marginTop: 10 }}><span>Placement</span>
+                                <select value={c.category_position || 'before'} onChange={(e) => up({ category_position: e.target.value })}>
+                                  <option value="before">Before the category&rsquo;s own banner</option>
+                                  <option value="after">After the category&rsquo;s own banner</option>
+                                  <option value="replace">Replace it while active</option>
+                                </select></label>
+                            </>
+                          )}
+                        </div>
+
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+                          <button type="button" className="btn ghost" onClick={() => setCampEditId(null)}>← Back</button>
+                          <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>Press <strong>Save changes</strong> to make it live.</span>
+                        </div>
+                      </>
+                    );
+                  })()}
                 </>
               );
             })()}

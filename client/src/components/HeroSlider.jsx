@@ -68,7 +68,7 @@ export default function HeroSlider({ hero, onLink, ratio, autoplay = true, inter
               key={s.id}
               className={`hero-slide ${raw ? 'has-img' : ''}`}
               style={raw ? { color: s.textColor || '#fff' } : { background: s.bg, color: s.textColor || '#fff' }}
-              onClick={() => onLink(s.link)}
+              onClick={() => onLink(s.link, s)}
             >
               {raw && <img className="hero-img" src={src} alt={s.title || ''} loading={eager ? 'eager' : 'lazy'} fetchpriority={eager ? 'high' : 'auto'} decoding="async" />}
               {hasCopy && (
@@ -76,7 +76,7 @@ export default function HeroSlider({ hero, onLink, ratio, autoplay = true, inter
                   {s.title && <h3>{s.title}</h3>}
                   {s.subtitle && <p>{s.subtitle}</p>}
                   {s.cta && (
-                    <button className="hero-cta" onClick={(e) => { e.stopPropagation(); onLink(s.link); }}>
+                    <button className="hero-cta" onClick={(e) => { e.stopPropagation(); onLink(s.link, s); }}>
                       {s.cta}
                     </button>
                   )}

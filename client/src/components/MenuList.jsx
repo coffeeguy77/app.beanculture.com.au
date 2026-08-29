@@ -10,7 +10,7 @@ function fromPrice(item) {
   return prices.length ? Math.min(...prices) : null;
 }
 
-export default function MenuList({ categories, currency, onPick, scrollTo, scrollKey, onScrolled, kitchenClosedCats }) {
+export default function MenuList({ categories, currency, onPick, scrollTo, scrollKey, onScrolled, kitchenClosedCats, smartByCategory, onSmartLink }) {
   const kShut = new Set((kitchenClosedCats || []).map((c) => (c || '').toLowerCase()));
   // Keyed on scrollKey (a nonce bumped on every dock/footer pick) — NOT on the
   // category name — so pressing the same footer slot again still fires, and so
@@ -56,21 +56,45 @@ export default function MenuList({ categories, currency, onPick, scrollTo, scrol
             <h2 className="cat-title" id={slug(cat.category)}>{cat.category}{kitchenShut && <span className="cat-shut"> · kitchen closed</span>}</h2>
             {count > 0 && <span className="cat-count">{count} {count === 1 ? 'item' : 'items'}</span>}
           </div>
-          {cat.banner && (() => {
-            const target = (cat.items || []).find((i) => i.id === cat.banner.itemId) || null;
-            // A banner can point at an item whose category is sold out or
-            // currently kitchen-closed — don't let it bypass that check.
-            const bannerShut = kitchenShut || (target && target.soldOut);
-            return (
-              <button type="button" className={`feature-banner ${cat.banner.hideText ? 'no-text' : ''}`} onClick={() => target && !bannerShut && onPick({ ...target, category: cat.category })}
-                style={cat.banner.image ? { backgroundImage: `url(${imgUrl(cat.banner.image, 900)})` } : undefined}>
-                {!cat.banner.hideText && (
+          {/* Smart Campaign (e.g. weather) banner — a temporary, non-destructive
+              slim banner injected before/after (or in place of) the category's
+              own banner. The original banner record is never touched. */}
+          {(() => {
+            const smart = (smartByCategory || {})[(cat.category || '').toLowerCase()];
+            const smartEl = smart && smart.image ? (
+              <button type="button" className="feature-banner weather-banner"
+                onClick={() => onSmartLink && onSmartLink(smart.link, smart)}
+                style={{ backgroundImage: `url(${imgUrl(smart.image, 900)})` }}>
+                {(smart.title || smart.cta) && (
                   <span className="feature-banner-body">
-                    {cat.banner.title && <span className="feature-banner-title">{cat.banner.title}</span>}
-                    {target && <span className="feature-banner-cta">{target.name} — order now →</span>}
+                    {smart.title && <span className="feature-banner-title">{smart.title}</span>}
+                    {smart.cta && <span className="feature-banner-cta">{smart.cta} →</span>}
                   </span>
                 )}
               </button>
+            ) : null;
+            const replace = smart && smart.position === 'replace';
+            const ownBanner = cat.banner && !replace ? (() => {
+              const target = (cat.items || []).find((i) => i.id === cat.banner.itemId) || null;
+              const bannerShut = kitchenShut || (target && target.soldOut);
+              return (
+                <button type="button" className={`feature-banner ${cat.banner.hideText ? 'no-text' : ''}`} onClick={() => target && !bannerShut && onPick({ ...target, category: cat.category })}
+                  style={cat.banner.image ? { backgroundImage: `url(${imgUrl(cat.banner.image, 900)})` } : undefined}>
+                  {!cat.banner.hideText && (
+                    <span className="feature-banner-body">
+                      {cat.banner.title && <span className="feature-banner-title">{cat.banner.title}</span>}
+                      {target && <span className="feature-banner-cta">{target.name} — order now →</span>}
+                    </span>
+                  )}
+                </button>
+              );
+            })() : null;
+            return (
+              <>
+                {smart && smart.position === 'before' && smartEl}
+                {ownBanner}
+                {smart && smart.position !== 'before' && smartEl}
+              </>
             );
           })()}
           <div className={`items ${showImages ? '' : 'noimg'}`}>
