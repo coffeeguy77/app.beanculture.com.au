@@ -84,6 +84,8 @@ const SeoIcon = svg(<><circle cx="11" cy="11" r="7" /><path d="M20.5 20.5l-4-4" 
 const SoldOutIcon = svg(<><circle cx="12" cy="12" r="8.5" /><line x1="6" y1="6" x2="18" y2="18" /></>);
 // Kitchen screen (monitor)
 const KdsIcon = svg(<><rect x="3" y="4" width="18" height="12" rx="2" /><path d="M8 20h8M12 16v4" /></>);
+// Smart Campaigns (sun — weather is the first campaign type)
+const WeatherIcon = svg(<><circle cx="12" cy="12" r="4.2" /><path d="M12 2.5v2.5M12 19v2.5M4.2 4.2l1.8 1.8M18 18l1.8 1.8M2.5 12H5M19 12h2.5M4.2 19.8 6 18M18 6l1.8-1.8" /></>);
 const TABS = [
   { id: 'overview', label: 'Dashboard', Icon: DashboardIcon },
   { id: 'store', label: 'Store', Icon: StoreIcon },
@@ -96,6 +98,7 @@ const TABS = [
   { id: 'combobuilder', label: 'Combo Builder', Icon: ComboIcon },
   { id: 'availability', label: 'Sold Out & Menus', Icon: SoldOutIcon },
   { id: 'payitforward', label: 'Pay It Forward', Icon: PifIcon },
+  { id: 'smartcampaigns', label: 'Smart Campaigns', Icon: WeatherIcon },
   { id: 'banners', label: 'Banners', Icon: BannerIcon },
   { id: 'users', label: 'Users', Icon: InsightsIcon },
   { id: 'coupons', label: 'Coupons', Icon: BannerIcon },
@@ -109,7 +112,7 @@ const TAB_GROUPS = [
   { label: 'Overview', tabs: ['overview', 'insights'] },
   { label: 'Orders & Service', tabs: ['reservations', 'kds', 'tables'] },
   { label: 'Menu', tabs: ['menubuilder', 'productbuilder', 'combobuilder', 'availability'] },
-  { label: 'Marketing', tabs: ['banners', 'coupons', 'push', 'payitforward'] },
+  { label: 'Marketing', tabs: ['banners', 'coupons', 'push', 'payitforward', 'smartcampaigns'] },
   { label: 'Customers', tabs: ['users'] },
   { label: 'Store', tabs: ['store', 'seo', 'theme'] },
 ];
@@ -133,6 +136,9 @@ export default function Admin({ onExit }) {
   });
   const [needPass, setNeedPass] = useState(false);
   const [sitemapInfo, setSitemapInfo] = useState('');
+  const [weatherStatus, setWeatherStatus] = useState(null); // Smart Campaigns weather status
+  const [weatherBusy, setWeatherBusy] = useState(false);
+  const [geoBusy, setGeoBusy] = useState('');
   const [data, setData] = useState(null);
   const [s, setS] = useState(null); // editable settings
   const [error, setError] = useState('');
@@ -367,6 +373,10 @@ export default function Admin({ onExit }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, pifFilter, pifSearch]);
   useEffect(() => {
+    if (tab === 'smartcampaigns' && weatherStatus === null && !weatherBusy) loadWeather();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
+  useEffect(() => {
     if (tab === 'push') {
       if (notifyStatus === null) api.adminNotifyStatus(pass).then(setNotifyStatus).catch(() => setNotifyStatus({ sms: false, email: false }));
       if (users === null && !usersBusy) loadUsers();
@@ -417,6 +427,34 @@ export default function Admin({ onExit }) {
     try { const d = await api.adminCustomers(pass); setUsers(d.users || []); }
     catch (e) { alert('Could not load users: ' + e.message); }
     finally { setUsersBusy(false); }
+  }
+  // ---- Smart Campaigns / weather ----
+  async function loadWeather() {
+    setWeatherBusy(true);
+    try {
+      const r = await fetch(`/api/admin/weather?pass=${encodeURIComponent(pass)}`);
+      const d = await r.json(); setWeatherStatus(d.weather || { ok: false });
+    } catch (e) { setWeatherStatus({ ok: false, reason: e.message }); }
+    finally { setWeatherBusy(false); }
+  }
+  async function refreshWeather() {
+    setWeatherBusy(true);
+    try {
+      const r = await fetch(`/api/admin/weather/refresh?pass=${encodeURIComponent(pass)}`, { method: 'POST' });
+      const d = await r.json(); setWeatherStatus(d.weather || { ok: false });
+    } catch (e) { setWeatherStatus({ ok: false, reason: e.message }); }
+    finally { setWeatherBusy(false); }
+  }
+  async function useSquareLocation() {
+    setGeoBusy('loading');
+    try {
+      const r = await fetch(`/api/admin/square-location-geo?pass=${encodeURIComponent(pass)}`);
+      const d = await r.json();
+      if (d.lat != null && d.lng != null) {
+        set({ contact: { ...(s.contact || {}), lat: d.lat, lng: d.lng } });
+        setGeoBusy('Filled from Square — press Save changes, then Refresh weather.');
+      } else { setGeoBusy(d.error || 'Square has no coordinates for this location.'); }
+    } catch (e) { setGeoBusy('Failed: ' + e.message); }
   }
   async function sendBroadcast() {
     if (!push.message.trim()) { alert('Write a message first.'); return; }
@@ -2716,6 +2754,79 @@ export default function Admin({ onExit }) {
                 <button type="button" className="btn full" onClick={addCombo}>+ Add combo</button>
               </>
             )}
+
+            {/* ───────── SMART CAMPAIGNS (Weather) ───────── */}
+            {tab === 'smartcampaigns' && (() => {
+              const sc = s?.smartCampaigns || {};
+              const setSc = (patch) => set({ smartCampaigns: { ...sc, ...patch } });
+              const wx = weatherStatus;
+              const emoji = { sunny: '☀️', partly: '⛅', cloudy: '☁️', fog: '🌫️', rain: '🌧️', snow: '❄️', storm: '⛈️' }[wx && wx.condition] || '🌡️';
+              const ageTxt = wx && wx.age_seconds != null ? (wx.age_seconds < 90 ? 'just now' : `${Math.round(wx.age_seconds / 60)} min ago`) : '';
+              return (
+                <>
+                  <div className="admin-page-head">
+                    <h1 className="admin-page-title">Smart Campaigns</h1>
+                    <p className="admin-page-desc">Contextual merchandising that reacts to the world &mdash; starting with the weather at your store. A hot day can automatically push an iced-coffee banner to the top of the homepage without touching your normal banners. Weather Campaign rules arrive in the next update; this screen sets up the weather feed and the customer temperature display.</p>
+                  </div>
+
+                  <div className="card" style={card}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                      <div className="group-title" style={{ margin: 0 }}>Weather at store</div>
+                      <button type="button" className="btn ghost" style={{ padding: '7px 12px' }} disabled={weatherBusy} onClick={refreshWeather}>{weatherBusy ? 'Checking…' : 'Refresh weather'}</button>
+                    </div>
+                    {wx && wx.ok ? (
+                      <div style={{ display: 'flex', gap: 22, flexWrap: 'wrap', alignItems: 'center', marginTop: 10 }}>
+                        <div style={{ fontSize: 34, fontWeight: 800, display: 'flex', alignItems: 'center', gap: 8 }}><span>{emoji}</span><span>{wx.current_temperature}&deg;C</span></div>
+                        <div className="muted" style={{ fontSize: 'var(--fs-sm)', lineHeight: 1.7 }}>
+                          {wx.condition_label && <div>{wx.condition_label}</div>}
+                          {wx.feels_like != null && <div>Feels like {wx.feels_like}&deg;C</div>}
+                          {wx.today_max != null && <div>Today&rsquo;s high {wx.today_max}&deg;C{wx.today_min != null ? ` · low ${wx.today_min}°C` : ''}</div>}
+                          {wx.tomorrow_max != null && <div>Tomorrow {wx.tomorrow_max}&deg;C{wx.tomorrow_min != null ? ` · low ${wx.tomorrow_min}°C` : ''}</div>}
+                        </div>
+                        <div className="muted" style={{ fontSize: 'var(--fs-xs)', marginLeft: 'auto', textAlign: 'right' }}>
+                          {ageTxt && <div>Updated {ageTxt}</div>}
+                          <div>Source: {wx.provider}</div>
+                          {wx.stale && <div style={{ color: 'var(--admin-warning)' }}>⚠ using cached reading</div>}
+                          {wx.dev && <div style={{ color: 'var(--admin-warning)' }}>dev override</div>}
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 8 }}>
+                        {wx && wx.reason === 'no-coordinates'
+                          ? 'Set your store location below so we can read the local weather.'
+                          : weatherBusy ? 'Checking the weather…' : 'Weather isn’t available right now. Check your store coordinates below, then Refresh. Ordering is never affected by this.'}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="card" style={card}>
+                    <div className="group-title">Store location</div>
+                    <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 0 }}>Weather is read for your store&rsquo;s physical location (never the customer&rsquo;s). Enter its coordinates, or pull them from your Square location. Remember to press <strong>Save changes</strong>.</p>
+                    <div className="admin-two-col">
+                      <label className="field"><span>Latitude</span>
+                        <input type="number" step="0.0001" value={s.contact?.lat ?? ''} onChange={(e) => set({ contact: { ...(s.contact || {}), lat: e.target.value === '' ? null : Number(e.target.value) } })} placeholder="-35.2820" /></label>
+                      <label className="field"><span>Longitude</span>
+                        <input type="number" step="0.0001" value={s.contact?.lng ?? ''} onChange={(e) => set({ contact: { ...(s.contact || {}), lng: e.target.value === '' ? null : Number(e.target.value) } })} placeholder="149.1287" /></label>
+                    </div>
+                    <button type="button" className="btn ghost" style={{ marginTop: 10, padding: '8px 12px' }} disabled={geoBusy === 'loading'} onClick={useSquareLocation}>{geoBusy === 'loading' ? 'Reading Square…' : 'Use my Square location'}</button>
+                    {geoBusy && geoBusy !== 'loading' && <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 8 }}>{geoBusy}</p>}
+                  </div>
+
+                  <div className="card" style={card}>
+                    <div className="group-title">Customer temperature display</div>
+                    <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 0 }}>Optionally show a subtle current temperature in the app (e.g. &ldquo;&#9728;&#65039; 29&deg;C&rdquo;). Kept understated &mdash; it never turns the app into a weather widget.</p>
+                    <label className="avail-switch"><input type="checkbox" checked={sc.showTemperature === true} onChange={(e) => setSc({ showTemperature: e.target.checked })} /><span>Show current temperature to customers</span></label>
+                    <label className="avail-switch" style={{ marginTop: 10 }}><input type="checkbox" checked={sc.showCondition !== false} onChange={(e) => setSc({ showCondition: e.target.checked })} /><span>Include the weather icon</span></label>
+                    <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 10 }}>Remember to press <strong>Save changes</strong>.</p>
+                  </div>
+
+                  <div className="card" style={{ ...card, borderStyle: 'dashed' }}>
+                    <div className="group-title">Weather Campaigns</div>
+                    <p className="muted" style={{ fontSize: 'var(--fs-sm)', margin: 0 }}>Next update: create rules like <em>&ldquo;Current temp &ge; 28&deg;C &rarr; show an iced-coffee banner first on the homepage and a slim banner in Smoothies&rdquo;</em>, with priorities, scheduling, a weather simulator and analytics. This screen already proves the live weather feed those rules will use.</p>
+                  </div>
+                </>
+              );
+            })()}
 
             {/* ───────── KITCHEN SCREEN (KDS) ───────── */}
             {tab === 'kds' && (

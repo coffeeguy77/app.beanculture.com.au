@@ -7,7 +7,7 @@ const DEFAULTS = {
   storeName: 'Bean Culture',
   announcement: '',
   // Store contact + branding.
-  contact: { address: '', phone: '', mapsUrl: '' },
+  contact: { address: '', phone: '', mapsUrl: '', lat: null, lng: null },
   logoUrl: '',
   faviconUrl: '',
   // Store page content (About / Find us page reached from the header).
@@ -362,6 +362,20 @@ const DEFAULTS = {
     redMin: 12,         // ticket turns red after this many minutes
     sound: true,        // chime on a new ticket
     showPrepStep: true, // show a "Start" (preparing) step before the bump
+  },
+  // ── Smart Campaigns: contextual merchandising driven by rules (Weather first;
+  //    future: time, holidays, stock, loyalty…). A single server-side resolver
+  //    turns these into banner placements the homepage + categories consume — no
+  //    per-component rule logic. See server/lib/smartCampaigns.js.
+  smartCampaigns: {
+    showTemperature: false,   // subtle "☀️ 29°C" in the customer app
+    showCondition: true,      // include the little weather icon with the temp
+    options: {
+      mode: 'highest',        // 'highest' matching campaign only | 'all'
+      hysteresis: true,       // prevent flapping around the threshold
+    },
+    weather: [],              // Weather Campaigns (Phase 2). Shape documented in
+                              // smartCampaigns.js — mirrors the hero/banner shapes.
   },
 };
 

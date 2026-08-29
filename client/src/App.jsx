@@ -1109,6 +1109,13 @@ export default function App() {
     const match = want && menu?.categories?.find((c) => (c.category || '').trim().toLowerCase() === want);
     if (match) { setView('home'); pickCategory(match.category); } else { fallback(); }
   };
+  // Optional subtle current-temperature chip (admin toggle). Reads config.weather
+  // only — the server resolves everything; no weather logic lives here.
+  const WX_EMOJI = { sunny: '☀️', partly: '⛅', cloudy: '☁️', fog: '🌫️', rain: '🌧️', snow: '❄️', storm: '⛈️' };
+  const wx = config.weather;
+  const weatherChip = (wx && wx.temp != null)
+    ? <span className="wx-chip" title={wx.conditionLabel || ''}>{wx.condition && WX_EMOJI[wx.condition] ? `${WX_EMOJI[wx.condition]} ` : ''}{wx.temp}&deg;C</span>
+    : null;
   const notices = [];
   if (!storeOpen) {
     if (preorder) {
@@ -1220,9 +1227,9 @@ export default function App() {
           </div>
         </div>
       </header>
-      {notices.length > 0 && (view === 'home' || !isMobile) && (
+      {(notices.length > 0 || weatherChip) && (view === 'home' || !isMobile) && (
         <div ref={hoursRef} className="hours-bar">
-          <div className="hours-inner"><SiteNotice notices={notices} /></div>
+          <div className="hours-inner hours-inner-wx"><SiteNotice notices={notices} />{weatherChip}</div>
         </div>
       )}
 

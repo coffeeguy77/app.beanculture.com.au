@@ -20,6 +20,7 @@ const scheduler = require('./lib/scheduled');
 const notify = require('./lib/notify');
 const payItForward = require('./lib/payItForward');
 const kds = require('./lib/kds');
+const weather = require('./lib/weather');
 
 const PREORDER_TZ = process.env.PREORDER_TZ || process.env.SEASON_TZ || 'Australia/Sydney';
 const PREORDER_MAX_DAYS = Number(process.env.PREORDER_MAX_DAYS || 14);
@@ -97,6 +98,17 @@ app.get('/api/config', async (_req, res) => {
     kitchenClosingOrderCategory: settings.kitchenClosingOrderCategory || '',
     preorderCategory: settings.preorderCategory || '',
     cloudinary: cloudinary.configured(),
+    // Optional subtle temperature display. Never blocks app load: we serve the
+    // cached reading instantly and refresh in the background. null when the
+    // toggle is off or no reading is available yet.
+    weather: (() => {
+      const sc = settings.smartCampaigns || {};
+      if (!sc.showTemperature) return null;
+      weather.kickoff();
+      const pub = weather.publicWeather(weather.peek());
+      if (pub && sc.showCondition === false) { pub.condition = null; pub.conditionLabel = null; }
+      return pub;
+    })(),
     hours: hoursStatus,
     scheduling: {
       enabled: db.enabled,          // recurring / auto-charge need the database
@@ -1060,6 +1072,35 @@ app.post('/api/square/webhook', (req, res) => {
   } catch (e) {
     res.status(200).json({ ok: false }); // never make Square retry-storm us
   }
+});
+
+// ---- Admin: live weather status (for the Smart Campaigns screen) ----
+app.get('/api/admin/weather', async (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  try { res.json({ weather: await weather.getWeather() }); }
+  catch (e) { res.json({ weather: { ok: false, reason: e.message } }); }
+});
+let lastWeatherRefresh = 0;
+app.post('/api/admin/weather/refresh', async (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  // Respect the provider: force a refresh at most once every 30s.
+  const force = Date.now() - lastWeatherRefresh > 30000;
+  if (force) lastWeatherRefresh = Date.now();
+  try { res.json({ weather: await weather.getWeather({ force }), refreshed: force }); }
+  catch (e) { res.json({ weather: { ok: false, reason: e.message } }); }
+});
+// ---- Admin: read the Square location's coordinates (to prefill store lat/lng) ----
+app.get('/api/admin/square-location-geo', async (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const data = await sq.squareFetch(`/v2/locations/${sq.LOCATION_ID}`);
+    const c = data.location && data.location.coordinates;
+    if (c && Number.isFinite(c.latitude) && Number.isFinite(c.longitude)) {
+      res.json({ lat: c.latitude, lng: c.longitude, name: data.location.name || '' });
+    } else {
+      res.json({ lat: null, lng: null, error: 'Square has no coordinates for this location' });
+    }
+  } catch (e) { res.status(502).json({ error: e.message }); }
 });
 
 // ---- Admin: full catalog (all items per category) for the item chooser ----

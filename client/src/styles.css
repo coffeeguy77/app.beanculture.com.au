@@ -1634,6 +1634,10 @@ body:has(.store-shell) { background: #F7F4EF; }
   background: color-mix(in srgb, var(--s-bg) 90%, #fff);
 }
 .hours-inner { max-width: var(--site-max-w, 1440px); margin: 0 auto; padding: 6px 24px 0; }
+.hours-inner-wx { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.hours-inner-wx > :first-child { min-width: 0; }
+.wx-chip { flex: none; font-size: 13px; font-weight: 600; color: var(--s-ink2, var(--muted)); white-space: nowrap; margin-left: auto; }
+@media (max-width: 600px) { .wx-chip { font-size: 12px; } }
 
 .site-header-inner {
   display: flex; align-items: center; gap: 16px;
