@@ -1651,14 +1651,17 @@ body:has(.store-shell) { background: #F7F4EF; }
 .store-chip-caret { font-size: 11px; }
 @media (max-width: 600px) { .store-chip-name { font-size: 15px; } .store-chip-label { font-size: 10px; } }
 .store-picker-backdrop { position: fixed; inset: 0; z-index: 200; background: rgba(20,6,12,.5); display: grid; place-items: center; padding: 16px; }
-.store-picker { background: var(--card, #fff); color: var(--ink, #2a1620); border-radius: 20px; padding: 26px; width: min(94vw, 460px); box-shadow: 0 30px 80px rgba(0,0,0,.4); }
-.store-picker h2 { margin: 0 0 4px; font-size: 22px; }
-.store-picker .muted { margin: 0 0 18px; font-size: 14px; }
+/* The modal is always a light (white) card, so its contents are pinned to a
+   light-context palette — theme tokens like --bg/--ink flip to the dark canvas
+   colours on dark themes and were rendering dark text on dark option tiles. */
+.store-picker { background: #fffdfa; color: #241816; border-radius: 20px; padding: 26px; width: min(94vw, 460px); box-shadow: 0 30px 80px rgba(0,0,0,.4); }
+.store-picker h2 { margin: 0 0 4px; font-size: 22px; color: #241816; }
+.store-picker .muted { margin: 0 0 18px; font-size: 14px; color: #75645f; }
 .store-picker-list { display: flex; flex-direction: column; gap: 10px; }
-.store-picker-opt { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 16px 18px; border: 1.5px solid var(--line, #e7ddd2); border-radius: 14px; background: var(--bg, #faf6f0); font: inherit; cursor: pointer; text-align: left; }
-.store-picker-opt.on, .store-picker-opt:hover { border-color: var(--brand, #b5566e); }
-.store-picker-name { font-weight: 700; font-size: 17px; }
-.store-picker-addr { font-size: 13px; color: var(--muted, #8a7a80); }
+.store-picker-opt { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 16px 18px; border: 1.5px solid #e7ddd2; border-radius: 14px; background: #faf6f0; color: #241816; font: inherit; cursor: pointer; text-align: left; transition: border-color .15s ease, background .15s ease; }
+.store-picker-opt.on, .store-picker-opt:hover { border-color: var(--brand, #b5566e); background: #fff; }
+.store-picker-name { font-weight: 700; font-size: 17px; color: #241816; }
+.store-picker-addr { font-size: 13px; color: #75645f; }
 
 .hours-bar {
   position: sticky; top: var(--header-h, 84px); z-index: calc(var(--z-header, 40) - 1);
@@ -3570,7 +3573,12 @@ body:has(.store-shell) { background: var(--bc-canvas-deep, #160f12); }
 /* ── Admin: Locations tab ── */
 .loc-avail { border: 1px solid var(--admin-border, var(--line)); border-radius: 10px; padding: 8px 12px; background: var(--admin-surface, #fff); }
 .loc-avail summary { cursor: pointer; font-weight: 700; font-size: var(--fs-sm); }
-.loc-avail-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 4px 12px; max-height: 320px; overflow-y: auto; margin-top: 6px; }
+.loc-avail > .loc-avail-cat:first-of-type { border-top: none; padding-top: 0; }
+.loc-avail-cat { border-top: 1px solid var(--admin-border, var(--line)); padding-top: 8px; margin-top: 8px; }
+.loc-avail-cathead { display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: 700; font-size: var(--fs-sm); padding: 2px 0; }
+.loc-avail-catname { flex: 1 1 auto; }
+.loc-avail-catcount { flex: none; font-weight: 600; font-size: var(--fs-xs); }
+.loc-avail-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 4px 12px; margin-top: 6px; padding-left: 22px; }
 .loc-avail-item { display: flex; align-items: center; gap: 8px; font-size: var(--fs-sm); padding: 4px 0; }
 .loc-avail-item.off span { color: var(--admin-text-muted, var(--muted)); text-decoration: line-through; }
 .loc-avail + *, .avail-sched .switch { }

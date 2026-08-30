@@ -929,6 +929,30 @@ export default function Admin({ onExit }) {
     hidden.has(itemId) ? hidden.delete(itemId) : hidden.add(itemId);
     updLoc(locId, { hiddenItemIds: [...hidden] });
   };
+  // Turn a whole category on/off at once for a store. If every item in the
+  // category is currently on, hide them all; otherwise show them all — so the
+  // header checkbox flips the whole group either way.
+  const toggleLocCategory = (locId, itemIds) => {
+    const l = locs.find((x) => x.id === locId); if (!l) return;
+    const hidden = new Set(l.hiddenItemIds || []);
+    const allOn = itemIds.every((id) => !hidden.has(id));
+    if (allOn) { itemIds.forEach((id) => hidden.add(id)); }
+    else { itemIds.forEach((id) => hidden.delete(id)); }
+    updLoc(locId, { hiddenItemIds: [...hidden] });
+  };
+  // Group the offered products by category (preserving first-seen order) so the
+  // per-location availability list can offer a whole-category toggle.
+  const offeredByCategory = () => {
+    const groups = [];
+    const byName = new Map();
+    for (const p of offeredProducts) {
+      const cat = (p.category || 'Other').trim() || 'Other';
+      let g = byName.get(cat);
+      if (!g) { g = { category: cat, items: [] }; byName.set(cat, g); groups.push(g); }
+      g.items.push(p);
+    }
+    return groups;
+  };
   // Offered products (with names) for the per-location availability toggles.
   // Use the app's OFFERED MENU items directly — these carry the menu's own ids
   // (e.g. `preset:<id>` for product-builder menus), so a tick stores the id the
@@ -3223,19 +3247,35 @@ export default function Admin({ onExit }) {
                         <details className="loc-avail">
                           <summary>Items available at {l.name || 'this store'} ({offeredProducts.length - (l.hiddenItemIds || []).length}/{offeredProducts.length})</summary>
                           <p className="muted" style={{ fontSize: 'var(--fs-xs)', margin: '6px 0' }}>Untick anything this store doesn't make (e.g. hot food at a takeaway site). Unticked items are hidden from this store's menu.</p>
-                          <div className="loc-avail-list">
-                            {offeredProducts.length === 0 && offeredIds === null && <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>Loading products…</span>}
-                            {offeredProducts.length === 0 && offeredIds !== null && <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>No menu items found. Add items to your app menu first, then they’ll appear here to switch on or off per store.</span>}
-                            {offeredProducts.map((p) => {
-                              const hidden = (l.hiddenItemIds || []).includes(p.id);
-                              return (
-                                <label key={p.id} className={`loc-avail-item${hidden ? ' off' : ''}`}>
-                                  <input type="checkbox" checked={!hidden} onChange={() => toggleLocItem(l.id, p.id)} />
-                                  <span>{p.name}</span>
+                          {offeredProducts.length === 0 && offeredIds === null && <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>Loading products…</p>}
+                          {offeredProducts.length === 0 && offeredIds !== null && <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>No menu items found. Add items to your app menu first, then they’ll appear here to switch on or off per store.</p>}
+                          {offeredByCategory().map((g) => {
+                            const catIds = g.items.map((it) => it.id);
+                            const hiddenList = l.hiddenItemIds || [];
+                            const onCount = catIds.filter((id) => !hiddenList.includes(id)).length;
+                            const allOn = onCount === catIds.length;
+                            const noneOn = onCount === 0;
+                            return (
+                              <div key={g.category} className="loc-avail-cat">
+                                <label className="loc-avail-cathead">
+                                  <input type="checkbox" checked={allOn} ref={(el) => { if (el) el.indeterminate = !allOn && !noneOn; }} onChange={() => toggleLocCategory(l.id, catIds)} />
+                                  <span className="loc-avail-catname">{g.category}</span>
+                                  <span className="loc-avail-catcount muted">{onCount}/{catIds.length}</span>
                                 </label>
-                              );
-                            })}
-                          </div>
+                                <div className="loc-avail-list">
+                                  {g.items.map((p) => {
+                                    const hidden = hiddenList.includes(p.id);
+                                    return (
+                                      <label key={p.id} className={`loc-avail-item${hidden ? ' off' : ''}`}>
+                                        <input type="checkbox" checked={!hidden} onChange={() => toggleLocItem(l.id, p.id)} />
+                                        <span>{p.name}</span>
+                                      </label>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            );
+                          })}
                         </details>
                       </div>
                     </div>
