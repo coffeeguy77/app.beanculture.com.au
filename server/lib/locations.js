@@ -119,6 +119,8 @@ function list() {
     // Event stores: explicit dated sessions ([{date, open, close}]) — each day
     // its own hours. Drives the countdown + ordering gate (see hours.js).
     sessions: Array.isArray(l.sessions) ? l.sessions.filter((x) => x && x.date) : [],
+    // Private share code for the organiser stats page (/stats?event=…&key=…).
+    statsCode: l.statsCode || '',
     // Per-store weekly hours ({ MON:[{open,close}], … }); blank → falls back to
     // the global store hours / Square hours in hours.js.
     hours: (l.hours && typeof l.hours === 'object') ? l.hours : null,

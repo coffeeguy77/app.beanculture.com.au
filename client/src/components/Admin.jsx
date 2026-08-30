@@ -3606,6 +3606,31 @@ export default function Admin({ onExit }) {
                             </div>
                           );
                         })()}
+                        {l.type === 'event' && (() => {
+                          const code = l.statsCode || '';
+                          const link = code ? `${origin}/stats?event=${encodeURIComponent(l.id)}&key=${encodeURIComponent(code)}` : '';
+                          const gen = () => updLoc(l.id, { statsCode: Math.random().toString(36).slice(2, 10) });
+                          return (
+                            <div className="field" style={{ margin: 0 }}>
+                              <span style={{ fontWeight: 600, fontSize: 'var(--fs-sm)' }}>Organiser stats link</span>
+                              <p className="muted" style={{ fontSize: 'var(--fs-xs)', margin: '2px 0 8px' }}>
+                                A private link the event organiser can open to see live numbers — coffees given, booth breakdown and the guest list (names + mobiles). Share it only with people allowed to see guest details.
+                              </p>
+                              {!code ? (
+                                <button type="button" className="btn ghost" style={{ padding: '6px 12px' }} onClick={gen}>Create share link</button>
+                              ) : (
+                                <>
+                                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                                    <input readOnly value={link} onFocus={(e) => e.target.select()} style={{ flex: '1 1 260px', minWidth: 200, padding: '7px 9px', border: '1px solid var(--line)', borderRadius: 8, fontSize: 'var(--fs-xs)' }} />
+                                    <button type="button" className="btn ghost" style={{ padding: '6px 12px' }} onClick={() => { try { navigator.clipboard.writeText(link); } catch {} }}>Copy</button>
+                                    <button type="button" className="link" onClick={gen} title="Make a new code (the old link stops working)">Reset code</button>
+                                  </div>
+                                  <p className="muted" style={{ fontSize: 'var(--fs-xs)', margin: '4px 0 0' }}>Remember to press <strong>Save changes</strong> after creating or resetting the code.</p>
+                                </>
+                              )}
+                            </div>
+                          );
+                        })()}
 
                         {(() => {
                           const defs = l.type === 'popup' ? { dineIn: false, takeaway: true, reservations: false }
