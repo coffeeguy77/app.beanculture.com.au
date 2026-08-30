@@ -17,7 +17,7 @@ function cheapestPrice(option) {
   return pool.reduce((min, v) => Math.min(min, v.price ?? Infinity), Infinity);
 }
 
-export default function ComboModal({ item: combo, currency, onClose, onAdd }) {
+export default function ComboModal({ item: combo, currency, onClose, onAdd, orderingClosed, closedLabel }) {
   const groups = combo.comboGroups || [];
   const [picked, setPicked] = useState({});        // groupId -> chosen option's itemId
   const [variationPick, setVariationPick] = useState({}); // groupId -> variationId
@@ -247,9 +247,15 @@ export default function ComboModal({ item: combo, currency, onClose, onAdd }) {
             {/* The red REQUIRED pills already make the outstanding steps obvious —
                 no need for a repetitive "Choose Choose your item" footer line. */}
           </div>
-          <button className="btn sheet-footer-add" onClick={handleAdd} disabled={!canAdd}>
-            Add to order · {formatMoney(unitPrice * qty, currency)}
-          </button>
+          {orderingClosed ? (
+            <button className="btn sheet-footer-add" disabled aria-disabled="true" style={{ opacity: 0.6 }}>
+              {closedLabel ? `Ordering opens ${closedLabel}` : 'Ordering not open yet'}
+            </button>
+          ) : (
+            <button className="btn sheet-footer-add" onClick={handleAdd} disabled={!canAdd}>
+              Add to order · {formatMoney(unitPrice * qty, currency)}
+            </button>
+          )}
         </div>
       </div>
     </div>

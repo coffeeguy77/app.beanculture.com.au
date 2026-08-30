@@ -1499,7 +1499,7 @@ export default function App() {
               const oneSection = (menu.categories || []).length <= 1;
               return (
                 <>
-                  {!oneItem && (
+                  {!oneItem && chosenLocation?.type !== 'event' && (
                     <div className="search">
                       <input placeholder="Search the menu…" value={query} onChange={(e) => setQuery(e.target.value)} />
                     </div>
@@ -1578,8 +1578,8 @@ export default function App() {
 
       {activeItem && (
         activeItem.isCombo
-          ? <ComboModal item={activeItem} currency={currency} onClose={() => setActiveItem(null)} onAdd={addComboToCart} />
-          : <ItemModal item={activeItem} currency={currency} onClose={() => setActiveItem(null)} onAdd={addToCart} isFree={isFreeCat(activeItem.category)} />
+          ? <ComboModal item={activeItem} currency={currency} onClose={() => setActiveItem(null)} onAdd={addComboToCart} orderingClosed={chosenLocation?.type === 'event' && !canOrder} closedLabel={config.hours?.opening?.label || config.hours?.nextOpen?.label || ''} />
+          : <ItemModal item={activeItem} currency={currency} onClose={() => setActiveItem(null)} onAdd={addToCart} isFree={isFreeCat(activeItem.category)} orderingClosed={chosenLocation?.type === 'event' && !canOrder} closedLabel={config.hours?.opening?.label || config.hours?.nextOpen?.label || ''} />
       )}
       {showTheme && (
         <ThemePicker

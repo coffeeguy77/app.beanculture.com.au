@@ -45,7 +45,7 @@ function parseDescription(text) {
   return { intro, facts };
 }
 
-export default function ItemModal({ item, currency, onClose, onAdd, isFree }) {
+export default function ItemModal({ item, currency, onClose, onAdd, isFree, orderingClosed, closedLabel }) {
   // Selection / validation / pricing / cart-item build all come from the shared
   // hook, so the customer sheet and the staff POS produce identical results.
   const {
@@ -212,9 +212,15 @@ export default function ItemModal({ item, currency, onClose, onAdd, isFree }) {
               <span className="sheet-footer-warn">Choose {unmetGroups.map((g) => g.name).join(', ')}</span>
             )}
           </div>
-          <button className="btn sheet-footer-add" onClick={handleAdd} disabled={unmetGroups.length > 0}>
-            {isFree ? 'Add to order' : `Add to order · ${formatMoney(unitPrice * qty, currency)}`}
-          </button>
+          {orderingClosed ? (
+            <button className="btn sheet-footer-add" disabled aria-disabled="true" style={{ opacity: 0.6 }}>
+              {closedLabel ? `Ordering opens ${closedLabel}` : 'Ordering not open yet'}
+            </button>
+          ) : (
+            <button className="btn sheet-footer-add" onClick={handleAdd} disabled={unmetGroups.length > 0}>
+              {isFree ? 'Add to order' : `Add to order · ${formatMoney(unitPrice * qty, currency)}`}
+            </button>
+          )}
         </div>
       </div>
     </div>
