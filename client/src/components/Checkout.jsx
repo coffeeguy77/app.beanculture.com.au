@@ -87,7 +87,10 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
   // When the shop itself is closed, immediate pickup ("ASAP") makes no sense —
   // there's no one to make it now — so force scheduling for a future time.
   const closedNow = config.hours?.open === false;
-  const [when, setWhen] = useState((takeawayLater || closedNow) ? 'schedule' : 'asap'); // asap | schedule | repeat
+  // Events are always immediate ("asap") — never scheduled/pre-ordered. Ordering
+  // is gated to the event's session windows (canOrder), so before the event we
+  // block outright rather than booking a pickup for a future day.
+  const [when, setWhen] = useState(eventMode ? 'asap' : ((takeawayLater || closedNow) ? 'schedule' : 'asap')); // asap | schedule | repeat
   const [schedDate, setSchedDate] = useState((takeawayLater && preAt?.date) || dateStr(new Date(Date.now() + 86400000)));
   const [schedTime, setSchedTime] = useState((takeawayLater && preAt?.time) || '08:00');
   const [repeatType, setRepeatType] = useState('weekly'); // daily | weekly
@@ -247,9 +250,17 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
     if (!name.trim()) { setError('Please enter your name.'); return false; }
     if (eventMode && !phone.trim()) { setError('Please enter your mobile number.'); return false; }
     if (needsShipping && !address.trim()) { setError('Please enter a delivery address for your beans.'); return false; }
-    if (dineIn === null) { setError('Please choose Dine in or Takeaway.'); return false; }
-    if (dineIn && !table.trim()) { setError('Please enter your table number.'); return false; }
-    if ((!canOrder || closedNow) && when === 'asap') { setError('We’re closed right now — schedule a pickup time instead.'); return false; }
+    // Events: ordering is gated to the event's session windows — before it opens
+    // (or between days) there's no ordering at all, just the countdown. Never a
+    // scheduled pre-order.
+    if (eventMode && !canOrder) {
+      const lbl = config.hours?.opening?.label || config.hours?.nextOpen?.label || 'soon';
+      setError(`Ordering opens ${lbl}.`);
+      return false;
+    }
+    if (!eventMode && dineIn === null) { setError('Please choose Dine in or Takeaway.'); return false; }
+    if (!eventMode && dineIn && !table.trim()) { setError('Please enter your table number.'); return false; }
+    if (!eventMode && (!canOrder || closedNow) && when === 'asap') { setError('We’re closed right now — schedule a pickup time instead.'); return false; }
     if ((isSchedule || isRepeat) && !user?.customerId) { setError('Please sign in (via Account) to schedule an order.'); return false; }
     if ((isSchedule || isRepeat) && !sched.enabled && autocharge) { setError('Scheduled auto-charge is not available right now.'); return false; }
     if (isRepeat && repeatType === 'weekly' && !repeatDays.length) { setError('Pick at least one day to repeat on.'); return false; }
@@ -402,9 +413,14 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
   const maxAhead = (isSchedule && payTiming === 'later') ? 7 : (sched.maxDaysAhead || 14);
   const maxDate = dateStr(new Date(Date.now() + maxAhead * 86400000));
   const scheduleAllowed = true; // pay-now scheduling always ok; auto-charge needs sched.enabled (checked on submit)
-  const ctaLabel = autocharge
-    ? (isRepeat ? 'Set up repeating order' : 'Schedule order')
-    : (isFree ? 'Place order' : `Pay ${formatMoney(grandTotal, currency)}`);
+  // Event not open yet (before the first session, or between days): no ordering,
+  // just a note about when it opens.
+  const eventClosed = eventMode && !canOrder;
+  const ctaLabel = eventClosed
+    ? `Ordering opens ${config.hours?.opening?.label || config.hours?.nextOpen?.label || 'soon'}`
+    : autocharge
+      ? (isRepeat ? 'Set up repeating order' : 'Schedule order')
+      : (isFree ? 'Place order' : `Pay ${formatMoney(grandTotal, currency)}`);
 
   return (
     <main className="page checkout-page">
@@ -711,7 +727,7 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
           )}
 
           {error && <p className="error-text">{error}</p>}
-          <button className="btn full" style={{ marginTop: 12 }} disabled={busy || status !== 'ready'} onClick={place}>
+          <button className="btn full" style={{ marginTop: 12 }} disabled={busy || status !== 'ready' || eventClosed} onClick={place}>
             {busy ? 'Working…' : ctaLabel}
           </button>
           {!isFree && <p className="secure-note">Payments processed securely by Square.</p>}
