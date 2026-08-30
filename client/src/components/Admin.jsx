@@ -3032,10 +3032,24 @@ export default function Admin({ onExit }) {
                     return (
                       <>
                         <div className="card" style={card}>
-                          <button type="button" className="link" onClick={() => setCampEditId(null)} style={{ fontSize: 'var(--fs-base)' }}>← Back to campaigns</button>
-                          {matchNow != null && (
-                            <span className={`camp-pill ${matchNow ? 'live' : 'off'}`} style={{ float: 'right' }}>{matchNow ? 'Would show now' : 'Would not show now'}</span>
-                          )}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                            <button type="button" className="link" onClick={() => setCampEditId(null)} style={{ fontSize: 'var(--fs-base)' }}>← Back to campaigns</button>
+                            <button type="button" className="btn ghost" style={{ marginLeft: 'auto', padding: '7px 12px', fontSize: 'var(--fs-base)' }}
+                              title="Force this campaign onto your live homepage for 5 minutes so you can see it — doesn't change your saved campaigns or the weather rules."
+                              onClick={async () => {
+                                if (!c.homepage_artwork) { alert('Add homepage artwork first, then preview.'); return; }
+                                try {
+                                  const r = await fetch(`/api/admin/smartcampaigns/preview?pass=${encodeURIComponent(pass)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ campaign: c, minutes: 5 }) });
+                                  const d = await r.json();
+                                  if (!r.ok) throw new Error(d.error || 'Preview failed');
+                                  window.open('/', '_blank', 'noopener');
+                                  alert('Live on your homepage for 5 minutes — check the new tab. This is only a preview: it doesn’t change your saved campaigns or weather rules, and it clears itself.');
+                                } catch (e) { alert('Preview failed: ' + e.message); }
+                              }}>Preview on homepage (5 min)</button>
+                            {matchNow != null && (
+                              <span className={`camp-pill ${matchNow ? 'live' : 'off'}`}>{matchNow ? 'Would show now' : 'Would not show now'}</span>
+                            )}
+                          </div>
                           {/* 1 · Campaign */}
                           <div className="group-title" style={{ marginTop: 8 }}>1 · Campaign</div>
                           <label className="field"><span>Name</span><input value={c.name || ''} onChange={(e) => up({ name: e.target.value })} placeholder="Hot Day Smoothies" /></label>

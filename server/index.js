@@ -129,14 +129,27 @@ app.get('/api/config', async (_req, res) => {
     // as plain data. Empty (no-op) when no weather campaign is active — behaviour
     // is then identical to before. Never blocks: weather is cached/bounded.
     smartCampaigns: await (async () => {
+      // Admin "Preview on homepage" forces one campaign to the top for a few
+      // minutes regardless of weather — it wins over the normal resolution.
+      const pv = smartCampaigns.previewPlan();
       const sc = settings.smartCampaigns || {};
       const hasCampaigns = Array.isArray(sc.weather) && sc.weather.some((c) => c && c.active !== false && (c.homepage_enabled || c.category_enabled));
-      if (!hasCampaigns) return { heroSlides: [], byCategory: {} };
-      let wx = null; try { wx = await weather.forConfig(); } catch {}
-      try {
-        const plan = smartCampaigns.resolveSmartPlacements({ settings, weather: wx, now: catalog.venueNow() });
-        return { heroSlides: plan.heroSlides, byCategory: plan.byCategory };
-      } catch (e) { console.warn('[smartCampaigns] resolve failed:', e.message); return { heroSlides: [], byCategory: {} }; }
+      if (!hasCampaigns && !pv) return { heroSlides: [], byCategory: {} };
+      let heroSlides = []; let byCategory = {};
+      if (hasCampaigns) {
+        let wx = null; try { wx = await weather.forConfig(); } catch {}
+        try {
+          const plan = smartCampaigns.resolveSmartPlacements({ settings, weather: wx, now: catalog.venueNow() });
+          heroSlides = plan.heroSlides; byCategory = plan.byCategory;
+        } catch (e) { console.warn('[smartCampaigns] resolve failed:', e.message); }
+      }
+      if (pv) {
+        // Preview banner first; drop any normal slide for the same campaign so it
+        // isn't shown twice.
+        heroSlides = [...pv.heroSlides, ...heroSlides.filter((s) => s.campaignId !== pv.campaignId)];
+        byCategory = { ...byCategory, ...pv.byCategory };
+      }
+      return { heroSlides, byCategory, previewUntil: pv ? pv.until : undefined };
     })(),
     hours: hoursStatus,
     scheduling: {
@@ -1396,6 +1409,23 @@ app.post('/api/admin/weather/refresh', async (req, res) => {
   if (force) lastWeatherRefresh = Date.now();
   try { res.json({ weather: await weather.getWeather({ force }), refreshed: force }); }
   catch (e) { res.json({ weather: { ok: false, reason: e.message } }); }
+});
+// ---- Admin: Smart Campaign homepage preview (force one to the top for a few
+//      minutes so the owner can see it live, regardless of the weather). ----
+app.post('/api/admin/smartcampaigns/preview', (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const { campaign, minutes } = req.body || {};
+    if (!campaign || !campaign.homepage_artwork) return res.status(400).json({ error: 'Add homepage artwork first, then preview.' });
+    const ms = (Number(minutes) > 0 ? Number(minutes) : 5) * 60000;
+    const until = smartCampaigns.setPreview(campaign, ms);
+    res.json({ ok: true, until });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+app.post('/api/admin/smartcampaigns/preview/stop', (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  smartCampaigns.clearPreview();
+  res.json({ ok: true });
 });
 // ---- Admin: sales by store & source (app self-order vs counter POS) ----
 // Authoritative from Square: completed orders per location, bucketed by day and

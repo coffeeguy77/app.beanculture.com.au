@@ -104,46 +104,79 @@ function destToLink(c) {
   return { type: 'none', value: '' };
 }
 
+// One campaign → its homepage slide + category placement (shared by the live
+// resolver and the admin preview, so a preview looks exactly like the real thing).
+function campaignToSlides(c, { heroSlides, byCategory }) {
+  if (c.homepage_enabled && c.homepage_artwork) {
+    heroSlides.push({
+      id: `smart-${c.id}`,
+      campaignId: c.id,
+      title: c.homepage_title || '',
+      subtitle: c.homepage_subtitle || '',
+      cta: c.cta_text || '',
+      image: c.homepage_artwork,
+      mobileImage: c.homepage_mobile_artwork || '',
+      alt: c.homepage_alt_text || c.name || '',
+      link: destToLink(c),
+    });
+  }
+  if (c.category_enabled && c.category_id && (c.category_artwork || c.category_title)) {
+    const key = String(c.category_id).toLowerCase();
+    if (!byCategory[key]) {
+      byCategory[key] = {
+        campaignId: c.id,
+        image: c.category_artwork || '',
+        mobileImage: c.category_mobile_artwork || '',
+        title: c.category_title || '',
+        cta: c.cta_text || '',
+        link: destToLink(c),
+        position: c.category_position || 'before', // before | after | replace
+      };
+    }
+  }
+}
+
 // Turn the active campaigns into a placement plan the frontend consumes as data.
 function resolveSmartPlacements({ settings, weather, now = catalog.venueNow() }) {
   const active = getActiveSmartCampaigns({ settings, weather, now });
   const heroSlides = [];
   const byCategory = {};
-  for (const c of active) {
-    if (c.homepage_enabled && c.homepage_artwork) {
-      heroSlides.push({
-        id: `smart-${c.id}`,
-        campaignId: c.id,
-        title: c.homepage_title || '',
-        subtitle: c.homepage_subtitle || '',
-        cta: c.cta_text || '',
-        image: c.homepage_artwork,
-        mobileImage: c.homepage_mobile_artwork || '',
-        alt: c.homepage_alt_text || c.name || '',
-        link: destToLink(c),
-      });
-    }
-    if (c.category_enabled && c.category_id && (c.category_artwork || c.category_title)) {
-      const key = String(c.category_id).toLowerCase();
-      if (!byCategory[key]) {
-        byCategory[key] = {
-          campaignId: c.id,
-          image: c.category_artwork || '',
-          mobileImage: c.category_mobile_artwork || '',
-          title: c.category_title || '',
-          cta: c.cta_text || '',
-          link: destToLink(c),
-          position: c.category_position || 'before', // before | after | replace
-        };
-      }
-    }
-  }
+  for (const c of active) campaignToSlides(c, { heroSlides, byCategory });
   return { heroSlides, byCategory, activeCampaignIds: active.map((c) => c.id) };
+}
+
+// ── Admin preview: force one campaign onto the homepage for a few minutes,
+// regardless of the weather, so the owner can see exactly how it looks. Held in
+// memory (a short-lived test), auto-expiring; never persisted. ──
+let preview = null; // { campaign, until }
+const PREVIEW_MS = 5 * 60 * 1000;
+function setPreview(campaign, ms = PREVIEW_MS) {
+  if (!campaign || typeof campaign !== 'object') throw new Error('No campaign to preview');
+  preview = { campaign, until: Date.now() + Math.max(30000, Math.min(ms, 30 * 60000)) };
+  return preview.until;
+}
+function clearPreview() { preview = null; }
+function activePreview() {
+  if (preview && Date.now() < preview.until) return preview;
+  preview = null;
+  return null;
+}
+// The slide plan for the active preview campaign (empty when no preview).
+function previewPlan() {
+  const p = activePreview();
+  if (!p) return null;
+  const heroSlides = [];
+  const byCategory = {};
+  // Preview ignores active/enabled toggles for the homepage banner so you can
+  // test a paused or still-being-built campaign.
+  campaignToSlides({ ...p.campaign, homepage_enabled: p.campaign.homepage_enabled !== false }, { heroSlides, byCategory });
+  return { heroSlides, byCategory, until: p.until, campaignId: p.campaign.id };
 }
 
 function _resetStateForTest() { for (const k of Object.keys(onState)) delete onState[k]; }
 
 module.exports = {
-  getActiveSmartCampaigns, resolveSmartPlacements,
+  getActiveSmartCampaigns, resolveSmartPlacements, campaignToSlides,
+  setPreview, clearPreview, activePreview, previewPlan,
   rawMatch, scheduleMatch, destToLink, _resetStateForTest,
 };
