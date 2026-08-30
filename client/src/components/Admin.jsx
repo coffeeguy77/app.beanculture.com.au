@@ -1677,7 +1677,7 @@ export default function Admin({ onExit }) {
             <div className="admin-theme-switch">
               <div className="admin-theme-switch-label">Backend appearance</div>
               <div className="admin-theme-swatches">
-                {['light', 'dark-pink', 'dark-blue', 'dark-green'].map((th) => (
+                {['light', 'dark-pink', 'dark-blue', 'dark-green', 'plum'].map((th) => (
                   <button key={th} type="button" className={`admin-theme-swatch ${adminTheme === th ? 'on' : ''}`}
                     data-swatch={th} onClick={() => setAdminTheme(th)} aria-label={`${th} theme`} title={th} />
                 ))}
