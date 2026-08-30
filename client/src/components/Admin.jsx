@@ -979,6 +979,31 @@ export default function Admin({ onExit }) {
   // Per-section top/footer nav inclusion (product-builder sections).
   const presetSectionNav = s?.presetSectionNav || {};
   const setSectionNav = (name, patch) => set({ presetSectionNav: { ...presetSectionNav, [name]: { ...(presetSectionNav[name] || {}), ...patch } } });
+  // Rename a Product Builder section everywhere it's referenced: every tile's
+  // `section`, the section's own nav/banner config, footer buttons, and any
+  // event-menu / free-category lists that name it — so the rename doesn't orphan
+  // the section on the storefront or in event setup.
+  const renameSection = (oldName) => {
+    const cur = oldName === '(no section)' ? '' : oldName;
+    const raw = window.prompt('Rename this product section:', cur);
+    if (raw == null) return; // cancelled
+    const next = raw.trim();
+    if (!next || next === cur) return;
+    const eqCur = (n) => String(n || '').trim().toLowerCase() === cur.toLowerCase();
+    const mapNames = (arr) => (Array.isArray(arr) ? arr.map((n) => (eqCur(n) ? next : n)) : arr);
+    const nextPresets = (s?.presets || []).map((p) => (eqCur(p.section) ? { ...p, section: next } : p));
+    const nav = { ...(s?.presetSectionNav || {}) };
+    if (nav[oldName]) { nav[next] = { ...(nav[next] || {}), ...nav[oldName] }; if (oldName !== next) delete nav[oldName]; }
+    const patch = { presets: nextPresets, presetSectionNav: nav };
+    if (Array.isArray(s?.footer)) patch.footer = s.footer.map((f) => ({ ...f, categories: mapNames(f.categories) }));
+    if (Array.isArray(s?.locations)) patch.locations = s.locations.map((l) => {
+      const o = { ...l };
+      if (Array.isArray(l.menuSections)) o.menuSections = mapNames(l.menuSections);
+      if (Array.isArray(l.freeCategories)) o.freeCategories = mapNames(l.freeCategories);
+      return o;
+    });
+    set(patch);
+  };
 
   // ---- Availability: sold-out overrides, day exclusions, menu schedules ----
   const DOW_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -2486,6 +2511,7 @@ export default function Admin({ onExit }) {
                             style={{ flex: 1, minWidth: 120, textAlign: 'left', background: 'none', border: 'none', fontWeight: 700, cursor: 'pointer' }}>
                             {secName} · {secCount} {secCount === 1 ? 'tile' : 'tiles'} {secCollapsed ? '▼' : '▲'}
                           </button>
+                          <button type="button" className="link" title="Rename this section" onClick={() => renameSection(secName)} style={{ fontSize: 'var(--fs-sm)' }}>✏️ Rename</button>
                           {secSel.length >= 2 && (
                             <button className="btn" disabled={!secCanCombine} title={secCanCombine ? 'Combine the selected tiles' : 'Selected tiles must be from the same product'}
                               onClick={() => combinePresets(secSel.map((x) => x.id))} style={{ padding: '5px 10px', fontSize: 'var(--fs-sm)', opacity: secCanCombine ? 1 : 0.5 }}>⛓ Combine ({secSel.length})</button>
