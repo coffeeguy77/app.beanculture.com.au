@@ -182,6 +182,7 @@ export default function Admin({ onExit }) {
   const [exclDay, setExclDay] = useState(6);           // weekday being edited (default Saturday)
   const [exclSearch, setExclSearch] = useState('');    // product search in the exclusions picker
   const [offeredIds, setOfferedIds] = useState(null);  // Set of item ids actually offered in the app menu
+  const [offeredList, setOfferedList] = useState([]);  // offered menu items with names + menu ids (for per-location availability)
   const [sqLocations, setSqLocations] = useState([]);  // this Square account's locations (id + name)
   const [sqConfiguredId, setSqConfiguredId] = useState(''); // env/main Square location id (the current single store)
   const [collapsedSecs, setCollapsedSecs] = useState({}); // preset section name -> collapsed
@@ -441,6 +442,10 @@ export default function Admin({ onExit }) {
     try {
       const r = await fetch(`/api/admin/offered-products?pass=${encodeURIComponent(pass)}`);
       const d = await r.json();
+      // Capture the offered items WITH names + the menu's own ids (e.g.
+      // `preset:<id>` for product-builder menus), used by per-location
+      // availability so tick state maps to the id the menu actually hides on.
+      if (r.ok && Array.isArray(d.products)) setOfferedList(d.products);
       if (r.ok && Array.isArray(d.ids)) { setOfferedIds(new Set(d.ids)); return; }
       setOfferedIds(false); // couldn't refine — fall back to the full list
     } catch { setOfferedIds(false); }
@@ -925,13 +930,15 @@ export default function Admin({ onExit }) {
     updLoc(locId, { hiddenItemIds: [...hidden] });
   };
   // Offered products (with names) for the per-location availability toggles.
-  // Prefer the app's offered menu when we have it, but fall back to the full
-  // Square product list whenever the menu-derived filter isn't a populated Set
-  // (null/false while loading or unavailable, or an empty Set) — a pop-up store
-  // may well sell items that aren't in the main app menu, so there must always
-  // be something to tick.
-  const offeredProducts = (offeredIds instanceof Set && offeredIds.size)
-    ? allProducts.filter((p) => offeredIds.has(p.id))
+  // Use the app's OFFERED MENU items directly — these carry the menu's own ids
+  // (e.g. `preset:<id>` for product-builder menus), so a tick stores the id the
+  // menu's per-location hide-filter actually matches. The raw Square product
+  // list (allProducts) uses a different id space for preset-built menus and
+  // won't intersect at all, which is why filtering it by the offered ids yielded
+  // an empty "0/0" list. Fall back to the raw product list only when the offered
+  // menu isn't available (old server, or a genuinely empty menu).
+  const offeredProducts = (Array.isArray(offeredList) && offeredList.length)
+    ? offeredList
     : allProducts;
 
   const availItems = availability.items || {};
@@ -3217,8 +3224,8 @@ export default function Admin({ onExit }) {
                           <summary>Items available at {l.name || 'this store'} ({offeredProducts.length - (l.hiddenItemIds || []).length}/{offeredProducts.length})</summary>
                           <p className="muted" style={{ fontSize: 'var(--fs-xs)', margin: '6px 0' }}>Untick anything this store doesn't make (e.g. hot food at a takeaway site). Unticked items are hidden from this store's menu.</p>
                           <div className="loc-avail-list">
-                            {allProducts.length === 0 && offeredIds === null && <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>Loading products…</span>}
-                            {allProducts.length === 0 && offeredIds !== null && <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>No products found in Square for this account.</span>}
+                            {offeredProducts.length === 0 && offeredIds === null && <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>Loading products…</span>}
+                            {offeredProducts.length === 0 && offeredIds !== null && <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>No menu items found. Add items to your app menu first, then they’ll appear here to switch on or off per store.</span>}
                             {offeredProducts.map((p) => {
                               const hidden = (l.hiddenItemIds || []).includes(p.id);
                               return (

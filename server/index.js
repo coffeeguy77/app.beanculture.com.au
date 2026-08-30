@@ -1026,11 +1026,26 @@ app.get('/api/admin/offered-products', async (req, res) => {
   try {
     const menu = await catalog.getMenu({ skipAvailability: true });
     const ids = new Set();
+    // Also return the offered items WITH their display names and the id the
+    // menu itself uses (e.g. a preset's `preset:<id>`, not the raw Square item
+    // id). Tools like per-location availability need the menu id so ticking an
+    // item stores an id the menu's hide-filter actually matches, and need the
+    // name to render — the raw Square product list (getAllProducts) uses a
+    // different id space for preset-built menus and won't intersect at all.
+    const products = [];
+    const seen = new Set();
     for (const sec of (menu.categories || [])) {
       if (sec.isCombo) continue; // combos are derived, not individually stocked
-      for (const it of (sec.items || [])) if (it && it.id) ids.add(it.id);
+      for (const it of (sec.items || [])) {
+        if (!it || !it.id) continue;
+        ids.add(it.id);
+        if (!seen.has(it.id)) {
+          seen.add(it.id);
+          products.push({ id: it.id, name: it.name || 'Item', category: sec.category || '' });
+        }
+      }
     }
-    res.json({ ids: [...ids] });
+    res.json({ ids: [...ids], products });
   } catch (e) {
     res.status(502).json({ error: e.message });
   }
