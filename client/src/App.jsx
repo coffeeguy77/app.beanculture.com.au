@@ -1038,10 +1038,15 @@ export default function App() {
   // Smart Campaign banners (resolved server-side) go FIRST, then the seasonal
   // banner, then the normal shop banners — an insertion, never a replacement.
   const smartSlides = (config.smartCampaigns && config.smartCampaigns.heroSlides) || [];
+  // Per-store banner targeting: a hero slide with a non-empty `locations` list
+  // shows only at those stores (e.g. hide a kitchen special at a no-kitchen
+  // pop-up); an empty/absent list shows everywhere.
+  const bannerLocId = (chosenLocation && chosenLocation.id) || locationId || '';
+  const shopSlides = (config.hero || []).filter((sl) => !Array.isArray(sl.locations) || sl.locations.length === 0 || sl.locations.includes(bannerLocId));
   const heroSlides = [
     ...smartSlides,
     ...(seasonBanner ? [{ id: 'season-banner', ...seasonBanner }] : []),
-    ...(config.hero || []),
+    ...shopSlides,
   ];
 
   // Shared banner-destination handler — used by both the homepage hero and the

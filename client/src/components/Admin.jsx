@@ -3802,6 +3802,25 @@ export default function Admin({ onExit }) {
                         </label>
                         <input style={{ flex: 1, padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 10, fontSize: 'var(--fs-xs)' }} value={sl.bg || ''} onChange={(e) => updSlide(i, { bg: e.target.value })} placeholder="background (gradient or url(...) center/cover)" />
                       </div>
+                      {locs.length > 1 && (
+                        <div style={{ marginTop: 8, padding: '8px 10px', border: '1px dashed var(--line)', borderRadius: 10 }}>
+                          <div style={{ fontSize: 'var(--fs-xs)', fontWeight: 700, marginBottom: 4 }}>Show at</div>
+                          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+                            <label className="switch"><input type="checkbox" checked={!(Array.isArray(sl.locations) && sl.locations.length)} onChange={() => updSlide(i, { locations: [] })} /> <span>All stores</span></label>
+                            {locs.map((l) => {
+                              const sel = (sl.locations || []).includes(l.id);
+                              return (
+                                <label key={l.id} className="switch"><input type="checkbox" checked={sel} onChange={(e) => {
+                                  const cur = new Set(sl.locations || []);
+                                  e.target.checked ? cur.add(l.id) : cur.delete(l.id);
+                                  updSlide(i, { locations: [...cur] });
+                                }} /> <span>{l.name || l.id}</span></label>
+                              );
+                            })}
+                          </div>
+                          <p className="muted" style={{ fontSize: 'var(--fs-xs)', margin: '4px 0 0' }}>Leave “All stores” on to show everywhere, or tick specific stores to limit this banner — e.g. hide a kitchen special at a no-kitchen pop-up, or show a barista-lessons / roastery banner only at the pop-up.</p>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
