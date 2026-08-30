@@ -186,6 +186,9 @@ export default function Admin({ onExit }) {
   const [sqLocations, setSqLocations] = useState([]);  // this Square account's locations (id + name)
   const [sqConfiguredId, setSqConfiguredId] = useState(''); // env/main Square location id (the current single store)
   const [locQr, setLocQr] = useState({});              // locId -> { url, img } walk-around order QR
+  const [salesData, setSalesData] = useState(null);    // per-store sales (app vs counter)
+  const [salesDays, setSalesDays] = useState(7);
+  const [salesBusy, setSalesBusy] = useState(false);
   const [collapsedSecs, setCollapsedSecs] = useState({}); // preset section name -> collapsed
   const [deleteLock, setDeleteLock] = useState(true); // guard against accidental section deletes
   const [removedCats, setRemovedCats] = useState(() => new Set()); // categories removed this session
@@ -452,6 +455,15 @@ export default function Admin({ onExit }) {
     } catch { setOfferedIds(false); }
   }
   // ---- Multi-location ----
+  async function loadSales(days = salesDays) {
+    setSalesBusy(true);
+    try {
+      const r = await fetch(`/api/admin/analytics/sales?days=${days}&pass=${encodeURIComponent(pass)}`);
+      const d = await r.json();
+      if (r.ok) setSalesData(d); else setSalesData({ error: d.error || 'Failed' });
+    } catch (e) { setSalesData({ error: e.message }); }
+    finally { setSalesBusy(false); }
+  }
   async function loadSquareLocations() {
     try {
       const r = await fetch(`/api/admin/square-locations?pass=${encodeURIComponent(pass)}`);
@@ -3218,6 +3230,49 @@ export default function Admin({ onExit }) {
                 <div className="admin-page-head">
                   <h1 className="admin-page-title">Locations</h1>
                   <p className="admin-page-desc">Run more than one store from one app and one menu. Customers pick their store; their order and its payment are created against that store's Square location, so takings land in that location's Square books (and its own bank account, if you've set one up in Square). You can also hide items a store doesn't offer — handy for a takeaway pop-up with no kitchen.</p>
+                </div>
+
+                <div className="card" style={card}>
+                  <div className="group-title" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                    Sales by store — self-order vs counter
+                    <select value={salesDays} onChange={(e) => { const d = Number(e.target.value); setSalesDays(d); loadSales(d); }} style={{ marginLeft: 'auto' }}>
+                      <option value={1}>Today</option><option value={7}>Last 7 days</option><option value={14}>Last 14 days</option><option value={30}>Last 30 days</option>
+                    </select>
+                    <button type="button" className="btn ghost" style={{ padding: '6px 12px' }} disabled={salesBusy} onClick={() => loadSales()}>{salesBusy ? 'Loading…' : (salesData ? 'Refresh' : 'Load sales')}</button>
+                  </div>
+                  <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 0 }}>Completed Square orders. <strong>App</strong> = customers ordering themselves in the app; <strong>Counter</strong> = staff ringing it up on the POS; <strong>Other</strong> = Square POS / other.</p>
+                  {salesData && salesData.error && <p className="muted" style={{ color: 'var(--admin-danger,#c0392b)' }}>{salesData.error}</p>}
+                  {salesData && salesData.stores && (() => {
+                    const money2 = (c) => new Intl.NumberFormat('en-AU', { style: 'currency', currency: salesData.currency || 'AUD' }).format((c || 0) / 100);
+                    return salesData.stores.map((st) => (
+                      <div key={st.id} className="avail-sched" style={{ marginBottom: 10 }}>
+                        <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
+                          <strong style={{ fontSize: 'var(--fs-md)' }}>{st.name}</strong>
+                          <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>{st.totals.count} orders</span>
+                          <span style={{ marginLeft: 'auto', fontWeight: 800 }}>{money2(st.totals.total)}</span>
+                        </div>
+                        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginTop: 6, fontSize: 'var(--fs-sm)' }}>
+                          <span>App (self-order): <strong>{money2(st.totals.app)}</strong></span>
+                          <span>Counter (POS): <strong>{money2(st.totals.pos)}</strong></span>
+                          {st.totals.other > 0 && <span>Other: <strong>{money2(st.totals.other)}</strong></span>}
+                        </div>
+                        {st.daily.length > 0 && (
+                          <details style={{ marginTop: 6 }}>
+                            <summary style={{ cursor: 'pointer', fontSize: 'var(--fs-sm)' }}>Daily breakdown</summary>
+                            <div className="loc-avail-list" style={{ maxHeight: 220 }}>
+                              {[...st.daily].reverse().map((d) => (
+                                <div key={d.date} style={{ display: 'flex', gap: 10, fontSize: 'var(--fs-sm)', padding: '2px 0' }}>
+                                  <span style={{ minWidth: 92 }}>{d.date}</span>
+                                  <span>app {money2(d.app)}</span><span>counter {money2(d.pos)}</span>
+                                  <span style={{ marginLeft: 'auto', fontWeight: 700 }}>{money2(d.total)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </details>
+                        )}
+                      </div>
+                    ));
+                  })()}
                 </div>
 
                 <div className="card" style={card}>

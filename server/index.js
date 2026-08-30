@@ -1397,6 +1397,61 @@ app.post('/api/admin/weather/refresh', async (req, res) => {
   try { res.json({ weather: await weather.getWeather({ force }), refreshed: force }); }
   catch (e) { res.json({ weather: { ok: false, reason: e.message } }); }
 });
+// ---- Admin: sales by store & source (app self-order vs counter POS) ----
+// Authoritative from Square: completed orders per location, bucketed by day and
+// classified by order source. Used by the Locations tab's analytics.
+function saleSource(name) {
+  const n = String(name || '').toLowerCase();
+  if (n.includes('pos')) return 'pos';        // 'Bean Culture POS' (counter)
+  if (n.includes('app') || n.includes('bean culture')) return 'app'; // 'Bean Culture App' (self-order)
+  return 'other';                              // Square POS / other integrations
+}
+function dayInTz(iso, tz) {
+  try { return new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(iso)); }
+  catch { return String(iso).slice(0, 10); }
+}
+app.get('/api/admin/analytics/sales', async (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const days = Math.max(1, Math.min(90, parseInt(req.query.days, 10) || 7));
+    const tz = (getSettings().contact && getSettings().contact.timezone) || 'Australia/Sydney';
+    const startAt = new Date(Date.now() - days * 86400000).toISOString();
+    const stores = locations.active();
+    const out = [];
+    for (const store of stores) {
+      const byDay = {}; // date -> { app, pos, other, total }
+      const totals = { app: 0, pos: 0, other: 0, total: 0, count: 0 };
+      let cursor; let pages = 0;
+      do {
+        const data = await sq.squareFetch('/v2/orders/search', {
+          method: 'POST',
+          body: {
+            location_ids: [store.squareLocationId],
+            cursor,
+            query: {
+              filter: { date_time_filter: { created_at: { start_at: startAt } }, state_filter: { states: ['COMPLETED'] } },
+              sort: { sort_field: 'CREATED_AT', sort_order: 'DESC' },
+            },
+            limit: 500,
+          },
+        }).catch(() => ({}));
+        for (const o of (data.orders || [])) {
+          const amt = (o.total_money && o.total_money.amount) || 0;
+          const src = saleSource(o.source && o.source.name);
+          const d = dayInTz(o.created_at, tz);
+          const row = byDay[d] || (byDay[d] = { app: 0, pos: 0, other: 0, total: 0 });
+          row[src] += amt; row.total += amt;
+          totals[src] += amt; totals.total += amt; totals.count += 1;
+        }
+        cursor = data.cursor; pages += 1;
+      } while (cursor && pages < 6);
+      const daily = Object.keys(byDay).sort().map((date) => ({ date, ...byDay[date] }));
+      out.push({ id: store.id, name: store.name, daily, totals });
+    }
+    res.json({ days, currency: sq.CURRENCY, stores: out });
+  } catch (e) { res.status(502).json({ error: e.message }); }
+});
+
 // ---- Admin: list this Square account's locations (id + name) so the Locations
 //      setup can offer a dropdown instead of hunting for the id in Square. ----
 app.get('/api/admin/square-locations', async (req, res) => {
