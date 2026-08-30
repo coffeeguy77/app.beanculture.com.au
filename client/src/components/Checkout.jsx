@@ -146,6 +146,20 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
     : cartTotal;
   const couponFree = couponValid && discountedTotal === 0;
   const payTotal = couponValid ? discountedTotal : Math.max(0, cartTotal - pifEstimateCents);
+  // Surcharge estimate (server is authoritative; this mirrors it for the summary
+  // so the customer sees the weekend/card surcharge before paying).
+  const scfg = (config && config.surcharges) || {};
+  const weekendActive = !!(scfg.weekend && scfg.weekend.activeToday) && payTotal > 0;
+  const cardActive = !!(scfg.card && scfg.card.enabled) && cardChoice !== 'balance' && payTotal > 0;
+  const weekendSc = weekendActive ? Math.round(payTotal * (scfg.weekend.percent || 0) / 100) : 0;
+  const cardSc = cardActive ? Math.round((payTotal + weekendSc) * (scfg.card.percent || 0) / 100) : 0;
+  const grandTotal = payTotal + weekendSc + cardSc;
+  const surchargeRows = (
+    <>
+      {weekendSc > 0 && <div className="row"><span>{scfg.weekend.label || 'Weekend surcharge'} ({scfg.weekend.percent}%)</span><span>+{formatMoney(weekendSc, currency)}</span></div>}
+      {cardSc > 0 && <div className="row"><span>{scfg.card.label || 'Card surcharge'} ({scfg.card.percent}%)</span><span>+{formatMoney(cardSc, currency)}</span></div>}
+    </>
+  );
 
   const isSchedule = when === 'schedule';
   const isRepeat = when === 'repeat';
@@ -239,6 +253,8 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
     return api.createOrder({
       cart: cartPayload, dineIn, table, name, coupon, pickupAt, note,
       customerId: user?.customerId, locationId: location?.id,
+      // Card surcharge applies only to actual card payments, not gift balance.
+      cardPayment: cardChoice !== 'balance',
       loyalty: tierId && loyalty?.accountId ? { accountId: loyalty.accountId, tierId } : undefined,
       pifVoucher: hasPif ? effectivePifCode : undefined,
     });
@@ -343,7 +359,7 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
   const scheduleAllowed = true; // pay-now scheduling always ok; auto-charge needs sched.enabled (checked on submit)
   const ctaLabel = autocharge
     ? (isRepeat ? 'Set up repeating order' : 'Schedule order')
-    : (couponFree ? 'Place order' : `Pay ${formatMoney(payTotal, currency)}`);
+    : (couponFree ? 'Place order' : `Pay ${formatMoney(grandTotal, currency)}`);
 
   return (
     <main className="page checkout-page">
@@ -562,17 +578,19 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
           <>
             <div className="row"><span>Subtotal</span><span>{formatMoney(cartTotal, currency)}</span></div>
             <div className="row discount"><span>Coupon {couponInfo.code || coupon.trim().toUpperCase()} · {couponInfo.label}</span><span>−{formatMoney(cartTotal - discountedTotal, currency)}</span></div>
-            <div className="row grand"><span>Total</span><span>{formatMoney(payTotal, currency)}</span></div>
+            {surchargeRows}
+            <div className="row grand"><span>Total</span><span>{formatMoney(grandTotal, currency)}</span></div>
           </>
         ) : hasPif ? (
           <>
             <div className="row"><span>Subtotal</span><span>{formatMoney(cartTotal, currency)}</span></div>
             <div className="row discount"><span>Coffee gift (estimated)</span><span>−{formatMoney(pifEstimateCents, currency)}</span></div>
-            <div className="row grand"><span>Total</span><span>{formatMoney(payTotal, currency)}</span></div>
+            {surchargeRows}
+            <div className="row grand"><span>Total</span><span>{formatMoney(grandTotal, currency)}</span></div>
             <p className="muted" style={{ fontSize: 11.5, marginTop: 2 }}>Final amount confirmed at payment — the gift only discounts eligible coffee items.</p>
           </>
         ) : (
-          <div className="row grand"><span>Total</span><span>{formatMoney(cartTotal, currency)}</span></div>
+          <>{surchargeRows}<div className="row grand"><span>Total</span><span>{formatMoney(grandTotal, currency)}</span></div></>
         )}
         {hasCoupon && !couponValid && couponInfo && <div className="row discount"><span>Coupon not recognised</span><span>—</span></div>}
         {usingReward && <div className="row discount"><span>Reward applied at payment</span><span>—</span></div>}

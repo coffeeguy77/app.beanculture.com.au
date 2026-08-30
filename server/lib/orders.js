@@ -23,7 +23,7 @@ function buildNote({ dineIn, table }) {
   return dineIn ? `DINE-IN · Table ${table || '?'}` : 'TAKEAWAY';
 }
 
-async function createOrder({ cart, dineIn, table, name, coupon, customerId, pickupAt, idempotencyKey, note: customerNote, pifVoucher, source, squareLocationId }) {
+async function createOrder({ cart, dineIn, table, name, coupon, customerId, pickupAt, idempotencyKey, note: customerNote, pifVoucher, source, squareLocationId, cardPayment }) {
   const LOC = squareLocationId || LOCATION_ID;
   if (!Array.isArray(cart) || cart.length === 0) throw new Error('Cart is empty');
   // Bake any per-combo locked modifiers into the combo lines before pricing, so
@@ -125,6 +125,15 @@ async function createOrder({ cart, dineIn, table, name, coupon, customerId, pick
       const d = c && coupons.discountFor(c);
       if (d) order.discounts = [d];
     }
+  }
+
+  // Surcharges (weekend / card) as Square service charges — server-authoritative.
+  // Skipped for comps (a 100%-off order shouldn't still bill a surcharge).
+  if (!isComp) {
+    try {
+      const sc = require('./surcharges').serviceChargesFor({ cardPayment: !!cardPayment });
+      if (sc.length) order.service_charges = sc;
+    } catch (e) { console.warn('[surcharges] skipped:', e.message); }
   }
 
   try {

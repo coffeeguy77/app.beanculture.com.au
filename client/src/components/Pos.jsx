@@ -571,7 +571,7 @@ export default function Pos({ onExit }) {
       {/* Tender overlay */}
       {tender && (
         <TenderOverlay tender={tender} setTender={setTender} total={total} currency={currency}
-          busy={busy} cardEnabled={!!cfg.terminalDeviceId}
+          busy={busy} cardEnabled={!!cfg.terminalDeviceId} cardSurchargePct={(cfg.surcharges && cfg.surcharges.card && cfg.surcharges.card.enabled) ? cfg.surcharges.card.percent : 0}
           onCard={() => submit('card')} onCash={(given) => submit('cash', given)} onKitchen={() => submit('unpaid')} onClose={() => setTender(null)} />
       )}
 
@@ -624,7 +624,7 @@ export default function Pos({ onExit }) {
 }
 
 // ── Tender: choose method, then cash keypad with change ──
-function TenderOverlay({ tender, setTender, total, currency, busy, cardEnabled, onCard, onCash, onKitchen, onClose }) {
+function TenderOverlay({ tender, setTender, total, currency, busy, cardEnabled, cardSurchargePct, onCard, onCash, onKitchen, onClose }) {
   const [given, setGiven] = useState(0);
   const change = Math.max(0, given - total);
   // Suggested notes: exact, next round $ up, and common AUD notes above total.
@@ -642,7 +642,7 @@ function TenderOverlay({ tender, setTender, total, currency, busy, cardEnabled, 
               <button className={`pos-tender-method${cardEnabled ? '' : ' disabled'}`} disabled={!cardEnabled || busy}
                 title={cardEnabled ? '' : 'Pair a Square Terminal in POS setup (⚙)'} onClick={onCard}>
                 <span className="pos-tender-m-name">Card — Terminal</span>
-                <span className="pos-tender-m-sub">{cardEnabled ? 'Tap, insert or swipe' : 'No terminal paired'}</span>
+                <span className="pos-tender-m-sub">{cardEnabled ? (cardSurchargePct > 0 ? `Tap, insert or swipe · +${cardSurchargePct}% surcharge` : 'Tap, insert or swipe') : 'No terminal paired'}</span>
               </button>
               <button className="pos-tender-method" onClick={() => setTender('cash')}>
                 <span className="pos-tender-m-name">Cash</span>

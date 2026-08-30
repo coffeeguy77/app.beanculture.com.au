@@ -965,6 +965,15 @@ export default function Admin({ onExit }) {
     ? offeredList
     : allProducts;
 
+  // ---- Surcharges (weekend / card) ----
+  const scfg = s?.surcharges || {};
+  const setSurcharge = (patch) => set({ surcharges: { ...scfg, ...patch } });
+  const setWeekendSc = (patch) => setSurcharge({ weekend: { ...(scfg.weekend || {}), ...patch } });
+  const setCardSc = (patch) => setSurcharge({ card: { ...(scfg.card || {}), ...patch } });
+  const weekendDays = Array.isArray(scfg.weekend?.days) ? scfg.weekend.days : [0, 6];
+  const toggleWeekendDay = (d) => setWeekendSc({ days: weekendDays.includes(d) ? weekendDays.filter((x) => x !== d) : [...weekendDays, d].sort() });
+  const DOWS = [['Sun', 0], ['Mon', 1], ['Tue', 2], ['Wed', 3], ['Thu', 4], ['Fri', 5], ['Sat', 6]];
+
   const availItems = availability.items || {};
   const availExcl = availability.exclusions || { enabled: true, days: {} };
   const availSchedules = Array.isArray(availability.schedules) ? availability.schedules : [];
@@ -3379,6 +3388,51 @@ export default function Admin({ onExit }) {
                       A walk-around / general-order QR for each store is on the <strong>Tables</strong> tab. Card payments need a Square Terminal paired at each store. Press <strong>Save changes</strong> to make store changes live.
                     </p>
                   )}
+                </div>
+
+                <div className="card" style={card}>
+                  <div className="group-title">Surcharges</div>
+                  <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 0 }}>Added to the Square order as surcharge lines (shown on the receipt). A card surcharge in Australia must not exceed your cost of acceptance — set your own %. Remember to press <strong>Save changes</strong>.</p>
+
+                  <div className="avail-sched" style={{ marginBottom: 12 }}>
+                    <label className="switch"><input type="checkbox" checked={!!scfg.weekend?.enabled} onChange={(e) => setWeekendSc({ enabled: e.target.checked })} /> <span>Weekend surcharge</span></label>
+                    {scfg.weekend?.enabled && (
+                      <div style={{ display: 'grid', gap: 8, marginTop: 8 }}>
+                        <label className="field" style={{ margin: 0, maxWidth: 160 }}><span>Percent (%)</span>
+                          <input type="number" step="0.1" min="0" value={scfg.weekend?.percent ?? 10} onChange={(e) => setWeekendSc({ percent: Number(e.target.value) })} />
+                        </label>
+                        <div>
+                          <div className="muted" style={{ fontSize: 'var(--fs-xs)', marginBottom: 4 }}>Days it applies</div>
+                          <div className="avail-chipwrap">
+                            {DOWS.map(([lbl, d]) => (
+                              <button type="button" key={d} className={`avail-chip${weekendDays.includes(d) ? ' on' : ''}`} onClick={() => toggleWeekendDay(d)}>{lbl}</button>
+                            ))}
+                          </div>
+                        </div>
+                        <label className="field" style={{ margin: 0 }}><span>Public holiday dates (one per line, YYYY-MM-DD) — surcharge applies on these too</span>
+                          <textarea rows={2} value={(scfg.weekend?.publicHolidays || []).join('\n')} onChange={(e) => setWeekendSc({ publicHolidays: e.target.value.split('\n').map((x) => x.trim()).filter(Boolean) })} placeholder="2026-12-25&#10;2026-12-26" />
+                        </label>
+                        <label className="field" style={{ margin: 0 }}><span>Label on receipt</span>
+                          <input value={scfg.weekend?.label || 'Weekend surcharge'} onChange={(e) => setWeekendSc({ label: e.target.value })} />
+                        </label>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="avail-sched">
+                    <label className="switch"><input type="checkbox" checked={!!scfg.card?.enabled} onChange={(e) => setCardSc({ enabled: e.target.checked })} /> <span>Card surcharge</span></label>
+                    {scfg.card?.enabled && (
+                      <div style={{ display: 'grid', gap: 8, marginTop: 8 }}>
+                        <label className="field" style={{ margin: 0, maxWidth: 160 }}><span>Percent (%)</span>
+                          <input type="number" step="0.1" min="0" value={scfg.card?.percent ?? 1.5} onChange={(e) => setCardSc({ percent: Number(e.target.value) })} />
+                        </label>
+                        <label className="field" style={{ margin: 0 }}><span>Label on receipt</span>
+                          <input value={scfg.card?.label || 'Card surcharge'} onChange={(e) => setCardSc({ label: e.target.value })} />
+                        </label>
+                        <p className="muted" style={{ fontSize: 'var(--fs-xs)', margin: 0 }}>Applied to card payments only (app card + POS card tender), never to cash or gift balance.</p>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </>
             )}

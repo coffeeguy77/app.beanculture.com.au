@@ -359,6 +359,12 @@ const DEFAULTS = {
   //    SQUARE_LOCATION_ID). Each: { id, name, squareLocationId, address, active,
   //    hiddenItemIds:[] }. See server/lib/locations.js.
   locations: [],
+  // ── Order surcharges (Square service charges). See server/lib/surcharges.js.
+  //    weekend.days: 0=Sun … 6=Sat. publicHolidays: ['YYYY-MM-DD', …].
+  surcharges: {
+    weekend: { enabled: false, percent: 10, days: [0, 6], publicHolidays: [], label: 'Weekend surcharge' },
+    card: { enabled: false, percent: 1.5, label: 'Card surcharge' },
+  },
   kds: {
     zones: [],          // [{ id, name, categories:[displayName] }]
     lookbackHours: 8,   // how far back to pull live tickets
