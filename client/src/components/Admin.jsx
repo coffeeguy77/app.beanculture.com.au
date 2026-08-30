@@ -262,6 +262,7 @@ export default function Admin({ onExit }) {
   // inspect() result for the currently-linked Square item (see effect below).
   const [resvPrintStatus, setResvPrintStatus] = useState(null);
   const [resvDeleteLock, setResvDeleteLock] = useState(true); // guard against accidental reservation deletes
+  const [locDeleteLock, setLocDeleteLock] = useState(true); // guard against accidentally deleting a whole location
   const [resvSetupBusy, setResvSetupBusy] = useState(false);
   const [resvSetupMsg, setResvSetupMsg] = useState('');
   const [newClosure, setNewClosure] = useState({ date: '', annual: false, label: '' });
@@ -3504,8 +3505,15 @@ export default function Admin({ onExit }) {
                 )}
 
                 <div className="card" style={card}>
-                  <div className="group-title">Your stores</div>
-                  <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+                    <div className="group-title" style={{ margin: 0 }}>Your stores</div>
+                    {locs.length > 0 && (
+                      <button type="button" className={`chip ${locDeleteLock ? 'on' : ''}`} onClick={() => setLocDeleteLock((v) => !v)}
+                        style={{ fontSize: 'var(--fs-sm)' }} title={locDeleteLock ? 'Locked — tap to allow deleting a store' : 'Unlocked — tap to lock again'}>
+                        {locDeleteLock ? '🔒 Delete locked' : '🔓 Delete unlocked'}</button>
+                    )}
+                  </div>
+                  <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 6 }}>
                     {locs.length === 0
                       ? 'You’re running as a single store right now. Add your existing store first (the button below prefills it), then add the new one. The customer store picker only appears once TWO or more active stores are listed — with a single store the app just uses it. Once any store is listed here, the app uses this list.'
                       : 'Each store maps to one of your Square locations. Set up each location’s bank account in the Square dashboard so its takings deposit separately. The customer store picker appears once two or more stores are active. Remember to press '}
@@ -3529,7 +3537,7 @@ export default function Admin({ onExit }) {
                         <label className="switch" style={{ marginLeft: 'auto' }} title="Customers can order from this store">
                           <input type="checkbox" checked={l.active !== false} onChange={(e) => updLoc(l.id, { active: e.target.checked })} /> <span>Active</span>
                         </label>
-                        <button type="button" className="avail-del" title="Delete store" onClick={() => rmLoc(l.id)}>✕</button>
+                        <button type="button" className="avail-del" disabled={locDeleteLock} style={{ opacity: locDeleteLock ? 0.3 : 1 }} title={locDeleteLock ? 'Unlock delete (top of card) to remove this store' : 'Delete store'} onClick={() => { if (window.confirm(`Delete "${l.name || l.id}"? This removes the store from the app. It does not touch Square.`)) rmLoc(l.id); }}>✕</button>
                       </div>
                       <div style={{ display: 'grid', gap: 8, marginTop: 8 }}>
                         <label className="field" style={{ margin: 0 }}>
@@ -3851,6 +3859,18 @@ export default function Admin({ onExit }) {
                         <label className="field" style={{ margin: 0 }}><span>Label on receipt</span>
                           <input value={scfg.weekend?.label || 'Weekend surcharge'} onChange={(e) => setWeekendSc({ label: e.target.value })} />
                         </label>
+                        {locs.length > 1 && (
+                          <div>
+                            <div className="muted" style={{ fontSize: 'var(--fs-xs)', marginBottom: 4 }}>Applies at</div>
+                            <div className="avail-chipwrap">
+                              <button type="button" className={`avail-chip${!(scfg.weekend?.locations || []).length ? ' on' : ''}`} onClick={() => setWeekendSc({ locations: [] })}>All stores</button>
+                              {locs.map((l) => {
+                                const on = (scfg.weekend?.locations || []).includes(l.id);
+                                return <button type="button" key={l.id} className={`avail-chip${on ? ' on' : ''}`} onClick={() => { const set = new Set(scfg.weekend?.locations || []); on ? set.delete(l.id) : set.add(l.id); setWeekendSc({ locations: [...set] }); }}>{l.name || l.id}</button>;
+                              })}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -3866,6 +3886,18 @@ export default function Admin({ onExit }) {
                           <input value={scfg.card?.label || 'Card surcharge'} onChange={(e) => setCardSc({ label: e.target.value })} />
                         </label>
                         <p className="muted" style={{ fontSize: 'var(--fs-xs)', margin: 0 }}>Applied to card payments only (app card + POS card tender), never to cash or gift balance.</p>
+                        {locs.length > 1 && (
+                          <div>
+                            <div className="muted" style={{ fontSize: 'var(--fs-xs)', marginBottom: 4 }}>Applies at</div>
+                            <div className="avail-chipwrap">
+                              <button type="button" className={`avail-chip${!(scfg.card?.locations || []).length ? ' on' : ''}`} onClick={() => setCardSc({ locations: [] })}>All stores</button>
+                              {locs.map((l) => {
+                                const on = (scfg.card?.locations || []).includes(l.id);
+                                return <button type="button" key={l.id} className={`avail-chip${on ? ' on' : ''}`} onClick={() => { const set = new Set(scfg.card?.locations || []); on ? set.delete(l.id) : set.add(l.id); setCardSc({ locations: [...set] }); }}>{l.name || l.id}</button>;
+                              })}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>

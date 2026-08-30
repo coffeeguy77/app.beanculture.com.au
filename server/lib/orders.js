@@ -190,7 +190,7 @@ async function createOrder({ cart, dineIn, table, name, coupon, customerId, pick
   // Skipped for comps (a 100%-off order shouldn't still bill a surcharge).
   if (!isComp) {
     try {
-      const sc = require('./surcharges').serviceChargesFor({ cardPayment: !!cardPayment });
+      const sc = require('./surcharges').serviceChargesFor({ cardPayment: !!cardPayment, locationId: appLocationId || null });
       if (sc.length) order.service_charges = [...(order.service_charges || []), ...sc];
     } catch (e) { console.warn('[surcharges] skipped:', e.message); }
   }

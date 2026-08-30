@@ -30,12 +30,19 @@ function pct(v) {
   return Number.isFinite(n) && n > 0 ? n : 0;
 }
 
+// Whether a surcharge applies at a given store. Empty/absent `locations` list =
+// applies everywhere; otherwise only at the listed store ids.
+function appliesAtLocation(conf, locationId) {
+  const locs = Array.isArray(conf.locations) ? conf.locations.filter(Boolean) : [];
+  return !locs.length || (!!locationId && locs.includes(locationId));
+}
+
 // Build the Square order.service_charges array for this order.
-function serviceChargesFor({ now = venueNow(), cardPayment = false } = {}) {
+function serviceChargesFor({ now = venueNow(), cardPayment = false, locationId = null } = {}) {
   const { weekend, card } = cfg();
   const out = [];
   const wp = pct(weekend.percent);
-  if (weekend.enabled && wp > 0 && isWeekendDay(now, weekend)) {
+  if (weekend.enabled && wp > 0 && isWeekendDay(now, weekend) && appliesAtLocation(weekend, locationId)) {
     out.push({
       uid: 'sc-weekend',
       name: (weekend.label || 'Weekend surcharge').slice(0, 255),
@@ -44,7 +51,7 @@ function serviceChargesFor({ now = venueNow(), cardPayment = false } = {}) {
     });
   }
   const cp = pct(card.percent);
-  if (cardPayment && card.enabled && cp > 0) {
+  if (cardPayment && card.enabled && cp > 0 && appliesAtLocation(card, locationId)) {
     out.push({
       uid: 'sc-card',
       name: (card.label || 'Card surcharge').slice(0, 255),
@@ -65,11 +72,13 @@ function publicConfig() {
       percent: pct(weekend.percent),
       label: weekend.label || 'Weekend surcharge',
       activeToday: !!weekend.enabled && pct(weekend.percent) > 0 && isWeekendDay(now, weekend),
+      locations: Array.isArray(weekend.locations) ? weekend.locations : [],
     },
     card: {
       enabled: !!card.enabled && pct(card.percent) > 0,
       percent: pct(card.percent),
       label: card.label || 'Card surcharge',
+      locations: Array.isArray(card.locations) ? card.locations : [],
     },
   };
 }

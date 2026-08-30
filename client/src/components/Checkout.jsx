@@ -181,8 +181,11 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
   // Surcharge estimate (server is authoritative; this mirrors it for the summary
   // so the customer sees the weekend/card surcharge before paying).
   const scfg = (config && config.surcharges) || {};
-  const weekendActive = !!(scfg.weekend && scfg.weekend.activeToday) && payTotal > 0;
-  const cardActive = !!(scfg.card && scfg.card.enabled) && cardChoice !== 'balance' && payTotal > 0;
+  // A surcharge with a non-empty `locations` list only applies at those stores
+  // (the server is authoritative; this keeps the estimate honest per store).
+  const scAppliesHere = (conf) => { const ls = (conf && conf.locations) || []; return !ls.length || (location && ls.includes(location.id)); };
+  const weekendActive = !!(scfg.weekend && scfg.weekend.activeToday) && scAppliesHere(scfg.weekend) && payTotal > 0;
+  const cardActive = !!(scfg.card && scfg.card.enabled) && scAppliesHere(scfg.card) && cardChoice !== 'balance' && payTotal > 0;
   const weekendSc = weekendActive ? Math.round(payTotal * (scfg.weekend.percent || 0) / 100) : 0;
   const cardSc = cardActive ? Math.round((payTotal + weekendSc) * (scfg.card.percent || 0) / 100) : 0;
   const grandTotal = payTotal + weekendSc + cardSc + shipCost;
