@@ -46,6 +46,7 @@ export default function Kds({ onExit, embedded }) {
   const [needPass, setNeedPass] = useState(false);
   const [cfg, setCfg] = useState(null);
   const [zone, setZone] = useState(() => { try { return localStorage.getItem('bc-kds-zone') || ALL; } catch { return ALL; } });
+  const [kdsLoc, setKdsLoc] = useState(() => { try { return localStorage.getItem('bc-kds-location') || ''; } catch { return ''; } });
   const [tickets, setTickets] = useState([]);
   const [err, setErr] = useState('');
   const [now, setNow] = useState(Date.now());
@@ -71,12 +72,15 @@ export default function Kds({ onExit, embedded }) {
     if (r.status === 401) { setNeedPass(true); return false; }
     const d = await r.json();
     setCfg(d); setNeedPass(false);
+    // Bind this screen to a store (first one by default) when multi-location.
+    const locs = d.locations || [];
+    if (locs.length && !locs.some((l) => l.id === kdsLoc)) { setKdsLoc(locs[0].id); }
     try { localStorage.setItem('bc-admin-pass', btoa(p)); } catch {}
     return true;
   }
   async function loadTickets(p = pass) {
     try {
-      const r = await fetch(`/api/admin/kds/tickets?pass=${encodeURIComponent(p)}`);
+      const r = await fetch(`/api/admin/kds/tickets?pass=${encodeURIComponent(p)}${kdsLoc ? `&location=${encodeURIComponent(kdsLoc)}` : ''}`);
       if (r.status === 401) { setNeedPass(true); return; }
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || 'Failed to load tickets');
@@ -116,6 +120,7 @@ export default function Kds({ onExit, embedded }) {
   }, [needPass, cfg, pass]);
 
   useEffect(() => { try { localStorage.setItem('bc-kds-zone', zone); } catch {} }, [zone]);
+  useEffect(() => { try { localStorage.setItem('bc-kds-location', kdsLoc); } catch {} if (cfg) loadTickets(); /* eslint-disable-next-line */ }, [kdsLoc]);
   useEffect(() => { try { localStorage.setItem('bc-kds-muted', muted ? '1' : '0'); } catch {} }, [muted]);
   useEffect(() => { try { localStorage.setItem(LAYOUT_KEY, JSON.stringify(layout)); } catch {} }, [layout]);
 
@@ -221,6 +226,11 @@ export default function Kds({ onExit, embedded }) {
           })}
         </div>
         <div className="kds-top-right">
+          {(cfg.locations || []).length > 1 && (
+            <select className="kds-locsel" value={kdsLoc} onChange={(e) => setKdsLoc(e.target.value)} title="Store">
+              {cfg.locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+            </select>
+          )}
           <span className={`kds-live${live ? ' on' : ''}`} title={live ? 'Live' : 'Reconnecting…'}>{live ? '● Live' : '○ Polling'}</span>
           <button className={`kds-icon${showLayout ? ' on' : ''}`} title="Layout" onClick={() => setShowLayout((v) => !v)}>▦</button>
           <button className="kds-icon" title={soundOn ? 'Mute new-order sound' : 'Unmute'} onClick={() => setMuted((m) => !m)}>{soundOn ? '🔔' : '🔕'}</button>

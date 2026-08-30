@@ -371,6 +371,8 @@ export default function Pos({ onExit }) {
   const comboSaving = comboDiscountFor(cart);
   const total = cartTotal(cart) - comboSaving;
   const configureMode = mode === 'register' && configuring;
+  // The card reader for THIS store (per-location, else the default reader).
+  const curTerm = (cfg.terminalByLocation && cfg.terminalByLocation[posLoc]) || { deviceId: cfg.terminalDeviceId, name: cfg.terminalName };
 
   const header = (
     <header className="pos-header">
@@ -393,8 +395,8 @@ export default function Pos({ onExit }) {
             {cfg.locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
           </select>
         )}
-        <span className={`pos-term${cfg.terminalDeviceId ? ' on' : ''}`} title="Card terminal">
-          ● {cfg.terminalDeviceId ? (cfg.terminalName || 'Terminal ready') : 'No terminal'}
+        <span className={`pos-term${curTerm.deviceId ? ' on' : ''}`} title="Card terminal">
+          ● {curTerm.deviceId ? (curTerm.name || 'Terminal ready') : 'No terminal'}
         </span>
         <span className="pos-staff">{cfg.staff || 'Staff'}</span>
         <button className="pos-icon" title="POS setup" onClick={() => setShowSetup(true)}>⚙</button>
@@ -571,7 +573,7 @@ export default function Pos({ onExit }) {
       {/* Tender overlay */}
       {tender && (
         <TenderOverlay tender={tender} setTender={setTender} total={total} currency={currency}
-          busy={busy} cardEnabled={!!cfg.terminalDeviceId} cardSurchargePct={(cfg.surcharges && cfg.surcharges.card && cfg.surcharges.card.enabled) ? cfg.surcharges.card.percent : 0}
+          busy={busy} cardEnabled={!!curTerm.deviceId} cardSurchargePct={(cfg.surcharges && cfg.surcharges.card && cfg.surcharges.card.enabled) ? cfg.surcharges.card.percent : 0}
           onCard={() => submit('card')} onCash={(given) => submit('cash', given)} onKitchen={() => submit('unpaid')} onClose={() => setTender(null)} />
       )}
 
@@ -602,8 +604,10 @@ export default function Pos({ onExit }) {
       )}
 
       {/* Terminal setup / pairing */}
-      {showSetup && <TerminalSetup pass={pass} cfg={cfg} onClose={() => setShowSetup(false)}
-        onSelected={(deviceId, name) => setCfg((c) => ({ ...c, terminalDeviceId: deviceId, terminalName: name }))} />}
+      {showSetup && <TerminalSetup pass={pass} cfg={cfg} locationId={posLoc} curTerm={curTerm} onClose={() => setShowSetup(false)}
+        onSelected={(deviceId, name) => setCfg((c) => posLoc
+          ? ({ ...c, terminalByLocation: { ...(c.terminalByLocation || {}), [posLoc]: { deviceId, name } } })
+          : ({ ...c, terminalDeviceId: deviceId, terminalName: name }))} />}
 
       {/* Success overlay */}
       {success && (
@@ -686,16 +690,17 @@ function TenderOverlay({ tender, setTender, total, currency, busy, cardEnabled, 
 }
 
 // ── Terminal pairing / selection (from the POS ⚙ setup) ──
-function TerminalSetup({ pass, cfg, onClose, onSelected }) {
+function TerminalSetup({ pass, cfg, locationId, curTerm, onClose, onSelected }) {
   const [devices, setDevices] = useState([]);
-  const [current, setCurrent] = useState(cfg.terminalDeviceId || '');
-  const [name, setName] = useState(cfg.deviceName || 'Front counter');
+  const [current, setCurrent] = useState((curTerm && curTerm.deviceId) || '');
+  const [name, setName] = useState((cfg.locations || []).find((l) => l.id === locationId)?.name || cfg.deviceName || 'Front counter');
   const [pairing, setPairing] = useState(null); // { id, code, status }
   const [msg, setMsg] = useState('');
   const [err, setErr] = useState('');
+  const storeName = (cfg.locations || []).find((l) => l.id === locationId)?.name || '';
 
   async function loadDevices() {
-    try { const d = await api.posTerminalDevices(pass); setDevices(d.devices || []); setCurrent(d.current || current); }
+    try { const d = await api.posTerminalDevices(pass); setDevices(d.devices || []); }
     catch (e) { setErr(e.message); }
   }
   useEffect(() => { loadDevices(); /* eslint-disable-next-line */ }, []);
@@ -729,11 +734,22 @@ function TerminalSetup({ pass, cfg, onClose, onSelected }) {
   async function select(deviceId, label) {
     setErr(''); setMsg('');
     try {
-      const r = await api.posTerminalSelect(pass, deviceId, label || 'Terminal');
-      setCurrent(r.terminalDeviceId);
-      onSelected && onSelected(r.terminalDeviceId, r.terminalName);
-      setMsg('Terminal ready for card payments.');
+      const r = await api.posTerminalSelect(pass, deviceId, label || 'Terminal', locationId);
+      setCurrent(deviceId);
+      onSelected && onSelected(deviceId, r.terminalName || label || 'Terminal');
+      setMsg(`Terminal ready for card payments${storeName ? ` at ${storeName}` : ''}.`);
       setPairing(null);
+      loadDevices();
+    } catch (e) { setErr(e.message); }
+  }
+
+  async function disconnect() {
+    setErr(''); setMsg('');
+    try {
+      await api.posTerminalDisconnect(pass, locationId);
+      setCurrent('');
+      onSelected && onSelected('', '');
+      setMsg('Terminal disconnected.');
       loadDevices();
     } catch (e) { setErr(e.message); }
   }
@@ -741,11 +757,11 @@ function TerminalSetup({ pass, cfg, onClose, onSelected }) {
   return (
     <div className="pos-scrim" onClick={onClose}>
       <div className="pos-setup" onClick={(e) => e.stopPropagation()}>
-        <div className="pos-tender-title">Card terminal setup</div>
+        <div className="pos-tender-title">Card terminal setup{storeName ? ` · ${storeName}` : ''}</div>
 
         {current
-          ? <div className="pos-setup-current">In use: <b>{cfg.terminalName || current}</b></div>
-          : <div className="pos-setup-current muted">No terminal paired yet.</div>}
+          ? <div className="pos-setup-current">In use: <b>{(curTerm && curTerm.name) || current}</b><button className="pos-setup-disconnect" onClick={disconnect}>Disconnect</button></div>
+          : <div className="pos-setup-current muted">No terminal paired for this store yet.</div>}
 
         {devices.length > 0 && (
           <div className="pos-setup-list">

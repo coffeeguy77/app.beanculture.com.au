@@ -99,13 +99,13 @@ function buildTickets(orders, varCat, states, cfg, now = Date.now()) {
   });
 }
 
-async function fetchTickets() {
+async function fetchTickets(squareLocationId) {
   const cfg = kdsSettings();
   const startAt = new Date(Date.now() - cfg.lookbackHours * 3600 * 1000).toISOString();
   const data = await squareFetch('/v2/orders/search', {
     method: 'POST',
     body: {
-      location_ids: [LOCATION_ID],
+      location_ids: [squareLocationId || LOCATION_ID],
       query: {
         filter: {
           date_time_filter: { created_at: { start_at: startAt } },

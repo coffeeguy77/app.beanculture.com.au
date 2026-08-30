@@ -381,8 +381,9 @@ const DEFAULTS = {
     mode: 'pos_kds',        // 'pos_kds' (idle on KDS) | 'pos' | 'kds'
     autoReturnSec: 3,       // success screen delay before returning to the KDS
     sourceName: 'Bean Culture POS', // Square order source tag for counter sales
-    terminalDeviceId: '',   // paired Square Terminal device id for card payments
+    terminalDeviceId: '',   // default/fallback Square Terminal device id
     terminalName: '',       // friendly name of that reader
+    terminalByLocation: {}, // per-store readers: { [locationId]: { deviceId, name } }
   },
   // ── Smart Campaigns: contextual merchandising driven by rules (Weather first;
   //    future: time, holidays, stock, loyalty…). A single server-side resolver

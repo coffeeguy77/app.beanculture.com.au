@@ -3583,3 +3583,10 @@ body:has(.store-shell) { background: var(--bc-canvas-deep, #160f12); }
 .loc-avail-item.off span { color: var(--admin-text-muted, var(--muted)); text-decoration: line-through; }
 .loc-avail + *, .avail-sched .switch { }
 .switch { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-sm); font-weight: 600; }
+.kds-locsel { background: #1e242b; color: #eef2f6; border: 1px solid #333d47; border-radius: 9px; padding: 8px 10px; font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; max-width: 160px; }
+.pos-setup-current { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.pos-setup-disconnect { margin-left: auto; border: 1px solid color-mix(in srgb, var(--pos-red) 40%, var(--pos-line)); background: none; color: var(--pos-red); border-radius: 8px; padding: 5px 12px; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+.loc-qr-wrap { margin-top: 8px; }
+.loc-qr { display: flex; gap: 12px; align-items: flex-start; margin-top: 8px; }
+.loc-qr-meta { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.loc-qr-meta code { font-size: var(--fs-xs); word-break: break-all; }

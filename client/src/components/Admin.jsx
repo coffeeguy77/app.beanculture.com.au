@@ -185,6 +185,7 @@ export default function Admin({ onExit }) {
   const [offeredList, setOfferedList] = useState([]);  // offered menu items with names + menu ids (for per-location availability)
   const [sqLocations, setSqLocations] = useState([]);  // this Square account's locations (id + name)
   const [sqConfiguredId, setSqConfiguredId] = useState(''); // env/main Square location id (the current single store)
+  const [locQr, setLocQr] = useState({});              // locId -> { url, img } walk-around order QR
   const [collapsedSecs, setCollapsedSecs] = useState({}); // preset section name -> collapsed
   const [deleteLock, setDeleteLock] = useState(true); // guard against accidental section deletes
   const [removedCats, setRemovedCats] = useState(() => new Set()); // categories removed this session
@@ -929,6 +930,16 @@ export default function Admin({ onExit }) {
     hidden.has(itemId) ? hidden.delete(itemId) : hidden.add(itemId);
     updLoc(locId, { hiddenItemIds: [...hidden] });
   };
+  // Walk-around / general-order QR: opens the app already set to this store (no
+  // table). See App.jsx's ?loc= handling. Save the store first so the link works.
+  async function makeLocQr(locId) {
+    try {
+      const origin = typeof window !== 'undefined' ? window.location.origin : '';
+      const url = `${origin}/?loc=${encodeURIComponent(locId)}&src=qr`;
+      const img = await QRCode.toDataURL(url, { margin: 1, width: 512, errorCorrectionLevel: 'M' });
+      setLocQr((m) => ({ ...m, [locId]: { url, img } }));
+    } catch (e) { alert('QR generation failed: ' + e.message); }
+  }
   // Turn a whole category on/off at once for a store. If every item in the
   // category is currently on, hide them all; otherwise show them all — so the
   // header checkbox flips the whole group either way.
@@ -3378,6 +3389,20 @@ export default function Admin({ onExit }) {
                             );
                           })}
                         </details>
+
+                        <div className="loc-qr-wrap">
+                          <button type="button" className="btn ghost" onClick={() => makeLocQr(l.id)}>Walk-around order QR</button>
+                          {locQr[l.id] && (
+                            <div className="loc-qr">
+                              <img src={locQr[l.id].img} alt="" width={128} height={128} />
+                              <div className="loc-qr-meta">
+                                <code>{locQr[l.id].url}</code>
+                                <a className="btn" style={{ padding: '6px 12px' }} download={`order-qr-${l.id}.png`} href={locQr[l.id].img}>Download PNG</a>
+                                <span className="muted" style={{ fontSize: 'var(--fs-xs)' }}>Scanning opens the app already set to {l.name || 'this store'} — no table. Save the store first so the link resolves.</span>
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
                   ))}

@@ -23,6 +23,15 @@ const kds = require('./lib/kds');
 const terminal = require('./lib/terminal');
 const locations = require('./lib/locations');
 const surcharges = require('./lib/surcharges');
+
+// Resolve the card terminal for a store: its own paired reader if set, else the
+// default/global one (single-site, or before a per-store reader is paired).
+function posTerminalFor(pos, locId) {
+  const map = (pos && pos.terminalByLocation) || {};
+  const perLoc = locId && map[locId];
+  if (perLoc && perLoc.deviceId) return { deviceId: perLoc.deviceId, name: perLoc.name || 'Terminal' };
+  return { deviceId: pos.terminalDeviceId || '', name: pos.terminalName || 'Terminal' };
+}
 const weather = require('./lib/weather');
 const smartCampaigns = require('./lib/smartCampaigns');
 
@@ -1094,6 +1103,7 @@ app.get('/api/pos/config', (req, res) => {
     surcharges: surcharges.publicConfig(),
     terminalDeviceId: p.terminalDeviceId || '',
     terminalName: p.terminalName || '',
+    terminalByLocation: p.terminalByLocation || {},
     dbEnabled: db.enabled,
   });
 });
@@ -1106,8 +1116,9 @@ app.post('/api/pos/order', async (req, res) => {
     if (!['cash', 'unpaid', 'card'].includes(tender)) return res.status(400).json({ error: 'Unsupported tender' });
     const pos = getSettings().pos || {};
     const squareLocationId = locations.squareIdFor(locationId);
-    if (tender === 'card' && !pos.terminalDeviceId) {
-      return res.status(400).json({ error: 'No card terminal is paired. Pair one in POS setup first.' });
+    const posTerminal = posTerminalFor(pos, locationId);
+    if (tender === 'card' && !posTerminal.deviceId) {
+      return res.status(400).json({ error: 'No card terminal is paired for this store. Pair one in POS setup first.' });
     }
 
     // Server-authoritative order: Square re-prices from the variation/modifier
@@ -1126,15 +1137,15 @@ app.post('/api/pos/order', async (req, res) => {
       try {
         const checkout = await terminal.createCheckout({
           amountMoney: { amount, currency },
-          deviceId: pos.terminalDeviceId,
+          deviceId: posTerminal.deviceId,
           orderId: order.id,
           referenceId: order.id,
           note: `${pos.deviceName || 'POS'} · ${name || (dineIn ? 'Dine-in' : 'Takeaway')}`,
         });
-        try { await db.posPaymentUpsert({ checkoutId: checkout.id, squareOrderId: order.id, deviceId: pos.terminalDeviceId, amount, status: 'waiting' }); } catch {}
+        try { await db.posPaymentUpsert({ checkoutId: checkout.id, squareOrderId: order.id, deviceId: posTerminal.deviceId, amount, status: 'waiting' }); } catch {}
         return res.json({
           orderId: order.id, checkoutId: checkout.id, total: amount, currency,
-          tender: 'card', status: 'waiting', terminalName: pos.terminalName || pos.deviceName || 'Terminal',
+          tender: 'card', status: 'waiting', terminalName: posTerminal.name || pos.deviceName || 'Terminal',
         });
       } catch (e) {
         // Checkout couldn't start — cancel the just-created order so no orphan
@@ -1256,29 +1267,52 @@ app.post('/api/pos/terminal/select', async (req, res) => {
   if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
   if (!db.enabled) return res.status(400).json({ error: 'A database is required to save the terminal selection.' });
   try {
-    const { deviceId, name } = req.body || {};
+    const { deviceId, name, locationId } = req.body || {};
     if (!deviceId) return res.status(400).json({ error: 'Missing device id' });
     const ov = db.getOverrides() || {};
     ov.pos = ov.pos || {};
-    ov.pos.terminalDeviceId = String(deviceId);
-    ov.pos.terminalName = String(name || '').slice(0, 60);
+    if (locationId) {
+      // Per-store reader (multi-location): this store's POS uses this terminal.
+      ov.pos.terminalByLocation = { ...(ov.pos.terminalByLocation || {}), [locationId]: { deviceId: String(deviceId), name: String(name || '').slice(0, 60) } };
+    } else {
+      ov.pos.terminalDeviceId = String(deviceId);
+      ov.pos.terminalName = String(name || '').slice(0, 60);
+    }
     await db.saveOverrides(ov);
-    res.json({ ok: true, terminalDeviceId: ov.pos.terminalDeviceId, terminalName: ov.pos.terminalName });
+    res.json({ ok: true, terminalDeviceId: String(deviceId), terminalName: String(name || '').slice(0, 60) });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+// Forget the paired reader (e.g. it was unpaired on the device itself). Clears
+// this store's reader (or the default one) so the POS stops trying to reach it.
+app.post('/api/pos/terminal/disconnect', async (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  if (!db.enabled) return res.status(400).json({ error: 'A database is required to change the terminal.' });
+  try {
+    const { locationId } = req.body || {};
+    const ov = db.getOverrides() || {};
+    ov.pos = ov.pos || {};
+    if (locationId && ov.pos.terminalByLocation && ov.pos.terminalByLocation[locationId]) {
+      const m = { ...ov.pos.terminalByLocation }; delete m[locationId]; ov.pos.terminalByLocation = m;
+    } else {
+      ov.pos.terminalDeviceId = ''; ov.pos.terminalName = '';
+    }
+    await db.saveOverrides(ov);
+    res.json({ ok: true });
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
 app.get('/api/admin/kds/config', (req, res) => {
   if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
   const cfg = kds.kdsSettings();
-  res.json({ ...cfg, allZone: kds.ALL_ZONE, dbEnabled: db.enabled });
+  res.json({ ...cfg, allZone: kds.ALL_ZONE, dbEnabled: db.enabled, locations: locations.publicList() });
 });
 
-// The live ticket feed.
+// The live ticket feed (scoped to the screen's chosen store).
 app.get('/api/admin/kds/tickets', async (req, res) => {
   if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
   res.setHeader('Cache-Control', 'no-store');
   try {
-    const data = await kds.fetchTickets();
+    const data = await kds.fetchTickets(locations.squareIdFor(req.query.location));
     res.json(data);
   } catch (e) {
     res.status(502).json({ error: e.message });
