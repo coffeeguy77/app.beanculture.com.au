@@ -3264,6 +3264,10 @@ body:has(.store-shell) { background: var(--bc-canvas-deep, #160f12); }
 .kds-seg-btn { border: none; background: none; color: #cfd8e2; border-radius: 8px; padding: 7px 11px; font-family: inherit; font-size: 13px; font-weight: 700; cursor: pointer; min-width: 34px; }
 .kds-seg-btn.on { background: #2b6cb0; color: #fff; }
 .kds-icon.on { background: #2b6cb0; border-color: #2b6cb0; }
+.kds-bumpall { height: 44px; padding: 0 16px; border-radius: 11px; border: 1px solid #2f7d55; background: #2f7d55; color: #fff; font-family: inherit; font-size: 15px; font-weight: 800; cursor: pointer; white-space: nowrap; }
+.kds-bumpall:hover:not(:disabled) { background: #37955f; border-color: #37955f; }
+.kds-bumpall:disabled { opacity: .4; cursor: default; }
+@media (max-width: 640px) { .kds-bumpall { padding: 0 12px; height: 40px; font-size: 14px; } }
 
 /* ── KDS: density = Compact (tighter cards, more per screen) ── */
 .kds-root.kds-compact .kds-grid { gap: 8px; padding: 8px; }

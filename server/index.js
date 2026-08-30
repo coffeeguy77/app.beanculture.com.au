@@ -1442,12 +1442,17 @@ app.get('/api/admin/kds/tickets', async (req, res) => {
 app.post('/api/admin/kds/bump', async (req, res) => {
   if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
   try {
-    const { orderId, zone, status } = req.body || {};
-    if (!orderId || !zone) return res.status(400).json({ error: 'Missing orderId or zone' });
+    const { orderId, orderIds, zone, status } = req.body || {};
+    if (!zone) return res.status(400).json({ error: 'Missing zone' });
     if (!['new', 'preparing', 'done'].includes(status)) return res.status(400).json({ error: 'Bad status' });
-    const row = await db.kdsSetStatus(orderId, zone, status);
+    // Bulk: bump every listed order in this station in one request (used by
+    // "Bump all"). Falls back to the single-order form for the per-ticket button.
+    const ids = Array.isArray(orderIds) ? orderIds.filter(Boolean) : (orderId ? [orderId] : []);
+    if (!ids.length) return res.status(400).json({ error: 'Missing orderId(s)' });
+    const rows = [];
+    for (const id of ids) rows.push(await db.kdsSetStatus(id, zone, status));
     kdsBroadcast('bump');
-    res.json({ ok: true, row });
+    res.json({ ok: true, count: rows.length, row: rows[0], rows });
   } catch (e) {
     res.status(400).json({ error: e.message });
   }

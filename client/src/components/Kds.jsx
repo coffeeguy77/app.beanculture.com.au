@@ -149,6 +149,28 @@ export default function Kds({ onExit, embedded }) {
     } catch { setErr('Bump didn’t save — check the connection.'); loadTickets(); }
   }
 
+  // Bump every open ticket in the current station at once. Confirms first so a
+  // stray tap can't clear the whole board.
+  async function bumpAll() {
+    const ids = active.map((t) => t.orderId);
+    if (!ids.length) return;
+    const label = zone === ALL ? 'all stations' : (zones.find((z) => z.id === zone)?.name || 'this station');
+    if (typeof window !== 'undefined' && !window.confirm(`Bump all ${ids.length} open ticket${ids.length > 1 ? 's' : ''} for ${label}?`)) return;
+    const idSet = new Set(ids);
+    setTickets((ts) => ts.map((t) => (idSet.has(t.orderId) ? { ...t, zoneStatus: { ...t.zoneStatus, [zone]: 'done' } } : t)));
+    try {
+      const r = await fetch(`/api/admin/kds/bump?pass=${encodeURIComponent(pass)}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderIds: ids, zone, status: 'done' }),
+      });
+      if (!r.ok) {
+        let msg = `Bump all failed (${r.status})`;
+        try { const d = await r.json(); if (d && d.error) msg = `Bump all failed: ${d.error}`; } catch {}
+        setErr(msg); loadTickets();
+      } else { setErr(''); }
+    } catch { setErr('Bump all didn’t save — check the connection.'); loadTickets(); }
+  }
+
   async function installKds() {
     if (!deferredPrompt) return;
     deferredPrompt.prompt();
@@ -240,6 +262,9 @@ export default function Kds({ onExit, embedded }) {
             </select>
           )}
           <span className={`kds-live${live ? ' on' : ''}`} title={live ? 'Live' : 'Reconnecting…'}>{live ? '● Live' : '○ Polling'}</span>
+          <button className="kds-bumpall" title="Bump every open ticket in this station" disabled={!active.length} onClick={bumpAll}>
+            Bump all{active.length ? ` (${active.length})` : ''}
+          </button>
           <button className={`kds-icon${showLayout ? ' on' : ''}`} title="Layout" onClick={() => setShowLayout((v) => !v)}>▦</button>
           <button className="kds-icon" title={soundOn ? 'Mute new-order sound' : 'Unmute'} onClick={() => setMuted((m) => !m)}>{soundOn ? '🔔' : '🔕'}</button>
           <button className="kds-icon" title="Refresh" onClick={() => loadTickets()}>⟳</button>
