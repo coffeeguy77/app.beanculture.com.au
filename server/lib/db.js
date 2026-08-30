@@ -425,6 +425,10 @@ async function markMessageHandled(id, handled = true) {
   if (!pool) return;
   await pool.query('UPDATE messages SET handled = $2 WHERE id = $1', [id, !!handled]);
 }
+async function deleteMessage(id) {
+  if (!pool || !id) return;
+  await pool.query('DELETE FROM messages WHERE id = $1', [id]);
+}
 
 // ---- Table reservations ----
 async function insertReservation({ name, phone, email, party, reserveAt, notes, squareOrderId }) {
@@ -885,7 +889,7 @@ module.exports = {
   posRecordOrder, posPaymentUpsert, posPaymentSetStatus, posPaymentGet, posPaymentByOrder,
   insertScheduled, listScheduledByCustomer, cancelScheduled, claimDue, updateScheduled,
   track, getAnalytics,
-  insertMessage, listMessages, markMessageHandled,
+  insertMessage, listMessages, markMessageHandled, deleteMessage,
   insertReservation, listReservations, setReservationStatus, deleteReservation,
   pifInsertGift, pifGetById, pifGetByToken, pifGetByCode, pifSetPaymentResult, pifSetGiftValue,
   pifMarkViewed, pifMarkClaimed, pifUpdateSms, pifReserve, pifConfirmRedemption, pifReleaseRedemption,

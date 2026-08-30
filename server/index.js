@@ -874,6 +874,15 @@ app.post('/api/admin/messages/handled', async (req, res) => {
     res.status(502).json({ error: e.message });
   }
 });
+app.post('/api/admin/messages/delete', async (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    await db.deleteMessage(req.body?.id);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
 
 // ---- Table reservations ----
 app.post('/api/reserve', async (req, res) => {
@@ -1049,9 +1058,27 @@ app.get('/api/admin/overview', async (req, res) => {
   try {
     menu = await catalog.getFullMenu(); // includes new/empty categories for the builder
   } catch {}
+  // Per-location open/closed (+ event countdown) so the dashboard can show every
+  // store at a glance, not just the main one.
+  let locationStatuses = [];
+  try {
+    const list = locations.active();
+    locationStatuses = await Promise.all(list.map(async (l) => {
+      const st = await hours.getStatus(l.id).catch(() => null);
+      return {
+        id: l.id, name: l.name, type: l.type || 'physical', hidden: !!l.hidden,
+        open: st ? !!st.open : null,
+        canOrderNow: st ? st.canOrderNow !== false : null,
+        opening: st && st.opening ? { label: st.opening.label, daysUntil: st.opening.daysUntil } : null,
+        nextOpenLabel: st && st.nextOpen ? st.nextOpen.label : null,
+        ended: st ? !!st.ended : false,
+      };
+    }));
+  } catch {}
   res.json({
     settings,
     hours: hoursStatus,
+    locationStatuses,
     cloudinary: cloudinary.configured(),
     dbEnabled: db.enabled, // drives the admin "changes won't persist" banner
     categories: menu ? menu.categories.map((c) => ({ name: c.category, count: c.items.length })) : [],

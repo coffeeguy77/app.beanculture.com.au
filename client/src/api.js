@@ -52,6 +52,7 @@ export const api = {
   sendMessage: (payload) => req('/api/message', { method: 'POST', body: JSON.stringify(payload) }),
   adminMessages: (pass) => req(`/api/admin/messages?pass=${encodeURIComponent(pass || '')}`),
   markMessage: (pass, id, handled) => req(`/api/admin/messages/handled?pass=${encodeURIComponent(pass || '')}`, { method: 'POST', body: JSON.stringify({ id, handled }) }),
+  deleteMessage: (pass, id) => req(`/api/admin/messages/delete?pass=${encodeURIComponent(pass || '')}`, { method: 'POST', body: JSON.stringify({ id }) }),
   // Analytics
   track: (events) => req('/api/track', { method: 'POST', body: JSON.stringify({ events }) }),
   adminAnalytics: (pass, days = 30) => req(`/api/admin/analytics?days=${days}&pass=${encodeURIComponent(pass || '')}`),

@@ -470,6 +470,11 @@ export default function Admin({ onExit }) {
     setMsgs((xs) => (xs || []).map((x) => (x.id === m.id ? { ...x, handled: next } : x)));
     try { await api.markMessage(pass, m.id, next); } catch {}
   }
+  async function deleteMsg(m) {
+    if (!window.confirm('Delete this message permanently?')) return;
+    setMsgs((xs) => (xs || []).filter((x) => x.id !== m.id));
+    try { await api.deleteMessage(pass, m.id); } catch (e) { alert('Could not delete: ' + e.message); loadMessages && loadMessages(); }
+  }
   async function loadReservations(silent = false) {
     try { const d = await api.adminReservations(pass); setResv(d.reservations || []); setResvChannels({ sms: d.sms, email: d.email }); }
     catch (e) { if (!silent) alert('Could not load reservations: ' + e.message); }
@@ -1687,19 +1692,27 @@ export default function Admin({ onExit }) {
                   <div className="admin-greet">{_greeting}</div>
                   <p className="admin-page-desc">Here’s what’s happening at Bean Culture today.</p>
                 </div>
+                {/* One status tile PER store, so multiple locations each show their
+                    own Open / Closed / event countdown — not a single ambiguous one. */}
                 <div className="stat-tiles" style={{ marginBottom: 18 }}>
-                  <div className="stat-tile">
-                    <div className="stat-v" style={{ color: h.open ? 'var(--admin-success)' : 'var(--admin-danger)' }}>{h.open ? 'Open' : 'Closed'}</div>
-                    <div className="stat-l">Store status{h.timezone ? ` · ${h.timezone}` : ''}</div>
-                  </div>
-                  <div className="stat-tile" style={{ cursor: 'pointer' }} onClick={() => setTab('reservations')}>
-                    <div className="stat-v">{upcomingResv.length}{newResvCount > 0 ? <span style={{ fontSize: 13, color: 'var(--admin-accent)' }}> · {newResvCount} new</span> : null}</div>
-                    <div className="stat-l">Upcoming reservations</div>
-                  </div>
-                  <div className="stat-tile" style={{ cursor: 'pointer' }} onClick={() => setTab('store')}>
-                    <div className="stat-v">{msgs ? unreadMsgs.length : '—'}</div>
-                    <div className="stat-l">New messages</div>
-                  </div>
+                  {((data.locationStatuses && data.locationStatuses.length)
+                    ? data.locationStatuses
+                    : [{ id: 'main', name: (s && s.storeName) || 'Store', type: 'physical', open: h.open }]
+                  ).map((l) => {
+                    const opening = l.opening;
+                    const word = l.ended ? 'Ended' : opening ? 'Opens' : (l.open ? 'Open' : 'Closed');
+                    const color = l.ended ? 'var(--admin-muted, #8a7680)'
+                      : opening ? 'var(--admin-warning, #b26b00)'
+                      : (l.open ? 'var(--admin-success)' : 'var(--admin-danger)');
+                    const detail = opening ? opening.label : '';
+                    const typeTag = l.type === 'event' ? ' · event' : l.type === 'popup' ? ' · pop-up' : '';
+                    return (
+                      <div key={l.id} className="stat-tile" style={{ cursor: 'pointer' }} onClick={() => setTab('locations')}>
+                        <div className="stat-v" style={{ color, fontSize: 20 }}>{l.open && !opening ? '● ' : ''}{word}</div>
+                        <div className="stat-l">{l.name}{typeTag}{detail ? ` · ${detail}` : ''}</div>
+                      </div>
+                    );
+                  })}
                   <div className="stat-tile" style={{ cursor: 'pointer' }} onClick={() => setTab('users')}>
                     <div className="stat-v">{users ? users.length : '—'}</div>
                     <div className="stat-l">Loyalty members</div>
@@ -1710,7 +1723,7 @@ export default function Admin({ onExit }) {
                   {/* Upcoming reservations — future only, nothing past. */}
                   <div className="card" style={{ marginBottom: 0 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div className="group-title" style={{ margin: 0 }}>Upcoming reservations</div>
+                      <div className="group-title" style={{ margin: 0 }}>Upcoming reservations{upcomingResv.length ? ` (${upcomingResv.length}${newResvCount > 0 ? `, ${newResvCount} new` : ''})` : ''}</div>
                       <button type="button" className="link" style={{ padding: 0, fontSize: 'var(--fs-base)' }} onClick={() => setTab('reservations')}>View all</button>
                     </div>
                     {resv === null && <div className="cmd-empty">Loading…</div>}
@@ -1740,7 +1753,7 @@ export default function Admin({ onExit }) {
                   {/* New customer messages — reply straight from here. */}
                   <div className="card" style={{ marginBottom: 0 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div className="group-title" style={{ margin: 0 }}>New messages</div>
+                      <div className="group-title" style={{ margin: 0 }}>New messages{unreadMsgs.length ? ` (${unreadMsgs.length})` : ''}</div>
                       <button type="button" className="link" style={{ padding: 0, fontSize: 'var(--fs-base)' }} onClick={() => setTab('store')}>All messages</button>
                     </div>
                     {msgs === null && <div className="cmd-empty">Loading…</div>}
@@ -1759,6 +1772,7 @@ export default function Admin({ onExit }) {
                             <div className="cmd-row-actions">
                               {href && <a className="link" style={{ padding: 0, fontSize: 'var(--fs-base)', color: 'var(--admin-accent)' }} href={href}>Reply</a>}
                               <button className="link" style={{ padding: 0, fontSize: 'var(--fs-base)' }} onClick={() => toggleHandled(m)}>Mark done</button>
+                              <button className="link" style={{ padding: 0, fontSize: 'var(--fs-base)', color: 'var(--admin-danger)' }} onClick={() => deleteMsg(m)}>Delete</button>
                             </div>
                           </div>
                         );
@@ -1766,9 +1780,10 @@ export default function Admin({ onExit }) {
                     </div>
                   </div>
 
-                  {/* Upcoming closures / public holidays — next 30 days. */}
-                  <div className="card" style={{ marginBottom: 0 }}>
-                    <div className="group-title" style={{ margin: 0 }}>Upcoming closures (next 30 days)</div>
+                  {/* Upcoming closures / public holidays — next 30 days. Spans the
+                      full width so it doesn't leave an empty cell beside it. */}
+                  <div className="card" style={{ marginBottom: 0, gridColumn: '1 / -1' }}>
+                    <div className="group-title" style={{ margin: 0 }}>Upcoming closures (next 30 days){upcomingClosures.length ? ` (${upcomingClosures.length})` : ''}</div>
                     {upcomingClosures.length === 0 && <div className="cmd-empty">Open every day for the next 30 days.</div>}
                     <div className="cmd-list">
                       {upcomingClosures.map((c, i) => (
@@ -1895,7 +1910,10 @@ export default function Admin({ onExit }) {
                       </div>
                       {m.contact && <div className="muted" style={{ fontSize: 'var(--fs-sm)', margin: '2px 0' }}>{m.contact}</div>}
                       <div style={{ fontSize: 'var(--fs-md)', whiteSpace: 'pre-line' }}>{m.body}</div>
-                      <button className="link" style={{ padding: 0, fontSize: 'var(--fs-base)' }} onClick={() => toggleHandled(m)}>{m.handled ? 'Mark unread' : 'Mark done'}</button>
+                      <div style={{ display: 'flex', gap: 16, marginTop: 4 }}>
+                        <button className="link" style={{ padding: 0, fontSize: 'var(--fs-base)' }} onClick={() => toggleHandled(m)}>{m.handled ? 'Mark unread' : 'Mark done'}</button>
+                        <button className="link" style={{ padding: 0, fontSize: 'var(--fs-base)', color: 'var(--admin-danger)' }} onClick={() => deleteMsg(m)}>Delete</button>
+                      </div>
                     </div>
                   ))}
                 </div>
