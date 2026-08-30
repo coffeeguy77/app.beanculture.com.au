@@ -145,7 +145,11 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
       : Math.max(0, Math.round(cartTotal * (1 - (couponInfo.value || 0) / 100))))
     : cartTotal;
   const couponFree = couponValid && discountedTotal === 0;
-  const payTotal = couponValid ? discountedTotal : Math.max(0, cartTotal - pifEstimateCents);
+  // Complimentary event store: the order is billed $0 server-side, so the app
+  // skips the card step entirely and just places the order to the kitchen.
+  const storeFree = !!(location && location.free);
+  const isFree = couponFree || storeFree;
+  const payTotal = storeFree ? 0 : (couponValid ? discountedTotal : Math.max(0, cartTotal - pifEstimateCents));
   // Surcharge estimate (server is authoritative; this mirrors it for the summary
   // so the customer sees the weekend/card surcharge before paying).
   const scfg = (config && config.surcharges) || {};
@@ -183,6 +187,8 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
   useEffect(() => {
     let cancelled = false;
     async function init() {
+      // A complimentary/event order takes no card — don't load the Square SDK.
+      if (storeFree) { setStatus('ready'); return; }
       try {
         const Square = await loadSquareSdk(config.environment);
         if (cancelled) return;
@@ -359,7 +365,7 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
   const scheduleAllowed = true; // pay-now scheduling always ok; auto-charge needs sched.enabled (checked on submit)
   const ctaLabel = autocharge
     ? (isRepeat ? 'Set up repeating order' : 'Schedule order')
-    : (couponFree ? 'Place order' : `Pay ${formatMoney(grandTotal, currency)}`);
+    : (isFree ? 'Place order' : `Pay ${formatMoney(grandTotal, currency)}`);
 
   return (
     <main className="page checkout-page">
@@ -486,7 +492,16 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
         <textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. extra hot, no sugar, allergy info" />
       </label>
 
+      {/* Complimentary event order — no payment. */}
+      {isFree && storeFree && (
+        <div className="group" style={{ marginTop: 16 }}>
+          <div className="group-title">No payment needed</div>
+          <p className="muted" style={{ fontSize: 14, margin: 0 }}>These coffees are complimentary — just place your order and we’ll make it.</p>
+        </div>
+      )}
+
       {/* Payment method */}
+      {!isFree && (
       <div className="group" style={{ marginTop: 16 }}>
         <div className="group-title">Payment</div>
         {(savedCards.length > 0 || (!autocharge && giftBalance >= cartTotal && cartTotal > 0)) && (
@@ -510,6 +525,7 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
           </div>
         )}
       </div>
+      )}
 
       {/* Order summary — stays on screen so you always see what you're buying. */}
       {cart.length > 0 && (
@@ -604,7 +620,7 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
 
       {status !== 'error' && (
         <>
-          {!hideWallets && (
+          {!isFree && !hideWallets && (
             <WalletButtons
               payments={paymentsObj}
               amount={cartTotal}
@@ -619,8 +635,8 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
           )}
 
           {/* Card entry — hidden when paying with a saved card */}
-          <div id="card-container" className="card-box" style={{ display: usingNewCard && !couponFree ? 'block' : 'none', marginTop: 8 }} />
-          {usingNewCard && user?.customerId && !autocharge && (
+          <div id="card-container" className="card-box" style={{ display: usingNewCard && !isFree ? 'block' : 'none', marginTop: 8 }} />
+          {!isFree && usingNewCard && user?.customerId && !autocharge && (
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, fontSize: 14, cursor: 'pointer' }}>
               <input type="checkbox" checked={saveNew} onChange={(e) => setSaveNew(e.target.checked)} />
               <span>Save this card for next time</span>
@@ -634,7 +650,7 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
           <button className="btn full" style={{ marginTop: 12 }} disabled={busy || status !== 'ready'} onClick={place}>
             {busy ? 'Working…' : ctaLabel}
           </button>
-          <p className="secure-note">Payments processed securely by Square.</p>
+          {!isFree && <p className="secure-note">Payments processed securely by Square.</p>}
         </>
       )}
     </main>

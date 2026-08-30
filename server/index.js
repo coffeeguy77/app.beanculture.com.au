@@ -266,7 +266,10 @@ app.post('/api/orders', async (req, res) => {
         }
       } catch (e) { console.error('pif recipient enrol failed', e.message); }
     }
-    const order = await orders.createOrder({ cart, dineIn: !!dineIn, table, name, coupon, customerId: effectiveCustomerId, pickupAt, note, pifVoucher, squareLocationId, cardPayment: cardPayment !== false });
+    // Free/complimentary is decided by the STORE, never the client — an event
+    // store bills $0 and routes straight to the kitchen.
+    const freeOrder = locations.isFree(locationId);
+    const order = await orders.createOrder({ cart, dineIn: !!dineIn, table, name, coupon, customerId: effectiveCustomerId, pickupAt, note, pifVoucher, squareLocationId, cardPayment: cardPayment !== false, free: freeOrder });
 
     let rewardApplied = false;
     if (loy && loy.accountId && loy.tierId) {
@@ -1139,6 +1142,7 @@ app.post('/api/pos/order', async (req, res) => {
     const order = await orders.createOrder({
       cart, dineIn: !!dineIn, table: table || '', name: name || '',
       source: pos.sourceName || 'Bean Culture POS', squareLocationId, cardPayment: tender === 'card',
+      free: locations.isFree(locationId),
     });
     const amount = order.total_money ? order.total_money.amount : 0;
     const currency = (order.total_money && order.total_money.currency) || sq.CURRENCY;

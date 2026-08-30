@@ -94,6 +94,9 @@ function list() {
     active: l.active !== false,
     hiddenItemIds: Array.isArray(l.hiddenItemIds) ? l.hiddenItemIds : [],
     type: (l.type === 'popup' || l.type === 'event') ? l.type : 'physical',
+    // Free / no-payment ordering (corporate event hire — complimentary coffees).
+    // Defaults on for an Event store; overridable per store either way.
+    free: l.free != null ? !!l.free : (l.type === 'event'),
     // Per-store fulfilment overrides ({ dineIn, takeaway, reservations }); any
     // key left undefined falls back to the type default (see fulfilmentFor).
     fulfilment: (l.fulfilment && typeof l.fulfilment === 'object') ? l.fulfilment : null,
@@ -136,6 +139,12 @@ function hiddenSet(locId) {
   return new Set(resolve(locId).hiddenItemIds || []);
 }
 
+// Whether this store gives complimentary (free / no-payment) orders. The order
+// code is server-authoritative on this — never trust a client "free" flag.
+function isFree(locId) {
+  return !!resolve(locId).free;
+}
+
 // Shape for the client. Includes squareLocationId because the browser card SDK
 // (Square.payments) is already initialised with a Square location id — it must
 // tokenise against the store the customer chose so the charge lands there.
@@ -169,11 +178,13 @@ function publicList() {
       // Which order types this store offers, so the app can show only the
       // relevant choices (e.g. takeaway-only at a pop-up).
       fulfilment: fulfilmentFor(l),
+      // Complimentary ordering (no payment) — the app hides the card step.
+      free: !!l.free,
     };
   });
 }
 
 module.exports = {
-  list, active, resolve, squareIdFor, hiddenSet, publicList, slug,
+  list, active, resolve, squareIdFor, hiddenSet, isFree, publicList, slug,
   popupState, todayISO, dayDiff, fulfilmentFor, typeFulfilmentDefaults,
 };

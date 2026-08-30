@@ -23,7 +23,7 @@ function buildNote({ dineIn, table }) {
   return dineIn ? `DINE-IN · Table ${table || '?'}` : 'TAKEAWAY';
 }
 
-async function createOrder({ cart, dineIn, table, name, coupon, customerId, pickupAt, idempotencyKey, note: customerNote, pifVoucher, source, squareLocationId, cardPayment }) {
+async function createOrder({ cart, dineIn, table, name, coupon, customerId, pickupAt, idempotencyKey, note: customerNote, pifVoucher, source, squareLocationId, cardPayment, free }) {
   const LOC = squareLocationId || LOCATION_ID;
   if (!Array.isArray(cart) || cart.length === 0) throw new Error('Cart is empty');
   // Bake any per-combo locked modifiers into the combo lines before pricing, so
@@ -31,10 +31,14 @@ async function createOrder({ cart, dineIn, table, name, coupon, customerId, pick
   // a tampered client left it off. No-op for carts without a combo.
   cart = await combos.applyLockedMods(cart);
 
-  const isComp =
+  // A "comp" order is billed at $0: either a test-comp coupon, or a free/event
+  // store (corporate hire — complimentary coffees; the caller sets `free` from
+  // the location, server-authoritative). It still routes to the kitchen.
+  const isTestComp =
     !!COMP_COUPON_CODE &&
     !!coupon &&
     String(coupon).trim().toLowerCase() === COMP_COUPON_CODE.toLowerCase();
+  const isComp = isTestComp || !!free;
 
   // Every line item gets a stable uid so a Pay It Forward voucher's
   // LINE_ITEM-scope discount can be attached to exactly the eligible lines
@@ -95,7 +99,7 @@ async function createOrder({ cart, dineIn, table, name, coupon, customerId, pick
   let pifReservation = null;
   if (isComp) {
     order.discounts = [
-      { uid: 'comp', name: `Test comp (${COMP_COUPON_CODE})`, percentage: '100', scope: 'ORDER' },
+      { uid: 'comp', name: free ? 'Complimentary (event)' : `Test comp (${COMP_COUPON_CODE})`, percentage: '100', scope: 'ORDER' },
     ];
   } else if (pifVoucher) {
     const reservation = await payItForward.reserveForCheckout({ tokenOrCode: pifVoucher, cart, redeemedByCustomerId: customerId });

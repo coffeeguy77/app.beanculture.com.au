@@ -3334,11 +3334,25 @@ export default function Admin({ onExit }) {
                         </label>
 
                         <label className="field" style={{ margin: 0 }}><span>Store type</span>
-                          <select value={l.type === 'popup' ? 'popup' : 'physical'} onChange={(e) => updLoc(l.id, { type: e.target.value })}>
+                          <select value={(l.type === 'popup' || l.type === 'event') ? l.type : 'physical'} onChange={(e) => updLoc(l.id, { type: e.target.value })}>
                             <option value="physical">Permanent store</option>
                             <option value="popup">Pop-up (time-limited)</option>
+                            <option value="event">Event (corporate hire)</option>
                           </select>
                         </label>
+                        {(() => {
+                          const effFree = l.free != null ? !!l.free : (l.type === 'event');
+                          return (
+                            <div className="field" style={{ margin: 0 }}>
+                              <label className="switch"><input type="checkbox" checked={effFree} onChange={(e) => updLoc(l.id, { free: e.target.checked })} /> <span>Free / complimentary ordering (no payment)</span></label>
+                              <p className="muted" style={{ fontSize: 'var(--fs-xs)', margin: '4px 0 0' }}>
+                                {effFree
+                                  ? 'Customers order at $0 and it goes straight to the kitchen — no card step. For corporate-hire events where coffees are free.'
+                                  : 'This store charges normally. Tick to make every order complimentary (e.g. a sponsored event).'}
+                              </p>
+                            </div>
+                          );
+                        })()}
                         {l.type === 'popup' && (
                           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                             <label className="field" style={{ margin: 0 }}><span>Opens (first day)</span>
