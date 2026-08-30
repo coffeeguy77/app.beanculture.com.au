@@ -5,7 +5,7 @@ import IconPicker from './IconPicker.jsx';
 import HoursEditor from './HoursEditor.jsx';
 import Insights from './Insights.jsx';
 import EffectBuilder from './EffectBuilder.jsx';
-import { formatMoney, api } from '../api.js';
+import { formatMoney, api, imgUrl } from '../api.js';
 
 const LINK_TYPES = ['scroll', 'category', 'item', 'account', 'payitforward', 'url', 'none'];
 // Friendly labels for the banner "destination" dropdowns.
