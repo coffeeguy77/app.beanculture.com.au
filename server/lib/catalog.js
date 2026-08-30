@@ -552,15 +552,19 @@ async function getMenu(opts = {}) {
     // A builder section shows on the storefront when its Top-menu or Footer
     // toggle is on. Top → top category bar; Footer → footer menu (grouped by the
     // Footer menu builder, or its own button). showImages hides empty thumbnails.
+    // A third toggle — "Event locations" (nav.event) — includes the section in
+    // the menu WITHOUT putting it in the main menus: it's tagged eventOnly so it
+    // only surfaces at a store whose event-menu list names it (see /api/menu).
     for (const [secName, tiles] of presetsBySection) {
       const existing = sections.find((s) => s.category.toLowerCase() === secName.toLowerCase());
       if (existing) { existing.items.push(...tiles); continue; }
       const nav = sectionNav[secName] || {};
-      if (!(nav.top === true || nav.footer === true)) continue;
+      if (!(nav.top === true || nav.footer === true || nav.event === true)) continue;
+      const eventOnly = nav.top !== true && nav.footer !== true && nav.event === true;
       const banner = nav.banner && nav.banner.on && (nav.banner.title || nav.banner.image)
         ? { title: nav.banner.title || '', image: nav.banner.image || null, itemId: nav.banner.itemId || null, hideText: nav.banner.hideText === true }
         : null;
-      sections.push({ category: secName, items: tiles, showImages: nav.showImages !== false, custom: true, builder: true, topNav: nav.top === true, footerNav: nav.footer === true, banner });
+      sections.push({ category: secName, items: tiles, showImages: nav.showImages !== false, custom: true, builder: true, topNav: nav.top === true, footerNav: nav.footer === true, eventOnly, banner });
     }
     // Hide the original master items now that presets represent them (keep the
     // preset tiles themselves). Drop any section left empty as a result.

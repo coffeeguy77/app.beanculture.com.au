@@ -1108,10 +1108,14 @@ export default function Admin({ onExit }) {
     const cats = Array.isArray(sc.categories) ? sc.categories : [];
     updateSchedule(id, { categories: cats.includes(name) ? cats.filter((c) => c !== name) : [...cats, name] });
   };
-  // Category names a schedule can target (app categories + custom product sections).
+  // Category names a schedule / event menu can target: app categories, custom
+  // product sections, AND Product-Builder section names (so an "Event locations"
+  // section like "Events" can be picked for an event store's menu even when it's
+  // not on the normal menus).
   const scheduleCatOptions = [...new Set([
     ...adminCat.map((c) => c.category),
     ...productSections.map((ps) => ps.name),
+    ...(Array.isArray(s?.presets) ? s.presets.map((p) => (p.section || '').trim()) : []),
   ].filter(Boolean))];
 
   // ---- Kitchen Screen (KDS) config ----
@@ -2472,6 +2476,9 @@ export default function Admin({ onExit }) {
                           </label>
                           <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 'var(--fs-sm)' }} title="Show this section in the footer menu">
                             <input type="checkbox" checked={presetSectionNav[secName]?.footer === true} onChange={(e) => setSectionNav(secName, { footer: e.target.checked })} /> Footer
+                          </label>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 'var(--fs-sm)' }} title="Make this section available to event locations WITHOUT putting it in your normal menus. Then pick it under an event store's 'Event menu' list.">
+                            <input type="checkbox" checked={presetSectionNav[secName]?.event === true} onChange={(e) => setSectionNav(secName, { event: e.target.checked })} /> Event locations
                           </label>
                           <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 'var(--fs-sm)' }} title="Show product images for this section (hide to avoid empty thumbnails)">
                             <input type="checkbox" checked={presetSectionNav[secName]?.showImages !== false} onChange={(e) => setSectionNav(secName, { showImages: e.target.checked })} /> Images

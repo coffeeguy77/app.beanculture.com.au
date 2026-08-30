@@ -183,13 +183,20 @@ app.get('/api/menu', async (req, res) => {
     if (hit && hit.data && now - hit.at < MENU_TTL_MS) return res.json(hit.data);
     let menu = await catalog.getMenu({ location: loc });
     // Curated event menu: if this store lists specific sections, show ONLY those
-    // (in the order the store chose) so event guests get a short, fast menu.
+    // (in the order the store chose) and treat them as primary nav so the single
+    // curated section behaves like a normal top-level menu at the event.
     const only = locations.menuSectionsFor(loc);
     if (only.length && Array.isArray(menu.categories)) {
       const rank = new Map(only.map((n, i) => [n, i]));
-      const kept = menu.categories.filter((c) => rank.has(String(c.category || '').toLowerCase()));
+      const kept = menu.categories
+        .filter((c) => rank.has(String(c.category || '').toLowerCase()))
+        .map((c) => ({ ...c, topNav: true, eventOnly: false }));
       kept.sort((a, b) => rank.get(String(a.category).toLowerCase()) - rank.get(String(b.category).toLowerCase()));
       menu = { ...menu, categories: kept };
+    } else if (Array.isArray(menu.categories)) {
+      // A normal store never shows an "Event locations" section — those only
+      // appear where a store's event menu explicitly names them (above).
+      menu = { ...menu, categories: menu.categories.filter((c) => !c.eventOnly) };
     }
     menuByLoc[loc] = { data: menu, at: now };
     if (loc === locations.resolve(null).id) menuCache = { data: menu, at: now }; // keep legacy field warm
@@ -1431,6 +1438,36 @@ app.get('/api/admin/kds/stream', (req, res) => {
 // Square webhook receiver — verifies the HMAC signature, then just nudges the
 // screens to refetch (it never mutates data, so a spoofed ping is harmless, but
 // we still verify when a signature key is configured).
+// ---- Twilio SMS delivery-status callback ----
+// Twilio POSTs (form-encoded) the delivery status of each message we send —
+// queued → sent → delivered, or failed/undelivered. We just record the latest
+// few in memory so the admin can see whether texts are landing; nothing here
+// affects ordering. Point Twilio's "Status callback URL" at /api/twilio/status.
+const twilioStatuses = []; // ring buffer of { at, sid, to, status, errorCode, from }
+app.post('/api/twilio/status', express.urlencoded({ extended: false }), (req, res) => {
+  try {
+    const b = req.body || {};
+    if (b.MessageSid || b.SmsSid || b.MessageStatus || b.SmsStatus) {
+      twilioStatuses.unshift({
+        at: new Date().toISOString(),
+        sid: b.MessageSid || b.SmsSid || '',
+        to: b.To || '',
+        from: b.From || '',
+        status: b.MessageStatus || b.SmsStatus || '',
+        errorCode: b.ErrorCode || '',
+      });
+      if (twilioStatuses.length > 100) twilioStatuses.length = 100;
+      if (b.ErrorCode) console.warn('[twilio] delivery issue', b.MessageStatus, b.ErrorCode, b.To);
+    }
+  } catch (e) { console.error('[twilio] status error', e.message); }
+  // Twilio wants a fast 2xx; an empty 204 is fine (no TwiML needed).
+  res.status(204).end();
+});
+app.get('/api/admin/twilio/status', (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  res.json({ configured: notify.smsConfigured, recent: twilioStatuses.slice(0, 50) });
+});
+
 app.post('/api/square/webhook', (req, res) => {
   try {
     const key = process.env.SQUARE_WEBHOOK_SIGNATURE_KEY || '';
