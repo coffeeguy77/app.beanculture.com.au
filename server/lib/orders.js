@@ -10,10 +10,22 @@ const payItForward = require('./payItForward');
 const DINEIN_FULFILLMENT = (process.env.SQUARE_DINEIN_FULFILLMENT || 'PICKUP').toUpperCase();
 const COMP_COUPON_CODE = (process.env.COMP_COUPON_CODE || '').trim();
 
+// A table can be a plain number ("7") or a custom booth label ("Microsoft
+// Booth", "Booth 1 · Google"). Numbers get the familiar "T7"; a named booth is
+// shown as-is (no "T"/"Table" prefix) so the ticket reads naturally.
+const isNumericTable = (t) => /^\d+$/.test(String(t == null ? '' : t).trim());
+function tableLabel(table) {
+  const t = String(table == null ? '' : table).trim();
+  if (!t) return '';
+  return isNumericTable(t) ? `Table ${t}` : t;
+}
+
 function buildTicketName({ dineIn, table, name }) {
   let t;
-  if (dineIn) t = table ? `T${table} DINE-IN` : 'DINE-IN';
-  else {
+  if (dineIn) {
+    if (!table) t = 'DINE-IN';
+    else t = isNumericTable(table) ? `T${table} DINE-IN` : String(table);
+  } else {
     t = 'TAKEAWAY';
     if (name) t += ` ${name}`;
   }
@@ -21,7 +33,7 @@ function buildTicketName({ dineIn, table, name }) {
 }
 
 function buildNote({ dineIn, table }) {
-  return dineIn ? `DINE-IN · Table ${table || '?'}` : 'TAKEAWAY';
+  return dineIn ? `DINE-IN · ${tableLabel(table) || '?'}` : 'TAKEAWAY';
 }
 
 async function createOrder({ cart, dineIn, table, name, coupon, customerId, pickupAt, idempotencyKey, note: customerNote, pifVoucher, source, squareLocationId, cardPayment, free, freeCategories, shipping }) {
@@ -110,6 +122,11 @@ async function createOrder({ cart, dineIn, table, name, coupon, customerId, pick
     source: { name: source || 'Bean Culture App' },
   };
   if (customerId) order.customer_id = customerId;
+  // Stamp the booth/table on complimentary event orders so the "who got a free
+  // coffee" report can read it straight off the order (no note parsing).
+  if ((isComp || partialComp) && table) {
+    order.metadata = { ...(order.metadata || {}), bc_booth: String(table).slice(0, 60), bc_free: 'event' };
+  }
 
   // A Pay It Forward voucher takes priority over (never stacks with) a combo
   // or typed coupon, same precedent as combo-beats-coupon below. The balance

@@ -1536,6 +1536,84 @@ app.get('/api/admin/analytics/sales', async (req, res) => {
   } catch (e) { res.status(502).json({ error: e.message }); }
 });
 
+// ---- Admin: "who did we give a free coffee to" — the event guest log ----
+// For an event store, every complimentary order is a captured lead: the person
+// enrolled with name + mobile, and the booth they ordered from is on the order.
+// This joins those comp orders to their Square customer (name + phone) so the
+// owner sees e.g. "Bill · 0404 040 404 · Microsoft Booth · 9:14am". Read-only,
+// derived live from Square — nothing new is stored.
+app.get('/api/admin/analytics/event-guests', async (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const days = Math.max(1, Math.min(120, parseInt(req.query.days, 10) || 30));
+    const startAt = new Date(Date.now() - days * 86400000).toISOString();
+    // A specific event store, or every store when none is given.
+    const stores = req.query.location
+      ? [locations.resolve(req.query.location)]
+      : locations.active();
+    // De-dupe by Square location id (several events can share one).
+    const sqLocIds = [...new Set(stores.map((s) => s.squareLocationId).filter(Boolean))];
+    const rows = [];
+    const isCompOrder = (o) =>
+      (o.metadata && o.metadata.bc_free === 'event') ||
+      (o.discounts || []).some((d) => /complimentary \(event\)/i.test(d.name || ''));
+    const boothOf = (o) => {
+      if (o.metadata && o.metadata.bc_booth) return o.metadata.bc_booth;
+      const note = (o.fulfillments && o.fulfillments[0] && o.fulfillments[0].pickup_details && o.fulfillments[0].pickup_details.note) || o.note || '';
+      const m = /DINE-IN ·\s*([^·]+)/i.exec(note);
+      return m ? m[1].trim() : '';
+    };
+    for (const locId of sqLocIds) {
+      let cursor; let pages = 0;
+      do {
+        const data = await sq.squareFetch('/v2/orders/search', {
+          method: 'POST',
+          body: {
+            location_ids: [locId], cursor,
+            query: {
+              filter: { date_time_filter: { created_at: { start_at: startAt } }, state_filter: { states: ['COMPLETED'] } },
+              sort: { sort_field: 'CREATED_AT', sort_order: 'DESC' },
+            },
+            limit: 500,
+          },
+        }).catch(() => ({}));
+        for (const o of (data.orders || [])) {
+          if (!isCompOrder(o)) continue;
+          rows.push({
+            orderId: o.id,
+            customerId: o.customer_id || null,
+            booth: boothOf(o),
+            at: o.created_at,
+            paid: (o.total_money && o.total_money.amount) || 0, // >0 = also bought beans etc.
+          });
+        }
+        cursor = data.cursor; pages += 1;
+      } while (cursor && pages < 6);
+    }
+    // Join Square customers for name + phone (bulk, chunked).
+    const ids = [...new Set(rows.map((r) => r.customerId).filter(Boolean))];
+    const custMap = new Map();
+    for (let i = 0; i < ids.length; i += 100) {
+      try {
+        const data = await sq.squareFetch('/v2/customers/bulk-retrieve', { method: 'POST', body: { customer_ids: ids.slice(i, i + 100) } });
+        for (const [id, r] of Object.entries(data.responses || {})) if (r.customer) custMap.set(id, r.customer);
+      } catch { /* thinner detail on a failed chunk */ }
+    }
+    const guests = rows.map((r) => {
+      const c = r.customerId ? custMap.get(r.customerId) : null;
+      const name = c ? ([c.given_name, c.family_name].filter(Boolean).join(' ').trim() || c.company_name || c.nickname || '') : '';
+      return {
+        name: name || 'Guest',
+        phone: (c && c.phone_number) || '',
+        booth: r.booth || '',
+        at: r.at,
+        paidExtra: r.paid > 0,
+      };
+    }).sort((a, b) => new Date(b.at) - new Date(a.at));
+    res.json({ days, count: guests.length, guests });
+  } catch (e) { res.status(502).json({ error: e.message }); }
+});
+
 // ---- Admin: list this Square account's locations (id + name) so the Locations
 //      setup can offer a dropdown instead of hunting for the id in Square. ----
 app.get('/api/admin/square-locations', async (req, res) => {
