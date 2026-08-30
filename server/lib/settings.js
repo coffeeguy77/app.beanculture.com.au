@@ -91,6 +91,10 @@ const DEFAULTS = {
   // A modifier not listed is hidden; 'optional' = shown/off, 'default' = shown/on,
   // 'locked' = hidden + always applied (its price is baked into the tile price).
   presets: [],
+  // Square variation ids the owner has deleted a builder tile for — "Sync new
+  // variations from Square" never auto-re-adds these (so a deleted tile stays
+  // deleted). Cleared for a variation once a tile covers it again.
+  builderExcludedVariationIds: [],
   // When on, an item that has presets built from it is hidden from the normal
   // menu (its presets represent it), so the big master tile doesn't also show.
   hidePresetSources: true,

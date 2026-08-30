@@ -899,7 +899,17 @@ export default function Admin({ onExit }) {
   const addPreset = () =>
     setPresets([...presets, { id: 'pre' + Date.now().toString(36), name: 'New preset', section: 'Breakfast', sourceItemId: '', variationId: '', groups: {}, showImages: true }]);
   const updPreset = (id, patch) => setPresets(presets.map((x) => (x.id === id ? { ...x, ...patch } : x)));
-  const rmPreset = (id) => setPresets(presets.filter((x) => x.id !== id));
+  const rmPreset = (id) => {
+    // Remember the variations this tile covered so "Sync new variations from
+    // Square" doesn't silently re-create the tile you just deleted (the cause of
+    // "deleted teas keep coming back"). Cleared automatically if you rebuild a
+    // tile for that variation.
+    const p = presets.find((x) => x.id === id);
+    const vids = p ? (Array.isArray(p.variationIds) && p.variationIds.length ? p.variationIds : [p.variationId].filter(Boolean)) : [];
+    const ex = new Set(Array.isArray(s?.builderExcludedVariationIds) ? s.builderExcludedVariationIds : []);
+    vids.forEach((v) => ex.add(v));
+    set({ presets: presets.filter((x) => x.id !== id), builderExcludedVariationIds: [...ex] });
+  };
   // Cycle a modifier through Off → Show → Default → Lock → Off for a preset.
   const CYCLE = { undefined: 'optional', off: 'optional', optional: 'default', default: 'locked', locked: undefined };
   const cyclePresetMod = (presetId, groupId, modId) =>
@@ -1220,23 +1230,32 @@ export default function Admin({ onExit }) {
       // sizes; everything else adds as a separate tile.
       const combinedForSource = {};
       for (const p of reconciled) if (isCombined(p) && !combinedForSource[p.sourceItemId]) combinedForSource[p.sourceItemId] = p;
-      const added = []; let extended = 0;
+      // Variations the owner has deliberately deleted — never auto-re-add these.
+      const excluded = new Set(Array.isArray(s?.builderExcludedVariationIds) ? s.builderExcludedVariationIds : []);
+      const added = []; let extended = 0; let skippedExcluded = 0;
       for (const id of sourceIds) {
         const cfg = configs[id]; if (!cfg) continue;
         const covered = coveredBySource[id] || new Set();
         for (const v of cfg.variations) {
           if (covered.has(v.id)) continue;
+          if (excluded.has(v.id)) { skippedExcluded++; continue; } // owner deleted this — leave it out
           covered.add(v.id);
           const combo = combinedForSource[id];
           if (combo) { combo.variationIds = [...presetVids(combo), v.id]; combo.variationId = combo.variationIds[0]; extended++; }
           else { reconciled.push({ id: newPresetId(), name: v.name || cfg.name, section: sectionBySource[id] || 'Specials', sourceItemId: id, variationId: v.id, groups: {}, showImages: true }); added.push(v.name || cfg.name); }
         }
       }
-      setPresets(reconciled);
+      // Self-heal: a variation that's now covered by a tile again is no longer
+      // "excluded" (so a rebuilt tile sticks and stays syncable).
+      const coveredNow = new Set();
+      for (const p of reconciled) presetVids(p).forEach((v) => coveredNow.add(v));
+      const nextExcluded = [...excluded].filter((v) => !coveredNow.has(v));
+      set({ presets: reconciled, builderExcludedVariationIds: nextExcluded });
       const parts = [added.length ? `added ${added.length} new tile(s) (${added.slice(0, 4).join(', ')}${added.length > 4 ? '…' : ''})` : 'no new tiles'];
       if (extended) parts.push(`added ${extended} new size(s) to combined tile(s)`);
       if (removedDead) parts.push(`removed ${removedDead} tile(s) whose variation was deleted`);
       if (trimmed) parts.push(`trimmed ${trimmed} combined tile(s)`);
+      if (skippedExcluded) parts.push(`left out ${skippedExcluded} tile(s) you'd deleted`);
       setSyncMsg(`Sync: ${parts.join('; ')}. Prices update automatically. Press Save changes to keep new/removed tiles.`);
     } catch (e) {
       setSyncMsg('Sync failed: ' + (e.message || 'unknown error'));
