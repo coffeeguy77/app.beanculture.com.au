@@ -28,8 +28,21 @@ function fmtTime(t) {
   return m === '00' ? `${hh}${ap}` : `${hh}:${m}${ap}`;
 }
 
-export default function StorePage({ config, onTrack, onBack }) {
-  const contact = config.contact || {};
+export default function StorePage({ config, onTrack, onBack, location }) {
+  // Per-store venue page: when a specific store is chosen, its own name, photo,
+  // blurb, address and phone override the global store info. Anything the store
+  // leaves blank falls back to the global values, so a single-site deploy (and
+  // any store without its own page) renders exactly as before.
+  const sp = (location && location.storePage) || {};
+  const storeName = (location && location.name) || config.storeName;
+  const storePhoto = sp.photo || config.storePhoto;
+  const bio = sp.bio || config.bio;
+  const contact = {
+    ...(config.contact || {}),
+    ...((location && location.address) ? { address: location.address } : {}),
+    ...(sp.phone ? { phone: sp.phone } : {}),
+    ...(sp.mapsUrl ? { mapsUrl: sp.mapsUrl } : {}),
+  };
   const address = contact.address || '';
   const mapsUrl = contact.mapsUrl || (address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}` : '');
   // Google geocodes a bare "U5, …" as just "U5", so build the directions query
@@ -39,7 +52,7 @@ export default function StorePage({ config, onTrack, onBack }) {
     .replace(/^\s*(u|unit|shop|suite|ste|lvl|level)\s*\.?\s*\d+[a-z]?[,/\s-]+/i, '')
     .replace(/^\s*\d+[a-z]?\s*\/\s*/, '')
     .trim();
-  const geoQuery = [config.storeName, cleanAddr || address].filter(Boolean).join(', ');
+  const geoQuery = [storeName, cleanAddr || address].filter(Boolean).join(', ');
   const dirUrl = geoQuery ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(geoQuery)}` : mapsUrl;
   const storeOpen = config.hours ? config.hours.open : null;
   const nextLabel = config.hours?.nextOpen?.label;
@@ -101,13 +114,13 @@ export default function StorePage({ config, onTrack, onBack }) {
     <main className="store-page">
       <button className="link store-back" onClick={onBack}>← Menu</button>
 
-      {config.storePhoto && (
+      {storePhoto && (
         <div className="store-hero">
-          <img src={imgUrl(config.storePhoto, 1600)} alt={config.storeName || 'Our café'} loading="eager" decoding="async" />
+          <img src={imgUrl(storePhoto, 1600)} alt={storeName || 'Our café'} loading="eager" decoding="async" />
         </div>
       )}
-      <div className={`store-top ${config.bio ? '' : 'no-bio'}`}>
-        {config.bio && <p className="store-bio">{config.bio}</p>}
+      <div className={`store-top ${bio ? '' : 'no-bio'}`}>
+        {bio && <p className="store-bio">{bio}</p>}
         {(address || tel) && (
           <section className="store-card store-find">
             <div className="store-card-head"><PinIcon /> Find us</div>

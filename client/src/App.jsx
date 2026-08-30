@@ -153,7 +153,7 @@ function SiteNotice({ notices }) {
           eyebrow={n.opening ? 'Opening soon' : 'We’re closed'}
           subLabel={n.reopenLabel ? `We ${openWord} ${n.reopenLabel}` : (n.opening ? 'Opening soon' : 'Reopening soon')}
           heading={n.reopenLabel ? `We ${openWord} ${n.reopenLabel}` : (n.opening ? 'Opening soon' : 'Reopening soon')}
-          sub2={n.opening ? (n.cta ? undefined : 'Ordering opens when we do — see you then!') : 'Pre-order now — we’ll have it ready when we open'}
+          sub2={n.opening ? 'Tap for photos, opening hours & how to find us' : 'Pre-order now — we’ll have it ready when we open'}
           ctaLabel={n.opening ? (n.cta?.label || undefined) : 'Pre-order now'}
           onOrderNow={n.cta?.onClick}
         />
@@ -1250,6 +1250,8 @@ export default function App() {
         minsUntil: no?.minsUntil,
         reopenLabel: no?.label || opening.dateLabel,
         text: `${chosenLocation?.name || config.storeName || 'This store'} opens ${no?.label || opening.dateLabel}.`,
+        // Tapping the notice opens this store's Visit page (photo, info, hours).
+        cta: { label: 'Store details', onClick: () => setView('store') },
       });
     } else if (preorder) {
       const no = nHours.nextOpen;
@@ -1436,7 +1438,7 @@ export default function App() {
       )}
 
       {view === 'store' && (
-        <StorePage config={config} onTrack={track} onBack={() => setView('home')} />
+        <StorePage config={config} location={chosenLocation} onTrack={track} onBack={() => setView('home')} />
       )}
 
       {view === 'reserve' && (

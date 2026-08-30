@@ -158,6 +158,14 @@ function publicList() {
       status: state,
       daysUntilOpen: (l.type === 'popup' && l.startDate) ? Math.max(0, dayDiff(today, l.startDate)) : null,
       hasStorePage: !!l.storePage,
+      // Per-store "Visit" page content (photo, blurb, phone, map). Only what the
+      // page needs to render — falls back to the global store info on the client.
+      storePage: l.storePage ? {
+        photo: l.storePage.photo || '',
+        bio: l.storePage.bio || '',
+        phone: l.storePage.phone || '',
+        mapsUrl: l.storePage.mapsUrl || '',
+      } : null,
       // Which order types this store offers, so the app can show only the
       // relevant choices (e.g. takeaway-only at a pop-up).
       fulfilment: fulfilmentFor(l),

@@ -3314,6 +3314,29 @@ export default function Admin({ onExit }) {
                         </details>
 
                         <details className="loc-avail">
+                          <summary>Visit / store page for {l.name || 'this store'}{(l.storePage && (l.storePage.photo || l.storePage.bio)) ? ' (custom)' : ' (using main store)'}</summary>
+                          <p className="muted" style={{ fontSize: 'var(--fs-xs)', margin: '6px 0' }}>The “Visit” page customers see for this store — its own photo, blurb and phone. Its address and opening hours come from the fields above. Leave blank to use your main store’s details.</p>
+                          <div style={{ display: 'grid', gap: 8 }}>
+                            <div style={row}>
+                              <label className="btn ghost" style={{ padding: '8px 12px', fontSize: 'var(--fs-base)', cursor: 'pointer' }}>
+                                {l.storePage?.photo ? 'Change photo' : 'Upload photo'}
+                                <input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files[0]; if (f) uploadImage(f, (url) => updLoc(l.id, { storePage: { ...(l.storePage || {}), photo: url } }), 'stores'); e.target.value = ''; }} />
+                              </label>
+                              {l.storePage?.photo && (
+                                <>
+                                  <img src={l.storePage.photo} alt="" style={{ height: 40, borderRadius: 6 }} />
+                                  <button type="button" className="link" style={{ color: '#c0392b' }} onClick={() => updLoc(l.id, { storePage: { ...(l.storePage || {}), photo: '' } })}>Remove</button>
+                                </>
+                              )}
+                            </div>
+                            <label className="field" style={{ margin: 0 }}><span>Blurb (a line or two about this store)</span>
+                              <textarea rows={2} value={l.storePage?.bio || ''} placeholder="e.g. Find us in the marquee by the tulip beds — great coffee while you wander the gardens." onChange={(e) => updLoc(l.id, { storePage: { ...(l.storePage || {}), bio: e.target.value } })} style={{ padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 10, font: 'inherit', resize: 'vertical' }} /></label>
+                            <label className="field" style={{ margin: 0 }}><span>Phone (optional)</span>
+                              <input value={l.storePage?.phone || ''} placeholder="Leave blank to use your main number" onChange={(e) => updLoc(l.id, { storePage: { ...(l.storePage || {}), phone: e.target.value } })} /></label>
+                          </div>
+                        </details>
+
+                        <details className="loc-avail">
                           <summary>Items available at {l.name || 'this store'} ({offeredProducts.length - (l.hiddenItemIds || []).length}/{offeredProducts.length})</summary>
                           <p className="muted" style={{ fontSize: 'var(--fs-xs)', margin: '6px 0' }}>Untick anything this store doesn't make (e.g. hot food at a takeaway site). Unticked items are hidden from this store's menu.</p>
                           {offeredProducts.length === 0 && offeredIds === null && <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>Loading products…</p>}
