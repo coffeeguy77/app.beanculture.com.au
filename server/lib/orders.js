@@ -36,7 +36,7 @@ function buildNote({ dineIn, table }) {
   return dineIn ? `DINE-IN · ${tableLabel(table) || '?'}` : 'TAKEAWAY';
 }
 
-async function createOrder({ cart, dineIn, table, name, coupon, customerId, pickupAt, idempotencyKey, note: customerNote, pifVoucher, source, squareLocationId, cardPayment, free, freeCategories, shipping }) {
+async function createOrder({ cart, dineIn, table, name, coupon, customerId, pickupAt, idempotencyKey, note: customerNote, pifVoucher, source, squareLocationId, cardPayment, free, freeCategories, shipping, eventId }) {
   const LOC = squareLocationId || LOCATION_ID;
   if (!Array.isArray(cart) || cart.length === 0) throw new Error('Cart is empty');
   // Bake any per-combo locked modifiers into the combo lines before pricing, so
@@ -122,10 +122,14 @@ async function createOrder({ cart, dineIn, table, name, coupon, customerId, pick
     source: { name: source || 'Bean Culture App' },
   };
   if (customerId) order.customer_id = customerId;
-  // Stamp the booth/table on complimentary event orders so the "who got a free
-  // coffee" report can read it straight off the order (no note parsing).
-  if ((isComp || partialComp) && table) {
-    order.metadata = { ...(order.metadata || {}), bc_booth: String(table).slice(0, 60), bc_free: 'event' };
+  // Tag event orders so the stats page can isolate THIS event (events share the
+  // main Square location): bc_event = the event store id on every event order;
+  // bc_free/bc_booth on complimentary ones for the "who got a free coffee" report.
+  if (eventId || ((isComp || partialComp) && table)) {
+    order.metadata = { ...(order.metadata || {}) };
+    if (eventId) order.metadata.bc_event = String(eventId).slice(0, 60);
+    if (isComp || partialComp) order.metadata.bc_free = 'event';
+    if (table) order.metadata.bc_booth = String(table).slice(0, 60);
   }
 
   // A Pay It Forward voucher takes priority over (never stacks with) a combo

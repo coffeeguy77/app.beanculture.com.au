@@ -330,7 +330,9 @@ app.post('/api/orders', async (req, res) => {
     const shipFee = Number(sNow.eventShippingFee != null ? sNow.eventShippingFee : 1000) || 0;
     const shipping = (freeCategories.length && shipReq && shipReq.address && String(shipReq.address).trim())
       ? { fee: shipFee, address: shipReq.address, label: 'Shipping' } : null;
-    const order = await orders.createOrder({ cart, dineIn: !!dineIn, table, name, coupon, customerId: effectiveCustomerId, pickupAt, note, pifVoucher, squareLocationId, cardPayment: cardPayment !== false, free: freeOrder, freeCategories, shipping });
+    const evLoc = locations.resolve(locationId);
+    const eventId = evLoc && evLoc.type === 'event' ? evLoc.id : undefined;
+    const order = await orders.createOrder({ cart, dineIn: !!dineIn, table, name, coupon, customerId: effectiveCustomerId, pickupAt, note, pifVoucher, squareLocationId, cardPayment: cardPayment !== false, free: freeOrder, freeCategories, shipping, eventId });
 
     let rewardApplied = false;
     if (loy && loy.accountId && loy.tierId) {
@@ -1204,11 +1206,13 @@ app.post('/api/pos/order', async (req, res) => {
     // Server-authoritative order: Square re-prices from the variation/modifier
     // ids, so the client total is display-only and cannot be tampered with.
     const posFreeCategories = [...locations.freeCategoriesFor(locationId)];
+    const posEvLoc = locations.resolve(locationId);
     const order = await orders.createOrder({
       cart, dineIn: !!dineIn, table: table || '', name: name || '',
       source: pos.sourceName || 'Bean Culture POS', squareLocationId, cardPayment: tender === 'card',
       free: locations.isFree(locationId) && posFreeCategories.length === 0,
       freeCategories: posFreeCategories,
+      eventId: posEvLoc && posEvLoc.type === 'event' ? posEvLoc.id : undefined,
     });
     const amount = order.total_money ? order.total_money.amount : 0;
     const currency = (order.total_money && order.total_money.currency) || sq.CURRENCY;
@@ -1592,7 +1596,7 @@ app.get('/api/admin/analytics/sales', async (req, res) => {
 // event stores over `days` and derives the free-coffee guest list, booth
 // breakdown, cups given, paid sales and the app-vs-counter split. Used by the
 // admin guest log AND the organiser /stats page.
-async function aggregateEventStats(sqLocIds, days) {
+async function aggregateEventStats(sqLocIds, days, eventId) {
   const startAt = new Date(Date.now() - days * 86400000).toISOString();
   const orders = [];
   for (const locId of sqLocIds) {
@@ -1623,7 +1627,18 @@ async function aggregateEventStats(sqLocIds, days) {
     return m ? m[1].trim() : '';
   };
   const cupsOf = (o) => (o.line_items || []).reduce((n, li) => n + (Number(li.quantity) || 0), 0);
-  const rows = orders.filter(isCompOrder).map((o) => ({
+  // CRITICAL: events share the main store's Square location, so the raw order
+  // search returns ALL of Bean Culture's takings there. Restrict everything to
+  // THIS event's orders — matched by the event-id tag (bc_event) so two events on
+  // one Square location don't bleed together; untagged legacy comp orders still
+  // count when a single event is requested. Never the whole cafe's income.
+  const isEventOrder = (o) => (eventId
+    ? (o.metadata && o.metadata.bc_event === eventId) || (!(o.metadata && o.metadata.bc_event) && isCompOrder(o))
+    : isCompOrder(o));
+  const eventOrders = orders.filter(isEventOrder);
+  // Free-coffee guest rows are the complimentary orders among this event's orders
+  // (a paid beans-only order is an event order but not a "free coffee given").
+  const rows = eventOrders.filter(isCompOrder).map((o) => ({
     customerId: o.customer_id || null, booth: boothOf(o), at: o.created_at,
     paid: (o.total_money && o.total_money.amount) || 0, cups: cupsOf(o),
   }));
@@ -1645,16 +1660,16 @@ async function aggregateEventStats(sqLocIds, days) {
   for (const r of rows) { const b = r.booth || '—'; byBoothMap[b] = (byBoothMap[b] || 0) + r.cups; }
   const byBooth = Object.entries(byBoothMap).map(([booth, cups]) => ({ booth, cups })).sort((a, b) => b.cups - a.cups);
   let paidSales = 0; let paidOrders = 0; const bySource = { app: 0, pos: 0, other: 0 };
-  for (const o of orders) {
+  for (const o of eventOrders) {
     const amt = (o.total_money && o.total_money.amount) || 0;
-    if (amt > 0) { paidSales += amt; paidOrders += 1; }
+    if (amt > 0) { paidSales += amt; paidOrders += 1; } // paid beans within the event
     bySource[saleSource(o.source && o.source.name)] += 1;
   }
   const uniqueGuests = new Set(rows.filter((r) => r.customerId).map((r) => r.customerId)).size + rows.filter((r) => !r.customerId).length;
   return {
     guests, byBooth, bySource,
     freeOrders: rows.length, freeCups: rows.reduce((n, r) => n + r.cups, 0),
-    uniqueGuests, paidSales, paidOrders, totalOrders: orders.length,
+    uniqueGuests, paidSales, paidOrders, totalOrders: eventOrders.length,
     currency: sq.CURRENCY,
   };
 }
@@ -1665,7 +1680,8 @@ app.get('/api/admin/analytics/event-guests', async (req, res) => {
     const days = Math.max(1, Math.min(120, parseInt(req.query.days, 10) || 30));
     const stores = req.query.location ? [locations.resolve(req.query.location)] : locations.active();
     const sqLocIds = [...new Set(stores.map((s) => s.squareLocationId).filter(Boolean))];
-    const stats = await aggregateEventStats(sqLocIds, days);
+    const eventId = req.query.location ? locations.resolve(req.query.location).id : undefined;
+    const stats = await aggregateEventStats(sqLocIds, days, eventId);
     res.json({ days, count: stats.guests.length, guests: stats.guests });
   } catch (e) { res.status(502).json({ error: e.message }); }
 });
@@ -1685,7 +1701,7 @@ app.get('/api/stats', async (req, res) => {
     }
     const days = Math.max(1, Math.min(120, parseInt(req.query.days, 10) || 30));
     const sqLocIds = [ev.squareLocationId].filter(Boolean);
-    const stats = await aggregateEventStats(sqLocIds, days);
+    const stats = await aggregateEventStats(sqLocIds, days, ev.id);
     res.json({ event: { id: ev.id, name: ev.name }, days, ...stats });
   } catch (e) { res.status(502).json({ error: e.message }); }
 });
