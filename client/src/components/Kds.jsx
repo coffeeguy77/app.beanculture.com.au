@@ -61,6 +61,24 @@ export default function Kds({ onExit, embedded }) {
   const zones = useMemo(() => [{ id: ALL, name: 'All orders' }, ...((cfg && cfg.zones) || [])], [cfg]);
   const soundOn = cfg ? cfg.sound !== false && !muted : false;
 
+  // The stations (non-All lanes) an order actually routes to.
+  const realZonesOf = (t) => Object.keys(t.zoneItems || {}).filter((z) => z !== ALL);
+  // When you act from the "All orders" lane you're really acting on the order's
+  // stations, so a barista bump there flows through to All (and vice-versa).
+  // Orders that route to no station fall back to the All pseudo-lane itself.
+  const targetsFor = (t) => { const rz = realZonesOf(t); return rz.length ? rz : [ALL]; };
+  // Effective status for a lane. "All orders" is an overview: it's DONE once
+  // every station the order routes to is done (so bumping at the barista station
+  // removes it from All), and shows as preparing while any station is in flight.
+  const statusIn = (t, z) => {
+    if (z !== ALL) return (t.zoneStatus && t.zoneStatus[z]) || 'new';
+    const rz = realZonesOf(t);
+    if (!rz.length) return (t.zoneStatus && t.zoneStatus[ALL]) || 'new';
+    if (rz.every((r) => t.zoneStatus[r] === 'done')) return 'done';
+    if (rz.some((r) => t.zoneStatus[r] === 'done' || t.zoneStatus[r] === 'preparing')) return 'preparing';
+    return 'new';
+  };
+
   const cols = layout.cols || 'auto';
   const density = layout.density || 'comfortable';
   const textSize = layout.text || 'normal';
@@ -132,42 +150,63 @@ export default function Kds({ onExit, embedded }) {
   }, []);
 
   async function bump(orderId, status) {
-    setTickets((ts) => ts.map((t) => (t.orderId === orderId ? { ...t, zoneStatus: { ...t.zoneStatus, [zone]: status } } : t)));
+    // From the All lane, act on the order's real stations so All and the station
+    // lanes stay in sync; from a station lane, act on just that lane.
+    const t = tickets.find((x) => x.orderId === orderId);
+    const targets = zone === ALL && t ? targetsFor(t) : [zone];
+    const patch = Object.fromEntries(targets.map((z) => [z, status]));
+    setTickets((ts) => ts.map((x) => (x.orderId === orderId ? { ...x, zoneStatus: { ...x.zoneStatus, ...patch } } : x)));
     try {
-      const r = await fetch(`/api/admin/kds/bump?pass=${encodeURIComponent(pass)}`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId, zone, status }),
-      });
       // A non-OK response never rejects fetch — check it, so a failed bump shows
       // an error and reverts instead of silently "coming back" on the next poll.
-      if (!r.ok) {
-        let msg = `Bump failed (${r.status})`;
-        try { const d = await r.json(); if (d && d.error) msg = `Bump failed: ${d.error}`; } catch {}
-        setErr(msg);
-        loadTickets();
-      } else { setErr(''); }
+      for (const z of targets) {
+        const r = await fetch(`/api/admin/kds/bump?pass=${encodeURIComponent(pass)}`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ orderId, zone: z, status }),
+        });
+        if (!r.ok) {
+          let msg = `Bump failed (${r.status})`;
+          try { const d = await r.json(); if (d && d.error) msg = `Bump failed: ${d.error}`; } catch {}
+          setErr(msg); loadTickets(); return;
+        }
+      }
+      setErr('');
     } catch { setErr('Bump didn’t save — check the connection.'); loadTickets(); }
   }
 
   // Bump every open ticket in the current station at once. Confirms first so a
   // stray tap can't clear the whole board.
   async function bumpAll() {
-    const ids = active.map((t) => t.orderId);
-    if (!ids.length) return;
+    const acts = active;
+    if (!acts.length) return;
     const label = zone === ALL ? 'all stations' : (zones.find((z) => z.id === zone)?.name || 'this station');
-    if (typeof window !== 'undefined' && !window.confirm(`Bump all ${ids.length} open ticket${ids.length > 1 ? 's' : ''} for ${label}?`)) return;
-    const idSet = new Set(ids);
-    setTickets((ts) => ts.map((t) => (idSet.has(t.orderId) ? { ...t, zoneStatus: { ...t.zoneStatus, [zone]: 'done' } } : t)));
+    if (typeof window !== 'undefined' && !window.confirm(`Bump all ${acts.length} open ticket${acts.length > 1 ? 's' : ''} for ${label}?`)) return;
+    // From All, each order clears its own stations; group the order ids by the
+    // station they need bumping in so the whole board goes in a few requests.
+    const byZone = {};
+    for (const t of acts) {
+      const targets = zone === ALL ? targetsFor(t) : [zone];
+      for (const z of targets) (byZone[z] = byZone[z] || []).push(t.orderId);
+    }
+    const idSet = new Set(acts.map((t) => t.orderId));
+    setTickets((ts) => ts.map((t) => {
+      if (!idSet.has(t.orderId)) return t;
+      const targets = zone === ALL ? targetsFor(t) : [zone];
+      return { ...t, zoneStatus: { ...t.zoneStatus, ...Object.fromEntries(targets.map((z) => [z, 'done'])) } };
+    }));
     try {
-      const r = await fetch(`/api/admin/kds/bump?pass=${encodeURIComponent(pass)}`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderIds: ids, zone, status: 'done' }),
-      });
-      if (!r.ok) {
-        let msg = `Bump all failed (${r.status})`;
-        try { const d = await r.json(); if (d && d.error) msg = `Bump all failed: ${d.error}`; } catch {}
-        setErr(msg); loadTickets();
-      } else { setErr(''); }
+      for (const [z, orderIds] of Object.entries(byZone)) {
+        const r = await fetch(`/api/admin/kds/bump?pass=${encodeURIComponent(pass)}`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ orderIds, zone: z, status: 'done' }),
+        });
+        if (!r.ok) {
+          let msg = `Bump all failed (${r.status})`;
+          try { const d = await r.json(); if (d && d.error) msg = `Bump all failed: ${d.error}`; } catch {}
+          setErr(msg); loadTickets(); return;
+        }
+      }
+      setErr('');
     } catch { setErr('Bump all didn’t save — check the connection.'); loadTickets(); }
   }
 
@@ -186,9 +225,9 @@ export default function Kds({ onExit, embedded }) {
 
   // Tickets in this zone: active (not done) and a small recall strip (done)
   const inZone = (t) => !!t.zoneItems[zone];
-  const active = tickets.filter((t) => inZone(t) && t.zoneStatus[zone] !== 'done')
+  const active = tickets.filter((t) => inZone(t) && statusIn(t, zone) !== 'done')
     .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt)); // oldest first (FIFO)
-  const doneRecent = tickets.filter((t) => inZone(t) && t.zoneStatus[zone] === 'done')
+  const doneRecent = tickets.filter((t) => inZone(t) && statusIn(t, zone) === 'done')
     .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 8);
 
   // All-day counts for the current zone's active tickets
@@ -247,7 +286,7 @@ export default function Kds({ onExit, embedded }) {
       <header className="kds-top">
         <div className="kds-zones">
           {zones.map((z) => {
-            const count = tickets.filter((t) => t.zoneItems[z.id] && t.zoneStatus[z.id] !== 'done').length;
+            const count = tickets.filter((t) => t.zoneItems[z.id] && statusIn(t, z.id) !== 'done').length;
             return (
               <button key={z.id} className={`kds-zone${zone === z.id ? ' on' : ''}`} onClick={() => setZone(z.id)}>
                 {z.name}{count ? <span className="kds-zone-count">{count}</span> : null}
@@ -322,7 +361,7 @@ export default function Kds({ onExit, embedded }) {
         {active.map((t) => {
           const sec = ageOf(t);
           const lvl = levelOf(sec);
-          const st = t.zoneStatus[zone];
+          const st = statusIn(t, zone);
           const items = t.zoneItems[zone] || [];
           return (
             <div key={t.orderId} className={`kds-card lvl-${lvl}${st === 'preparing' ? ' preparing' : ''}`}>
