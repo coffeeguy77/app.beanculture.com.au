@@ -1038,12 +1038,22 @@ export default function App() {
   const seasonBanner = eventSeasonal?.banner || null;
   // Smart Campaign banners (resolved server-side) go FIRST, then the seasonal
   // banner, then the normal shop banners — an insertion, never a replacement.
-  const smartSlides = (config.smartCampaigns && config.smartCampaigns.heroSlides) || [];
-  // Per-store banner targeting: a hero slide with a non-empty `locations` list
+  // Per-store banner targeting: a slide/banner with a non-empty `locations` list
   // shows only at those stores (e.g. hide a kitchen special at a no-kitchen
-  // pop-up); an empty/absent list shows everywhere.
+  // pop-up); an empty/absent list shows everywhere. Applies to normal shop
+  // banners AND Smart-Campaign placements (hero + per-category).
   const bannerLocId = (chosenLocation && chosenLocation.id) || locationId || '';
-  const shopSlides = (config.hero || []).filter((sl) => !Array.isArray(sl.locations) || sl.locations.length === 0 || sl.locations.includes(bannerLocId));
+  const atThisStore = (x) => !x || !Array.isArray(x.locations) || x.locations.length === 0 || x.locations.includes(bannerLocId);
+  const smartSlides = ((config.smartCampaigns && config.smartCampaigns.heroSlides) || []).filter(atThisStore);
+  const shopSlides = (config.hero || []).filter(atThisStore);
+  // Per-category Smart-Campaign banners, filtered to the chosen store.
+  const smartByCategoryForStore = (() => {
+    const src = (config.smartCampaigns && config.smartCampaigns.byCategory) || null;
+    if (!src) return src;
+    const out = {};
+    for (const k of Object.keys(src)) if (atThisStore(src[k])) out[k] = src[k];
+    return out;
+  })();
   const heroSlides = [
     ...smartSlides,
     ...(seasonBanner ? [{ id: 'season-banner', ...seasonBanner }] : []),
@@ -1475,7 +1485,7 @@ export default function App() {
               scrollKey={scrollTick}
               onScrolled={() => setActiveCat(null)}
               kitchenClosedCats={kitchenClosedCats}
-              smartByCategory={config.smartCampaigns && config.smartCampaigns.byCategory}
+              smartByCategory={smartByCategoryForStore}
               onSmartLink={onBannerLink}
             />
             {!isMobile && <InstallButton />}

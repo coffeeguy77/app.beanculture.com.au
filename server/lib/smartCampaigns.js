@@ -107,6 +107,9 @@ function destToLink(c) {
 // One campaign → its homepage slide + category placement (shared by the live
 // resolver and the admin preview, so a preview looks exactly like the real thing).
 function campaignToSlides(c, { heroSlides, byCategory }) {
+  // Per-store targeting: an empty/absent list means "all stores"; a non-empty
+  // list limits the placement to those location ids (the frontend filters on it).
+  const locations = Array.isArray(c.locations) ? c.locations.filter(Boolean) : [];
   if (c.homepage_enabled && c.homepage_artwork) {
     heroSlides.push({
       id: `smart-${c.id}`,
@@ -117,6 +120,9 @@ function campaignToSlides(c, { heroSlides, byCategory }) {
       image: c.homepage_artwork,
       mobileImage: c.homepage_mobile_artwork || '',
       alt: c.homepage_alt_text || c.name || '',
+      // How the artwork fills the banner box: cover (default) | contain | fill.
+      fit: c.homepage_fit || 'cover',
+      locations,
       link: destToLink(c),
     });
   }
@@ -129,6 +135,8 @@ function campaignToSlides(c, { heroSlides, byCategory }) {
         mobileImage: c.category_mobile_artwork || '',
         title: c.category_title || '',
         cta: c.cta_text || '',
+        fit: c.category_fit || 'cover',
+        locations,
         link: destToLink(c),
         position: c.category_position || 'before', // before | after | replace
       };

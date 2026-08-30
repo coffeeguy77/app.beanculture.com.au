@@ -70,7 +70,7 @@ export default function HeroSlider({ hero, onLink, ratio, autoplay = true, inter
               style={raw ? { color: s.textColor || '#fff' } : { background: s.bg, color: s.textColor || '#fff' }}
               onClick={() => onLink(s.link, s)}
             >
-              {raw && <img className="hero-img" src={src} alt={s.title || ''} loading={eager ? 'eager' : 'lazy'} fetchpriority={eager ? 'high' : 'auto'} decoding="async" />}
+              {raw && <img className="hero-img" src={src} alt={s.title || ''} style={s.fit ? { objectFit: s.fit === 'fill' ? 'fill' : s.fit } : undefined} loading={eager ? 'eager' : 'lazy'} fetchpriority={eager ? 'high' : 'auto'} decoding="async" />}
               {hasCopy && (
                 <div className="hero-copy">
                   {s.title && <h3>{s.title}</h3>}

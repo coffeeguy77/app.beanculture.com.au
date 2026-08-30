@@ -2893,9 +2893,9 @@ export default function Admin({ onExit }) {
                 id: newId(), name: 'New weather campaign', internal_description: '', active: true, priority: 20,
                 trigger_type: 'weather', weather_source: 'current', comparison_operator: 'gte', threshold_min: 28, threshold_max: 33,
                 active_days: [], active_start_time: '', active_end_time: '', start_date: '', end_date: '',
-                homepage_enabled: true, homepage_artwork: '', homepage_mobile_artwork: '', homepage_title: '', homepage_subtitle: '', homepage_alt_text: '', homepage_position: 'first',
-                category_enabled: false, category_id: '', category_artwork: '', category_mobile_artwork: '', category_title: '', category_position: 'before',
-                destination_type: 'category', destination_id: '', destination_url: '', cta_text: '', created_at: nowIso(), updated_at: nowIso(),
+                homepage_enabled: true, homepage_artwork: '', homepage_mobile_artwork: '', homepage_title: '', homepage_subtitle: '', homepage_alt_text: '', homepage_position: 'first', homepage_fit: 'cover',
+                category_enabled: false, category_id: '', category_artwork: '', category_mobile_artwork: '', category_title: '', category_position: 'before', category_fit: 'cover',
+                destination_type: 'category', destination_id: '', destination_label: '', destination_url: '', cta_text: '', locations: [], created_at: nowIso(), updated_at: nowIso(),
               });
               const addCampaign = () => { const c = blankCampaign(); setCampaigns([...campaigns, c]); setCampEditId(c.id); };
               const updateCampaign = (id, patch) => setCampaigns(campaigns.map((c) => (c.id === id ? { ...c, ...patch, updated_at: nowIso() } : c)));
@@ -3103,12 +3103,18 @@ export default function Admin({ onExit }) {
                             <>
                               <div className="muted" style={{ fontSize: 'var(--fs-sm)', margin: '6px 0' }}>Shows first on the homepage (before the seasonal banner). Big 3:2 artwork.</div>
                               <div className="camp-art">
-                                {c.homepage_artwork ? <img src={imgUrl(c.homepage_artwork, 400)} alt="" /> : <span className="camp-art-ph">No artwork</span>}
+                                {c.homepage_artwork ? <img src={imgUrl(c.homepage_artwork, 400)} alt="" style={{ objectFit: c.homepage_fit || 'cover' }} /> : <span className="camp-art-ph">No artwork</span>}
                                 <div className="camp-art-btns">
                                   <label className="btn ghost" style={{ padding: '7px 12px' }}><input type="file" accept="image/*" hidden onChange={uploadTo('homepage_artwork')} />{c.homepage_artwork ? 'Replace' : 'Upload'}</label>
                                   {c.homepage_artwork && <button type="button" className="btn ghost" style={{ padding: '7px 12px' }} onClick={() => up({ homepage_artwork: '' })}>Remove</button>}
                                 </div>
                               </div>
+                              <label className="field" style={{ marginTop: 10 }}><span>Image fit</span>
+                                <select value={c.homepage_fit || 'cover'} onChange={(e) => up({ homepage_fit: e.target.value })}>
+                                  <option value="cover">Cover — fill the banner, crop overflow</option>
+                                  <option value="contain">Contain — show the whole image (letterboxed)</option>
+                                  <option value="fill">Fill — stretch to the banner shape</option>
+                                </select></label>
                               <label className="field" style={{ marginTop: 10 }}><span>Title (optional overlay)</span><input value={c.homepage_title || ''} onChange={(e) => up({ homepage_title: e.target.value })} /></label>
                               <label className="field" style={{ marginTop: 10 }}><span>Subtitle (optional)</span><input value={c.homepage_subtitle || ''} onChange={(e) => up({ homepage_subtitle: e.target.value })} /></label>
                               <label className="field" style={{ marginTop: 10 }}><span>Alt text (accessibility)</span><input value={c.homepage_alt_text || ''} onChange={(e) => up({ homepage_alt_text: e.target.value })} placeholder={c.name} /></label>
@@ -3116,7 +3122,15 @@ export default function Admin({ onExit }) {
                               <label className="field" style={{ marginTop: 10 }}><span>When tapped</span>
                                 <select value={c.destination_type} onChange={(e) => up({ destination_type: e.target.value })}>{Object.entries(DESTS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></label>
                               {c.destination_type === 'category' && <label className="field" style={{ marginTop: 8 }}><span>Category</span><select value={c.destination_id || ''} onChange={(e) => up({ destination_id: e.target.value })}><option value="">— pick a category —</option>{scheduleCatOptions.map((n) => <option key={n} value={n}>{n}</option>)}</select></label>}
-                              {c.destination_type === 'item' && <div style={{ marginTop: 8 }}>{renderSourcePicker('campdest-' + c.id, c.destination_id, (id) => up({ destination_id: id }))}</div>}
+                              {c.destination_type === 'item' && <label className="field" style={{ marginTop: 8 }}><span>Product (loads ready to add to cart)</span>
+                                <select value={c.destination_id || ''} onChange={(e) => { const opt = e.target.selectedOptions[0]; up({ destination_id: e.target.value, destination_label: opt ? opt.text : '' }); }}>
+                                  <option value="">{adminCat.length ? '— pick a product —' : 'Loading products…'}</option>
+                                  {adminCat.map((cc) => (
+                                    <optgroup key={cc.category} label={cc.category}>
+                                      {cc.items.map((it) => <option key={it.id} value={it.id}>{it.name}</option>)}
+                                    </optgroup>
+                                  ))}
+                                </select></label>}
                               {c.destination_type === 'url' && <label className="field" style={{ marginTop: 8 }}><span>Web link</span><input value={c.destination_url || ''} onChange={(e) => up({ destination_url: e.target.value })} placeholder="https://…" /></label>}
                             </>
                           )}
@@ -3132,12 +3146,18 @@ export default function Admin({ onExit }) {
                               <div className="muted" style={{ fontSize: 'var(--fs-sm)', margin: '6px 0' }}>A slim banner inside a category. Uses <strong>separate</strong> artwork (4:1) &mdash; it never overwrites the category&rsquo;s own banner.</div>
                               <label className="field"><span>Category</span><select value={c.category_id || ''} onChange={(e) => up({ category_id: e.target.value })}><option value="">— pick a category —</option>{scheduleCatOptions.map((n) => <option key={n} value={n}>{n}</option>)}</select></label>
                               <div className="camp-art" style={{ marginTop: 10 }}>
-                                {c.category_artwork ? <img src={imgUrl(c.category_artwork, 400)} alt="" /> : <span className="camp-art-ph">No slim artwork</span>}
+                                {c.category_artwork ? <img src={imgUrl(c.category_artwork, 400)} alt="" style={{ objectFit: c.category_fit || 'cover' }} /> : <span className="camp-art-ph">No slim artwork</span>}
                                 <div className="camp-art-btns">
                                   <label className="btn ghost" style={{ padding: '7px 12px' }}><input type="file" accept="image/*" hidden onChange={uploadTo('category_artwork')} />{c.category_artwork ? 'Replace' : 'Upload'}</label>
                                   {c.category_artwork && <button type="button" className="btn ghost" style={{ padding: '7px 12px' }} onClick={() => up({ category_artwork: '' })}>Remove</button>}
                                 </div>
                               </div>
+                              <label className="field" style={{ marginTop: 10 }}><span>Image fit</span>
+                                <select value={c.category_fit || 'cover'} onChange={(e) => up({ category_fit: e.target.value })}>
+                                  <option value="cover">Cover — fill the banner, crop overflow</option>
+                                  <option value="contain">Contain — show the whole image (letterboxed)</option>
+                                  <option value="fill">Fill — stretch to the banner shape</option>
+                                </select></label>
                               <label className="field" style={{ marginTop: 10 }}><span>Title (optional overlay)</span><input value={c.category_title || ''} onChange={(e) => up({ category_title: e.target.value })} /></label>
                               <label className="field" style={{ marginTop: 10 }}><span>Placement</span>
                                 <select value={c.category_position || 'before'} onChange={(e) => up({ category_position: e.target.value })}>
@@ -3148,6 +3168,26 @@ export default function Admin({ onExit }) {
                             </>
                           )}
                         </div>
+
+                        {locs.length > 1 && (
+                          <div className="card" style={card}>
+                            <div className="group-title">6 · Show at</div>
+                            <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 0 }}>Which stores this campaign runs at. Leave <strong>All stores</strong> on to run everywhere, or tick specific stores to limit it — the unticked stores are excluded.</p>
+                            <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginTop: 8 }}>
+                              <label className="avail-switch"><input type="checkbox" checked={!(Array.isArray(c.locations) && c.locations.length)} onChange={() => up({ locations: [] })} /><span>All stores</span></label>
+                              {locs.map((l) => {
+                                const sel = (c.locations || []).includes(l.id);
+                                return (
+                                  <label key={l.id} className="avail-switch"><input type="checkbox" checked={sel} onChange={(e) => {
+                                    const cur = new Set(c.locations || []);
+                                    e.target.checked ? cur.add(l.id) : cur.delete(l.id);
+                                    up({ locations: [...cur] });
+                                  }} /><span>{l.name || l.id}</span></label>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
 
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
                           <button type="button" className="btn ghost" onClick={() => setCampEditId(null)}>← Back</button>

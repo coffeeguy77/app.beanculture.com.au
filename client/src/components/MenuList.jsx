@@ -64,7 +64,7 @@ export default function MenuList({ categories, currency, onPick, scrollTo, scrol
             const smartEl = smart && smart.image ? (
               <button type="button" className="feature-banner weather-banner"
                 onClick={() => onSmartLink && onSmartLink(smart.link, smart)}
-                style={{ backgroundImage: `url(${imgUrl(smart.image, 900)})` }}>
+                style={{ backgroundImage: `url(${imgUrl(smart.image, 900)})`, ...(smart.fit && smart.fit !== 'cover' ? { backgroundSize: smart.fit === 'fill' ? '100% 100%' : 'contain', backgroundRepeat: 'no-repeat', backgroundPosition: 'center' } : null) }}>
                 {(smart.title || smart.cta) && (
                   <span className="feature-banner-body">
                     {smart.title && <span className="feature-banner-title">{smart.title}</span>}
