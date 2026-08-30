@@ -99,7 +99,7 @@ function buildTickets(orders, varCat, states, cfg, now = Date.now()) {
   });
 }
 
-async function fetchTickets(squareLocationId) {
+async function fetchTickets(squareLocationId, loc) {
   const cfg = kdsSettings();
   const startAt = new Date(Date.now() - cfg.lookbackHours * 3600 * 1000).toISOString();
   const data = await squareFetch('/v2/orders/search', {
@@ -117,7 +117,15 @@ async function fetchTickets(squareLocationId) {
       limit: 150,
     },
   });
-  const orders = (data.orders || []).filter((o) => o && o.state !== 'CANCELED');
+  let orders = (data.orders || []).filter((o) => o && o.state !== 'CANCELED');
+  // Several stores can share one Square location (events run on the café's), so
+  // split the board by the screen's chosen store: an EVENT screen shows only
+  // that event's tickets; any other screen shows only non-event tickets.
+  if (loc && loc.type === 'event') {
+    orders = orders.filter((o) => o.metadata && o.metadata.bc_event === loc.id);
+  } else if (loc) {
+    orders = orders.filter((o) => !(o.metadata && o.metadata.bc_event));
+  }
   const [varCat, states] = await Promise.all([
     catalog.getVariationCategoryMap().catch(() => ({})),
     db.kdsGetStates(orders.map((o) => o.id)).catch(() => ({})),

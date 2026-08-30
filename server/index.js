@@ -1399,7 +1399,11 @@ app.get('/api/admin/kds/tickets', async (req, res) => {
   if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
   res.setHeader('Cache-Control', 'no-store');
   try {
-    const data = await kds.fetchTickets(locations.squareIdFor(req.query.location));
+    // Events share the main store's Square location, so scope the board to the
+    // chosen screen: an event screen shows only that event's tickets, and a
+    // café/pop-up screen never shows event tickets (they belong to the booth).
+    const loc = locations.resolve(req.query.location);
+    const data = await kds.fetchTickets(locations.squareIdFor(req.query.location), loc);
     res.json(data);
   } catch (e) {
     res.status(502).json({ error: e.message });
