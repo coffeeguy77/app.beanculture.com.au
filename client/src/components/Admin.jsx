@@ -3582,6 +3582,30 @@ export default function Admin({ onExit }) {
                             </p>
                           </div>
                         )}
+                        {l.type === 'event' && (() => {
+                          const sessions = Array.isArray(l.sessions) ? l.sessions : [];
+                          const setSessions = (arr) => updLoc(l.id, { sessions: arr });
+                          const upd = (i, patch) => setSessions(sessions.map((x, j) => (j === i ? { ...x, ...patch } : x)));
+                          return (
+                            <div className="field" style={{ margin: 0 }}>
+                              <span style={{ fontWeight: 600, fontSize: 'var(--fs-sm)' }}>Event days &amp; hours</span>
+                              <p className="muted" style={{ fontSize: 'var(--fs-xs)', margin: '2px 0 8px' }}>
+                                Add each day of the event with its own start &amp; finish time (they can differ day to day). Before the first session the app shows a countdown; ordering only works during a session, and closes when the last one ends.
+                              </p>
+                              {sessions.length === 0 && <p className="muted" style={{ fontSize: 'var(--fs-xs)', margin: '0 0 6px' }}>No sessions yet — add the first day.</p>}
+                              {sessions.map((sess, i) => (
+                                <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 6, flexWrap: 'wrap' }}>
+                                  <input type="date" value={sess.date || ''} onChange={(e) => upd(i, { date: e.target.value })} style={{ padding: '6px 8px', border: '1px solid var(--line)', borderRadius: 8 }} />
+                                  <input type="time" value={sess.open || '08:00'} onChange={(e) => upd(i, { open: e.target.value })} style={{ padding: '6px 8px', border: '1px solid var(--line)', borderRadius: 8 }} />
+                                  <span className="muted">to</span>
+                                  <input type="time" value={sess.close || '15:00'} onChange={(e) => upd(i, { close: e.target.value })} style={{ padding: '6px 8px', border: '1px solid var(--line)', borderRadius: 8 }} />
+                                  <button type="button" className="link" style={{ color: '#c0392b' }} onClick={() => setSessions(sessions.filter((_, j) => j !== i))}>Remove</button>
+                                </div>
+                              ))}
+                              <button type="button" className="btn ghost" style={{ padding: '6px 12px', marginTop: 2 }} onClick={() => setSessions([...sessions, { date: '', open: '08:00', close: '15:00' }])}>+ Add day</button>
+                            </div>
+                          );
+                        })()}
 
                         {(() => {
                           const defs = l.type === 'popup' ? { dineIn: false, takeaway: true, reservations: false }

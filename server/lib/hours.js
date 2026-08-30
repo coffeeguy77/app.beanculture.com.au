@@ -150,7 +150,82 @@ function dateLabel(fullDate) {
   return `${wd} ${d.getUTCDate()} ${mon}`;
 }
 
+// "today at 8am" / "tomorrow at 8am" / "Fri 12 Sep at 8am" for an event session.
+function eventSessionLabel(todayFull, sess) {
+  const days = dayDiffLocal(todayFull, sess.date);
+  const rel = days === 0 ? 'today' : days === 1 ? 'tomorrow' : dateLabel(sess.date);
+  return `${rel} at ${fmt12(sess.open.length === 5 ? `${sess.open}:00` : sess.open)}`;
+}
+
+// Event stores run on explicit dated sessions ([{date, open, close}], each day
+// its own hours) rather than weekly business hours. This computes open/closed,
+// the next session, and a countdown until ordering opens — the same shape the
+// rest of the app consumes, so the "Opening soon" banner + ordering gate just
+// work. Ordering is only ever possible inside a session.
+function eventRuntime(loc, base) {
+  const tz = base.timezone;
+  const td = todayDate(tz);
+  const { minutes } = localNow(tz);
+  const sessions = (loc.sessions || [])
+    .filter((x) => x && x.date && x.open && x.close)
+    .map((x) => ({
+      date: x.date, open: x.open, close: x.close,
+      startOff: dayDiffLocal(td.full, x.date) * 1440 + toMinutes(x.open),
+      endOff: dayDiffLocal(td.full, x.date) * 1440 + toMinutes(x.close),
+    }))
+    .sort((a, b) => a.startOff - b.startOff);
+  const cur = sessions.find((x) => minutes >= x.startOff && minutes < x.endOff) || null;
+  const nextFuture = sessions.find((x) => x.startOff > minutes) || null;
+  const firstStart = sessions.length ? sessions[0].startOff : null;
+  const lastEnd = sessions.length ? Math.max(...sessions.map((x) => x.endOff)) : null;
+  const started = firstStart != null && minutes >= firstStart;
+  const ended = lastEnd != null && minutes >= lastEnd && !nextFuture;
+
+  const open = !!cur;
+  const orderingDisabled = ORDERING_DISABLED;
+  const canOrderNow = open && !orderingDisabled;
+
+  let nextOpen = null;
+  let opening = null;
+  if (!open && nextFuture) {
+    const minsUntil = nextFuture.startOff - minutes;
+    const label = eventSessionLabel(td.full, nextFuture);
+    nextOpen = { day: null, time: nextFuture.open, date: nextFuture.date, label, minsUntil };
+    // Show the countdown + suppress ordering whenever the event isn't open —
+    // before the first session (pre-event) or between days.
+    opening = {
+      date: nextFuture.date,
+      dateLabel: dateLabel(nextFuture.date),
+      daysUntil: Math.max(0, dayDiffLocal(td.full, nextFuture.date)),
+      label,
+      started, // false = pre-event; true = between sessions (client can vary copy)
+      event: true,
+    };
+  }
+  return {
+    open, canOrderNow, preorder: false, orderingDisabled,
+    closesAt: cur ? (cur.close.length === 5 ? `${cur.close}:00` : cur.close) : null,
+    nextOpen, closedSinceMin: null, opening, ended: !!ended,
+    kitchen: { open, closesInMin: null, categories: Array.isArray(getSettingsSafe().kitchenCategories) ? getSettingsSafe().kitchenCategories : [], hasHours: false, weekly: {} },
+    timezone: tz, weekly: {}, hasHours: true,
+    openDays: [0, 1, 2, 3, 4, 5, 6],
+    closedToday: !open && !nextFuture,
+    closures: [],
+    location: {
+      id: loc.id, name: loc.name, type: 'event',
+      startDate: loc.startDate || '', endDate: loc.endDate || '',
+      popupState: ended ? 'ended' : (started ? 'live' : 'upcoming'),
+      sessions: sessions.map((x) => ({ date: x.date, open: x.open, close: x.close })),
+    },
+  };
+}
+function getSettingsSafe() { try { return getSettings(); } catch { return {}; } }
+
 function withRuntime(base, nowOverride, loc) {
+  // Event stores use dated sessions, not weekly hours — take that path first.
+  if (loc && loc.type === 'event' && Array.isArray(loc.sessions) && loc.sessions.some((x) => x && x.date && x.open && x.close)) {
+    return eventRuntime(loc, base);
+  }
   const s = (() => { try { return getSettings(); } catch { return {}; } })();
 
   // Store hours precedence: this store's own per-store hours (if set) > the

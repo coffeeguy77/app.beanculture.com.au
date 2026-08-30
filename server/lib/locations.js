@@ -116,6 +116,9 @@ function list() {
     fulfilment: (l.fulfilment && typeof l.fulfilment === 'object') ? l.fulfilment : null,
     startDate: l.startDate || '',
     endDate: l.endDate || '',
+    // Event stores: explicit dated sessions ([{date, open, close}]) — each day
+    // its own hours. Drives the countdown + ordering gate (see hours.js).
+    sessions: Array.isArray(l.sessions) ? l.sessions.filter((x) => x && x.date) : [],
     // Per-store weekly hours ({ MON:[{open,close}], … }); blank → falls back to
     // the global store hours / Square hours in hours.js.
     hours: (l.hours && typeof l.hours === 'object') ? l.hours : null,
