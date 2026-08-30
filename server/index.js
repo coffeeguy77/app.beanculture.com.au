@@ -162,9 +162,17 @@ app.get('/api/menu', async (req, res) => {
   }
 });
 
-app.get('/api/hours', async (_req, res) => {
+// Per-store open/closed status + that store's current weather. The customer app
+// calls this whenever the chosen store changes, so the closed banner, reopen
+// countdown and temperature chip all reflect the selected location.
+app.get('/api/hours', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
   try {
-    res.json(await hours.getStatus());
+    const locId = req.query.location || req.query.loc || '';
+    const status = await hours.getStatus(locId);
+    let wx = null;
+    try { const loc = locations.resolve(locId); wx = weather.publicWeather(await weather.forConfig(3000, loc)); } catch {}
+    res.json({ ...status, weather: wx });
   } catch (e) {
     res.status(502).json({ error: e.message });
   }

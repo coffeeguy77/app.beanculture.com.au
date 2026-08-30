@@ -327,6 +327,22 @@ export default function App() {
     api.getMenu(locationId).then(setMenu).catch((e) => setLoadErr(e.message));
   }, [locationId]);
 
+  // Per-store open/closed status + weather. When the customer switches stores,
+  // refetch that store's hours (closed banner, reopen countdown) and its own
+  // temperature (Sutton ≠ Mitchell), patching them into config so the whole UI
+  // reflects the selected location. Only runs once real locations exist and a
+  // store is chosen — single-site deploys keep the config snapshot from load.
+  useEffect(() => {
+    if (!config || !locationId) return;
+    const locs = config.locations || [];
+    if (locs.length < 2) return;
+    let cancelled = false;
+    api.getHours(locationId)
+      .then((h) => { if (!cancelled && h) setConfig((prev) => prev ? { ...prev, hours: h, weather: h.weather || prev.weather } : prev); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [locationId, config?.locations?.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Persist the store choice + prompt for one when several stores exist and the
   // customer hasn't picked yet (and didn't arrive via a ?loc= store link).
   useEffect(() => {

@@ -3244,6 +3244,53 @@ export default function Admin({ onExit }) {
                           <input value={l.address || ''} placeholder="e.g. Tulip Tops, Sutton NSW" onChange={(e) => updLoc(l.id, { address: e.target.value })} />
                         </label>
 
+                        <label className="field" style={{ margin: 0 }}><span>Store type</span>
+                          <select value={l.type === 'popup' ? 'popup' : 'physical'} onChange={(e) => updLoc(l.id, { type: e.target.value })}>
+                            <option value="physical">Permanent store</option>
+                            <option value="popup">Pop-up (time-limited)</option>
+                          </select>
+                        </label>
+                        {l.type === 'popup' && (
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                            <label className="field" style={{ margin: 0 }}><span>Opens (first day)</span>
+                              <input type="date" value={l.startDate || ''} onChange={(e) => updLoc(l.id, { startDate: e.target.value })} />
+                            </label>
+                            <label className="field" style={{ margin: 0 }}><span>Closes (last day)</span>
+                              <input type="date" value={l.endDate || ''} onChange={(e) => updLoc(l.id, { endDate: e.target.value })} />
+                            </label>
+                            <p className="muted" style={{ fontSize: 'var(--fs-xs)', margin: 0, gridColumn: '1 / -1' }}>
+                              Before the opening day the app shows a “Store opening soon” notice with a countdown that opens this store’s page. After the last day the store disappears from the picker automatically.
+                            </p>
+                          </div>
+                        )}
+
+                        <details className="loc-avail">
+                          <summary>Opening hours for {l.name || 'this store'}{(l.hours && Object.keys(l.hours).length) ? ' (custom)' : ' (using Square hours)'}</summary>
+                          <label className="switch" style={{ margin: '6px 0' }}>
+                            <input type="checkbox" checked={!!(l.hours && Object.keys(l.hours).length)} onChange={(e) => updLoc(l.id, { hours: e.target.checked ? (l.hours && Object.keys(l.hours).length ? l.hours : { MON: [{ open: '07:00', close: '15:00' }] }) : null })} />
+                            <span>Set custom hours for this store</span>
+                          </label>
+                          <p className="muted" style={{ fontSize: 'var(--fs-xs)', margin: '2px 0 8px' }}>
+                            {(l.hours && Object.keys(l.hours).length)
+                              ? 'These hours decide when this store is open, when customers can order “now”, and the reopen countdown they see.'
+                              : 'This store follows its Square location hours. Tick above to set different hours (handy for a pop-up).'}
+                          </p>
+                          {(l.hours && Object.keys(l.hours).length) ? <HoursEditor value={l.hours} onChange={(v) => updLoc(l.id, { hours: v })} /> : null}
+                        </details>
+
+                        <details className="loc-avail">
+                          <summary>Weather for {l.name || 'this store'}{(l.weather && (l.weather.lat != null && l.weather.lat !== '')) ? ` (${l.weather.label || 'custom'})` : ' (using main store)'}</summary>
+                          <p className="muted" style={{ fontSize: 'var(--fs-xs)', margin: '6px 0' }}>The temperature chip shows this store’s local weather. Leave blank to use your main store’s location.</p>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+                            <label className="field" style={{ margin: 0 }}><span>Latitude</span>
+                              <input type="number" step="0.0001" value={l.weather?.lat ?? ''} placeholder="-35.15" onChange={(e) => updLoc(l.id, { weather: { ...(l.weather || {}), lat: e.target.value === '' ? null : Number(e.target.value) } })} /></label>
+                            <label className="field" style={{ margin: 0 }}><span>Longitude</span>
+                              <input type="number" step="0.0001" value={l.weather?.lng ?? ''} placeholder="149.28" onChange={(e) => updLoc(l.id, { weather: { ...(l.weather || {}), lng: e.target.value === '' ? null : Number(e.target.value) } })} /></label>
+                            <label className="field" style={{ margin: 0 }}><span>Label (optional)</span>
+                              <input value={l.weather?.label || ''} placeholder="Sutton" onChange={(e) => updLoc(l.id, { weather: { ...(l.weather || {}), label: e.target.value } })} /></label>
+                          </div>
+                        </details>
+
                         <details className="loc-avail">
                           <summary>Items available at {l.name || 'this store'} ({offeredProducts.length - (l.hiddenItemIds || []).length}/{offeredProducts.length})</summary>
                           <p className="muted" style={{ fontSize: 'var(--fs-xs)', margin: '6px 0' }}>Untick anything this store doesn't make (e.g. hot food at a takeaway site). Unticked items are hidden from this store's menu.</p>

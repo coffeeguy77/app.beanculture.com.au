@@ -18,8 +18,11 @@ const CACHE_MS = 15 * 60 * 1000;        // refresh at most every ~15 minutes
 const STALE_MS = 2 * 60 * 60 * 1000;    // serve cached up to 2h old if a refresh fails
 const TIMEOUT_MS = 6000;
 
-let cache = null; // { data, at, lat, lng }
-let inflight = null;
+// Per-coordinate caches so each store (Mitchell, Sutton, …) is fetched and
+// cached independently — a temperature in Sutton must not overwrite Mitchell's.
+const caches = new Map();   // "lat,lng" -> { data, at, lat, lng }
+const inflights = new Map(); // "lat,lng" -> Promise<boolean>
+const coordKey = (c) => `${c.lat},${c.lng}`;
 
 // WMO weather code → normalized condition (icon key) + human label.
 function mapCondition(code) {
@@ -42,6 +45,16 @@ function storeCoords() {
   const lat = Number(c.lat), lng = Number(c.lng);
   if (Number.isFinite(lat) && Number.isFinite(lng) && (lat !== 0 || lng !== 0)) return { lat, lng };
   return null;
+}
+
+// Coordinates for a specific store: its own weather coords if configured, else
+// the global store coordinates. Returns null when neither is set.
+function coordsFor(loc) {
+  if (loc && loc.weather) {
+    const lat = Number(loc.weather.lat), lng = Number(loc.weather.lng);
+    if (Number.isFinite(lat) && Number.isFinite(lng) && (lat !== 0 || lng !== 0)) return { lat, lng };
+  }
+  return storeCoords();
 }
 
 // Non-production temperature override (never honoured in production, never from a
@@ -117,33 +130,37 @@ function withAge(c) {
   return { ...c.data, age_seconds: Math.round((Date.now() - c.at) / 1000) };
 }
 
-// Normalized weather for the store — cached, stale-tolerant, never throws.
-async function getWeather({ force = false } = {}) {
-  const coords = storeCoords();
+// Normalized weather — cached per coordinate, stale-tolerant, never throws.
+// Pass a `loc` (store) or explicit `coords`; omit both for the global store.
+async function getWeather({ force = false, coords: coordsIn = null, loc = null } = {}) {
+  const coords = coordsIn || coordsFor(loc);
   if (!coords) return devOverride({ ok: false, reason: 'no-coordinates', provider: PROVIDER });
 
+  const key = coordKey(coords);
   const now = Date.now();
-  const cacheValid = cache && cache.data && cache.data.ok && cache.lat === coords.lat && cache.lng === coords.lng;
+  const cache = caches.get(key);
+  const cacheValid = cache && cache.data && cache.data.ok;
   if (cacheValid && !force && (now - cache.at) < CACHE_MS) return devOverride(withAge(cache));
 
-  // Single-flight: collapse concurrent refreshes into one provider call.
-  if (!inflight) {
-    inflight = (async () => {
+  // Single-flight per coordinate: collapse concurrent refreshes into one call.
+  if (!inflights.get(key)) {
+    inflights.set(key, (async () => {
       try {
         const data = await fetchFromProvider(coords.lat, coords.lng);
-        cache = { data, at: Date.now(), lat: coords.lat, lng: coords.lng };
+        caches.set(key, { data, at: Date.now(), lat: coords.lat, lng: coords.lng });
         return true;
       } catch (e) {
         console.warn('[weather] refresh failed:', e.message);
         return false;
-      } finally { inflight = null; }
-    })();
+      } finally { inflights.delete(key); }
+    })());
   }
-  const okRefresh = await inflight;
+  const okRefresh = await inflights.get(key);
 
-  if (okRefresh) return devOverride(withAge(cache));
+  const fresh = caches.get(key);
+  if (okRefresh) return devOverride(withAge(fresh));
   // Refresh failed — serve a recent cached reading if we have one.
-  if (cacheValid && (Date.now() - cache.at) < STALE_MS) return devOverride({ ...withAge(cache), stale: true });
+  if (fresh && fresh.data && fresh.data.ok && (Date.now() - fresh.at) < STALE_MS) return devOverride({ ...withAge(fresh), stale: true });
   return devOverride({ ok: false, reason: 'unavailable', provider: PROVIDER });
 }
 
@@ -151,24 +168,26 @@ async function getWeather({ force = false } = {}) {
 // cached (never fetches inline), and fires a background refresh if it's stale so
 // the value is fresh on the next request. Keeps app load fast — weather never
 // blocks it.
-function peek() {
+function peek(loc) {
+  const coords = coordsFor(loc);
+  const cache = coords ? caches.get(coordKey(coords)) : null;
   const c = cache && cache.data ? withAge(cache) : { ok: false, provider: PROVIDER };
   return devOverride(c);
 }
-function kickoff() { getWeather().catch(() => {}); }
+function kickoff(loc) { getWeather({ loc }).catch(() => {}); }
 
 // For /api/config: return the cached reading instantly if warm; if the cache is
 // cold, wait a SHORT bounded time for a fresh fetch so the temperature appears on
 // the very first load after it's enabled — but never block app load for long. A
 // background warmer (see startWarmer) normally keeps the cache warm so this rarely
 // has to wait at all.
-async function forConfig(capMs = 3000) {
-  const p = peek();
+async function forConfig(capMs = 3000, loc = null) {
+  const p = peek(loc);
   if (p && p.ok) return p;
-  if (!storeCoords()) return p; // no coordinates → nothing to fetch
+  if (!coordsFor(loc)) return p; // no coordinates → nothing to fetch
   const timed = new Promise((res) => setTimeout(() => res(null), capMs));
-  const fetched = await Promise.race([getWeather().then((w) => (w && w.ok ? w : null)).catch(() => null), timed]);
-  return fetched || peek();
+  const fetched = await Promise.race([getWeather({ loc }).then((w) => (w && w.ok ? w : null)).catch(() => null), timed]);
+  return fetched || peek(loc);
 }
 
 // Keep the cache warm so the customer temperature chip and (later) weather
@@ -195,6 +214,6 @@ function publicWeather(w) {
   };
 }
 
-function _resetCacheForTest() { cache = null; inflight = null; }
+function _resetCacheForTest() { caches.clear(); inflights.clear(); }
 
-module.exports = { getWeather, peek, kickoff, forConfig, startWarmer, publicWeather, mapCondition, storeCoords, PROVIDER, _resetCacheForTest };
+module.exports = { getWeather, peek, kickoff, forConfig, startWarmer, publicWeather, mapCondition, storeCoords, coordsFor, PROVIDER, _resetCacheForTest };

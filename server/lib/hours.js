@@ -4,6 +4,9 @@
 
 const { squareFetch, LOCATION_ID } = require('./squareClient');
 const { getSettings, isClosedDate } = require('./settings');
+// Lazy require to avoid any load-order surprises; locations only needs settings.
+let _locations = null;
+function locationsLib() { if (!_locations) { try { _locations = require('./locations'); } catch { _locations = null; } } return _locations; }
 
 const PREORDER_ENABLED = (process.env.PREORDER_ENABLED || 'false').toLowerCase() === 'true';
 const ORDERING_DISABLED = (process.env.ORDERING_DISABLED || 'false').toLowerCase() === 'true';
@@ -47,7 +50,9 @@ function isOpenAt(weekly, dow, minutes) {
   return null;
 }
 
-let cache = { data: null, at: 0 };
+// Base Square-hours cache, keyed by Square location id (so each store's hours
+// are fetched and cached independently).
+const baseCache = new Map(); // sqLocationId -> { data, at }
 
 function toMinutes(hhmmss) {
   if (!hhmmss) return null;
@@ -74,19 +79,22 @@ function localNow(timeZone) {
   return { dow, minutes };
 }
 
-async function getStatus() {
+// Read a Square location's business hours (cached 60s per location id).
+async function baseFor(sqLocationId) {
+  const id = sqLocationId || LOCATION_ID;
   const now = Date.now();
-  if (cache.data && now - cache.at < 60 * 1000) return withRuntime(cache.data);
+  const hit = baseCache.get(id);
+  if (hit && now - hit.at < 60 * 1000) return hit.data;
 
   let location;
   try {
-    const data = await squareFetch(`/v2/locations/${LOCATION_ID}`);
+    const data = await squareFetch(`/v2/locations/${id}`);
     location = data.location;
   } catch (e) {
     // If we can't read hours, assume open (don't block ordering on an API hiccup).
     const fallback = { timezone: 'Australia/Sydney', weekly: {}, hasHours: false };
-    cache = { data: fallback, at: now };
-    return withRuntime(fallback);
+    baseCache.set(id, { data: fallback, at: now });
+    return fallback;
   }
 
   const timezone = location.timezone || 'Australia/Sydney';
@@ -103,8 +111,16 @@ async function getStatus() {
     });
   }
   const data = { timezone, weekly, hasHours: periods.length > 0 };
-  cache = { data, at: now };
-  return withRuntime(data);
+  baseCache.set(id, { data, at: now });
+  return data;
+}
+
+// Open/closed status for a store. Pass a location id to get THAT store's hours
+// (its own Square hours + any per-store override); omit it for the default store.
+async function getStatus(locId) {
+  const loc = (() => { const L = locationsLib(); try { return L ? L.resolve(locId) : null; } catch { return null; } })();
+  const base = await baseFor(loc ? loc.squareLocationId : LOCATION_ID);
+  return withRuntime(base, undefined, loc);
 }
 
 // Today's date in a timezone as { full: 'YYYY-MM-DD', md: 'MM-DD' }.
@@ -121,11 +137,13 @@ function addDays(fullDate, n) {
   return d.toISOString().slice(0, 10);
 }
 
-function withRuntime(base, nowOverride) {
+function withRuntime(base, nowOverride, loc) {
   const s = (() => { try { return getSettings(); } catch { return {}; } })();
 
-  // Store hours: admin-defined (override) when turned on, else Square's.
-  const appWeekly = s.useAppHours ? editableToWeekly(s.storeHours) : null;
+  // Store hours precedence: this store's own per-store hours (if set) > the
+  // global app-hours override (if enabled) > the store's Square business hours.
+  const locWeekly = (loc && loc.hours) ? editableToWeekly(loc.hours) : null;
+  const appWeekly = locWeekly || (s.useAppHours ? editableToWeekly(s.storeHours) : null);
   const weekly = appWeekly || base.weekly;
   const hasHours = appWeekly ? true : base.hasHours;
   // Kitchen hours: its own schedule when enabled, else same as the store.
@@ -139,7 +157,7 @@ function withRuntime(base, nowOverride) {
   }
 
   let closures = [];
-  try { closures = s.closures || []; } catch {}
+  try { closures = (loc && Array.isArray(loc.closures)) ? loc.closures : (s.closures || []); } catch {}
   const td = nowOverride ? { full: nowOverride.todayFull, md: nowOverride.todayFull.slice(5) } : todayDate(base.timezone);
   const closedToday = isClosedDate(closures, td.full);
 
@@ -225,6 +243,16 @@ function withRuntime(base, nowOverride) {
     openDays,
     closedToday,
     closures,
+    // Which store this status is for, and — for a pop-up — its lifecycle so the
+    // app can show a "Store Opening" teaser + countdown before it opens.
+    location: loc ? {
+      id: loc.id,
+      name: loc.name,
+      type: loc.type || 'physical',
+      startDate: loc.startDate || '',
+      endDate: loc.endDate || '',
+      popupState: (() => { const L = locationsLib(); try { return L ? L.popupState(loc) : 'live'; } catch { return 'live'; } })(),
+    } : null,
   };
 }
 
