@@ -10,7 +10,7 @@ function fromPrice(item) {
   return prices.length ? Math.min(...prices) : null;
 }
 
-export default function MenuList({ categories, currency, onPick, scrollTo, scrollKey, onScrolled, kitchenClosedCats, smartByCategory, onSmartLink }) {
+export default function MenuList({ categories, currency, onPick, scrollTo, scrollKey, onScrolled, kitchenClosedCats, smartByCategory, onSmartLink, isFreeCat }) {
   const kShut = new Set((kitchenClosedCats || []).map((c) => (c || '').toLowerCase()));
   // Keyed on scrollKey (a nonce bumped on every dock/footer pick) — NOT on the
   // category name — so pressing the same footer slot again still fires, and so
@@ -49,6 +49,9 @@ export default function MenuList({ categories, currency, onPick, scrollTo, scrol
       {categories.map((cat) => {
         const showImages = cat.showImages !== false;
         const kitchenShut = kShut.has((cat.category || '').toLowerCase());
+        // Complimentary category at an event store — the whole category is free,
+        // so no prices are shown anywhere on these tiles.
+        const freeCat = isFreeCat ? isFreeCat(cat.category) : false;
         const count = (cat.items || []).length;
         return (
         <section key={cat.category} data-cat={cat.category}>
@@ -135,7 +138,7 @@ export default function MenuList({ categories, currency, onPick, scrollTo, scrol
                   <div className="item-body">
                     <div className="item-name">{item.name}</div>
                     {cardDesc && <div className="item-desc">{cardDesc}</div>}
-                    <div className="item-price">{multi ? 'from ' : ''}{formatMoney(from, currency)}</div>
+                    <div className="item-price">{freeCat ? 'Complimentary' : `${multi ? 'from ' : ''}${formatMoney(from, currency)}`}</div>
                   </div>
                   {!unavailable && <span className="plus">+</span>}
                 </button>

@@ -3329,6 +3329,26 @@ export default function Admin({ onExit }) {
                   })()}
                 </div>
 
+                {locs.some((l) => l.type === 'event') && (
+                  <div className="card" style={card}>
+                    <div className="group-title">Event settings</div>
+                    <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 0 }}>Shared settings for all your Event stores. Remember to press <strong>Save changes</strong>.</p>
+                    <label className="field" style={{ margin: 0 }}><span>Default “Visit us” page for events</span>
+                      <select value={s.eventDefaultStorePageLocId || ''} onChange={(e) => set({ eventDefaultStorePageLocId: e.target.value })}>
+                        <option value="">— none (use main store info) —</option>
+                        {locs.filter((l) => l.type !== 'event').map((l) => <option key={l.id} value={l.id}>{l.name || l.id}</option>)}
+                      </select>
+                    </label>
+                    <p className="muted" style={{ fontSize: 'var(--fs-xs)', margin: '4px 0 12px' }}>
+                      Every event borrows this store’s page (photo, blurb, address, map) so guests know where to find you afterwards — e.g. the Mitchell Roastery. An event with its own store page set below overrides this.
+                    </p>
+                    <label className="field" style={{ margin: 0, maxWidth: 220 }}><span>Beans shipping fee ($)</span>
+                      <input type="number" min="0" step="0.50" value={((s.eventShippingFee != null ? s.eventShippingFee : 1000) / 100).toFixed(2)} onChange={(e) => set({ eventShippingFee: Math.max(0, Math.round(Number(e.target.value || 0) * 100)) })} />
+                    </label>
+                    <p className="muted" style={{ fontSize: 'var(--fs-xs)', margin: '4px 0 0' }}>Flat postage added when a customer buys a paid category (e.g. retail beans) at an event and enters a delivery address.</p>
+                  </div>
+                )}
+
                 <div className="card" style={card}>
                   <div className="group-title">Your stores</div>
                   <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 0 }}>
@@ -3380,16 +3400,53 @@ export default function Admin({ onExit }) {
                             <option value="event">Event (corporate hire)</option>
                           </select>
                         </label>
-                        {(() => {
-                          const effFree = l.free != null ? !!l.free : (l.type === 'event');
+                        {l.type === 'event' && (() => {
+                          const effHidden = l.hidden != null ? !!l.hidden : true;
                           return (
                             <div className="field" style={{ margin: 0 }}>
-                              <label className="switch"><input type="checkbox" checked={effFree} onChange={(e) => updLoc(l.id, { free: e.target.checked })} /> <span>Free / complimentary ordering (no payment)</span></label>
+                              <label className="switch"><input type="checkbox" checked={effHidden} onChange={(e) => updLoc(l.id, { hidden: e.target.checked })} /> <span>Hide from the store picker (reach by booth QR only)</span></label>
                               <p className="muted" style={{ fontSize: 'var(--fs-xs)', margin: '4px 0 0' }}>
-                                {effFree
-                                  ? 'Customers order at $0 and it goes straight to the kitchen — no card step. For corporate-hire events where coffees are free.'
-                                  : 'This store charges normally. Tick to make every order complimentary (e.g. a sponsored event).'}
+                                On (recommended for events): this store never appears in “Choose your store”. Customers only reach it by scanning its custom / booth QR code. It still works normally when opened that way.
                               </p>
+                            </div>
+                          );
+                        })()}
+                        {(() => {
+                          const effFree = l.free != null ? !!l.free : (l.type === 'event');
+                          const freeCats = Array.isArray(l.freeCategories) ? l.freeCategories : [];
+                          const perCategory = freeCats.length > 0;
+                          const toggleCat = (name) => {
+                            const set = new Set(freeCats.map((n) => n.toLowerCase()));
+                            set.has(name.toLowerCase()) ? set.delete(name.toLowerCase()) : set.add(name.toLowerCase());
+                            // Store the display-cased names the customer sees.
+                            const chosen = scheduleCatOptions.filter((n) => set.has(n.toLowerCase()));
+                            updLoc(l.id, { freeCategories: chosen });
+                          };
+                          return (
+                            <div className="field" style={{ margin: 0 }}>
+                              <label className="switch"><input type="checkbox" checked={effFree && !perCategory} disabled={perCategory} onChange={(e) => updLoc(l.id, { free: e.target.checked })} /> <span>Make the WHOLE store complimentary (no payment)</span></label>
+                              <p className="muted" style={{ fontSize: 'var(--fs-xs)', margin: '4px 0 8px' }}>
+                                Every order is $0 and goes straight to the kitchen — no card step. For a fully-sponsored event where nothing is charged.{perCategory ? ' (Off while you’ve chosen specific free categories below.)' : ''}
+                              </p>
+                              {l.type === 'event' && (
+                                <>
+                                  <span style={{ fontWeight: 600, fontSize: 'var(--fs-sm)' }}>…or make only certain categories free</span>
+                                  <p className="muted" style={{ fontSize: 'var(--fs-xs)', margin: '2px 0 6px' }}>
+                                    Tick the complimentary categories (coffee, tea…). They show no price and go to the kitchen for nothing. Everything left unticked (e.g. retail coffee beans) is a normal PAID item — the customer enters a delivery address and pays with a card, and postage is added.
+                                  </p>
+                                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                                    {scheduleCatOptions.length === 0 && <span className="muted" style={{ fontSize: 'var(--fs-xs)' }}>No app categories yet.</span>}
+                                    {scheduleCatOptions.map((n) => {
+                                      const on = freeCats.some((x) => x.toLowerCase() === n.toLowerCase());
+                                      return (
+                                        <label key={n} className="switch" style={{ gap: 6 }}>
+                                          <input type="checkbox" checked={on} onChange={() => toggleCat(n)} /> <span>{n}</span>
+                                        </label>
+                                      );
+                                    })}
+                                  </div>
+                                </>
+                              )}
                             </div>
                           );
                         })()}

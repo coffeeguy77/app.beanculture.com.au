@@ -357,8 +357,14 @@ const DEFAULTS = {
   //    thresholds drive the green→amber→red urgency colours.
   // ── Multi-location. Empty = single-site (a "main" location is synthesised from
   //    SQUARE_LOCATION_ID). Each: { id, name, squareLocationId, address, active,
-  //    hiddenItemIds:[] }. See server/lib/locations.js.
+  //    hiddenItemIds:[], type, freeCategories:[], hidden }. See server/lib/locations.js.
   locations: [],
+  // The store page every Event borrows by default (so events point customers to
+  // a real cafe afterwards — e.g. the Mitchell Roastery). A location id.
+  eventDefaultStorePageLocId: '',
+  // Flat postage fee (minor units, e.g. 1000 = $10) for retail beans shipped
+  // from an event where some categories are complimentary and others are paid.
+  eventShippingFee: 1000,
   // ── Order surcharges (Square service charges). See server/lib/surcharges.js.
   //    weekend.days: 0=Sun … 6=Sat. publicHolidays: ['YYYY-MM-DD', …].
   surcharges: {

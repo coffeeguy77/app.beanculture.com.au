@@ -77,8 +77,13 @@ app.get('/api/config', async (_req, res) => {
     currency: sq.CURRENCY,
     storeName: settings.storeName,
     // Stores the customer can order from. Single-site deploys get one entry.
+    // Hidden stores (event booths) are still listed so a ?loc= link resolves
+    // them, but they never count towards "multiLocation" (the picker filters
+    // them out, so they mustn't trigger a picker on their own).
     locations: locations.publicList(),
-    multiLocation: locations.active().length > 1,
+    multiLocation: locations.publicList().filter((l) => !l.hidden).length > 1,
+    // Flat postage fee (minor units) for retail beans shipped from an event.
+    eventShippingFee: settings.eventShippingFee != null ? settings.eventShippingFee : 1000,
     surcharges: surcharges.publicConfig(),
     announcement: settings.announcement,
     contact: settings.contact,
@@ -228,6 +233,27 @@ app.get('/api/loyalty', async (req, res) => {
   }
 });
 
+// ---- Enrol a walk-up customer (name + phone) at an event ----
+// Finds or creates the Square customer, drops them into the loyalty program, and
+// hands the app their identity so the device remembers them for fast reorders.
+app.post('/api/loyalty/enroll', async (req, res) => {
+  try {
+    const { phone, name } = req.body || {};
+    if (!phone || !String(phone).trim()) return res.status(400).json({ error: 'Phone is required' });
+    const cust = await customers.findOrCreate({ phone, name });
+    const acct = await loyalty.enrollAccount({ phone: cust.phone, customerId: cust.customerId }).catch(() => null);
+    res.json({
+      customerId: cust.customerId,
+      name: cust.name,
+      phone: cust.phone,
+      loyaltyAccountId: acct ? acct.id : null,
+      points: acct ? acct.balance || 0 : 0,
+    });
+  } catch (e) {
+    res.status(400).json({ error: 'Could not enrol', detail: e.message });
+  }
+});
+
 // ---- Order history for a signed-in customer ----
 app.get('/api/history', async (req, res) => {
   try {
@@ -241,7 +267,7 @@ app.get('/api/history', async (req, res) => {
 // ---- Create an order (with optional loyalty redemption) ----
 app.post('/api/orders', async (req, res) => {
   try {
-    const { cart, dineIn, table, name, coupon, customerId, phone, pickupAt, note, loyalty: loy, pifVoucher, locationId, cardPayment } = req.body || {};
+    const { cart, dineIn, table, name, coupon, customerId, phone, pickupAt, note, loyalty: loy, pifVoucher, locationId, cardPayment, shipping: shipReq } = req.body || {};
     const squareLocationId = locations.squareIdFor(locationId);
     if (!name || !String(name).trim()) {
       return res.status(400).json({ error: 'Name is required' });
@@ -266,10 +292,29 @@ app.post('/api/orders', async (req, res) => {
         }
       } catch (e) { console.error('pif recipient enrol failed', e.message); }
     }
-    // Free/complimentary is decided by the STORE, never the client — an event
-    // store bills $0 and routes straight to the kitchen.
-    const freeOrder = locations.isFree(locationId);
-    const order = await orders.createOrder({ cart, dineIn: !!dineIn, table, name, coupon, customerId: effectiveCustomerId, pickupAt, note, pifVoucher, squareLocationId, cardPayment: cardPayment !== false, free: freeOrder });
+    // Event first order: name + phone are required at an event store; enrol the
+    // customer so they're recognised for faster future ordering (and dropped into
+    // Square loyalty). No-op if they're already signed in.
+    if (!effectiveCustomerId && phone) {
+      try {
+        const cust = await customers.findOrCreate({ phone, name });
+        effectiveCustomerId = cust.customerId;
+        orderPhone = cust.phone;
+        loyalty.enrollAccount({ phone: cust.phone, customerId: cust.customerId }).catch(() => {});
+      } catch (e) { console.error('event enrol failed', e.message); }
+    }
+    // Free/complimentary is decided by the STORE, never the client. A store may
+    // be wholly free (original event flag) OR free only for certain categories
+    // (coffees free, retail beans paid) — the order code classifies each line
+    // authoritatively from the catalog. Retail beans can be posted for a flat
+    // shipping fee (set in settings, never trusted from the client).
+    const freeCategories = [...locations.freeCategoriesFor(locationId)];
+    const freeOrder = locations.isFree(locationId) && freeCategories.length === 0;
+    const sNow = getSettings();
+    const shipFee = Number(sNow.eventShippingFee != null ? sNow.eventShippingFee : 1000) || 0;
+    const shipping = (freeCategories.length && shipReq && shipReq.address && String(shipReq.address).trim())
+      ? { fee: shipFee, address: shipReq.address, label: 'Shipping' } : null;
+    const order = await orders.createOrder({ cart, dineIn: !!dineIn, table, name, coupon, customerId: effectiveCustomerId, pickupAt, note, pifVoucher, squareLocationId, cardPayment: cardPayment !== false, free: freeOrder, freeCategories, shipping });
 
     let rewardApplied = false;
     if (loy && loy.accountId && loy.tierId) {
@@ -311,6 +356,9 @@ app.post('/api/orders', async (req, res) => {
       version: fresh.version,
       ticketName: fresh.ticket_name,
       rewardApplied,
+      // When we enrolled a walk-up event customer, hand back their identity so the
+      // app can remember them on the device (one-tap reorders at the event).
+      customer: (effectiveCustomerId && !customerId) ? { customerId: effectiveCustomerId, name: name || '', phone: orderPhone || '' } : undefined,
     });
   } catch (err) {
     console.error('order error', err.message);
@@ -1139,10 +1187,12 @@ app.post('/api/pos/order', async (req, res) => {
 
     // Server-authoritative order: Square re-prices from the variation/modifier
     // ids, so the client total is display-only and cannot be tampered with.
+    const posFreeCategories = [...locations.freeCategoriesFor(locationId)];
     const order = await orders.createOrder({
       cart, dineIn: !!dineIn, table: table || '', name: name || '',
       source: pos.sourceName || 'Bean Culture POS', squareLocationId, cardPayment: tender === 'card',
-      free: locations.isFree(locationId),
+      free: locations.isFree(locationId) && posFreeCategories.length === 0,
+      freeCategories: posFreeCategories,
     });
     const amount = order.total_money ? order.total_money.amount : 0;
     const currency = (order.total_money && order.total_money.currency) || sq.CURRENCY;

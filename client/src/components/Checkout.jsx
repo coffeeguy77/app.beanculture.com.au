@@ -43,7 +43,7 @@ function dateStr(d) {
 }
 const WEEKDAYS = [['Mon', 1], ['Tue', 2], ['Wed', 3], ['Thu', 4], ['Fri', 5], ['Sat', 6], ['Sun', 0]];
 
-export default function Checkout({ config, location, cart, currency, onQty, onComboQty, onRemoveCombo, onEditCombo, dineIn, setDineIn, table, setTable, tableLock, onUnlockTable, onScanTable, name, setName, user, canOrder, preWhen, preAt, onPaid, onScheduled, onBack, pifVoucher, onClearPifVoucher }) {
+export default function Checkout({ config, location, cart, currency, onQty, onComboQty, onRemoveCombo, onEditCombo, dineIn, setDineIn, table, setTable, tableLock, onUnlockTable, onScanTable, name, setName, user, canOrder, preWhen, preAt, onPaid, onScheduled, onBack, pifVoucher, onClearPifVoucher, eventMode, wholeFree, isFreeCat, shippingFee, onEnrolled }) {
   const [status, setStatus] = useState('init');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -51,6 +51,11 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
   const [pifManualCode, setPifManualCode] = useState('');
   const [pifError, setPifError] = useState('');
   const [note, setNote] = useState('');
+  // Event walk-up capture: phone is required on the first event order so we can
+  // enrol them into loyalty and remember them on the device for fast reorders.
+  // Delivery address is required only when the cart has paid goods to post.
+  const [phone, setPhone] = useState(user?.phone || '');
+  const [address, setAddress] = useState('');
   const [paymentsObj, setPaymentsObj] = useState(null);
   const [loyalty, setLoyalty] = useState(null);
   const [tierId, setTierId] = useState(null);
@@ -102,6 +107,19 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
   // undiscounted sum while the real charge (order.totalMoney) is lower.
   const cartTotal = Math.max(0, cart.reduce((n, c) => n + c.unitPrice * c.quantity, 0) - comboDiscountFor(cart));
   const hasCombo = cart.some((c) => c.comboInstanceId);
+  // ── Event mixed cart ──
+  // At an event store some categories are complimentary (free coffees) and
+  // others are paid (retail beans). A line is free when its category is one of
+  // the store's free categories. The PAID subtotal is what the customer actually
+  // pays; free lines show no price and route to the kitchen for nothing.
+  const lineFree = (c) => (eventMode && isFreeCat ? isFreeCat(c.category) : false) && !c.comboInstanceId;
+  const hasPaidItems = cart.some((c) => !lineFree(c));
+  const paidSubtotal = Math.max(0, cart.reduce((n, c) => n + (lineFree(c) ? 0 : c.unitPrice * c.quantity), 0) - comboDiscountFor(cart));
+  // Whether every line is complimentary → the whole order is free (no payment).
+  const eventFreeAll = eventMode && !hasPaidItems;
+  // Paid goods at an event get posted out for a flat fee, with a delivery address.
+  const needsShipping = eventMode && hasPaidItems;
+  const shipCost = needsShipping ? (Number(shippingFee) || 0) : 0;
   const cartPayload = cart.map((c) => ({
     variationId: c.variationId, quantity: c.quantity, modifierIds: c.modifierIds, note: c.note,
     // Combo Builder tags — the server independently re-validates these against
@@ -145,11 +163,18 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
       : Math.max(0, Math.round(cartTotal * (1 - (couponInfo.value || 0) / 100))))
     : cartTotal;
   const couponFree = couponValid && discountedTotal === 0;
-  // Complimentary event store: the order is billed $0 server-side, so the app
-  // skips the card step entirely and just places the order to the kitchen.
-  const storeFree = !!(location && location.free);
+  // Complimentary event: the order is billed $0 server-side, so the app skips
+  // the card step and just places the order to the kitchen. True when the store
+  // is wholly free, OR it's an event and every line is a complimentary category.
+  // (Never trust location.free alone — a per-category event store defaults it on
+  // but can still have paid retail beans in the cart.)
+  const storeFree = !!wholeFree || eventFreeAll;
   const isFree = couponFree || storeFree;
-  const payTotal = storeFree ? 0 : (couponValid ? discountedTotal : Math.max(0, cartTotal - pifEstimateCents));
+  // Event mixed carts pay for the paid lines only (+ shipping, added into the
+  // grand total below); coupons / PIF don't apply at events.
+  const payTotal = storeFree ? 0
+    : eventMode ? paidSubtotal
+    : (couponValid ? discountedTotal : Math.max(0, cartTotal - pifEstimateCents));
   // Surcharge estimate (server is authoritative; this mirrors it for the summary
   // so the customer sees the weekend/card surcharge before paying).
   const scfg = (config && config.surcharges) || {};
@@ -157,9 +182,10 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
   const cardActive = !!(scfg.card && scfg.card.enabled) && cardChoice !== 'balance' && payTotal > 0;
   const weekendSc = weekendActive ? Math.round(payTotal * (scfg.weekend.percent || 0) / 100) : 0;
   const cardSc = cardActive ? Math.round((payTotal + weekendSc) * (scfg.card.percent || 0) / 100) : 0;
-  const grandTotal = payTotal + weekendSc + cardSc;
+  const grandTotal = payTotal + weekendSc + cardSc + shipCost;
   const surchargeRows = (
     <>
+      {shipCost > 0 && <div className="row"><span>Shipping</span><span>+{formatMoney(shipCost, currency)}</span></div>}
       {weekendSc > 0 && <div className="row"><span>{scfg.weekend.label || 'Weekend surcharge'} ({scfg.weekend.percent}%)</span><span>+{formatMoney(weekendSc, currency)}</span></div>}
       {cardSc > 0 && <div className="row"><span>{scfg.card.label || 'Card surcharge'} ({scfg.card.percent}%)</span><span>+{formatMoney(cardSc, currency)}</span></div>}
     </>
@@ -219,6 +245,8 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
 
   function validate() {
     if (!name.trim()) { setError('Please enter your name.'); return false; }
+    if (eventMode && !phone.trim()) { setError('Please enter your mobile number.'); return false; }
+    if (needsShipping && !address.trim()) { setError('Please enter a delivery address for your beans.'); return false; }
     if (dineIn === null) { setError('Please choose Dine in or Takeaway.'); return false; }
     if (dineIn && !table.trim()) { setError('Please enter your table number.'); return false; }
     if ((!canOrder || closedNow) && when === 'asap') { setError('We’re closed right now — schedule a pickup time instead.'); return false; }
@@ -256,14 +284,25 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
 
   async function createOrder(pickupAt) {
     if (hasPif) track('gift_redemption_started', { ref: effectivePifCode });
-    return api.createOrder({
+    const res = await api.createOrder({
       cart: cartPayload, dineIn, table, name, coupon, pickupAt, note,
       customerId: user?.customerId, locationId: location?.id,
+      // At an event we send the phone so the server enrols the walk-up customer
+      // (name + phone) into loyalty and stamps the order to their card.
+      phone: eventMode ? phone.trim() : undefined,
+      // Paid beans posted out — the server prices shipping from settings.
+      shipping: needsShipping ? { address: address.trim() } : undefined,
       // Card surcharge applies only to actual card payments, not gift balance.
       cardPayment: cardChoice !== 'balance',
       loyalty: tierId && loyalty?.accountId ? { accountId: loyalty.accountId, tierId } : undefined,
       pifVoucher: hasPif ? effectivePifCode : undefined,
     });
+    // The server hands back the enrolled walk-up customer — remember them on the
+    // device so their next order at the event is one tap and pre-filled.
+    if (res && res.customer && res.customer.customerId && onEnrolled) {
+      onEnrolled({ customerId: res.customer.customerId, name: res.customer.name || name, phone: res.customer.phone || phone });
+    }
+    return res;
   }
 
   // Main submit — routes to schedule (auto-charge) or immediate payment.
@@ -386,6 +425,20 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
           <span className="req">Your name</span>
           <input placeholder="e.g. Shaun" value={name} onChange={(e) => setName(e.target.value)} />
         </label>
+        {eventMode && !user?.customerId && (
+          <label className="field">
+            <span className="req">Mobile number</span>
+            <input type="tel" inputMode="tel" autoComplete="tel" placeholder="e.g. 0412 345 678" value={phone} onChange={(e) => setPhone(e.target.value)} />
+            <span className="muted" style={{ fontSize: 12 }}>We’ll remember you for faster ordering at this event — one tap next time.</span>
+          </label>
+        )}
+        {needsShipping && (
+          <label className="field">
+            <span className="req">Delivery address (for your beans)</span>
+            <textarea rows={2} autoComplete="shipping street-address" placeholder="Street, suburb, state, postcode" value={address} onChange={(e) => setAddress(e.target.value)} />
+            <span className="muted" style={{ fontSize: 12 }}>Your coffees are made here now; the beans are posted to this address (+{formatMoney(shipCost, currency)} shipping).</span>
+          </label>
+        )}
         {dineIn === true && !bigPill && (
           <TableEntry lock={tableLock} table={table} setTable={setTable} onUnlock={onUnlockTable} onScanned={onScanTable} />
         )}
@@ -580,7 +633,7 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
                         <button type="button" onClick={() => onQty(c.key, 1)} aria-label="Increase">+</button>
                       </div>
                     ) : <span className="muted">{c.quantity}×</span>}
-                    <div style={{ fontWeight: 700, minWidth: 56, textAlign: 'right' }}>{formatMoney(c.unitPrice * c.quantity, currency)}</div>
+                    <div style={{ fontWeight: 700, minWidth: 56, textAlign: 'right' }}>{lineFree(c) ? 'Free' : formatMoney(c.unitPrice * c.quantity, currency)}</div>
                   </div>
                 </li>
               );
@@ -590,7 +643,14 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
       )}
 
       <div className="totals">
-        {couponValid ? (
+        {eventMode ? (
+          <>
+            {cart.some(lineFree) && <div className="row"><span>Complimentary items</span><span>Free</span></div>}
+            {hasPaidItems && <div className="row"><span>Subtotal</span><span>{formatMoney(paidSubtotal, currency)}</span></div>}
+            {surchargeRows}
+            <div className="row grand"><span>Total</span><span>{grandTotal > 0 ? formatMoney(grandTotal, currency) : 'Complimentary'}</span></div>
+          </>
+        ) : couponValid ? (
           <>
             <div className="row"><span>Subtotal</span><span>{formatMoney(cartTotal, currency)}</span></div>
             <div className="row discount"><span>Coupon {couponInfo.code || coupon.trim().toUpperCase()} · {couponInfo.label}</span><span>−{formatMoney(cartTotal - discountedTotal, currency)}</span></div>

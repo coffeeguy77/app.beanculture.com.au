@@ -45,7 +45,7 @@ function parseDescription(text) {
   return { intro, facts };
 }
 
-export default function ItemModal({ item, currency, onClose, onAdd }) {
+export default function ItemModal({ item, currency, onClose, onAdd, isFree }) {
   // Selection / validation / pricing / cart-item build all come from the shared
   // hook, so the customer sheet and the staff POS produce identical results.
   const {
@@ -100,7 +100,8 @@ export default function ItemModal({ item, currency, onClose, onAdd }) {
             <div className="sheet-left-body">
               {item.category && <div className="sheet-eyebrow">{item.category}</div>}
               <h2>{item.name}</h2>
-              {Number.isFinite(minPrice) && <div className="sheet-from-price">From {formatMoney(minPrice, currency)}</div>}
+              {!isFree && Number.isFinite(minPrice) && <div className="sheet-from-price">From {formatMoney(minPrice, currency)}</div>}
+              {isFree && <div className="sheet-from-price">Complimentary</div>}
               {intro && <p className="sheet-desc">{intro}</p>}
               {originList.length > 0 && <p className="sheet-origin">{originList.join(' · ')}</p>}
               {tastingList.length > 0 && (
@@ -148,7 +149,7 @@ export default function ItemModal({ item, currency, onClose, onAdd }) {
                         onClick={() => setVariationId(v.id)}>
                         {variationId === v.id && <span className="ccard-check">✓</span>}
                         <span className="ccard-name">{v.name || item.name}{v.soldOut ? ' — Sold out' : ''}</span>
-                        <span className="ccard-price">{formatMoney(v.price, currency)}</span>
+                        {!isFree && <span className="ccard-price">{formatMoney(v.price, currency)}</span>}
                       </button>
                     ))}
                   </div>
@@ -182,7 +183,7 @@ export default function ItemModal({ item, currency, onClose, onAdd }) {
                           onClick={() => toggleModifier(group, mod)}>
                           {chosen && <span className="ccard-check">✓</span>}
                           <span className="ccard-name">{mod.name}</span>
-                          {mod.price > 0 && <span className="ccard-price">+{formatMoney(mod.price, currency)}</span>}
+                          {!isFree && mod.price > 0 && <span className="ccard-price">+{formatMoney(mod.price, currency)}</span>}
                         </button>
                       );
                     })}
@@ -212,7 +213,7 @@ export default function ItemModal({ item, currency, onClose, onAdd }) {
             )}
           </div>
           <button className="btn sheet-footer-add" onClick={handleAdd} disabled={unmetGroups.length > 0}>
-            Add to order · {formatMoney(unitPrice * qty, currency)}
+            {isFree ? 'Add to order' : `Add to order · ${formatMoney(unitPrice * qty, currency)}`}
           </button>
         </div>
       </div>

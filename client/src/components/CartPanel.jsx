@@ -22,10 +22,14 @@ function groupCart(cart) {
   return out;
 }
 
-export default function CartPanel({ cart, currency, onQty, onRemove, onClear, onComboQty, onRemoveCombo, onEditCombo, dineIn, table, onCheckout, summary, unavailableKeys }) {
-  const gross = cart.reduce((n, c) => n + c.unitPrice * c.quantity, 0);
+export default function CartPanel({ cart, currency, onQty, onRemove, onClear, onComboQty, onRemoveCombo, onEditCombo, dineIn, table, onCheckout, summary, unavailableKeys, isFreeCat }) {
+  // Complimentary event lines cost nothing and show no price. The cart total is
+  // the PAID lines only (retail beans etc.).
+  const lineFree = (c) => (isFreeCat ? isFreeCat(c.category) : false) && !c.comboInstanceId;
+  const gross = cart.reduce((n, c) => n + (lineFree(c) ? 0 : c.unitPrice * c.quantity), 0);
   const comboSavings = comboDiscountFor(cart);
   const total = Math.max(0, gross - comboSavings);
+  const anyFree = cart.some(lineFree);
   const count = cart.reduce((n, c) => n + c.quantity, 0);
   const hasUnavailable = cart.some((c) => unavailableKeys?.has(c.key));
   const empty = cart.length === 0;
@@ -93,7 +97,7 @@ export default function CartPanel({ cart, currency, onQty, onRemove, onClear, on
                 <div className="cl-main">
                   <div className="cl-head">
                     <span className="cl-name">{c.itemName}{c.variationName ? ` · ${c.variationName}` : ''}</span>
-                    <span className="cl-price">{formatMoney(c.unitPrice * c.quantity, currency)}</span>
+                    <span className="cl-price">{lineFree(c) ? 'Free' : formatMoney(c.unitPrice * c.quantity, currency)}</span>
                   </div>
                   {c.modifierNames?.length > 0 && <div className="cl-sub">{c.modifierNames.join(', ')}</div>}
                   {c.note && <div className="cl-sub">“{c.note}”</div>}
@@ -129,7 +133,7 @@ export default function CartPanel({ cart, currency, onQty, onRemove, onClear, on
             {hasUnavailable && <p className="cart-unavailable-note">Remove the unavailable item{cart.filter((c) => unavailableKeys?.has(c.key)).length > 1 ? 's' : ''} above to check out.</p>}
             <div className="totals">
               {comboSavings > 0 && <div className="row cl-combo-save"><span>Combo savings</span><span>−{formatMoney(comboSavings, currency)}</span></div>}
-              <div className="row grand"><span>Total</span><span>{formatMoney(total, currency)}</span></div>
+              <div className="row grand"><span>Total</span><span>{anyFree && total === 0 ? 'Complimentary' : formatMoney(total, currency)}</span></div>
             </div>
             <button className="btn full" disabled={hasUnavailable} onClick={onCheckout}>
               Go to payment · {count} {count === 1 ? 'item' : 'items'}

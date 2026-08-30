@@ -352,7 +352,11 @@ export default function App() {
   useEffect(() => {
     if (!config) return;
     const locs = config.locations || [];
-    if (locs.length > 1) {
+    // Only PICKABLE (non-hidden) stores prompt the picker. A hidden event booth
+    // is reached only by its ?loc= QR — it must never make the picker appear, and
+    // arriving on one (locationId set) is a valid, already-chosen store.
+    const visible = locs.filter((l) => !l.hidden);
+    if (visible.length > 1) {
       const chosen = locationId && locs.some((l) => l.id === locationId);
       if (!chosen) setShowStorePicker(true);
     }
@@ -365,6 +369,18 @@ export default function App() {
   }
   const chosenLocation = ((config && config.locations) || []).find((l) => l.id === locationId)
     || ((config && config.locations) || [])[0] || null;
+
+  // ── Event pricing model ──
+  // A store can be wholly complimentary (the original event flag) OR free for
+  // certain categories only (coffees free; retail beans paid). `freeCats` holds
+  // the complimentary category names; `wholeFree` is the all-free case. Used to
+  // hide prices for the free items across the menu, item sheet, cart and
+  // checkout, and to work out what (if anything) the customer still pays for.
+  const freeCats = ((chosenLocation && chosenLocation.freeCategories) || []).map((n) => String(n).toLowerCase());
+  const wholeFree = !!(chosenLocation && chosenLocation.free) && freeCats.length === 0;
+  const eventMode = !!(chosenLocation && (wholeFree || freeCats.length > 0));
+  // Is a given category (by display name) complimentary at the chosen store?
+  const isFreeCat = (catName) => wholeFree || freeCats.includes(String(catName || '').toLowerCase());
 
   // Which order types the chosen store offers (default: all, for single-site).
   const fulfil = (chosenLocation && chosenLocation.fulfilment) || { dineIn: true, takeaway: true, reservations: true };
@@ -1018,6 +1034,9 @@ export default function App() {
       preWhen={preWhen} preAt={preAt}
       onPaid={onPaid} onScheduled={onScheduledOrder} onBack={() => setView(wide ? 'home' : 'cart')}
       pifVoucher={pifVoucher} onClearPifVoucher={() => setPifVoucher(null)}
+      eventMode={eventMode} wholeFree={wholeFree} isFreeCat={isFreeCat}
+      shippingFee={config.eventShippingFee != null ? config.eventShippingFee : 1000}
+      onEnrolled={onSignIn}
     />
   );
   const showLayout = view === 'home' || (wide && view === 'checkout');
@@ -1487,6 +1506,7 @@ export default function App() {
               kitchenClosedCats={kitchenClosedCats}
               smartByCategory={smartByCategoryForStore}
               onSmartLink={onBannerLink}
+              isFreeCat={isFreeCat}
             />
             {!isMobile && <InstallButton />}
           </div>
@@ -1502,6 +1522,7 @@ export default function App() {
                 summary={config.hours?.opening ? `Opens ${config.hours.opening.label || config.hours.opening.dateLabel}` : fulfilmentLabel}
                 unavailableKeys={cartUnavailableKeys}
                 onCheckout={() => setView('checkout')}
+                isFreeCat={isFreeCat}
               />
             )}
           </aside>
@@ -1516,18 +1537,19 @@ export default function App() {
           dineIn={dineIn} table={table}
           unavailableKeys={cartUnavailableKeys}
           onCheckout={() => setView('checkout')} onBack={() => setView('home')}
+          isFreeCat={isFreeCat}
         />
       )}
 
       {!wide && view === 'checkout' && checkoutEl}
 
-      {config && (config.locations || []).length > 1 && showStorePicker && (
+      {config && (config.locations || []).filter((l) => !l.hidden).length > 1 && showStorePicker && (
         <div className="backdrop store-picker-backdrop">
           <div className="sheet store-picker">
             <h2>Choose your store</h2>
             <p className="muted">Pick where you're ordering from — the menu and your order go to that store.</p>
             <div className="store-picker-list">
-              {(config.locations || []).map((l) => (
+              {(config.locations || []).filter((l) => !l.hidden).map((l) => (
                 <button key={l.id} type="button"
                   className={`store-picker-opt${locationId === l.id ? ' on' : ''}`}
                   onClick={() => chooseLocation(l.id)}>
@@ -1543,7 +1565,7 @@ export default function App() {
       {activeItem && (
         activeItem.isCombo
           ? <ComboModal item={activeItem} currency={currency} onClose={() => setActiveItem(null)} onAdd={addComboToCart} />
-          : <ItemModal item={activeItem} currency={currency} onClose={() => setActiveItem(null)} onAdd={addToCart} />
+          : <ItemModal item={activeItem} currency={currency} onClose={() => setActiveItem(null)} onAdd={addToCart} isFree={isFreeCat(activeItem.category)} />
       )}
       {showTheme && (
         <ThemePicker

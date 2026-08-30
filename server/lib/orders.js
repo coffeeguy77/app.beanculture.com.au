@@ -4,6 +4,7 @@
 const { squareFetch, LOCATION_ID, idem, CURRENCY } = require('./squareClient');
 const coupons = require('./coupons');
 const combos = require('./combos');
+const catalog = require('./catalog');
 const payItForward = require('./payItForward');
 
 const DINEIN_FULFILLMENT = (process.env.SQUARE_DINEIN_FULFILLMENT || 'PICKUP').toUpperCase();
@@ -23,7 +24,7 @@ function buildNote({ dineIn, table }) {
   return dineIn ? `DINE-IN · Table ${table || '?'}` : 'TAKEAWAY';
 }
 
-async function createOrder({ cart, dineIn, table, name, coupon, customerId, pickupAt, idempotencyKey, note: customerNote, pifVoucher, source, squareLocationId, cardPayment, free }) {
+async function createOrder({ cart, dineIn, table, name, coupon, customerId, pickupAt, idempotencyKey, note: customerNote, pifVoucher, source, squareLocationId, cardPayment, free, freeCategories, shipping }) {
   const LOC = squareLocationId || LOCATION_ID;
   if (!Array.isArray(cart) || cart.length === 0) throw new Error('Cart is empty');
   // Bake any per-combo locked modifiers into the combo lines before pricing, so
@@ -31,14 +32,35 @@ async function createOrder({ cart, dineIn, table, name, coupon, customerId, pick
   // a tampered client left it off. No-op for carts without a combo.
   cart = await combos.applyLockedMods(cart);
 
-  // A "comp" order is billed at $0: either a test-comp coupon, or a free/event
-  // store (corporate hire — complimentary coffees; the caller sets `free` from
-  // the location, server-authoritative). It still routes to the kitchen.
+  // ── Per-category event comp ──
+  // At an event store some categories are complimentary (free coffees) while
+  // others (retail beans) stay paid. We decide which cart lines are free
+  // AUTHORITATIVELY from the Square catalog — the line's variation → its
+  // category names — never from anything the client sends. `freeIdx` holds the
+  // indexes of the complimentary lines.
+  const freeSet = new Set((Array.isArray(freeCategories) ? freeCategories : []).map((n) => String(n).toLowerCase()));
+  const freeIdx = new Set();
+  if (freeSet.size) {
+    let vcm = {};
+    try { vcm = await catalog.getVariationCategoryMap(); } catch (e) { console.warn('[orders] category map failed:', e.message); }
+    cart.forEach((ci, i) => {
+      const cats = (vcm[ci.variationId] || []).map((n) => String(n).toLowerCase());
+      if (cats.some((c) => freeSet.has(c))) freeIdx.add(i);
+    });
+  }
+  // Every line is complimentary → treat exactly like a whole-store comp.
+  const allFree = freeIdx.size > 0 && freeIdx.size === cart.length;
+
+  // A "comp" order is billed at $0: a test-comp coupon, a free/event store, or an
+  // event cart whose every line is a complimentary category. It still routes to
+  // the kitchen. A MIXED event cart (some free, some paid) is handled further
+  // down with a line-item discount on just the free lines.
   const isTestComp =
     !!COMP_COUPON_CODE &&
     !!coupon &&
     String(coupon).trim().toLowerCase() === COMP_COUPON_CODE.toLowerCase();
-  const isComp = isTestComp || !!free;
+  const isComp = isTestComp || !!free || allFree;
+  const partialComp = !isComp && freeIdx.size > 0; // some free lines, some paid
 
   // Every line item gets a stable uid so a Pay It Forward voucher's
   // LINE_ITEM-scope discount can be attached to exactly the eligible lines
@@ -99,7 +121,7 @@ async function createOrder({ cart, dineIn, table, name, coupon, customerId, pick
   let pifReservation = null;
   if (isComp) {
     order.discounts = [
-      { uid: 'comp', name: free ? 'Complimentary (event)' : `Test comp (${COMP_COUPON_CODE})`, percentage: '100', scope: 'ORDER' },
+      { uid: 'comp', name: (free || allFree) ? 'Complimentary (event)' : `Test comp (${COMP_COUPON_CODE})`, percentage: '100', scope: 'ORDER' },
     ];
   } else if (pifVoucher) {
     const reservation = await payItForward.reserveForCheckout({ tokenOrCode: pifVoucher, cart, redeemedByCustomerId: customerId });
@@ -131,13 +153,41 @@ async function createOrder({ cart, dineIn, table, name, coupon, customerId, pick
     }
   }
 
+  // Mixed event cart: 100%-off just the complimentary lines (LINE_ITEM scope),
+  // so the free coffees cost nothing while the paid beans are still charged.
+  if (partialComp) {
+    const d = { uid: 'evfree', name: 'Complimentary (event)', percentage: '100', scope: 'LINE_ITEM' };
+    order.discounts = [...(order.discounts || []), d];
+    for (const i of freeIdx) {
+      if (lineItems[i]) lineItems[i].applied_discounts = [...(lineItems[i].applied_discounts || []), { discount_uid: d.uid }];
+    }
+  }
+
   // Surcharges (weekend / card) as Square service charges — server-authoritative.
   // Skipped for comps (a 100%-off order shouldn't still bill a surcharge).
   if (!isComp) {
     try {
       const sc = require('./surcharges').serviceChargesFor({ cardPayment: !!cardPayment });
-      if (sc.length) order.service_charges = sc;
+      if (sc.length) order.service_charges = [...(order.service_charges || []), ...sc];
     } catch (e) { console.warn('[surcharges] skipped:', e.message); }
+  }
+
+  // Shipping (retail beans posted out) as a fixed service charge, plus the
+  // delivery address on the ticket so staff can pack and post it. Only ever on a
+  // cart that actually has something to pay for (never a fully-comp order). The
+  // amount is set by the caller from settings — never trusted from the client.
+  if (!isComp && shipping && Number(shipping.fee) > 0) {
+    order.service_charges = [...(order.service_charges || []), {
+      uid: 'ship',
+      name: shipping.label || 'Shipping',
+      amount_money: { amount: Math.round(Number(shipping.fee)), currency: CURRENCY },
+      calculation_phase: 'TOTAL_PHASE',
+    }];
+    const addr = shipping.address ? String(shipping.address).trim().slice(0, 300) : '';
+    if (addr) {
+      order.note = `${order.note} · SHIP TO: ${addr}`.slice(0, 500);
+      if (fulfillment.pickup_details) fulfillment.pickup_details.note = `${fulfillment.pickup_details.note} · SHIP TO: ${addr}`.slice(0, 500);
+    }
   }
 
   try {

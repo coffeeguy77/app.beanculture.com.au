@@ -17,9 +17,14 @@ function groupCart(cart) {
   return out;
 }
 
-export default function CartView({ cart, currency, onQty, onRemove, onClear, onComboQty, onRemoveCombo, onEditCombo, dineIn, table, onCheckout, onBack, kitchenBanner, unavailableKeys }) {
+export default function CartView({ cart, currency, onQty, onRemove, onClear, onComboQty, onRemoveCombo, onEditCombo, dineIn, table, onCheckout, onBack, kitchenBanner, unavailableKeys, isFreeCat }) {
+  // Complimentary event lines cost nothing and show no price; the total is the
+  // PAID lines only (retail beans etc.).
+  const lineFree = (c) => (isFreeCat ? isFreeCat(c.category) : false) && !c.comboInstanceId;
   const comboSavings = comboDiscountFor(cart);
-  const total = Math.max(0, cart.reduce((n, c) => n + c.unitPrice * c.quantity, 0) - comboSavings);
+  const total = Math.max(0, cart.reduce((n, c) => n + (lineFree(c) ? 0 : c.unitPrice * c.quantity), 0) - comboSavings);
+  const anyFree = cart.some(lineFree);
+  const totalLabel = anyFree && total === 0 ? 'Complimentary' : formatMoney(total, currency);
   const hasUnavailable = cart.some((c) => unavailableKeys?.has(c.key));
   const grouped = groupCart(cart);
   if (cart.length === 0) {
@@ -87,7 +92,7 @@ export default function CartView({ cart, currency, onQty, onRemove, onClear, onC
                   <button onClick={() => onQty(c.key, 1)}>+</button>
                 </div>
               )}
-              <div style={{ fontWeight: 700 }}>{formatMoney(c.unitPrice * c.quantity, currency)}</div>
+              <div style={{ fontWeight: 700 }}>{lineFree(c) ? 'Free' : formatMoney(c.unitPrice * c.quantity, currency)}</div>
               {onRemove && <button className="cart-remove" onClick={() => onRemove(c.key)} aria-label={`Remove ${c.itemName}`}>✕</button>}
             </div>
           </li>
@@ -97,10 +102,10 @@ export default function CartView({ cart, currency, onQty, onRemove, onClear, onC
       {hasUnavailable && <p className="cart-unavailable-note">Remove the unavailable item{cart.filter((c) => unavailableKeys?.has(c.key)).length > 1 ? 's' : ''} above to check out.</p>}
       <div className="totals">
         {comboSavings > 0 && <div className="row cl-combo-save"><span>Combo savings</span><span>−{formatMoney(comboSavings, currency)}</span></div>}
-        <div className="row grand"><span>Total</span><span>{formatMoney(total, currency)}</span></div>
+        <div className="row grand"><span>Total</span><span>{totalLabel}</span></div>
       </div>
       {kitchenBanner}
-      <button className="btn full" disabled={hasUnavailable} onClick={onCheckout}>Go to payment · {formatMoney(total, currency)}</button>
+      <button className="btn full" disabled={hasUnavailable} onClick={onCheckout}>{total > 0 ? `Go to payment · ${formatMoney(total, currency)}` : 'Review order'}</button>
     </main>
   );
 }

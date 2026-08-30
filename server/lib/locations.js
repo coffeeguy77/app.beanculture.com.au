@@ -97,6 +97,15 @@ function list() {
     // Free / no-payment ordering (corporate event hire — complimentary coffees).
     // Defaults on for an Event store; overridable per store either way.
     free: l.free != null ? !!l.free : (l.type === 'event'),
+    // Complimentary categories (by display name) at this event store — those
+    // items show no price and go straight to the kitchen; everything else is a
+    // normal PAID item (e.g. retail coffee beans). Empty list + free:true means
+    // the WHOLE store is complimentary (the original event behaviour).
+    freeCategories: Array.isArray(l.freeCategories) ? l.freeCategories.filter(Boolean) : [],
+    // Hidden from the public store picker — reachable only by its own QR / booth
+    // link (?loc=…). Events default to hidden (found via booth QR at the event
+    // only); overridable per store.
+    hidden: l.hidden != null ? !!l.hidden : (l.type === 'event'),
     // Per-store fulfilment overrides ({ dineIn, takeaway, reservations }); any
     // key left undefined falls back to the type default (see fulfilmentFor).
     fulfilment: (l.fulfilment && typeof l.fulfilment === 'object') ? l.fulfilment : null,
@@ -145,6 +154,26 @@ function isFree(locId) {
   return !!resolve(locId).free;
 }
 
+// The complimentary category names (lowercased) for a store — the per-category
+// event model. Empty set means "no per-category list"; combine with isFree()
+// for the whole-store-free case. Server-authoritative (never trust the client).
+function freeCategoriesFor(locId) {
+  const l = resolve(locId);
+  return new Set((l.freeCategories || []).map((n) => String(n).toLowerCase()));
+}
+
+// The "Visit" store page every Event borrows by default, so an event always
+// points customers to a real cafe afterwards (e.g. the Mitchell Roastery).
+// Chosen globally in settings.eventDefaultStorePageLocId; null when unset or the
+// target has no store page. Never falls back to an event's own page.
+function eventDefaultStorePage() {
+  const s = getSettings();
+  const id = s.eventDefaultStorePageLocId;
+  if (!id) return null;
+  const l = list().find((x) => x.id === id && x.type !== 'event');
+  return (l && l.storePage) ? l.storePage : null;
+}
+
 // Shape for the client. Includes squareLocationId because the browser card SDK
 // (Square.payments) is already initialised with a Square location id — it must
 // tokenise against the store the customer chose so the charge lands there.
@@ -152,8 +181,13 @@ function isFree(locId) {
 // teaser and its countdown, and a per-store weather label + store-page presence.
 function publicList() {
   const today = todayISO();
+  const eventDefaultSP = eventDefaultStorePage();
   return active().map((l) => {
     const state = popupState(l, today);
+    // An event borrows the configured default store page (e.g. Mitchell
+    // Roastery) when it hasn't got its own, so customers always learn where to
+    // find the cafe after the event.
+    const sp = l.storePage || (l.type === 'event' ? eventDefaultSP : null);
     return {
       id: l.id,
       name: l.name,
@@ -166,25 +200,31 @@ function publicList() {
       // 'upcoming' (pop-up not open yet) | 'live'. 'ended' is filtered out above.
       status: state,
       daysUntilOpen: (l.type === 'popup' && l.startDate) ? Math.max(0, dayDiff(today, l.startDate)) : null,
-      hasStorePage: !!l.storePage,
+      hasStorePage: !!sp,
       // Per-store "Visit" page content (photo, blurb, phone, map). Only what the
       // page needs to render — falls back to the global store info on the client.
-      storePage: l.storePage ? {
-        photo: l.storePage.photo || '',
-        bio: l.storePage.bio || '',
-        phone: l.storePage.phone || '',
-        mapsUrl: l.storePage.mapsUrl || '',
+      storePage: sp ? {
+        photo: sp.photo || '',
+        bio: sp.bio || '',
+        phone: sp.phone || '',
+        mapsUrl: sp.mapsUrl || '',
       } : null,
       // Which order types this store offers, so the app can show only the
       // relevant choices (e.g. takeaway-only at a pop-up).
       fulfilment: fulfilmentFor(l),
       // Complimentary ordering (no payment) — the app hides the card step.
       free: !!l.free,
+      // Complimentary categories at this event; everything else stays paid.
+      freeCategories: Array.isArray(l.freeCategories) ? l.freeCategories : [],
+      // Hidden from the store picker (event booths etc.) — the app still resolves
+      // it when reached by ?loc=, but never lists it as a choosable store.
+      hidden: !!l.hidden,
     };
   });
 }
 
 module.exports = {
-  list, active, resolve, squareIdFor, hiddenSet, isFree, publicList, slug,
+  list, active, resolve, squareIdFor, hiddenSet, isFree, freeCategoriesFor,
+  eventDefaultStorePage, publicList, slug,
   popupState, todayISO, dayDiff, fulfilmentFor, typeFulfilmentDefaults,
 };
