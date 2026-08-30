@@ -3264,6 +3264,28 @@ export default function Admin({ onExit }) {
                           </div>
                         )}
 
+                        {(() => {
+                          const defs = l.type === 'popup' ? { dineIn: false, takeaway: true, reservations: false }
+                            : l.type === 'event' ? { dineIn: true, takeaway: false, reservations: false }
+                            : { dineIn: true, takeaway: true, reservations: true };
+                          const f = l.fulfilment || {};
+                          const eff = (k) => (f[k] != null ? !!f[k] : defs[k]);
+                          const setF = (k, v) => updLoc(l.id, { fulfilment: { ...(l.fulfilment || {}), [k]: v } });
+                          return (
+                            <div className="field" style={{ margin: 0 }}>
+                              <span>Order types offered at this store</span>
+                              <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', marginTop: 4 }}>
+                                <label className="switch"><input type="checkbox" checked={eff('dineIn')} onChange={(e) => setF('dineIn', e.target.checked)} /> <span>Dine in / tables</span></label>
+                                <label className="switch"><input type="checkbox" checked={eff('takeaway')} onChange={(e) => setF('takeaway', e.target.checked)} /> <span>Takeaway</span></label>
+                                <label className="switch"><input type="checkbox" checked={eff('reservations')} onChange={(e) => setF('reservations', e.target.checked)} /> <span>Reservations</span></label>
+                              </div>
+                              <p className="muted" style={{ fontSize: 'var(--fs-xs)', margin: '4px 0 0' }}>
+                                Defaults follow the store type; tick to override. A pop-up is takeaway-only unless you switch dine-in/tables on.
+                              </p>
+                            </div>
+                          );
+                        })()}
+
                         <details className="loc-avail">
                           <summary>Opening hours for {l.name || 'this store'}{(l.hours && Object.keys(l.hours).length) ? ' (custom)' : ' (using Square hours)'}</summary>
                           <label className="switch" style={{ margin: '6px 0' }}>

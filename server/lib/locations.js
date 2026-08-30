@@ -48,6 +48,25 @@ function popupState(l, today = todayISO()) {
   return 'live';
 }
 
+// Fulfilment options for a location: each store's own toggle if set, else a
+// sensible default from its type. Physical = dine-in + takeaway + reservations;
+// Pop-up = takeaway only (tick dine-in on if it has a table/booth setup);
+// Event = booth/table ordering only (free), no takeaway or reservations.
+function typeFulfilmentDefaults(type) {
+  if (type === 'popup') return { dineIn: false, takeaway: true, reservations: false };
+  if (type === 'event') return { dineIn: true, takeaway: false, reservations: false };
+  return { dineIn: true, takeaway: true, reservations: true };
+}
+function fulfilmentFor(l) {
+  const def = typeFulfilmentDefaults(l && l.type);
+  const f = (l && l.fulfilment) || {};
+  return {
+    dineIn: f.dineIn != null ? !!f.dineIn : def.dineIn,
+    takeaway: f.takeaway != null ? !!f.takeaway : def.takeaway,
+    reservations: f.reservations != null ? !!f.reservations : def.reservations,
+  };
+}
+
 // The configured locations, always non-empty. A blank squareLocationId falls
 // back to the env default so a half-configured second location can't misroute
 // money. Carries the full per-store config (hours, weather, pop-up window,
@@ -74,7 +93,10 @@ function list() {
     address: l.address || '',
     active: l.active !== false,
     hiddenItemIds: Array.isArray(l.hiddenItemIds) ? l.hiddenItemIds : [],
-    type: l.type === 'popup' ? 'popup' : 'physical',
+    type: (l.type === 'popup' || l.type === 'event') ? l.type : 'physical',
+    // Per-store fulfilment overrides ({ dineIn, takeaway, reservations }); any
+    // key left undefined falls back to the type default (see fulfilmentFor).
+    fulfilment: (l.fulfilment && typeof l.fulfilment === 'object') ? l.fulfilment : null,
     startDate: l.startDate || '',
     endDate: l.endDate || '',
     // Per-store weekly hours ({ MON:[{open,close}], … }); blank → falls back to
@@ -136,11 +158,14 @@ function publicList() {
       status: state,
       daysUntilOpen: (l.type === 'popup' && l.startDate) ? Math.max(0, dayDiff(today, l.startDate)) : null,
       hasStorePage: !!l.storePage,
+      // Which order types this store offers, so the app can show only the
+      // relevant choices (e.g. takeaway-only at a pop-up).
+      fulfilment: fulfilmentFor(l),
     };
   });
 }
 
 module.exports = {
   list, active, resolve, squareIdFor, hiddenSet, publicList, slug,
-  popupState, todayISO, dayDiff,
+  popupState, todayISO, dayDiff, fulfilmentFor, typeFulfilmentDefaults,
 };

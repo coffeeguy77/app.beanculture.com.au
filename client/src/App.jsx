@@ -365,6 +365,22 @@ export default function App() {
   const chosenLocation = ((config && config.locations) || []).find((l) => l.id === locationId)
     || ((config && config.locations) || [])[0] || null;
 
+  // Which order types the chosen store offers (default: all, for single-site).
+  const fulfil = (chosenLocation && chosenLocation.fulfilment) || { dineIn: true, takeaway: true, reservations: true };
+  // Keep the selected order type valid for the chosen store: a takeaway-only
+  // pop-up must never sit on a stale "Dine in" choice, and a booth-only event
+  // must never sit on "Takeaway".
+  useEffect(() => {
+    if (!chosenLocation) return;
+    if (dineIn === true && !fulfil.dineIn) setDineIn(false);
+    else if (dineIn === false && !fulfil.takeaway && fulfil.dineIn) setDineIn(true);
+    else if (dineIn == null) {
+      if (fulfil.takeaway && !fulfil.dineIn) setDineIn(false);      // takeaway-only
+      else if (fulfil.dineIn && !fulfil.takeaway) setDineIn(true);  // dine-in/booths-only
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [locationId, fulfil.dineIn, fulfil.takeaway]);
+
   // Single-layout default: activate the FIRST top-nav category (e.g. Coffee) so
   // its dock tile renders active on load showing its real live count, and the
   // Coffee items are what's shown. Config + menu load separately, so this waits
@@ -1423,7 +1439,8 @@ export default function App() {
             {!(wide && view === 'checkout') && (
               <OrderTypeBar dineIn={dineIn} setDineIn={setDineIn} table={table} setTable={setTable} lock={tableLock} onUnlock={unlockTable} onScanned={applyScannedTable}
                 when={preWhen} setWhen={setPreWhen} at={preAt} setAt={setPreAt} hours={config.hours}
-                onReserve={config.reservations ? () => setView('reserve') : null} />
+                allowDineIn={fulfil.dineIn} allowTakeaway={fulfil.takeaway}
+                onReserve={(config.reservations && fulfil.reservations) ? () => setView('reserve') : null} />
             )}
             <div className="search">
               <input placeholder="Search the menu…" value={query} onChange={(e) => setQuery(e.target.value)} />

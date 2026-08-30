@@ -2,7 +2,7 @@ import React from 'react';
 import { TableLockPill, TableEntry } from './TableControls.jsx';
 import ScheduleWhen from './ScheduleWhen.jsx';
 
-export default function OrderTypeBar({ dineIn, setDineIn, table, setTable, lock, onUnlock, onScanned, when, setWhen, at, setAt, hours, onReserve }) {
+export default function OrderTypeBar({ dineIn, setDineIn, table, setTable, lock, onUnlock, onScanned, when, setWhen, at, setAt, hours, onReserve, allowDineIn = true, allowTakeaway = true, dineInLabel = 'Dine in' }) {
   const storeOpen = hours?.open !== false;
   // Stage 2 — scanned: prominent solid pill only, no toggle.
   if (lock >= 2 && dineIn && table) {
@@ -13,22 +13,34 @@ export default function OrderTypeBar({ dineIn, setDineIn, table, setTable, lock,
     );
   }
 
+  // How many order-type choices this store actually offers. With a single
+  // option there's nothing to toggle, so the segmented bar is hidden and we go
+  // straight to that option's controls (table entry, or takeaway timing).
+  const choiceCount = (allowDineIn ? 1 : 0) + (allowTakeaway ? 1 : 0) + (onReserve ? 1 : 0);
+  const showSeg = choiceCount > 1;
+
   return (
     <section className="ordertype">
-      <div className={`segmented ${onReserve ? 'three' : ''}`}>
-        <button className={dineIn === true ? 'seg active' : 'seg'} disabled={!storeOpen}
-          onClick={() => storeOpen && setDineIn(true)} type="button"
-          style={!storeOpen ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}>
-          {storeOpen ? 'Dine in' : 'Dine in · Closed'}
-        </button>
-        <button className={dineIn === false ? 'seg active' : 'seg'} onClick={() => setDineIn(false)} type="button">
-          Takeaway
-        </button>
-        {onReserve && (
-          <button className="seg" onClick={onReserve} type="button">Reserve a table</button>
-        )}
-      </div>
-      {dineIn === null && <p className="muted" style={{ fontSize: 12, margin: 0 }}>Choose dine in or takeaway to continue.</p>}
+      {showSeg && (
+        <div className={`segmented ${(allowDineIn && onReserve) ? 'three' : ''}`}>
+          {allowDineIn && (
+            <button className={dineIn === true ? 'seg active' : 'seg'} disabled={!storeOpen}
+              onClick={() => storeOpen && setDineIn(true)} type="button"
+              style={!storeOpen ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}>
+              {storeOpen ? dineInLabel : `${dineInLabel} · Closed`}
+            </button>
+          )}
+          {allowTakeaway && (
+            <button className={dineIn === false ? 'seg active' : 'seg'} onClick={() => setDineIn(false)} type="button">
+              Takeaway
+            </button>
+          )}
+          {onReserve && (
+            <button className="seg" onClick={onReserve} type="button">Reserve a table</button>
+          )}
+        </div>
+      )}
+      {showSeg && dineIn === null && <p className="muted" style={{ fontSize: 12, margin: 0 }}>Choose {allowDineIn ? `${dineInLabel.toLowerCase()} or ` : ''}takeaway to continue.</p>}
       {dineIn === true && (
         <TableEntry lock={lock} table={table} setTable={setTable} onUnlock={onUnlock} onScanned={onScanned} />
       )}
