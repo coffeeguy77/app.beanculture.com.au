@@ -102,6 +102,11 @@ function list() {
     // normal PAID item (e.g. retail coffee beans). Empty list + free:true means
     // the WHOLE store is complimentary (the original event behaviour).
     freeCategories: Array.isArray(l.freeCategories) ? l.freeCategories.filter(Boolean) : [],
+    // The event menu: the ONLY sections (categories / Product-Builder sections)
+    // shown at this store — a short, curated list so event guests get few, fast
+    // choices. Empty = show the whole menu (normal stores). Names are matched
+    // case-insensitively against the storefront section names.
+    menuSections: Array.isArray(l.menuSections) ? l.menuSections.filter(Boolean) : [],
     // Hidden from the public store picker — reachable only by its own QR / booth
     // link (?loc=…). Events default to hidden (found via booth QR at the event
     // only); overridable per store.
@@ -160,6 +165,13 @@ function isFree(locId) {
 function freeCategoriesFor(locId) {
   const l = resolve(locId);
   return new Set((l.freeCategories || []).map((n) => String(n).toLowerCase()));
+}
+
+// The curated event menu for a store: the only storefront sections shown there
+// (lowercased names). Empty array means "no restriction — show everything".
+function menuSectionsFor(locId) {
+  const l = resolve(locId);
+  return (l.menuSections || []).map((n) => String(n).toLowerCase());
 }
 
 // The "Visit" store page every Event borrows by default, so an event always
@@ -225,6 +237,6 @@ function publicList() {
 
 module.exports = {
   list, active, resolve, squareIdFor, hiddenSet, isFree, freeCategoriesFor,
-  eventDefaultStorePage, publicList, slug,
+  menuSectionsFor, eventDefaultStorePage, publicList, slug,
   popupState, todayISO, dayDiff, fulfilmentFor, typeFulfilmentDefaults,
 };

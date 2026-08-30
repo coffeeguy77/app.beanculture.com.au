@@ -181,7 +181,16 @@ app.get('/api/menu', async (req, res) => {
     const loc = locations.resolve(req.query.location).id;
     const hit = menuByLoc[loc];
     if (hit && hit.data && now - hit.at < MENU_TTL_MS) return res.json(hit.data);
-    const menu = await catalog.getMenu({ location: loc });
+    let menu = await catalog.getMenu({ location: loc });
+    // Curated event menu: if this store lists specific sections, show ONLY those
+    // (in the order the store chose) so event guests get a short, fast menu.
+    const only = locations.menuSectionsFor(loc);
+    if (only.length && Array.isArray(menu.categories)) {
+      const rank = new Map(only.map((n, i) => [n, i]));
+      const kept = menu.categories.filter((c) => rank.has(String(c.category || '').toLowerCase()));
+      kept.sort((a, b) => rank.get(String(a.category).toLowerCase()) - rank.get(String(b.category).toLowerCase()));
+      menu = { ...menu, categories: kept };
+    }
     menuByLoc[loc] = { data: menu, at: now };
     if (loc === locations.resolve(null).id) menuCache = { data: menu, at: now }; // keep legacy field warm
     res.json(menu);

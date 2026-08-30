@@ -3534,6 +3534,34 @@ export default function Admin({ onExit }) {
                             </div>
                           );
                         })()}
+                        {l.type === 'event' && (() => {
+                          const sel = Array.isArray(l.menuSections) ? l.menuSections : [];
+                          const toggleSec = (name) => {
+                            const set = new Set(sel.map((n) => n.toLowerCase()));
+                            set.has(name.toLowerCase()) ? set.delete(name.toLowerCase()) : set.add(name.toLowerCase());
+                            updLoc(l.id, { menuSections: scheduleCatOptions.filter((n) => set.has(n.toLowerCase())) });
+                          };
+                          return (
+                            <div className="field" style={{ margin: 0 }}>
+                              <span style={{ fontWeight: 600, fontSize: 'var(--fs-sm)' }}>Event menu — show only these sections</span>
+                              <p className="muted" style={{ fontSize: 'var(--fs-xs)', margin: '2px 0 6px' }}>
+                                Keep events short and fast: tick only the sections guests should see (e.g. a curated “Event Coffees” section you built in <strong>Product builder</strong>, and maybe your beans). Everything else is hidden here. Leave all unticked to show the full menu.
+                              </p>
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                                {scheduleCatOptions.length === 0 && <span className="muted" style={{ fontSize: 'var(--fs-xs)' }}>No sections yet — build one in Product builder first.</span>}
+                                {scheduleCatOptions.map((n) => {
+                                  const on = sel.some((x) => x.toLowerCase() === n.toLowerCase());
+                                  return (
+                                    <label key={n} className="switch" style={{ gap: 6 }}>
+                                      <input type="checkbox" checked={on} onChange={() => toggleSec(n)} /> <span>{n}</span>
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                              {sel.length > 0 && <p className="muted" style={{ fontSize: 'var(--fs-xs)', margin: '6px 0 0' }}>Guests here see only: <strong>{sel.join(', ')}</strong>.</p>}
+                            </div>
+                          );
+                        })()}
                         {l.type === 'popup' && (
                           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                             <label className="field" style={{ margin: 0 }}><span>Opens (first day)</span>
