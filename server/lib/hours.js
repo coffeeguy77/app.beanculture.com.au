@@ -137,6 +137,19 @@ function addDays(fullDate, n) {
   return d.toISOString().slice(0, 10);
 }
 
+// Whole-day difference b - a for 'YYYY-MM-DD' strings (UTC-safe).
+function dayDiffLocal(aISO, bISO) {
+  return Math.round((new Date(`${bISO}T00:00:00Z`).getTime() - new Date(`${aISO}T00:00:00Z`).getTime()) / 86400000);
+}
+
+// 'YYYY-MM-DD' → "Fri 12 Sep" (no year), for pop-up opening labels.
+function dateLabel(fullDate) {
+  const d = new Date(`${fullDate}T00:00:00Z`);
+  const wd = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d.getUTCDay()];
+  const mon = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][d.getUTCMonth()];
+  return `${wd} ${d.getUTCDate()} ${mon}`;
+}
+
 function withRuntime(base, nowOverride, loc) {
   const s = (() => { try { return getSettings(); } catch { return {}; } })();
 
@@ -161,11 +174,22 @@ function withRuntime(base, nowOverride, loc) {
   const td = nowOverride ? { full: nowOverride.todayFull, md: nowOverride.todayFull.slice(5) } : todayDate(base.timezone);
   const closedToday = isClosedDate(closures, td.full);
 
+  // Pop-up not open yet: before its start date the store is closed regardless of
+  // its weekly hours, ordering is off (no pre-order before opening), and the
+  // "next open" is the opening date itself.
+  let popupUpcoming = false;
+  let popupStart = '';
+  if (loc && loc.type === 'popup' && loc.startDate) {
+    const L = locationsLib();
+    try { if (L && L.popupState(loc, td.full) === 'upcoming') { popupUpcoming = true; popupStart = loc.startDate; } } catch {}
+  }
+
   const openPeriod = isOpenAt(weekly, dow, minutes);
   let open = !!openPeriod;
   let closesAt = openPeriod ? openPeriod.end : null;
   if (!hasHours) { open = true; closesAt = null; }
   if (closedToday) { open = false; closesAt = null; }
+  if (popupUpcoming) { open = false; closesAt = null; }
 
   // Kitchen status (only meaningful while the store is open).
   const kitchenPeriod = isOpenAt(kitchenWeekly, dow, minutes);
@@ -178,22 +202,43 @@ function withRuntime(base, nowOverride, loc) {
   }
 
   const orderingDisabled = ORDERING_DISABLED;
-  const canOrderNow = orderingDisabled ? false : open || PREORDER_ENABLED;
-  const preorder = !open && PREORDER_ENABLED && !orderingDisabled;
+  // A pop-up that hasn't opened yet can never be ordered from (not even pre-order).
+  let canOrderNow = (orderingDisabled || popupUpcoming) ? false : (open || PREORDER_ENABLED);
+  let preorder = !open && PREORDER_ENABLED && !orderingDisabled && !popupUpcoming;
 
-  // Next opening time (skipping closure dates), with a friendly label.
+  // Next opening time (skipping closure dates), with a friendly label. For an
+  // upcoming pop-up this is anchored to its start date, not the next weekly slot.
   let nextOpen = null;
-  for (let i = 0; i < 9 && !open; i++) {
-    const d = (dow + i) % 7;
-    const date = addDays(td.full, i);
-    if (isClosedDate(closures, date)) continue;
-    const upcoming = (weekly[DAYS[d]] || [])
-      .filter((w) => w.startMin != null && (i > 0 || w.startMin > minutes))
-      .sort((a, b) => a.startMin - b.startMin)[0];
-    if (upcoming) {
-      const rel = i === 0 ? 'today' : i === 1 ? 'tomorrow' : FULL_DAYS[d];
-      nextOpen = { day: DAYS[d], time: upcoming.start, date, label: `${rel} at ${fmt12(upcoming.start)}`, minsUntil: i * 1440 + upcoming.startMin - minutes };
-      break;
+  if (popupUpcoming) {
+    for (let i = 0; i < 21; i++) {
+      const date = addDays(popupStart, i);
+      if (isClosedDate(closures, date)) continue;
+      const d = new Date(`${date}T00:00:00Z`).getUTCDay();
+      const upcoming = (weekly[DAYS[d]] || []).filter((w) => w.startMin != null).sort((a, b) => a.startMin - b.startMin)[0];
+      if (upcoming) {
+        const daysFromToday = dayDiffLocal(td.full, date);
+        nextOpen = { day: DAYS[d], time: upcoming.start, date, label: `${dateLabel(date)} at ${fmt12(upcoming.start)}`, minsUntil: daysFromToday * 1440 + upcoming.startMin - minutes };
+        break;
+      }
+    }
+    if (!nextOpen) {
+      // Pop-up with no weekly hours set — anchor to the start date itself.
+      const daysFromToday = dayDiffLocal(td.full, popupStart);
+      nextOpen = { day: null, time: null, date: popupStart, label: dateLabel(popupStart), minsUntil: daysFromToday * 1440 - minutes };
+    }
+  } else {
+    for (let i = 0; i < 9 && !open; i++) {
+      const d = (dow + i) % 7;
+      const date = addDays(td.full, i);
+      if (isClosedDate(closures, date)) continue;
+      const upcoming = (weekly[DAYS[d]] || [])
+        .filter((w) => w.startMin != null && (i > 0 || w.startMin > minutes))
+        .sort((a, b) => a.startMin - b.startMin)[0];
+      if (upcoming) {
+        const rel = i === 0 ? 'today' : i === 1 ? 'tomorrow' : FULL_DAYS[d];
+        nextOpen = { day: DAYS[d], time: upcoming.start, date, label: `${rel} at ${fmt12(upcoming.start)}`, minsUntil: i * 1440 + upcoming.startMin - minutes };
+        break;
+      }
     }
   }
 
@@ -203,7 +248,7 @@ function withRuntime(base, nowOverride, loc) {
   // closure dates); all arithmetic is store-local minutes so it is tz-safe and
   // handles overnight/weekend/holiday gaps via the day offset. null if unknown.
   let closedSinceMin = null;
-  if (!open) {
+  if (!open && !popupUpcoming) {
     for (let i = 0; i < 9; i++) {
       const dd = ((dow - i) % 7 + 7) % 7;
       const date = addDays(td.full, -i);
@@ -226,6 +271,14 @@ function withRuntime(base, nowOverride, loc) {
     closesAt,
     nextOpen,
     closedSinceMin,
+    // Set only for a pop-up that hasn't opened yet: drives the "Opening soon"
+    // banner + countdown and suppresses ordering until the start date.
+    opening: popupUpcoming ? {
+      date: popupStart,
+      dateLabel: dateLabel(popupStart),
+      daysUntil: Math.max(0, dayDiffLocal(td.full, popupStart)),
+      label: nextOpen ? nextOpen.label : dateLabel(popupStart),
+    } : null,
     kitchen: {
       open: kitchenOpen,
       closesInMin: kitchenClosesInMin,

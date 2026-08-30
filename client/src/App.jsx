@@ -143,17 +143,18 @@ function SiteNotice({ notices }) {
   // self-contained (own CTA), so the rotation arrows/dots are hidden while
   // it's showing rather than overlapping a taller, multi-row layout.
   if (n.reopen && n.minsUntil != null) {
+    const openWord = n.opening ? 'open' : 'reopen';
     return (
       <div className="site-notice site-notice--reopen site-notice--kitchen" role="status">
         <KitchenClosingCountdown
           minutes={n.minsUntil}
           elapsedMin={n.elapsedMin}
           windowMin={n.minsUntil}
-          eyebrow="We’re closed"
-          subLabel={n.reopenLabel ? `We reopen ${n.reopenLabel}` : 'Reopening soon'}
-          heading={n.reopenLabel ? `We reopen ${n.reopenLabel}` : 'Reopening soon'}
-          sub2="Pre-order now — we’ll have it ready when we open"
-          ctaLabel="Pre-order now"
+          eyebrow={n.opening ? 'Opening soon' : 'We’re closed'}
+          subLabel={n.reopenLabel ? `We ${openWord} ${n.reopenLabel}` : (n.opening ? 'Opening soon' : 'Reopening soon')}
+          heading={n.reopenLabel ? `We ${openWord} ${n.reopenLabel}` : (n.opening ? 'Opening soon' : 'Reopening soon')}
+          sub2={n.opening ? (n.cta ? undefined : 'Ordering opens when we do — see you then!') : 'Pre-order now — we’ll have it ready when we open'}
+          ctaLabel={n.opening ? (n.cta?.label || undefined) : 'Pre-order now'}
           onOrderNow={n.cta?.onClick}
         />
       </div>
@@ -1239,7 +1240,18 @@ export default function App() {
     : null;
   const notices = [];
   if (!storeOpen) {
-    if (preorder) {
+    const opening = nHours.opening;
+    if (opening) {
+      // Pop-up not open yet: a countdown to the opening date, no ordering.
+      const no = nHours.nextOpen;
+      notices.push({
+        id: 'opening', type: 'urgent', icon: '●',
+        reopen: true, opening: true,
+        minsUntil: no?.minsUntil,
+        reopenLabel: no?.label || opening.dateLabel,
+        text: `${chosenLocation?.name || config.storeName || 'This store'} opens ${no?.label || opening.dateLabel}.`,
+      });
+    } else if (preorder) {
       const no = nHours.nextOpen;
       notices.push({
         id: 'closed', type: 'urgent', icon: '●',
@@ -1441,7 +1453,7 @@ export default function App() {
               interval={config.heroInterval}
               onLink={onBannerLink}
             />
-            {!(wide && view === 'checkout') && (
+            {!(wide && view === 'checkout') && !config.hours?.opening && (
               <OrderTypeBar dineIn={dineIn} setDineIn={setDineIn} table={table} setTable={setTable} lock={tableLock} onUnlock={unlockTable} onScanned={applyScannedTable}
                 when={preWhen} setWhen={setPreWhen} at={preAt} setAt={setPreAt} hours={config.hours}
                 allowDineIn={fulfil.dineIn} allowTakeaway={fulfil.takeaway}
@@ -1475,7 +1487,7 @@ export default function App() {
                 onRemove={removeItem} onClear={clearCart}
                 onComboQty={updateComboQty} onRemoveCombo={removeCombo} onEditCombo={editCombo}
                 dineIn={dineIn} table={table}
-                summary={fulfilmentLabel}
+                summary={config.hours?.opening ? `Opens ${config.hours.opening.label || config.hours.opening.dateLabel}` : fulfilmentLabel}
                 unavailableKeys={cartUnavailableKeys}
                 onCheckout={() => setView('checkout')}
               />
