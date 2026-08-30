@@ -332,7 +332,7 @@ app.post('/api/orders', async (req, res) => {
       ? { fee: shipFee, address: shipReq.address, label: 'Shipping' } : null;
     const evLoc = locations.resolve(locationId);
     const eventId = evLoc && evLoc.type === 'event' ? evLoc.id : undefined;
-    const order = await orders.createOrder({ cart, dineIn: !!dineIn, table, name, coupon, customerId: effectiveCustomerId, pickupAt, note, pifVoucher, squareLocationId, cardPayment: cardPayment !== false, free: freeOrder, freeCategories, shipping, eventId });
+    const order = await orders.createOrder({ cart, dineIn: !!dineIn, table, name, coupon, customerId: effectiveCustomerId, pickupAt, note, pifVoucher, squareLocationId, cardPayment: cardPayment !== false, free: freeOrder, freeCategories, shipping, eventId, appLocationId: evLoc ? evLoc.id : undefined });
 
     let rewardApplied = false;
     if (loy && loy.accountId && loy.tierId) {
@@ -1213,6 +1213,7 @@ app.post('/api/pos/order', async (req, res) => {
       free: locations.isFree(locationId) && posFreeCategories.length === 0,
       freeCategories: posFreeCategories,
       eventId: posEvLoc && posEvLoc.type === 'event' ? posEvLoc.id : undefined,
+      appLocationId: posEvLoc ? posEvLoc.id : undefined,
     });
     const amount = order.total_money ? order.total_money.amount : 0;
     const currency = (order.total_money && order.total_money.currency) || sq.CURRENCY;

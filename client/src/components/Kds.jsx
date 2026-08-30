@@ -134,11 +134,19 @@ export default function Kds({ onExit, embedded }) {
   async function bump(orderId, status) {
     setTickets((ts) => ts.map((t) => (t.orderId === orderId ? { ...t, zoneStatus: { ...t.zoneStatus, [zone]: status } } : t)));
     try {
-      await fetch(`/api/admin/kds/bump?pass=${encodeURIComponent(pass)}`, {
+      const r = await fetch(`/api/admin/kds/bump?pass=${encodeURIComponent(pass)}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ orderId, zone, status }),
       });
-    } catch { loadTickets(); }
+      // A non-OK response never rejects fetch — check it, so a failed bump shows
+      // an error and reverts instead of silently "coming back" on the next poll.
+      if (!r.ok) {
+        let msg = `Bump failed (${r.status})`;
+        try { const d = await r.json(); if (d && d.error) msg = `Bump failed: ${d.error}`; } catch {}
+        setErr(msg);
+        loadTickets();
+      } else { setErr(''); }
+    } catch { setErr('Bump didn’t save — check the connection.'); loadTickets(); }
   }
 
   async function installKds() {

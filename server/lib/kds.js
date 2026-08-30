@@ -118,13 +118,20 @@ async function fetchTickets(squareLocationId, loc) {
     },
   });
   let orders = (data.orders || []).filter((o) => o && o.state !== 'CANCELED');
-  // Several stores can share one Square location (events run on the café's), so
-  // split the board by the screen's chosen store: an EVENT screen shows only
-  // that event's tickets; any other screen shows only non-event tickets.
+  // Several app stores can share ONE Square location (events run on the café's),
+  // so split the board by the screen's chosen store using the order's store tag:
+  //  • an EVENT screen shows only that event's tickets (bc_event);
+  //  • any other screen shows its own store's tickets (bc_store), plus untagged
+  //    legacy orders, and never an event's tickets.
   if (loc && loc.type === 'event') {
     orders = orders.filter((o) => o.metadata && o.metadata.bc_event === loc.id);
   } else if (loc) {
-    orders = orders.filter((o) => !(o.metadata && o.metadata.bc_event));
+    orders = orders.filter((o) => {
+      const m = o.metadata || {};
+      if (m.bc_event) return false;          // events belong to the booth board
+      if (m.bc_store) return m.bc_store === loc.id; // tagged → only its own store
+      return true;                            // untagged legacy order → show it
+    });
   }
   const [varCat, states] = await Promise.all([
     catalog.getVariationCategoryMap().catch(() => ({})),
