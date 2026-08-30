@@ -1490,12 +1490,26 @@ export default function App() {
                 allowDineIn={fulfil.dineIn} allowTakeaway={fulfil.takeaway}
                 onReserve={(config.reservations && fulfil.reservations) ? () => setView('reserve') : null} />
             )}
-            <div className="search">
-              <input placeholder="Search the menu…" value={query} onChange={(e) => setQuery(e.target.value)} />
-            </div>
-            {!query && (
-              <MenuDock categories={dockCategories} active={dockActiveCats} onPick={pickCategory} />
-            )}
+            {(() => {
+              // A tiny menu (an event's single coffee, say) doesn't need search or a
+              // category dock — they'd just waste space. Hide the search when there's
+              // one item or fewer, and the dock when there's one section or fewer.
+              const totalItems = (menu.categories || []).reduce((n, c) => n + ((c.items && c.items.length) || 0), 0);
+              const oneItem = totalItems <= 1;
+              const oneSection = (menu.categories || []).length <= 1;
+              return (
+                <>
+                  {!oneItem && (
+                    <div className="search">
+                      <input placeholder="Search the menu…" value={query} onChange={(e) => setQuery(e.target.value)} />
+                    </div>
+                  )}
+                  {!query && !oneSection && (
+                    <MenuDock categories={dockCategories} active={dockActiveCats} onPick={pickCategory} />
+                  )}
+                </>
+              );
+            })()}
             <MenuList
               categories={filteredMenu}
               currency={currency}

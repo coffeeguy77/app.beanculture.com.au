@@ -413,7 +413,7 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
 
       {bigPill ? (
         <div style={{ marginBottom: 12 }}><TableLockPill table={table} onUnlock={onUnlockTable} /></div>
-      ) : (
+      ) : eventMode ? null : (
         <div className="segmented" style={{ marginBottom: 12 }}>
           <button className={dineIn === true ? 'seg active' : 'seg'} onClick={() => setDineIn(true)} type="button">Dine in</button>
           <button className={dineIn === false ? 'seg active' : 'seg'} onClick={() => setDineIn(false)} type="button">Takeaway</button>
@@ -444,7 +444,8 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
         )}
       </div>
 
-      {/* When to order */}
+      {/* When to order — hidden at events (ordering is immediate, one tap) */}
+      {!eventMode && (
       <div className="group" style={{ marginTop: 16 }}>
         <div className="group-title">When</div>
         <div className="segmented three">
@@ -492,12 +493,13 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
           </div>
         )}
       </div>
+      )}
 
       {(isSchedule || isRepeat) && !user?.customerId && (
         <p className="error-text" style={{ fontSize: 13 }}>Sign in from the Account tab to schedule or repeat an order.</p>
       )}
 
-      {loyalty?.active && loyalty.tiers?.length > 0 && when === 'asap' && (
+      {!eventMode && loyalty?.active && loyalty.tiers?.length > 0 && when === 'asap' && (
         <div style={{ marginTop: 16 }}>
           <div className="group-title">Rewards · {loyalty.balance} {loyalty.terminology?.other || 'points'}</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -511,15 +513,15 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
         </div>
       )}
 
-      {pifVoucher && (
+      {!eventMode && pifVoucher && (
         <div className="pif-applied-row">
           <span>☕ Coffee gift applied {pifVoucher.remainingCents != null ? `· up to ${formatMoney(pifVoucher.remainingCents, currency)}` : ''}</span>
           <button type="button" className="link" onClick={() => { onClearPifVoucher && onClearPifVoucher(); setPifError(''); }}>Remove</button>
         </div>
       )}
-      {pifError && <p className="error-text">{pifError}</p>}
+      {!eventMode && pifError && <p className="error-text">{pifError}</p>}
 
-      {when === 'asap' && (
+      {!eventMode && when === 'asap' && (
         hasCombo ? (
           <p className="muted" style={{ marginTop: 16, fontSize: 14 }}>Your combo discount is already applied — promo codes can't be combined with a combo deal.</p>
         ) : hasPif ? (
@@ -540,10 +542,12 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
         )
       )}
 
-      <label className="field" style={{ marginTop: 14 }}>
-        <span>Notes for the kitchen (optional)</span>
-        <textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. extra hot, no sugar, allergy info" />
-      </label>
+      {!eventMode && (
+        <label className="field" style={{ marginTop: 14 }}>
+          <span>Notes for the kitchen (optional)</span>
+          <textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. extra hot, no sugar, allergy info" />
+        </label>
+      )}
 
       {/* Complimentary event order — no payment. */}
       {isFree && storeFree && (
