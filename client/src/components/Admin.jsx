@@ -286,6 +286,15 @@ export default function Admin({ onExit }) {
     try { localStorage.setItem('bc-admin-theme', adminTheme); } catch {}
   }, [adminTheme]);
 
+  // Switching backend sections should start you at the top of the new section,
+  // not wherever you'd scrolled in the previous one. Reset both the page scroll
+  // and the (independently-scrolling) content panel on every tab change.
+  useEffect(() => {
+    try { window.scrollTo({ top: 0, behavior: 'auto' }); } catch {}
+    try { document.querySelector('.admin-panel')?.scrollTo?.({ top: 0, behavior: 'auto' }); } catch {}
+    try { const p = document.querySelector('.admin-panel'); if (p) p.scrollTop = 0; } catch {}
+  }, [tab]);
+
   // Reload every Insights data source: analytics + Square dashboard + loyalty members.
   function reloadInsights() {
     setInsRefreshing(true);
