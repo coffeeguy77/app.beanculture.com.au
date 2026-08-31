@@ -1096,26 +1096,35 @@ export default function Admin({ onExit }) {
   const todayDow = new Date().getDay();
   const exclListFor = (dow) => (availExcl.days && availExcl.days[String(dow)]) || [];
   const isExcludedToday = (id) => availExcl.enabled !== false && exclListFor(todayDow).includes(id);
-  // Effective status shown in the sold-out list: off | today | on | excluded | available
-  const itemStatus = (id) => {
+  // Effective status shown in the sold-out list: off | today | on | excluded | available.
+  // Checks the menu id first, then the preset's underlying Square source id, so a
+  // flag saved under either id space is reflected (and can be cleared).
+  const activeOverride = (id) => {
     const o = availItems[id];
-    const active = o && o.mode && !((o.mode === 'today' || o.mode === 'on') && o.until && todayISO() >= o.until);
-    if (active && o.mode === 'off') return 'off';
-    if (active && o.mode === 'today') return 'today';
-    if (active && o.mode === 'on') return 'on';
-    if (isExcludedToday(id)) return 'excluded';
+    if (!o || !o.mode) return null;
+    if ((o.mode === 'today' || o.mode === 'on') && o.until && todayISO() >= o.until) return null;
+    return o.mode;
+  };
+  const itemStatus = (id, sourceId) => {
+    const mode = activeOverride(id) || (sourceId ? activeOverride(sourceId) : null);
+    if (mode === 'off') return 'off';
+    if (mode === 'today') return 'today';
+    if (mode === 'on') return 'on';
+    if (isExcludedToday(id) || (sourceId && isExcludedToday(sourceId))) return 'excluded';
     return 'available';
   };
   // Fast per-item toggle — hits the dedicated endpoint (persists immediately, no
   // full Save needed) and mirrors the server's truth back into local state.
-  async function toggleItemAvail(id, mode) {
+  async function toggleItemAvail(id, mode, sourceId) {
     setAvailBusy(id);
     try {
-      const r = await fetch(`/api/admin/availability/item?pass=${encodeURIComponent(pass)}`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, mode }),
-      });
-      const d = await r.json();
-      if (!r.ok) throw new Error(d.error || 'Failed');
+      const post = (body) => fetch(`/api/admin/availability/item?pass=${encodeURIComponent(pass)}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+      }).then(async (r) => { const d = await r.json(); if (!r.ok) throw new Error(d.error || 'Failed'); return d; });
+      let d = await post({ id, mode });
+      // Also clear any legacy flag saved under the underlying Square source id, so
+      // a stale raw-id override can't keep the item sold out after this change.
+      if (sourceId && sourceId !== id && d.items && d.items[sourceId]) d = await post({ id: sourceId, mode: 'clear' });
       setS((cur) => ({ ...cur, availability: { ...(cur.availability || {}), items: d.items || {} } }));
     } catch (e) { setSavedMsg('Failed: ' + e.message); setTimeout(() => setSavedMsg(''), 4000); }
     finally { setAvailBusy(''); }
@@ -3926,16 +3935,19 @@ export default function Admin({ onExit }) {
                     <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 0 }}>
                       Tap <strong>Sold out</strong> when you run out for the day &mdash; it comes back automatically the next time you open. Tap <strong>Unavailable</strong> to take it off indefinitely (shows red here and in the Product Builder, so you know to check before turning it back on). These save instantly &mdash; no need to press Save changes.
                     </p>
-                    <input className="avail-search" placeholder="Search items…" value={availSearch} onChange={(e) => setAvailSearch(e.target.value)} />
+                    <input className="avail-search" placeholder="Search items — filters as you type…" value={availSearch} onChange={(e) => setAvailSearch(e.target.value)} autoComplete="off" />
                     <div className="avail-list">
-                      {(allProducts.length === 0 || offeredIds === null) && <p className="muted" style={{ fontSize: 'var(--fs-sm)', padding: 8 }}>Loading items…</p>}
+                      {offeredProducts.length === 0 && offeredIds === null && <p className="muted" style={{ fontSize: 'var(--fs-sm)', padding: 8 }}>Loading items…</p>}
+                      {offeredProducts.length === 0 && offeredIds !== null && <p className="muted" style={{ fontSize: 'var(--fs-sm)', padding: 8 }}>No menu items found. Add items to your app menu first, then they’ll appear here.</p>}
                       {(() => {
-                        if (offeredIds === null) return null;
                         const q = availSearch.trim().toLowerCase();
-                        // Only products actually offered in the app menu (false = lookup failed → show all).
-                        const offered = offeredIds ? allProducts.filter((p) => offeredIds.has(p.id)) : allProducts;
-                        const list = offered.filter((p) => !q || p.name.toLowerCase().includes(q) || (p.category || '').toLowerCase().includes(q));
-                        if (offered.length && !list.length) return <p className="muted" style={{ fontSize: 'var(--fs-sm)', padding: 8 }}>No matching items.</p>;
+                        // Use the app's OFFERED menu items — these carry the menu's own ids
+                        // (e.g. `preset:<id>`), so a sold-out flag is stored under the id the
+                        // customer menu is actually built from and takes effect immediately.
+                        // (The raw Square product list uses a different id space for
+                        // preset-built menus, which is why flags saved against it never showed.)
+                        const list = offeredProducts.filter((p) => !q || p.name.toLowerCase().includes(q) || (p.category || '').toLowerCase().includes(q));
+                        if (offeredProducts.length && !list.length) return <p className="muted" style={{ fontSize: 'var(--fs-sm)', padding: 8 }}>No items match “{availSearch.trim()}”.</p>;
                         const STATUS = {
                           available: { label: 'Available', cls: 'ok' },
                           today: { label: 'Sold out today', cls: 'warn' },
@@ -3944,7 +3956,7 @@ export default function Admin({ onExit }) {
                           excluded: { label: `Sold out (${DOW_LABELS[todayDow]} list)`, cls: 'warn' },
                         };
                         return list.map((p) => {
-                          const st = itemStatus(p.id);
+                          const st = itemStatus(p.id, p.sourceId);
                           const badge = STATUS[st] || STATUS.available;
                           const busy = availBusy === p.id;
                           const availActive = st === 'available' || st === 'on';
@@ -3959,11 +3971,11 @@ export default function Admin({ onExit }) {
                               </span>
                               <span className="avail-actions">
                                 <button type="button" disabled={busy} className={`avail-btn ok${availActive ? ' on' : ''}`}
-                                  onClick={() => toggleItemAvail(p.id, st === 'excluded' ? 'on' : 'clear')}>Available</button>
+                                  onClick={() => toggleItemAvail(p.id, st === 'excluded' ? 'on' : 'clear', p.sourceId)}>Available</button>
                                 <button type="button" disabled={busy} className={`avail-btn warn${st === 'today' ? ' on' : ''}`}
-                                  onClick={() => toggleItemAvail(p.id, 'today')}>Sold out</button>
+                                  onClick={() => toggleItemAvail(p.id, 'today', p.sourceId)}>Sold out</button>
                                 <button type="button" disabled={busy} className={`avail-btn bad${st === 'off' ? ' on' : ''}`}
-                                  onClick={() => toggleItemAvail(p.id, 'off')}>Unavailable</button>
+                                  onClick={() => toggleItemAvail(p.id, 'off', p.sourceId)}>Unavailable</button>
                               </span>
                             </div>
                           );
@@ -3995,11 +4007,11 @@ export default function Admin({ onExit }) {
                     </div>
                     {(() => {
                       const list = exclListFor(exclDay);
-                      const byId = (id) => allProducts.find((p) => p.id === id);
+                      const byId = (id) => offeredProducts.find((p) => p.id === id) || allProducts.find((p) => p.id === id);
                       const q = exclSearch.trim().toLowerCase();
-                      // Add-picker only offers products actually in the app menu.
-                      const offered = offeredIds ? allProducts.filter((p) => offeredIds.has(p.id)) : allProducts;
-                      const matches = q ? offered.filter((p) => !list.includes(p.id) && (p.name.toLowerCase().includes(q) || (p.category || '').toLowerCase().includes(q))) : [];
+                      // Add-picker offers the app's offered menu items, keyed by the menu's
+                      // own ids so an exclusion takes effect on the customer menu.
+                      const matches = q ? offeredProducts.filter((p) => !list.includes(p.id) && (p.name.toLowerCase().includes(q) || (p.category || '').toLowerCase().includes(q))) : [];
                       return (
                         <>
                           <div style={{ fontWeight: 700, margin: '10px 0 6px' }}>{DOW_LABELS[exclDay]} &mdash; sold out by default</div>

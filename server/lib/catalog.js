@@ -139,6 +139,16 @@ function applyAvailability(sections, settings, now = venueNow(), hiddenItemIds =
     if (o.mode === 'on') return false;
     return null;
   };
+  // A menu item can be keyed either by its menu id (e.g. `preset:<id>`) or by its
+  // underlying Square source item id — the admin's Sold-out list stores whichever
+  // it has. Check both so a sold-out flag always lands, whatever id it was saved
+  // under (this is what makes "Sold out" actually take effect on preset menus).
+  const overrideForItem = (it) => {
+    const byId = overrideFor(it.id);
+    if (byId !== null) return byId;
+    return it.presetSourceItemId ? overrideFor(it.presetSourceItemId) : null;
+  };
+  const isExcluded = (it) => exclSet.has(it.id) || (it.presetSourceItemId && exclSet.has(it.presetSourceItemId));
 
   const kept = [];
   for (const sec of sections) {
@@ -153,11 +163,11 @@ function applyAvailability(sections, settings, now = venueNow(), hiddenItemIds =
       if (!sec.items.length) continue; // category has nothing here → hide it
     }
     for (const it of (sec.items || [])) {
-      const forced = overrideFor(it.id);
+      const forced = overrideForItem(it);
       let sold = it.soldOut;
       if (forced === true) sold = true;
       else if (forced === false) sold = false;
-      else if (exclSet.has(it.id)) sold = true;
+      else if (isExcluded(it)) sold = true;
       if (sold !== it.soldOut) {
         it.soldOut = sold;
         if (Array.isArray(it.variations)) it.variations = it.variations.map((v) => ({ ...v, soldOut: sold }));

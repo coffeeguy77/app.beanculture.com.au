@@ -1169,7 +1169,9 @@ app.get('/api/admin/offered-products', async (req, res) => {
         ids.add(it.id);
         if (!seen.has(it.id)) {
           seen.add(it.id);
-          products.push({ id: it.id, name: it.name || 'Item', category: sec.category || '' });
+          // sourceId = the underlying Square item id (for preset tiles). Lets the
+          // admin reflect/clear a sold-out flag saved under either id space.
+          products.push({ id: it.id, name: it.name || 'Item', category: sec.category || '', sourceId: it.presetSourceItemId || null });
         }
       }
     }
