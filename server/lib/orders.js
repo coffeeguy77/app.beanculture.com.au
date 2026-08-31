@@ -36,7 +36,7 @@ function buildNote({ dineIn, table }) {
   return dineIn ? `DINE-IN · ${tableLabel(table) || '?'}` : 'TAKEAWAY';
 }
 
-async function createOrder({ cart, dineIn, table, name, coupon, customerId, pickupAt, idempotencyKey, note: customerNote, pifVoucher, source, squareLocationId, cardPayment, free, freeCategories, shipping, eventId, appLocationId }) {
+async function createOrder({ cart, dineIn, table, name, coupon, customerId, pickupAt, idempotencyKey, note: customerNote, pifVoucher, source, squareLocationId, cardPayment, free, freeCategories, shipping, eventId, appLocationId, holdForPayment }) {
   const LOC = squareLocationId || LOCATION_ID;
   if (!Array.isArray(cart) || cart.length === 0) throw new Error('Cart is empty');
   // Bake any per-combo locked modifiers into the combo lines before pricing, so
@@ -126,12 +126,15 @@ async function createOrder({ cart, dineIn, table, name, coupon, customerId, pick
   // shows only its own orders even when several app stores share ONE Square
   // location. bc_event isolates an event (for the stats page too); bc_free/
   // bc_booth mark complimentary ones for the "who got a free coffee" report.
-  if (appLocationId || eventId || ((isComp || partialComp) && table)) {
+  if (appLocationId || eventId || holdForPayment || ((isComp || partialComp) && table)) {
     order.metadata = { ...(order.metadata || {}) };
     if (appLocationId) order.metadata.bc_store = String(appLocationId).slice(0, 60);
     if (eventId) order.metadata.bc_event = String(eventId).slice(0, 60);
     if (isComp || partialComp) order.metadata.bc_free = 'event';
     if (table) order.metadata.bc_booth = String(table).slice(0, 60);
+    // Awaiting online payment → hidden from the kitchen screen until /api/pay
+    // releases it. Prevents a declined/abandoned checkout being cooked.
+    if (holdForPayment) order.metadata.bc_hold = '1';
   }
 
   // A Pay It Forward voucher takes priority over (never stacks with) a combo
@@ -332,6 +335,59 @@ async function cancelOrder(orderId) {
   } catch (e) { return null; }
 }
 
+// Release a "held" app order once its payment has completed, so it now appears
+// on the kitchen screen. App pay-now orders are stamped bc_hold='1' at creation
+// and hidden from the KDS until this clears the flag — that's what stops an
+// abandoned/declined checkout (e.g. Apple Pay that never went through) from
+// being cooked. Best-effort: a failure here never blocks the payment response.
+async function releaseHold(orderId) {
+  try {
+    const cur = await squareFetch(`/v2/orders/${orderId}`);
+    const order = cur.order;
+    if (!order || !order.metadata || order.metadata.bc_hold !== '1') return order; // not held
+    const data = await squareFetch(`/v2/orders/${orderId}`, {
+      method: 'PUT',
+      body: { order: { version: order.version }, fields_to_clear: ['metadata.bc_hold'], idempotency_key: idem() },
+    });
+    return data.order;
+  } catch (e) { return null; }
+}
+
+// Cancel app orders that were held for payment but never paid (declined or
+// abandoned checkouts), once they're older than maxAgeMin. Keeps Square tidy so
+// abandoned tickets don't accumulate as OPEN orders. Best-effort and safe: it
+// only touches OPEN orders tagged bc_hold='1' that carry no payment tender.
+async function sweepHeldOrders(maxAgeMin = 30) {
+  try {
+    const startAt = new Date(Date.now() - 6 * 3600 * 1000).toISOString();
+    const data = await squareFetch('/v2/orders/search', {
+      method: 'POST',
+      body: {
+        location_ids: [LOCATION_ID],
+        query: {
+          filter: {
+            date_time_filter: { created_at: { start_at: startAt } },
+            state_filter: { states: ['OPEN'] },
+          },
+          sort: { sort_field: 'CREATED_AT', sort_order: 'DESC' },
+        },
+      },
+    });
+    const cutoff = Date.now() - maxAgeMin * 60 * 1000;
+    let cancelled = 0;
+    for (const o of (data.orders || [])) {
+      const m = o.metadata || {};
+      if (m.bc_hold !== '1') continue;
+      if (Array.isArray(o.tenders) && o.tenders.length) continue; // it did get paid
+      if (new Date(o.created_at).getTime() > cutoff) continue;     // still fresh
+      await cancelOrder(o.id).catch(() => {});
+      cancelled++;
+    }
+    if (cancelled) console.log(`[sweep] cancelled ${cancelled} unpaid held order(s)`);
+    return cancelled;
+  } catch (e) { console.warn('[sweep] held-order sweep failed:', e.message); return 0; }
+}
+
 async function getHistory(customerId, limit = 25) {
   if (!customerId) return [];
   const data = await squareFetch('/v2/orders/search', {
@@ -425,4 +481,4 @@ async function createReservationOrder({ name, phone, email, partySize, at, notes
   return data.order;
 }
 
-module.exports = { createOrder, getOrder, createPayment, authorizePayment, completePayment, cancelPayment, payZeroOrder, createCashPayment, cancelOrder, getHistory, createReservationOrder };
+module.exports = { createOrder, getOrder, createPayment, authorizePayment, completePayment, cancelPayment, payZeroOrder, createCashPayment, cancelOrder, releaseHold, sweepHeldOrders, getHistory, createReservationOrder };

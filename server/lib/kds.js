@@ -117,7 +117,19 @@ async function fetchTickets(squareLocationId, loc) {
       limit: 150,
     },
   });
-  let orders = (data.orders || []).filter((o) => o && o.state !== 'CANCELED');
+  // An app checkout creates its Square order BEFORE charging (stamped bc_hold),
+  // so a declined/abandoned checkout must never reach the kitchen. Hide a held
+  // order only while it is genuinely unpaid — as soon as it carries a payment
+  // (a tender) or has settled (COMPLETED), it shows, so a paid order is never
+  // lost even if the release step didn't run.
+  const stillUnpaid = (o) => {
+    const m = o.metadata || {};
+    if (m.bc_hold !== '1') return false;
+    if (o.state === 'COMPLETED') return false;
+    if (Array.isArray(o.tenders) && o.tenders.length) return false;
+    return true;
+  };
+  let orders = (data.orders || []).filter((o) => o && o.state !== 'CANCELED' && !stillUnpaid(o));
   // Several app stores can share ONE Square location (events run on the café's),
   // so split the board by the screen's chosen store using the order's store tag:
   //  • an EVENT screen shows only that event's tickets (bc_event);

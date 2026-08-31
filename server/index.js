@@ -332,7 +332,10 @@ app.post('/api/orders', async (req, res) => {
       ? { fee: shipFee, address: shipReq.address, label: 'Shipping' } : null;
     const evLoc = locations.resolve(locationId);
     const eventId = evLoc && evLoc.type === 'event' ? evLoc.id : undefined;
-    const order = await orders.createOrder({ cart, dineIn: !!dineIn, table, name, coupon, customerId: effectiveCustomerId, pickupAt, note, pifVoucher, squareLocationId, cardPayment: cardPayment !== false, free: freeOrder, freeCategories, shipping, eventId, appLocationId: evLoc ? evLoc.id : undefined });
+    // Hold every app order back from the kitchen until its payment completes
+    // (released in /api/pay). A comp/$0 order is released moments later by its
+    // zero-payment, so the only orders left hidden are ones that never paid.
+    const order = await orders.createOrder({ cart, dineIn: !!dineIn, table, name, coupon, customerId: effectiveCustomerId, pickupAt, note, pifVoucher, squareLocationId, cardPayment: cardPayment !== false, free: freeOrder, freeCategories, shipping, eventId, appLocationId: evLoc ? evLoc.id : undefined, holdForPayment: true });
 
     let rewardApplied = false;
     if (loy && loy.accountId && loy.tierId) {
@@ -396,6 +399,7 @@ app.post('/api/pay', async (req, res) => {
     if (!totalMoney || totalMoney.amount === 0) {
       const fresh = await orders.getOrder(orderId);
       await orders.payZeroOrder(orderId, fresh.version);
+      await orders.releaseHold(orderId); // now paid → let the kitchen see it
       return res.json({ status: 'COMPLETED', comped: true });
     }
 
@@ -405,6 +409,7 @@ app.post('/api/pay', async (req, res) => {
       if (!gc || !gc.gan) return res.status(402).json({ error: 'No balance available' });
       if (gc.balance < totalMoney.amount) return res.status(402).json({ error: 'Not enough balance — top up or pay by card.' });
       const payment = await giftcards.payWithGiftCard({ gan: gc.gan, orderId, amountMoney: totalMoney, customerId });
+      if (payment.status === 'COMPLETED' || payment.status === 'APPROVED') await orders.releaseHold(orderId);
       return res.json({ status: payment.status, paymentId: payment.id, paidWithBalance: true });
     }
 
@@ -418,6 +423,9 @@ app.post('/api/pay', async (req, res) => {
       customerId,
       squareLocationId,
     });
+    // Only a completed/approved charge releases the order to the kitchen. A
+    // declined charge leaves it held (hidden), so nothing unpaid gets cooked.
+    if (payment.status === 'COMPLETED' || payment.status === 'APPROVED') await orders.releaseHold(orderId);
     res.json({ status: payment.status, paymentId: payment.id, receiptUrl: payment.receipt_url });
   } catch (err) {
     console.error('payment error', err.message);
@@ -2215,6 +2223,10 @@ db.init().finally(() => {
   // are never deleted) -- runs shortly after boot, then hourly.
   setTimeout(() => payItForward.sweepExpired().catch((e) => console.warn('[payItForward] expiry sweep failed:', e.message)), 20000);
   setInterval(() => payItForward.sweepExpired().catch((e) => console.warn('[payItForward] expiry sweep failed:', e.message)), 60 * 60 * 1000);
+  // Cancel app orders held for payment that were never paid (declined/abandoned
+  // checkouts), so they don't linger as OPEN orders in Square. Runs every 15 min.
+  setTimeout(() => orders.sweepHeldOrders().catch(() => {}), 90000);
+  setInterval(() => orders.sweepHeldOrders().catch(() => {}), 15 * 60 * 1000);
   // Prune the product builder against Square a few times a day: drop tiles whose
   // Square variation was deleted. It never auto-CREATES tiles — new variations
   // are pulled in only when the owner clicks "Sync new variations from Square"

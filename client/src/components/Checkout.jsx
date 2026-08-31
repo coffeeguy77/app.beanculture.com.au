@@ -201,7 +201,13 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
   const isRepeat = when === 'repeat';
   const autocharge = isRepeat || (isSchedule && payTiming === 'later');
   const usingNewCard = cardChoice === 'new';
-  const hideWallets = hasCoupon || usingReward || isSchedule || isRepeat || !usingNewCard;
+  // Show the one-tap wallets (Apple Pay / Google Pay / Afterpay) for any
+  // immediate paid order — including when a saved card is the current choice —
+  // so customers always have every Square-AU method to choose from. Hidden only
+  // where the wallet sheet's amount could differ from what's charged (a coupon
+  // or loyalty reward discounts server-side) or for scheduled/auto-charge orders
+  // (which must charge a saved card at pickup, not a one-time wallet token).
+  const hideWallets = hasCoupon || usingReward || isSchedule || isRepeat;
 
   // Loyalty + saved cards for a signed-in user.
   useEffect(() => {

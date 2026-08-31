@@ -1076,8 +1076,14 @@ img { max-width: 100%; }
 @media (min-width: 960px) {
   .admin-layout { display: grid; grid-template-columns: 232px minmax(0, 1fr); gap: 28px; align-items: start; }
   .admin-tabs {
-    flex-direction: column; overflow: visible; position: sticky; top: 16px;
+    flex-direction: column; position: sticky; top: 16px;
     background: transparent; backdrop-filter: none; padding: 0; gap: 6px;
+    /* Give the nav its own bounded scroll area so it moves independently of the
+       page content. Without this, a nav taller than a short (landscape iPad)
+       viewport can only be reached by scrolling the whole page — which a long
+       section like Locations makes impossible until you scroll it to the end. */
+    max-height: calc(100vh - 32px); overflow-y: auto; overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch; scrollbar-width: none;
   }
   .admin-tab { position: relative; flex-direction: row; justify-content: flex-start; align-items: center; width: 100%; min-width: 0; gap: 12px; height: 42px; padding: 0 14px; font-size: 14px; }
   .admin-tab.on::before { content: ''; position: absolute; left: 0; top: 8px; bottom: 8px; width: 3px; border-radius: 0 3px 3px 0; background: var(--admin-accent, #D44870); }
