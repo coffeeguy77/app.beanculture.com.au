@@ -3152,6 +3152,16 @@ body:has(.store-shell) { background: var(--bc-canvas-deep, #160f12); }
   font-family: inherit; font-size: var(--fs-sm); font-weight: 700; cursor: pointer;
 }
 .avail-catchip.on { background: var(--admin-accent, var(--brand)); border-color: var(--admin-accent, var(--brand)); color: #fff; }
+.avail-sched-add { margin-top: 14px; border-top: 1px solid var(--admin-border, var(--line)); padding-top: 12px; }
+.avail-menuchips { display: flex; gap: 6px; flex-wrap: wrap; }
+.avail-menuchip {
+  display: inline-flex; align-items: center; gap: 5px;
+  border: 1px dashed var(--admin-border, var(--line)); background: var(--admin-surface, #fff);
+  color: var(--admin-text, var(--ink)); border-radius: 10px; padding: 7px 12px;
+  font-family: inherit; font-size: var(--fs-sm); font-weight: 700; cursor: pointer;
+}
+.avail-menuchip:hover { border-style: solid; border-color: var(--admin-accent, var(--brand)); }
+.avail-menuchip-plus { font-weight: 800; color: var(--admin-accent, var(--brand)); }
 .avail-chipwrap { display: flex; gap: 6px; flex-wrap: wrap; }
 .avail-chip {
   display: inline-flex; align-items: center; gap: 6px; background: var(--admin-accent-soft, var(--brand-soft));
