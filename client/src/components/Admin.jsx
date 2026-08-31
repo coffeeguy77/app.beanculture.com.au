@@ -200,6 +200,7 @@ export default function Admin({ onExit }) {
   // ---- Sold Out & Menus tab ----
   const [availSub, setAvailSub] = useState('items');   // items | exclusions | schedules
   const [availSearch, setAvailSearch] = useState('');  // product search in the sold-out list
+  const [availCat, setAvailCat] = useState('');        // category filter in the sold-out list ('' = all)
   const [availBusy, setAvailBusy] = useState('');      // item id currently toggling
   const [exclDay, setExclDay] = useState(6);           // weekday being edited (default Saturday)
   const [exclSearch, setExclSearch] = useState('');    // product search in the exclusions picker
@@ -3936,6 +3937,20 @@ export default function Admin({ onExit }) {
                       Tap <strong>Sold out</strong> when you run out for the day &mdash; it comes back automatically the next time you open. Tap <strong>Unavailable</strong> to take it off indefinitely (shows red here and in the Product Builder, so you know to check before turning it back on). These save instantly &mdash; no need to press Save changes.
                     </p>
                     <input className="avail-search" placeholder="Search items — filters as you type…" value={availSearch} onChange={(e) => setAvailSearch(e.target.value)} autoComplete="off" />
+                    {(() => {
+                      // Category chips, built from the offered (Product Builder) menu items
+                      // only. Pick one to see just that category; "All" clears it.
+                      const cats = [...new Set(offeredProducts.map((p) => (p.category || '').trim()).filter(Boolean))].sort();
+                      if (cats.length < 2) return null;
+                      return (
+                        <div className="avail-catchips">
+                          <button type="button" className={`avail-catchip${availCat === '' ? ' on' : ''}`} onClick={() => setAvailCat('')}>All</button>
+                          {cats.map((c) => (
+                            <button key={c} type="button" className={`avail-catchip${availCat === c ? ' on' : ''}`} onClick={() => setAvailCat(availCat === c ? '' : c)}>{c}</button>
+                          ))}
+                        </div>
+                      );
+                    })()}
                     <div className="avail-list">
                       {offeredProducts.length === 0 && offeredIds === null && <p className="muted" style={{ fontSize: 'var(--fs-sm)', padding: 8 }}>Loading items…</p>}
                       {offeredProducts.length === 0 && offeredIds !== null && <p className="muted" style={{ fontSize: 'var(--fs-sm)', padding: 8 }}>No menu items found. Add items to your app menu first, then they’ll appear here.</p>}
@@ -3946,8 +3961,10 @@ export default function Admin({ onExit }) {
                         // customer menu is actually built from and takes effect immediately.
                         // (The raw Square product list uses a different id space for
                         // preset-built menus, which is why flags saved against it never showed.)
-                        const list = offeredProducts.filter((p) => !q || p.name.toLowerCase().includes(q) || (p.category || '').toLowerCase().includes(q));
-                        if (offeredProducts.length && !list.length) return <p className="muted" style={{ fontSize: 'var(--fs-sm)', padding: 8 }}>No items match “{availSearch.trim()}”.</p>;
+                        const list = offeredProducts.filter((p) =>
+                          (!availCat || (p.category || '').trim() === availCat) &&
+                          (!q || p.name.toLowerCase().includes(q) || (p.category || '').toLowerCase().includes(q)));
+                        if (offeredProducts.length && !list.length) return <p className="muted" style={{ fontSize: 'var(--fs-sm)', padding: 8 }}>No items{availCat ? ` in ${availCat}` : ''}{q ? ` match “${availSearch.trim()}”` : ''}.</p>;
                         const STATUS = {
                           available: { label: 'Available', cls: 'ok' },
                           today: { label: 'Sold out today', cls: 'warn' },

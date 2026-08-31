@@ -3145,6 +3145,13 @@ body:has(.store-shell) { background: var(--bc-canvas-deep, #160f12); }
 .avail-daychip.sm { padding: 7px 0; width: 34px; text-align: center; }
 .avail-daychip.on { background: var(--admin-accent, var(--brand)); border-color: var(--admin-accent, var(--brand)); color: #fff; }
 .avail-daycount { margin-left: 6px; background: var(--admin-danger, #c0392b); color: #fff; border-radius: 999px; font-size: 11px; padding: 0 6px; font-weight: 800; }
+.avail-catchips { display: flex; gap: 6px; flex-wrap: wrap; margin: 10px 0 2px; }
+.avail-catchip {
+  border: 1px solid var(--admin-border, var(--line)); background: var(--admin-surface, #fff);
+  color: var(--admin-text, var(--ink)); border-radius: 999px; padding: 6px 13px;
+  font-family: inherit; font-size: var(--fs-sm); font-weight: 700; cursor: pointer;
+}
+.avail-catchip.on { background: var(--admin-accent, var(--brand)); border-color: var(--admin-accent, var(--brand)); color: #fff; }
 .avail-chipwrap { display: flex; gap: 6px; flex-wrap: wrap; }
 .avail-chip {
   display: inline-flex; align-items: center; gap: 6px; background: var(--admin-accent-soft, var(--brand-soft));
