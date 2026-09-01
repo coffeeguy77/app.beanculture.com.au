@@ -1,0 +1,99 @@
+From a79ee982e8e6ecac54e5470089aba358d4bdd316 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 30 Aug 2026 15:31:47 +0000
+Subject: [PATCH] Fix: 'Sync new variations' no longer re-adds builder tiles
+ you deleted
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Product Builder's 'Sync new variations from Square' auto-added a tile for every
+Square variation of any item you already had a preset for — so deleting the
+'extra tea' tiles and syncing re-created them every time. Now deleting a tile
+records its variation ids in builderExcludedVariationIds, and sync skips those
+(self-healing: an id is un-excluded once a tile covers it again). New variations
+you haven't deleted still get picked up as before.
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_0187Jj4Q77V4UPawzEh9gsGr
+---
+ client/src/components/Admin.jsx | 25 ++++++++++++++++++++++---
+ server/lib/settings.js          |  4 ++++
+ 2 files changed, 26 insertions(+), 3 deletions(-)
+
+diff --git a/client/src/components/Admin.jsx b/client/src/components/Admin.jsx
+index 0417cad..08e516a 100644
+--- a/client/src/components/Admin.jsx
++++ b/client/src/components/Admin.jsx
+@@ -899,7 +899,17 @@ export default function Admin({ onExit }) {
+   const addPreset = () =>
+     setPresets([...presets, { id: 'pre' + Date.now().toString(36), name: 'New preset', section: 'Breakfast', sourceItemId: '', variationId: '', groups: {}, showImages: true }]);
+   const updPreset = (id, patch) => setPresets(presets.map((x) => (x.id === id ? { ...x, ...patch } : x)));
+-  const rmPreset = (id) => setPresets(presets.filter((x) => x.id !== id));
++  const rmPreset = (id) => {
++    // Remember the variations this tile covered so "Sync new variations from
++    // Square" doesn't silently re-create the tile you just deleted (the cause of
++    // "deleted teas keep coming back"). Cleared automatically if you rebuild a
++    // tile for that variation.
++    const p = presets.find((x) => x.id === id);
++    const vids = p ? (Array.isArray(p.variationIds) && p.variationIds.length ? p.variationIds : [p.variationId].filter(Boolean)) : [];
++    const ex = new Set(Array.isArray(s?.builderExcludedVariationIds) ? s.builderExcludedVariationIds : []);
++    vids.forEach((v) => ex.add(v));
++    set({ presets: presets.filter((x) => x.id !== id), builderExcludedVariationIds: [...ex] });
++  };
+   // Cycle a modifier through Off → Show → Default → Lock → Off for a preset.
+   const CYCLE = { undefined: 'optional', off: 'optional', optional: 'default', default: 'locked', locked: undefined };
+   const cyclePresetMod = (presetId, groupId, modId) =>
+@@ -1220,23 +1230,32 @@ export default function Admin({ onExit }) {
+       // sizes; everything else adds as a separate tile.
+       const combinedForSource = {};
+       for (const p of reconciled) if (isCombined(p) && !combinedForSource[p.sourceItemId]) combinedForSource[p.sourceItemId] = p;
+-      const added = []; let extended = 0;
++      // Variations the owner has deliberately deleted — never auto-re-add these.
++      const excluded = new Set(Array.isArray(s?.builderExcludedVariationIds) ? s.builderExcludedVariationIds : []);
++      const added = []; let extended = 0; let skippedExcluded = 0;
+       for (const id of sourceIds) {
+         const cfg = configs[id]; if (!cfg) continue;
+         const covered = coveredBySource[id] || new Set();
+         for (const v of cfg.variations) {
+           if (covered.has(v.id)) continue;
++          if (excluded.has(v.id)) { skippedExcluded++; continue; } // owner deleted this — leave it out
+           covered.add(v.id);
+           const combo = combinedForSource[id];
+           if (combo) { combo.variationIds = [...presetVids(combo), v.id]; combo.variationId = combo.variationIds[0]; extended++; }
+           else { reconciled.push({ id: newPresetId(), name: v.name || cfg.name, section: sectionBySource[id] || 'Specials', sourceItemId: id, variationId: v.id, groups: {}, showImages: true }); added.push(v.name || cfg.name); }
+         }
+       }
+-      setPresets(reconciled);
++      // Self-heal: a variation that's now covered by a tile again is no longer
++      // "excluded" (so a rebuilt tile sticks and stays syncable).
++      const coveredNow = new Set();
++      for (const p of reconciled) presetVids(p).forEach((v) => coveredNow.add(v));
++      const nextExcluded = [...excluded].filter((v) => !coveredNow.has(v));
++      set({ presets: reconciled, builderExcludedVariationIds: nextExcluded });
+       const parts = [added.length ? `added ${added.length} new tile(s) (${added.slice(0, 4).join(', ')}${added.length > 4 ? '…' : ''})` : 'no new tiles'];
+       if (extended) parts.push(`added ${extended} new size(s) to combined tile(s)`);
+       if (removedDead) parts.push(`removed ${removedDead} tile(s) whose variation was deleted`);
+       if (trimmed) parts.push(`trimmed ${trimmed} combined tile(s)`);
++      if (skippedExcluded) parts.push(`left out ${skippedExcluded} tile(s) you'd deleted`);
+       setSyncMsg(`Sync: ${parts.join('; ')}. Prices update automatically. Press Save changes to keep new/removed tiles.`);
+     } catch (e) {
+       setSyncMsg('Sync failed: ' + (e.message || 'unknown error'));
+diff --git a/server/lib/settings.js b/server/lib/settings.js
+index cf9d5f9..ff6b4ed 100644
+--- a/server/lib/settings.js
++++ b/server/lib/settings.js
+@@ -91,6 +91,10 @@ const DEFAULTS = {
+   // A modifier not listed is hidden; 'optional' = shown/off, 'default' = shown/on,
+   // 'locked' = hidden + always applied (its price is baked into the tile price).
+   presets: [],
++  // Square variation ids the owner has deleted a builder tile for — "Sync new
++  // variations from Square" never auto-re-adds these (so a deleted tile stays
++  // deleted). Cleared for a variation once a tile covers it again.
++  builderExcludedVariationIds: [],
+   // When on, an item that has presets built from it is hidden from the normal
+   // menu (its presets represent it), so the big master tile doesn't also show.
+   hidePresetSources: true,
+-- 
+2.43.0
+

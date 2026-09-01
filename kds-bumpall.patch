@@ -1,0 +1,106 @@
+From 47f4951e98e3aad00f3907d35e433a63b5208840 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 30 Aug 2026 23:01:34 +0000
+Subject: [PATCH] KDS: add 'Bump all' to clear every open ticket in a station
+
+A green 'Bump all (N)' button in the top bar bumps every open ticket in the
+currently-selected station in one tap (confirms first so a stray tap can't
+wipe the board). Disabled when the station is empty. Server /api/admin/kds/bump
+now also accepts an orderIds array so the whole station bumps in a single
+request; the per-ticket button still uses the single-order form.
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_0187Jj4Q77V4UPawzEh9gsGr
+---
+ client/src/components/Kds.jsx | 25 +++++++++++++++++++++++++
+ client/src/styles.css         |  4 ++++
+ server/index.js               | 13 +++++++++----
+ 3 files changed, 38 insertions(+), 4 deletions(-)
+
+diff --git a/client/src/components/Kds.jsx b/client/src/components/Kds.jsx
+index 92cbf28..4b01f27 100644
+--- a/client/src/components/Kds.jsx
++++ b/client/src/components/Kds.jsx
+@@ -149,6 +149,28 @@ export default function Kds({ onExit, embedded }) {
+     } catch { setErr('Bump didn’t save — check the connection.'); loadTickets(); }
+   }
+ 
++  // Bump every open ticket in the current station at once. Confirms first so a
++  // stray tap can't clear the whole board.
++  async function bumpAll() {
++    const ids = active.map((t) => t.orderId);
++    if (!ids.length) return;
++    const label = zone === ALL ? 'all stations' : (zones.find((z) => z.id === zone)?.name || 'this station');
++    if (typeof window !== 'undefined' && !window.confirm(`Bump all ${ids.length} open ticket${ids.length > 1 ? 's' : ''} for ${label}?`)) return;
++    const idSet = new Set(ids);
++    setTickets((ts) => ts.map((t) => (idSet.has(t.orderId) ? { ...t, zoneStatus: { ...t.zoneStatus, [zone]: 'done' } } : t)));
++    try {
++      const r = await fetch(`/api/admin/kds/bump?pass=${encodeURIComponent(pass)}`, {
++        method: 'POST', headers: { 'Content-Type': 'application/json' },
++        body: JSON.stringify({ orderIds: ids, zone, status: 'done' }),
++      });
++      if (!r.ok) {
++        let msg = `Bump all failed (${r.status})`;
++        try { const d = await r.json(); if (d && d.error) msg = `Bump all failed: ${d.error}`; } catch {}
++        setErr(msg); loadTickets();
++      } else { setErr(''); }
++    } catch { setErr('Bump all didn’t save — check the connection.'); loadTickets(); }
++  }
++
+   async function installKds() {
+     if (!deferredPrompt) return;
+     deferredPrompt.prompt();
+@@ -240,6 +262,9 @@ export default function Kds({ onExit, embedded }) {
+             </select>
+           )}
+           <span className={`kds-live${live ? ' on' : ''}`} title={live ? 'Live' : 'Reconnecting…'}>{live ? '● Live' : '○ Polling'}</span>
++          <button className="kds-bumpall" title="Bump every open ticket in this station" disabled={!active.length} onClick={bumpAll}>
++            Bump all{active.length ? ` (${active.length})` : ''}
++          </button>
+           <button className={`kds-icon${showLayout ? ' on' : ''}`} title="Layout" onClick={() => setShowLayout((v) => !v)}>▦</button>
+           <button className="kds-icon" title={soundOn ? 'Mute new-order sound' : 'Unmute'} onClick={() => setMuted((m) => !m)}>{soundOn ? '🔔' : '🔕'}</button>
+           <button className="kds-icon" title="Refresh" onClick={() => loadTickets()}>⟳</button>
+diff --git a/client/src/styles.css b/client/src/styles.css
+index 53d1f1d..ff18f0c 100644
+--- a/client/src/styles.css
++++ b/client/src/styles.css
+@@ -3264,6 +3264,10 @@ body:has(.store-shell) { background: var(--bc-canvas-deep, #160f12); }
+ .kds-seg-btn { border: none; background: none; color: #cfd8e2; border-radius: 8px; padding: 7px 11px; font-family: inherit; font-size: 13px; font-weight: 700; cursor: pointer; min-width: 34px; }
+ .kds-seg-btn.on { background: #2b6cb0; color: #fff; }
+ .kds-icon.on { background: #2b6cb0; border-color: #2b6cb0; }
++.kds-bumpall { height: 44px; padding: 0 16px; border-radius: 11px; border: 1px solid #2f7d55; background: #2f7d55; color: #fff; font-family: inherit; font-size: 15px; font-weight: 800; cursor: pointer; white-space: nowrap; }
++.kds-bumpall:hover:not(:disabled) { background: #37955f; border-color: #37955f; }
++.kds-bumpall:disabled { opacity: .4; cursor: default; }
++@media (max-width: 640px) { .kds-bumpall { padding: 0 12px; height: 40px; font-size: 14px; } }
+ 
+ /* ── KDS: density = Compact (tighter cards, more per screen) ── */
+ .kds-root.kds-compact .kds-grid { gap: 8px; padding: 8px; }
+diff --git a/server/index.js b/server/index.js
+index c392977..fb89e39 100644
+--- a/server/index.js
++++ b/server/index.js
+@@ -1442,12 +1442,17 @@ app.get('/api/admin/kds/tickets', async (req, res) => {
+ app.post('/api/admin/kds/bump', async (req, res) => {
+   if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+   try {
+-    const { orderId, zone, status } = req.body || {};
+-    if (!orderId || !zone) return res.status(400).json({ error: 'Missing orderId or zone' });
++    const { orderId, orderIds, zone, status } = req.body || {};
++    if (!zone) return res.status(400).json({ error: 'Missing zone' });
+     if (!['new', 'preparing', 'done'].includes(status)) return res.status(400).json({ error: 'Bad status' });
+-    const row = await db.kdsSetStatus(orderId, zone, status);
++    // Bulk: bump every listed order in this station in one request (used by
++    // "Bump all"). Falls back to the single-order form for the per-ticket button.
++    const ids = Array.isArray(orderIds) ? orderIds.filter(Boolean) : (orderId ? [orderId] : []);
++    if (!ids.length) return res.status(400).json({ error: 'Missing orderId(s)' });
++    const rows = [];
++    for (const id of ids) rows.push(await db.kdsSetStatus(id, zone, status));
+     kdsBroadcast('bump');
+-    res.json({ ok: true, row });
++    res.json({ ok: true, count: rows.length, row: rows[0], rows });
+   } catch (e) {
+     res.status(400).json({ error: e.message });
+   }
+-- 
+2.43.0
+

@@ -1,0 +1,83 @@
+From e2423be8e6e69a7769519af80e55b4cf2c984383 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 30 Aug 2026 16:33:56 +0000
+Subject: [PATCH] Admin: add a Plum backend appearance preset
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+A fifth Backend appearance swatch — a deep plum/orchid dark theme — alongside
+light, dark-pink, dark-blue and dark-green. Full --admin-* palette, its swatch
+preview, and the dark-only tweaks (select options, date/time picker icons)
+extended to cover it.
+---
+ client/src/components/Admin.jsx |  2 +-
+ client/src/styles.css           | 18 ++++++++++++++++--
+ 2 files changed, 17 insertions(+), 3 deletions(-)
+
+diff --git a/client/src/components/Admin.jsx b/client/src/components/Admin.jsx
+index 145d8e2..9213451 100644
+--- a/client/src/components/Admin.jsx
++++ b/client/src/components/Admin.jsx
+@@ -1677,7 +1677,7 @@ export default function Admin({ onExit }) {
+             <div className="admin-theme-switch">
+               <div className="admin-theme-switch-label">Backend appearance</div>
+               <div className="admin-theme-swatches">
+-                {['light', 'dark-pink', 'dark-blue', 'dark-green'].map((th) => (
++                {['light', 'dark-pink', 'dark-blue', 'dark-green', 'plum'].map((th) => (
+                   <button key={th} type="button" className={`admin-theme-swatch ${adminTheme === th ? 'on' : ''}`}
+                     data-swatch={th} onClick={() => setAdminTheme(th)} aria-label={`${th} theme`} title={th} />
+                 ))}
+diff --git a/client/src/styles.css b/client/src/styles.css
+index a12afc3..53d1f1d 100644
+--- a/client/src/styles.css
++++ b/client/src/styles.css
+@@ -1225,6 +1225,16 @@ img { max-width: 100%; }
+   --admin-success: #5DCC8C; --admin-warning: #E0A93A; --admin-danger: #E2604E;
+   --admin-shadow: 0 10px 34px rgba(0, 0, 0, 0.45); --admin-shadow-sm: 0 4px 14px rgba(0, 0, 0, 0.3);
+ }
++.admin-root[data-admin-theme="plum"] {
++  --admin-bg: #160F1D; --admin-surface: #201829; --admin-surface-raised: #291F34; --admin-surface-soft: #322641;
++  --admin-border: #443453; --admin-border-strong: #59456B;
++  --admin-text: #EFE9F5; --admin-text-muted: #B6A8C3; --admin-heading: #F8F3FF;
++  --admin-accent: #B57EDC; --admin-accent-hover: #C79AE6; --admin-accent-soft: rgba(181, 126, 220, 0.16);
++  --admin-input-bg: #1D1526; --admin-input-border: #493857; --admin-input-text: #F8F3FF;
++  --admin-sidebar: #191122; --admin-sidebar-hover: #221830; --admin-sidebar-active: #2E2140;
++  --admin-success: #4CAF74; --admin-warning: #E0A93A; --admin-danger: #E2604E;
++  --admin-shadow: 0 10px 34px rgba(0, 0, 0, 0.45); --admin-shadow-sm: 0 4px 14px rgba(0, 0, 0, 0.3);
++}
+ /* Fallback so the admin never renders unthemed before React sets the attribute. */
+ .admin-root { --admin-bg: #F5F6F8; --admin-surface: #FFFFFF; --admin-surface-raised: #FFFFFF; --admin-surface-soft: #F0F1F4; --admin-border: #E1E4E8; --admin-border-strong: #C9CDD3; --admin-text: #2C3035; --admin-text-muted: #6F7680; --admin-heading: #17191C; --admin-accent: #D44870; --admin-accent-hover: #B93B60; --admin-accent-soft: #FBE7EE; --admin-input-bg: #FFFFFF; --admin-input-border: #D6D9DE; --admin-input-text: #17191C; --admin-sidebar: #FFFFFF; --admin-sidebar-hover: #F5F6F8; --admin-sidebar-active: #FBE7EE; --admin-success: #2E7D51; --admin-warning: #B4790E; --admin-danger: #C0392B; --admin-shadow: 0 8px 30px rgba(23, 25, 28, 0.10); --admin-shadow-sm: 0 3px 12px rgba(23, 25, 28, 0.07); }
+ 
+@@ -1275,7 +1285,8 @@ img { max-width: 100%; }
+    past its flex cell / card. */
+ .admin-panel select { max-width: 100%; min-width: 0; }
+ /* Native dropdown option list readable on dark (honoured on Win/Linux). */
+-.admin-root[data-admin-theme^="dark"] .admin-panel select option { background: var(--admin-surface-raised); color: var(--admin-input-text); }
++.admin-root[data-admin-theme^="dark"] .admin-panel select option,
++.admin-root[data-admin-theme="plum"] .admin-panel select option { background: var(--admin-surface-raised); color: var(--admin-input-text); }
+ 
+ /* Bare inline-styled buttons (e.g. Product Builder section headers "Breakfast ·
+    21 tiles ▲") default to the browser's black button text. Give unclassed admin
+@@ -1334,7 +1345,9 @@ img { max-width: 100%; }
+ }
+ .admin-panel .field textarea, .admin-panel textarea { min-height: 110px; }
+ .admin-root[data-admin-theme^="dark"] .admin-panel input[type=date]::-webkit-calendar-picker-indicator,
+-.admin-root[data-admin-theme^="dark"] .admin-panel input[type=time]::-webkit-calendar-picker-indicator {
++.admin-root[data-admin-theme^="dark"] .admin-panel input[type=time]::-webkit-calendar-picker-indicator,
++.admin-root[data-admin-theme="plum"] .admin-panel input[type=date]::-webkit-calendar-picker-indicator,
++.admin-root[data-admin-theme="plum"] .admin-panel input[type=time]::-webkit-calendar-picker-indicator {
+   filter: invert(1) brightness(1.6);
+ }
+ .admin-panel .btn { min-height: 44px; border-radius: 10px; }
+@@ -1374,6 +1387,7 @@ img { max-width: 100%; }
+ .admin-theme-swatch[data-swatch="dark-pink"] { background: linear-gradient(135deg, #171216 50%, #EF7199 50%); }
+ .admin-theme-swatch[data-swatch="dark-blue"] { background: linear-gradient(135deg, #10161E 50%, #5EA9FF 50%); }
+ .admin-theme-swatch[data-swatch="dark-green"] { background: linear-gradient(135deg, #101813 50%, #5DCC8C 50%); }
++.admin-theme-swatch[data-swatch="plum"] { background: linear-gradient(135deg, #160F1D 50%, #B57EDC 50%); }
+ 
+ /* ── Admin typography baseline: one consistent type scale everywhere ── */
+ :root { --fs-xs: 11px; --fs-sm: 12px; --fs-base: 13px; --fs-md: 14px; --fs-lg: 15px; --fs-xl: 18px; }
+-- 
+2.43.0
+

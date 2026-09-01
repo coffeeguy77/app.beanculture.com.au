@@ -1,0 +1,152 @@
+From 797588b03c4fda8932437a6e30bb42ca8251ea72 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 30 Aug 2026 14:16:27 +0000
+Subject: [PATCH] Event-locations section flag + Twilio SMS status callback
+
+Product Builder sections can now be shown at event locations WITHOUT appearing
+in the normal menus:
+- New 'Event locations' tick box beside a section's Top menu / Footer toggles.
+  With it on (and Top/Footer off), the section is tagged eventOnly: it's built
+  into the menu but hidden everywhere except a store whose 'Event menu' list
+  names it. This is what lets a curated 'Events' coffee section exist without
+  cluttering the main menu.
+- /api/menu hides eventOnly sections at normal stores; an event store's section
+  allowlist surfaces the named ones and treats them as primary nav.
+- The event-store 'Event menu' and free-category pickers now list Product
+  Builder section names too, so 'Events' is selectable there.
+
+Also: /api/twilio/status endpoint (form-encoded) records SMS delivery statuses
+in memory for the admin, so an alphanumeric-sender Status callback URL has
+somewhere to POST. https://app.beanculture.com.au/api/twilio/status
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_0187Jj4Q77V4UPawzEh9gsGr
+---
+ client/src/components/Admin.jsx |  9 +++++++-
+ server/index.js                 | 41 +++++++++++++++++++++++++++++++--
+ server/lib/catalog.js           |  8 +++++--
+ 3 files changed, 53 insertions(+), 5 deletions(-)
+
+diff --git a/client/src/components/Admin.jsx b/client/src/components/Admin.jsx
+index 419a200..83a284a 100644
+--- a/client/src/components/Admin.jsx
++++ b/client/src/components/Admin.jsx
+@@ -1108,10 +1108,14 @@ export default function Admin({ onExit }) {
+     const cats = Array.isArray(sc.categories) ? sc.categories : [];
+     updateSchedule(id, { categories: cats.includes(name) ? cats.filter((c) => c !== name) : [...cats, name] });
+   };
+-  // Category names a schedule can target (app categories + custom product sections).
++  // Category names a schedule / event menu can target: app categories, custom
++  // product sections, AND Product-Builder section names (so an "Event locations"
++  // section like "Events" can be picked for an event store's menu even when it's
++  // not on the normal menus).
+   const scheduleCatOptions = [...new Set([
+     ...adminCat.map((c) => c.category),
+     ...productSections.map((ps) => ps.name),
++    ...(Array.isArray(s?.presets) ? s.presets.map((p) => (p.section || '').trim()) : []),
+   ].filter(Boolean))];
+ 
+   // ---- Kitchen Screen (KDS) config ----
+@@ -2473,6 +2477,9 @@ export default function Admin({ onExit }) {
+                           <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 'var(--fs-sm)' }} title="Show this section in the footer menu">
+                             <input type="checkbox" checked={presetSectionNav[secName]?.footer === true} onChange={(e) => setSectionNav(secName, { footer: e.target.checked })} /> Footer
+                           </label>
++                          <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 'var(--fs-sm)' }} title="Make this section available to event locations WITHOUT putting it in your normal menus. Then pick it under an event store's 'Event menu' list.">
++                            <input type="checkbox" checked={presetSectionNav[secName]?.event === true} onChange={(e) => setSectionNav(secName, { event: e.target.checked })} /> Event locations
++                          </label>
+                           <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 'var(--fs-sm)' }} title="Show product images for this section (hide to avoid empty thumbnails)">
+                             <input type="checkbox" checked={presetSectionNav[secName]?.showImages !== false} onChange={(e) => setSectionNav(secName, { showImages: e.target.checked })} /> Images
+                           </label>
+diff --git a/server/index.js b/server/index.js
+index d46eaf4..3b28f89 100644
+--- a/server/index.js
++++ b/server/index.js
+@@ -183,13 +183,20 @@ app.get('/api/menu', async (req, res) => {
+     if (hit && hit.data && now - hit.at < MENU_TTL_MS) return res.json(hit.data);
+     let menu = await catalog.getMenu({ location: loc });
+     // Curated event menu: if this store lists specific sections, show ONLY those
+-    // (in the order the store chose) so event guests get a short, fast menu.
++    // (in the order the store chose) and treat them as primary nav so the single
++    // curated section behaves like a normal top-level menu at the event.
+     const only = locations.menuSectionsFor(loc);
+     if (only.length && Array.isArray(menu.categories)) {
+       const rank = new Map(only.map((n, i) => [n, i]));
+-      const kept = menu.categories.filter((c) => rank.has(String(c.category || '').toLowerCase()));
++      const kept = menu.categories
++        .filter((c) => rank.has(String(c.category || '').toLowerCase()))
++        .map((c) => ({ ...c, topNav: true, eventOnly: false }));
+       kept.sort((a, b) => rank.get(String(a.category).toLowerCase()) - rank.get(String(b.category).toLowerCase()));
+       menu = { ...menu, categories: kept };
++    } else if (Array.isArray(menu.categories)) {
++      // A normal store never shows an "Event locations" section — those only
++      // appear where a store's event menu explicitly names them (above).
++      menu = { ...menu, categories: menu.categories.filter((c) => !c.eventOnly) };
+     }
+     menuByLoc[loc] = { data: menu, at: now };
+     if (loc === locations.resolve(null).id) menuCache = { data: menu, at: now }; // keep legacy field warm
+@@ -1431,6 +1438,36 @@ app.get('/api/admin/kds/stream', (req, res) => {
+ // Square webhook receiver — verifies the HMAC signature, then just nudges the
+ // screens to refetch (it never mutates data, so a spoofed ping is harmless, but
+ // we still verify when a signature key is configured).
++// ---- Twilio SMS delivery-status callback ----
++// Twilio POSTs (form-encoded) the delivery status of each message we send —
++// queued → sent → delivered, or failed/undelivered. We just record the latest
++// few in memory so the admin can see whether texts are landing; nothing here
++// affects ordering. Point Twilio's "Status callback URL" at /api/twilio/status.
++const twilioStatuses = []; // ring buffer of { at, sid, to, status, errorCode, from }
++app.post('/api/twilio/status', express.urlencoded({ extended: false }), (req, res) => {
++  try {
++    const b = req.body || {};
++    if (b.MessageSid || b.SmsSid || b.MessageStatus || b.SmsStatus) {
++      twilioStatuses.unshift({
++        at: new Date().toISOString(),
++        sid: b.MessageSid || b.SmsSid || '',
++        to: b.To || '',
++        from: b.From || '',
++        status: b.MessageStatus || b.SmsStatus || '',
++        errorCode: b.ErrorCode || '',
++      });
++      if (twilioStatuses.length > 100) twilioStatuses.length = 100;
++      if (b.ErrorCode) console.warn('[twilio] delivery issue', b.MessageStatus, b.ErrorCode, b.To);
++    }
++  } catch (e) { console.error('[twilio] status error', e.message); }
++  // Twilio wants a fast 2xx; an empty 204 is fine (no TwiML needed).
++  res.status(204).end();
++});
++app.get('/api/admin/twilio/status', (req, res) => {
++  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
++  res.json({ configured: notify.smsConfigured, recent: twilioStatuses.slice(0, 50) });
++});
++
+ app.post('/api/square/webhook', (req, res) => {
+   try {
+     const key = process.env.SQUARE_WEBHOOK_SIGNATURE_KEY || '';
+diff --git a/server/lib/catalog.js b/server/lib/catalog.js
+index 0694500..d8edc9c 100644
+--- a/server/lib/catalog.js
++++ b/server/lib/catalog.js
+@@ -552,15 +552,19 @@ async function getMenu(opts = {}) {
+     // A builder section shows on the storefront when its Top-menu or Footer
+     // toggle is on. Top → top category bar; Footer → footer menu (grouped by the
+     // Footer menu builder, or its own button). showImages hides empty thumbnails.
++    // A third toggle — "Event locations" (nav.event) — includes the section in
++    // the menu WITHOUT putting it in the main menus: it's tagged eventOnly so it
++    // only surfaces at a store whose event-menu list names it (see /api/menu).
+     for (const [secName, tiles] of presetsBySection) {
+       const existing = sections.find((s) => s.category.toLowerCase() === secName.toLowerCase());
+       if (existing) { existing.items.push(...tiles); continue; }
+       const nav = sectionNav[secName] || {};
+-      if (!(nav.top === true || nav.footer === true)) continue;
++      if (!(nav.top === true || nav.footer === true || nav.event === true)) continue;
++      const eventOnly = nav.top !== true && nav.footer !== true && nav.event === true;
+       const banner = nav.banner && nav.banner.on && (nav.banner.title || nav.banner.image)
+         ? { title: nav.banner.title || '', image: nav.banner.image || null, itemId: nav.banner.itemId || null, hideText: nav.banner.hideText === true }
+         : null;
+-      sections.push({ category: secName, items: tiles, showImages: nav.showImages !== false, custom: true, builder: true, topNav: nav.top === true, footerNav: nav.footer === true, banner });
++      sections.push({ category: secName, items: tiles, showImages: nav.showImages !== false, custom: true, builder: true, topNav: nav.top === true, footerNav: nav.footer === true, eventOnly, banner });
+     }
+     // Hide the original master items now that presets represent them (keep the
+     // preset tiles themselves). Drop any section left empty as a result.
+-- 
+2.43.0
+

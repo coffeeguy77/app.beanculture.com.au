@@ -1,0 +1,173 @@
+From f7ae35a789d1bf3710ee162c5269a32b262038e5 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 30 Aug 2026 08:57:48 +0000
+Subject: [PATCH] Multi-location Phase D (rebuilt): sales by store & source
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Rebuilt onto the current codebase. Admin -> Locations gains a 'Sales by store —
+self-order vs counter' card: completed Square orders over a window (today / 7 /
+14 / 30 days), per store, split into App (customers self-ordering), Counter
+(POS), and Other, with a daily breakdown. Authoritative from Square.
+
+server: /api/admin/analytics/sales?days=N searches completed orders per active
+location (paginated), buckets by day in the store timezone, and classifies each
+by order source. Client renders per-store totals + a daily details view.
+
+Verified: source classification (App/POS/Other); the sales card loads and renders
+per-store App/Counter rows — no page errors; build + server check pass.
+---
+ client/src/components/Admin.jsx | 55 +++++++++++++++++++++++++++++++++
+ server/index.js                 | 55 +++++++++++++++++++++++++++++++++
+ 2 files changed, 110 insertions(+)
+
+diff --git a/client/src/components/Admin.jsx b/client/src/components/Admin.jsx
+index 486d3bd..1a418ea 100644
+--- a/client/src/components/Admin.jsx
++++ b/client/src/components/Admin.jsx
+@@ -186,6 +186,9 @@ export default function Admin({ onExit }) {
+   const [sqLocations, setSqLocations] = useState([]);  // this Square account's locations (id + name)
+   const [sqConfiguredId, setSqConfiguredId] = useState(''); // env/main Square location id (the current single store)
+   const [locQr, setLocQr] = useState({});              // locId -> { url, img } walk-around order QR
++  const [salesData, setSalesData] = useState(null);    // per-store sales (app vs counter)
++  const [salesDays, setSalesDays] = useState(7);
++  const [salesBusy, setSalesBusy] = useState(false);
+   const [collapsedSecs, setCollapsedSecs] = useState({}); // preset section name -> collapsed
+   const [deleteLock, setDeleteLock] = useState(true); // guard against accidental section deletes
+   const [removedCats, setRemovedCats] = useState(() => new Set()); // categories removed this session
+@@ -452,6 +455,15 @@ export default function Admin({ onExit }) {
+     } catch { setOfferedIds(false); }
+   }
+   // ---- Multi-location ----
++  async function loadSales(days = salesDays) {
++    setSalesBusy(true);
++    try {
++      const r = await fetch(`/api/admin/analytics/sales?days=${days}&pass=${encodeURIComponent(pass)}`);
++      const d = await r.json();
++      if (r.ok) setSalesData(d); else setSalesData({ error: d.error || 'Failed' });
++    } catch (e) { setSalesData({ error: e.message }); }
++    finally { setSalesBusy(false); }
++  }
+   async function loadSquareLocations() {
+     try {
+       const r = await fetch(`/api/admin/square-locations?pass=${encodeURIComponent(pass)}`);
+@@ -3220,6 +3232,49 @@ export default function Admin({ onExit }) {
+                   <p className="admin-page-desc">Run more than one store from one app and one menu. Customers pick their store; their order and its payment are created against that store's Square location, so takings land in that location's Square books (and its own bank account, if you've set one up in Square). You can also hide items a store doesn't offer — handy for a takeaway pop-up with no kitchen.</p>
+                 </div>
+ 
++                <div className="card" style={card}>
++                  <div className="group-title" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
++                    Sales by store — self-order vs counter
++                    <select value={salesDays} onChange={(e) => { const d = Number(e.target.value); setSalesDays(d); loadSales(d); }} style={{ marginLeft: 'auto' }}>
++                      <option value={1}>Today</option><option value={7}>Last 7 days</option><option value={14}>Last 14 days</option><option value={30}>Last 30 days</option>
++                    </select>
++                    <button type="button" className="btn ghost" style={{ padding: '6px 12px' }} disabled={salesBusy} onClick={() => loadSales()}>{salesBusy ? 'Loading…' : (salesData ? 'Refresh' : 'Load sales')}</button>
++                  </div>
++                  <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 0 }}>Completed Square orders. <strong>App</strong> = customers ordering themselves in the app; <strong>Counter</strong> = staff ringing it up on the POS; <strong>Other</strong> = Square POS / other.</p>
++                  {salesData && salesData.error && <p className="muted" style={{ color: 'var(--admin-danger,#c0392b)' }}>{salesData.error}</p>}
++                  {salesData && salesData.stores && (() => {
++                    const money2 = (c) => new Intl.NumberFormat('en-AU', { style: 'currency', currency: salesData.currency || 'AUD' }).format((c || 0) / 100);
++                    return salesData.stores.map((st) => (
++                      <div key={st.id} className="avail-sched" style={{ marginBottom: 10 }}>
++                        <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
++                          <strong style={{ fontSize: 'var(--fs-md)' }}>{st.name}</strong>
++                          <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>{st.totals.count} orders</span>
++                          <span style={{ marginLeft: 'auto', fontWeight: 800 }}>{money2(st.totals.total)}</span>
++                        </div>
++                        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginTop: 6, fontSize: 'var(--fs-sm)' }}>
++                          <span>App (self-order): <strong>{money2(st.totals.app)}</strong></span>
++                          <span>Counter (POS): <strong>{money2(st.totals.pos)}</strong></span>
++                          {st.totals.other > 0 && <span>Other: <strong>{money2(st.totals.other)}</strong></span>}
++                        </div>
++                        {st.daily.length > 0 && (
++                          <details style={{ marginTop: 6 }}>
++                            <summary style={{ cursor: 'pointer', fontSize: 'var(--fs-sm)' }}>Daily breakdown</summary>
++                            <div className="loc-avail-list" style={{ maxHeight: 220 }}>
++                              {[...st.daily].reverse().map((d) => (
++                                <div key={d.date} style={{ display: 'flex', gap: 10, fontSize: 'var(--fs-sm)', padding: '2px 0' }}>
++                                  <span style={{ minWidth: 92 }}>{d.date}</span>
++                                  <span>app {money2(d.app)}</span><span>counter {money2(d.pos)}</span>
++                                  <span style={{ marginLeft: 'auto', fontWeight: 700 }}>{money2(d.total)}</span>
++                                </div>
++                              ))}
++                            </div>
++                          </details>
++                        )}
++                      </div>
++                    ));
++                  })()}
++                </div>
++
+                 <div className="card" style={card}>
+                   <div className="group-title">Your stores</div>
+                   <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 0 }}>
+diff --git a/server/index.js b/server/index.js
+index 20cc926..f2bbe9e 100644
+--- a/server/index.js
++++ b/server/index.js
+@@ -1397,6 +1397,61 @@ app.post('/api/admin/weather/refresh', async (req, res) => {
+   try { res.json({ weather: await weather.getWeather({ force }), refreshed: force }); }
+   catch (e) { res.json({ weather: { ok: false, reason: e.message } }); }
+ });
++// ---- Admin: sales by store & source (app self-order vs counter POS) ----
++// Authoritative from Square: completed orders per location, bucketed by day and
++// classified by order source. Used by the Locations tab's analytics.
++function saleSource(name) {
++  const n = String(name || '').toLowerCase();
++  if (n.includes('pos')) return 'pos';        // 'Bean Culture POS' (counter)
++  if (n.includes('app') || n.includes('bean culture')) return 'app'; // 'Bean Culture App' (self-order)
++  return 'other';                              // Square POS / other integrations
++}
++function dayInTz(iso, tz) {
++  try { return new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(iso)); }
++  catch { return String(iso).slice(0, 10); }
++}
++app.get('/api/admin/analytics/sales', async (req, res) => {
++  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
++  try {
++    const days = Math.max(1, Math.min(90, parseInt(req.query.days, 10) || 7));
++    const tz = (getSettings().contact && getSettings().contact.timezone) || 'Australia/Sydney';
++    const startAt = new Date(Date.now() - days * 86400000).toISOString();
++    const stores = locations.active();
++    const out = [];
++    for (const store of stores) {
++      const byDay = {}; // date -> { app, pos, other, total }
++      const totals = { app: 0, pos: 0, other: 0, total: 0, count: 0 };
++      let cursor; let pages = 0;
++      do {
++        const data = await sq.squareFetch('/v2/orders/search', {
++          method: 'POST',
++          body: {
++            location_ids: [store.squareLocationId],
++            cursor,
++            query: {
++              filter: { date_time_filter: { created_at: { start_at: startAt } }, state_filter: { states: ['COMPLETED'] } },
++              sort: { sort_field: 'CREATED_AT', sort_order: 'DESC' },
++            },
++            limit: 500,
++          },
++        }).catch(() => ({}));
++        for (const o of (data.orders || [])) {
++          const amt = (o.total_money && o.total_money.amount) || 0;
++          const src = saleSource(o.source && o.source.name);
++          const d = dayInTz(o.created_at, tz);
++          const row = byDay[d] || (byDay[d] = { app: 0, pos: 0, other: 0, total: 0 });
++          row[src] += amt; row.total += amt;
++          totals[src] += amt; totals.total += amt; totals.count += 1;
++        }
++        cursor = data.cursor; pages += 1;
++      } while (cursor && pages < 6);
++      const daily = Object.keys(byDay).sort().map((date) => ({ date, ...byDay[date] }));
++      out.push({ id: store.id, name: store.name, daily, totals });
++    }
++    res.json({ days, currency: sq.CURRENCY, stores: out });
++  } catch (e) { res.status(502).json({ error: e.message }); }
++});
++
+ // ---- Admin: list this Square account's locations (id + name) so the Locations
+ //      setup can offer a dropdown instead of hunting for the id in Square. ----
+ app.get('/api/admin/square-locations', async (req, res) => {
+-- 
+2.43.0
+

@@ -1,0 +1,73 @@
+From 307a42afefd584c8856924fe153f7976b818e46c Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 30 Aug 2026 15:53:27 +0000
+Subject: [PATCH] =?UTF-8?q?KDS:=20split=20the=20board=20by=20store=20?=
+ =?UTF-8?q?=E2=80=94=20events=20no=20longer=20mix=20with=20the=20cafe?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Events share the cafe's Square location, so every kitchen screen was showing
+both the cafe's tickets and the event's free coffees. Now the ticket feed is
+scoped to the screen's chosen store: an EVENT screen shows only that event's
+tickets (matched on the bc_event tag), and the cafe / pop-up screens show only
+non-event tickets. Pick the store on each KDS (the event is selectable) to give
+the booth its own board.
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_0187Jj4Q77V4UPawzEh9gsGr
+---
+ server/index.js   |  6 +++++-
+ server/lib/kds.js | 12 ++++++++++--
+ 2 files changed, 15 insertions(+), 3 deletions(-)
+
+diff --git a/server/index.js b/server/index.js
+index 8db20bf..7434840 100644
+--- a/server/index.js
++++ b/server/index.js
+@@ -1399,7 +1399,11 @@ app.get('/api/admin/kds/tickets', async (req, res) => {
+   if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+   res.setHeader('Cache-Control', 'no-store');
+   try {
+-    const data = await kds.fetchTickets(locations.squareIdFor(req.query.location));
++    // Events share the main store's Square location, so scope the board to the
++    // chosen screen: an event screen shows only that event's tickets, and a
++    // café/pop-up screen never shows event tickets (they belong to the booth).
++    const loc = locations.resolve(req.query.location);
++    const data = await kds.fetchTickets(locations.squareIdFor(req.query.location), loc);
+     res.json(data);
+   } catch (e) {
+     res.status(502).json({ error: e.message });
+diff --git a/server/lib/kds.js b/server/lib/kds.js
+index f811b0e..4d8f875 100644
+--- a/server/lib/kds.js
++++ b/server/lib/kds.js
+@@ -99,7 +99,7 @@ function buildTickets(orders, varCat, states, cfg, now = Date.now()) {
+   });
+ }
+ 
+-async function fetchTickets(squareLocationId) {
++async function fetchTickets(squareLocationId, loc) {
+   const cfg = kdsSettings();
+   const startAt = new Date(Date.now() - cfg.lookbackHours * 3600 * 1000).toISOString();
+   const data = await squareFetch('/v2/orders/search', {
+@@ -117,7 +117,15 @@ async function fetchTickets(squareLocationId) {
+       limit: 150,
+     },
+   });
+-  const orders = (data.orders || []).filter((o) => o && o.state !== 'CANCELED');
++  let orders = (data.orders || []).filter((o) => o && o.state !== 'CANCELED');
++  // Several stores can share one Square location (events run on the café's), so
++  // split the board by the screen's chosen store: an EVENT screen shows only
++  // that event's tickets; any other screen shows only non-event tickets.
++  if (loc && loc.type === 'event') {
++    orders = orders.filter((o) => o.metadata && o.metadata.bc_event === loc.id);
++  } else if (loc) {
++    orders = orders.filter((o) => !(o.metadata && o.metadata.bc_event));
++  }
+   const [varCat, states] = await Promise.all([
+     catalog.getVariationCategoryMap().catch(() => ({})),
+     db.kdsGetStates(orders.map((o) => o.id)).catch(() => ({})),
+-- 
+2.43.0
+

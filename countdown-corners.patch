@@ -1,0 +1,45 @@
+From 98eaa722c2a76313b1e36bfa040d9997c16f6edb Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Tue, 1 Sep 2026 09:11:54 +0000
+Subject: [PATCH] Store/kitchen countdown: transparent corners (no white band
+ behind the card)
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The countdown card is self-contained (own gradient, border, radius) but its
+wrapping notice still painted a square surface, so its corners showed behind the
+card's rounded ones — the four white/pale tips in the corners. That surface was
+only neutralised on mobile; now it's neutralised on every viewport for the
+kitchen-closing and store reopen/opening notices, so the corners are transparent.
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_0187Jj4Q77V4UPawzEh9gsGr
+---
+ client/src/styles.css | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/client/src/styles.css b/client/src/styles.css
+index b8417fc..714c3f4 100644
+--- a/client/src/styles.css
++++ b/client/src/styles.css
+@@ -2318,6 +2318,16 @@ body:has(.store-shell) { background: var(--bc-canvas-deep, #160f12); }
+ .kc-cta, .kc-mcta { background: var(--bc-champagne); color: var(--bc-text-dark); }
+ .kc-cta:hover, .kc-mcta:hover { filter: brightness(1.05); background: var(--bc-champagne-soft); }
+ .kc-cta:focus-visible, .kc-mcta:focus-visible { outline-color: var(--bc-champagne); }
++/* The countdown card (kc-desktop / kc-tablet / kc-mobile) is self-contained —
++   its own gradient, border and radius. The wrapping notice must NOT paint its
++   own surface, or that square band shows its corners behind the card's rounded
++   ones (the "4 white tips in the corners"). Mobile already neutralised this; do
++   it on every viewport so tablet/desktop match. Overrides the --warning /
++   --urgent variant background these notices also carry. */
++.store-shell .site-notice--kitchen,
++.store-shell .site-notice--reopen {
++  background: none; border-top: none;
++}
+ /* Thicker, fully-rounded progress: subdued champagne track, berry→coral fill. */
+ .kc-progress { background: var(--progress-track); }
+ .kc-progress-fill { background: linear-gradient(90deg, var(--progress-fill-start), var(--progress-fill-end)); }
+-- 
+2.43.0
+

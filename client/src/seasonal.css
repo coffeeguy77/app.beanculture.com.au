@@ -154,6 +154,19 @@
 [data-season='christmas'] .card-box { background: var(--season-cream); border-color: var(--season-gold); }
 [data-season='christmas'] .secure-note, [data-season='christmas'] .empty { color: var(--season-cream2); }
 
+/* Cart PAGE line price is an unclassed inline node inside .cart-line-right, so it
+   inherited the dark page ink and read black on the green cart line. Colour the
+   right column cream to match the item name (the panel/drawer cart is a separate
+   light surface and is not affected — this is scoped to .cart-page). */
+[data-season='christmas'] .cart-page .cart-line-right { color: var(--season-cream); }
+
+/* Checkout is an intentionally LIGHT card in every season (dark ink on cream).
+   The legacy cream heading/label rules above turned its title and field labels
+   light-on-light (unreadable). Force them to the checkout card's own dark ink. */
+[data-season='christmas'] .checkout-page > h2,
+[data-season='christmas'] .checkout-page .group-title,
+[data-season='christmas'] .checkout-page .field span { color: var(--checkout-text); }
+
 /* ── Account / loyalty ── */
 [data-season='christmas'] .avatar { background: var(--season-red); color: var(--season-cream); }
 [data-season='christmas'] .loyalty-card { background: linear-gradient(135deg, var(--season-red), var(--season-red-deep)); border: 1px solid var(--season-gold); }

@@ -1,0 +1,384 @@
+From a456932e33288ec95d12e081413deb0fe9fa4e48 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 30 Aug 2026 08:14:36 +0000
+Subject: [PATCH] Multi-location Phase B (rebuilt): weekend + card surcharges
+
+Rebuilt onto the current codebase (the original Phase B patch no longer applied
+after this week's Locations-tab changes). Same behaviour:
+
+- Weekend surcharge: a % on chosen days (Sat/Sun default) + listed public-holiday
+  dates, on the item subtotal.
+- Card surcharge: a % on card payments only (app card + POS card tender; never
+  cash or gift balance), on the total. Comps are exempt.
+
+Applied server-side as Square service_charges (server/lib/surcharges.js) so they
+show on the receipt and reconcile in Square; the client only estimates a line for
+transparency. Admin -> Locations gains a Surcharges card; checkout shows the
+estimated line and the Pay button reflects it; the POS card tender notes the %.
+---
+ client/src/components/Admin.jsx    | 54 +++++++++++++++++++++
+ client/src/components/Checkout.jsx | 26 ++++++++--
+ client/src/components/Pos.jsx      |  6 +--
+ server/index.js                    |  9 ++--
+ server/lib/orders.js               | 11 ++++-
+ server/lib/settings.js             |  6 +++
+ server/lib/surcharges.js           | 77 ++++++++++++++++++++++++++++++
+ 7 files changed, 178 insertions(+), 11 deletions(-)
+ create mode 100644 server/lib/surcharges.js
+
+diff --git a/client/src/components/Admin.jsx b/client/src/components/Admin.jsx
+index 4ee4c19..e16c66c 100644
+--- a/client/src/components/Admin.jsx
++++ b/client/src/components/Admin.jsx
+@@ -965,6 +965,15 @@ export default function Admin({ onExit }) {
+     ? offeredList
+     : allProducts;
+ 
++  // ---- Surcharges (weekend / card) ----
++  const scfg = s?.surcharges || {};
++  const setSurcharge = (patch) => set({ surcharges: { ...scfg, ...patch } });
++  const setWeekendSc = (patch) => setSurcharge({ weekend: { ...(scfg.weekend || {}), ...patch } });
++  const setCardSc = (patch) => setSurcharge({ card: { ...(scfg.card || {}), ...patch } });
++  const weekendDays = Array.isArray(scfg.weekend?.days) ? scfg.weekend.days : [0, 6];
++  const toggleWeekendDay = (d) => setWeekendSc({ days: weekendDays.includes(d) ? weekendDays.filter((x) => x !== d) : [...weekendDays, d].sort() });
++  const DOWS = [['Sun', 0], ['Mon', 1], ['Tue', 2], ['Wed', 3], ['Thu', 4], ['Fri', 5], ['Sat', 6]];
++
+   const availItems = availability.items || {};
+   const availExcl = availability.exclusions || { enabled: true, days: {} };
+   const availSchedules = Array.isArray(availability.schedules) ? availability.schedules : [];
+@@ -3357,6 +3366,51 @@ export default function Admin({ onExit }) {
+                     </p>
+                   )}
+                 </div>
++
++                <div className="card" style={card}>
++                  <div className="group-title">Surcharges</div>
++                  <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 0 }}>Added to the Square order as surcharge lines (shown on the receipt). A card surcharge in Australia must not exceed your cost of acceptance — set your own %. Remember to press <strong>Save changes</strong>.</p>
++
++                  <div className="avail-sched" style={{ marginBottom: 12 }}>
++                    <label className="switch"><input type="checkbox" checked={!!scfg.weekend?.enabled} onChange={(e) => setWeekendSc({ enabled: e.target.checked })} /> <span>Weekend surcharge</span></label>
++                    {scfg.weekend?.enabled && (
++                      <div style={{ display: 'grid', gap: 8, marginTop: 8 }}>
++                        <label className="field" style={{ margin: 0, maxWidth: 160 }}><span>Percent (%)</span>
++                          <input type="number" step="0.1" min="0" value={scfg.weekend?.percent ?? 10} onChange={(e) => setWeekendSc({ percent: Number(e.target.value) })} />
++                        </label>
++                        <div>
++                          <div className="muted" style={{ fontSize: 'var(--fs-xs)', marginBottom: 4 }}>Days it applies</div>
++                          <div className="avail-chipwrap">
++                            {DOWS.map(([lbl, d]) => (
++                              <button type="button" key={d} className={`avail-chip${weekendDays.includes(d) ? ' on' : ''}`} onClick={() => toggleWeekendDay(d)}>{lbl}</button>
++                            ))}
++                          </div>
++                        </div>
++                        <label className="field" style={{ margin: 0 }}><span>Public holiday dates (one per line, YYYY-MM-DD) — surcharge applies on these too</span>
++                          <textarea rows={2} value={(scfg.weekend?.publicHolidays || []).join('\n')} onChange={(e) => setWeekendSc({ publicHolidays: e.target.value.split('\n').map((x) => x.trim()).filter(Boolean) })} placeholder="2026-12-25&#10;2026-12-26" />
++                        </label>
++                        <label className="field" style={{ margin: 0 }}><span>Label on receipt</span>
++                          <input value={scfg.weekend?.label || 'Weekend surcharge'} onChange={(e) => setWeekendSc({ label: e.target.value })} />
++                        </label>
++                      </div>
++                    )}
++                  </div>
++
++                  <div className="avail-sched">
++                    <label className="switch"><input type="checkbox" checked={!!scfg.card?.enabled} onChange={(e) => setCardSc({ enabled: e.target.checked })} /> <span>Card surcharge</span></label>
++                    {scfg.card?.enabled && (
++                      <div style={{ display: 'grid', gap: 8, marginTop: 8 }}>
++                        <label className="field" style={{ margin: 0, maxWidth: 160 }}><span>Percent (%)</span>
++                          <input type="number" step="0.1" min="0" value={scfg.card?.percent ?? 1.5} onChange={(e) => setCardSc({ percent: Number(e.target.value) })} />
++                        </label>
++                        <label className="field" style={{ margin: 0 }}><span>Label on receipt</span>
++                          <input value={scfg.card?.label || 'Card surcharge'} onChange={(e) => setCardSc({ label: e.target.value })} />
++                        </label>
++                        <p className="muted" style={{ fontSize: 'var(--fs-xs)', margin: 0 }}>Applied to card payments only (app card + POS card tender), never to cash or gift balance.</p>
++                      </div>
++                    )}
++                  </div>
++                </div>
+               </>
+             )}
+ 
+diff --git a/client/src/components/Checkout.jsx b/client/src/components/Checkout.jsx
+index f5730e6..5df9753 100644
+--- a/client/src/components/Checkout.jsx
++++ b/client/src/components/Checkout.jsx
+@@ -146,6 +146,20 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
+     : cartTotal;
+   const couponFree = couponValid && discountedTotal === 0;
+   const payTotal = couponValid ? discountedTotal : Math.max(0, cartTotal - pifEstimateCents);
++  // Surcharge estimate (server is authoritative; this mirrors it for the summary
++  // so the customer sees the weekend/card surcharge before paying).
++  const scfg = (config && config.surcharges) || {};
++  const weekendActive = !!(scfg.weekend && scfg.weekend.activeToday) && payTotal > 0;
++  const cardActive = !!(scfg.card && scfg.card.enabled) && cardChoice !== 'balance' && payTotal > 0;
++  const weekendSc = weekendActive ? Math.round(payTotal * (scfg.weekend.percent || 0) / 100) : 0;
++  const cardSc = cardActive ? Math.round((payTotal + weekendSc) * (scfg.card.percent || 0) / 100) : 0;
++  const grandTotal = payTotal + weekendSc + cardSc;
++  const surchargeRows = (
++    <>
++      {weekendSc > 0 && <div className="row"><span>{scfg.weekend.label || 'Weekend surcharge'} ({scfg.weekend.percent}%)</span><span>+{formatMoney(weekendSc, currency)}</span></div>}
++      {cardSc > 0 && <div className="row"><span>{scfg.card.label || 'Card surcharge'} ({scfg.card.percent}%)</span><span>+{formatMoney(cardSc, currency)}</span></div>}
++    </>
++  );
+ 
+   const isSchedule = when === 'schedule';
+   const isRepeat = when === 'repeat';
+@@ -239,6 +253,8 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
+     return api.createOrder({
+       cart: cartPayload, dineIn, table, name, coupon, pickupAt, note,
+       customerId: user?.customerId, locationId: location?.id,
++      // Card surcharge applies only to actual card payments, not gift balance.
++      cardPayment: cardChoice !== 'balance',
+       loyalty: tierId && loyalty?.accountId ? { accountId: loyalty.accountId, tierId } : undefined,
+       pifVoucher: hasPif ? effectivePifCode : undefined,
+     });
+@@ -343,7 +359,7 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
+   const scheduleAllowed = true; // pay-now scheduling always ok; auto-charge needs sched.enabled (checked on submit)
+   const ctaLabel = autocharge
+     ? (isRepeat ? 'Set up repeating order' : 'Schedule order')
+-    : (couponFree ? 'Place order' : `Pay ${formatMoney(payTotal, currency)}`);
++    : (couponFree ? 'Place order' : `Pay ${formatMoney(grandTotal, currency)}`);
+ 
+   return (
+     <main className="page checkout-page">
+@@ -562,17 +578,19 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
+           <>
+             <div className="row"><span>Subtotal</span><span>{formatMoney(cartTotal, currency)}</span></div>
+             <div className="row discount"><span>Coupon {couponInfo.code || coupon.trim().toUpperCase()} · {couponInfo.label}</span><span>−{formatMoney(cartTotal - discountedTotal, currency)}</span></div>
+-            <div className="row grand"><span>Total</span><span>{formatMoney(payTotal, currency)}</span></div>
++            {surchargeRows}
++            <div className="row grand"><span>Total</span><span>{formatMoney(grandTotal, currency)}</span></div>
+           </>
+         ) : hasPif ? (
+           <>
+             <div className="row"><span>Subtotal</span><span>{formatMoney(cartTotal, currency)}</span></div>
+             <div className="row discount"><span>Coffee gift (estimated)</span><span>−{formatMoney(pifEstimateCents, currency)}</span></div>
+-            <div className="row grand"><span>Total</span><span>{formatMoney(payTotal, currency)}</span></div>
++            {surchargeRows}
++            <div className="row grand"><span>Total</span><span>{formatMoney(grandTotal, currency)}</span></div>
+             <p className="muted" style={{ fontSize: 11.5, marginTop: 2 }}>Final amount confirmed at payment — the gift only discounts eligible coffee items.</p>
+           </>
+         ) : (
+-          <div className="row grand"><span>Total</span><span>{formatMoney(cartTotal, currency)}</span></div>
++          <>{surchargeRows}<div className="row grand"><span>Total</span><span>{formatMoney(grandTotal, currency)}</span></div></>
+         )}
+         {hasCoupon && !couponValid && couponInfo && <div className="row discount"><span>Coupon not recognised</span><span>—</span></div>}
+         {usingReward && <div className="row discount"><span>Reward applied at payment</span><span>—</span></div>}
+diff --git a/client/src/components/Pos.jsx b/client/src/components/Pos.jsx
+index 087dc93..8c806c2 100644
+--- a/client/src/components/Pos.jsx
++++ b/client/src/components/Pos.jsx
+@@ -571,7 +571,7 @@ export default function Pos({ onExit }) {
+       {/* Tender overlay */}
+       {tender && (
+         <TenderOverlay tender={tender} setTender={setTender} total={total} currency={currency}
+-          busy={busy} cardEnabled={!!cfg.terminalDeviceId}
++          busy={busy} cardEnabled={!!cfg.terminalDeviceId} cardSurchargePct={(cfg.surcharges && cfg.surcharges.card && cfg.surcharges.card.enabled) ? cfg.surcharges.card.percent : 0}
+           onCard={() => submit('card')} onCash={(given) => submit('cash', given)} onKitchen={() => submit('unpaid')} onClose={() => setTender(null)} />
+       )}
+ 
+@@ -624,7 +624,7 @@ export default function Pos({ onExit }) {
+ }
+ 
+ // ── Tender: choose method, then cash keypad with change ──
+-function TenderOverlay({ tender, setTender, total, currency, busy, cardEnabled, onCard, onCash, onKitchen, onClose }) {
++function TenderOverlay({ tender, setTender, total, currency, busy, cardEnabled, cardSurchargePct, onCard, onCash, onKitchen, onClose }) {
+   const [given, setGiven] = useState(0);
+   const change = Math.max(0, given - total);
+   // Suggested notes: exact, next round $ up, and common AUD notes above total.
+@@ -642,7 +642,7 @@ function TenderOverlay({ tender, setTender, total, currency, busy, cardEnabled,
+               <button className={`pos-tender-method${cardEnabled ? '' : ' disabled'}`} disabled={!cardEnabled || busy}
+                 title={cardEnabled ? '' : 'Pair a Square Terminal in POS setup (⚙)'} onClick={onCard}>
+                 <span className="pos-tender-m-name">Card — Terminal</span>
+-                <span className="pos-tender-m-sub">{cardEnabled ? 'Tap, insert or swipe' : 'No terminal paired'}</span>
++                <span className="pos-tender-m-sub">{cardEnabled ? (cardSurchargePct > 0 ? `Tap, insert or swipe · +${cardSurchargePct}% surcharge` : 'Tap, insert or swipe') : 'No terminal paired'}</span>
+               </button>
+               <button className="pos-tender-method" onClick={() => setTender('cash')}>
+                 <span className="pos-tender-m-name">Cash</span>
+diff --git a/server/index.js b/server/index.js
+index 098a1e7..a61aef1 100644
+--- a/server/index.js
++++ b/server/index.js
+@@ -22,6 +22,7 @@ const payItForward = require('./lib/payItForward');
+ const kds = require('./lib/kds');
+ const terminal = require('./lib/terminal');
+ const locations = require('./lib/locations');
++const surcharges = require('./lib/surcharges');
+ const weather = require('./lib/weather');
+ const smartCampaigns = require('./lib/smartCampaigns');
+ 
+@@ -69,6 +70,7 @@ app.get('/api/config', async (_req, res) => {
+     // Stores the customer can order from. Single-site deploys get one entry.
+     locations: locations.publicList(),
+     multiLocation: locations.active().length > 1,
++    surcharges: surcharges.publicConfig(),
+     announcement: settings.announcement,
+     contact: settings.contact,
+     logoUrl: settings.logoUrl,
+@@ -217,7 +219,7 @@ app.get('/api/history', async (req, res) => {
+ // ---- Create an order (with optional loyalty redemption) ----
+ app.post('/api/orders', async (req, res) => {
+   try {
+-    const { cart, dineIn, table, name, coupon, customerId, phone, pickupAt, note, loyalty: loy, pifVoucher, locationId } = req.body || {};
++    const { cart, dineIn, table, name, coupon, customerId, phone, pickupAt, note, loyalty: loy, pifVoucher, locationId, cardPayment } = req.body || {};
+     const squareLocationId = locations.squareIdFor(locationId);
+     if (!name || !String(name).trim()) {
+       return res.status(400).json({ error: 'Name is required' });
+@@ -242,7 +244,7 @@ app.post('/api/orders', async (req, res) => {
+         }
+       } catch (e) { console.error('pif recipient enrol failed', e.message); }
+     }
+-    const order = await orders.createOrder({ cart, dineIn: !!dineIn, table, name, coupon, customerId: effectiveCustomerId, pickupAt, note, pifVoucher, squareLocationId });
++    const order = await orders.createOrder({ cart, dineIn: !!dineIn, table, name, coupon, customerId: effectiveCustomerId, pickupAt, note, pifVoucher, squareLocationId, cardPayment: cardPayment !== false });
+ 
+     let rewardApplied = false;
+     if (loy && loy.accountId && loy.tierId) {
+@@ -1089,6 +1091,7 @@ app.get('/api/pos/config', (req, res) => {
+     logoUrl: s.logoUrl || '',
+     storeName: s.storeName || 'Bean Culture',
+     locations: locations.publicList(),
++    surcharges: surcharges.publicConfig(),
+     terminalDeviceId: p.terminalDeviceId || '',
+     terminalName: p.terminalName || '',
+     dbEnabled: db.enabled,
+@@ -1111,7 +1114,7 @@ app.post('/api/pos/order', async (req, res) => {
+     // ids, so the client total is display-only and cannot be tampered with.
+     const order = await orders.createOrder({
+       cart, dineIn: !!dineIn, table: table || '', name: name || '',
+-      source: pos.sourceName || 'Bean Culture POS', squareLocationId,
++      source: pos.sourceName || 'Bean Culture POS', squareLocationId, cardPayment: tender === 'card',
+     });
+     const amount = order.total_money ? order.total_money.amount : 0;
+     const currency = (order.total_money && order.total_money.currency) || sq.CURRENCY;
+diff --git a/server/lib/orders.js b/server/lib/orders.js
+index 2c3a5d0..eab493b 100644
+--- a/server/lib/orders.js
++++ b/server/lib/orders.js
+@@ -23,7 +23,7 @@ function buildNote({ dineIn, table }) {
+   return dineIn ? `DINE-IN · Table ${table || '?'}` : 'TAKEAWAY';
+ }
+ 
+-async function createOrder({ cart, dineIn, table, name, coupon, customerId, pickupAt, idempotencyKey, note: customerNote, pifVoucher, source, squareLocationId }) {
++async function createOrder({ cart, dineIn, table, name, coupon, customerId, pickupAt, idempotencyKey, note: customerNote, pifVoucher, source, squareLocationId, cardPayment }) {
+   const LOC = squareLocationId || LOCATION_ID;
+   if (!Array.isArray(cart) || cart.length === 0) throw new Error('Cart is empty');
+   // Bake any per-combo locked modifiers into the combo lines before pricing, so
+@@ -127,6 +127,15 @@ async function createOrder({ cart, dineIn, table, name, coupon, customerId, pick
+     }
+   }
+ 
++  // Surcharges (weekend / card) as Square service charges — server-authoritative.
++  // Skipped for comps (a 100%-off order shouldn't still bill a surcharge).
++  if (!isComp) {
++    try {
++      const sc = require('./surcharges').serviceChargesFor({ cardPayment: !!cardPayment });
++      if (sc.length) order.service_charges = sc;
++    } catch (e) { console.warn('[surcharges] skipped:', e.message); }
++  }
++
+   try {
+     const data = await squareFetch('/v2/orders', {
+       method: 'POST',
+diff --git a/server/lib/settings.js b/server/lib/settings.js
+index dcf27fd..b6fbcdd 100644
+--- a/server/lib/settings.js
++++ b/server/lib/settings.js
+@@ -359,6 +359,12 @@ const DEFAULTS = {
+   //    SQUARE_LOCATION_ID). Each: { id, name, squareLocationId, address, active,
+   //    hiddenItemIds:[] }. See server/lib/locations.js.
+   locations: [],
++  // ── Order surcharges (Square service charges). See server/lib/surcharges.js.
++  //    weekend.days: 0=Sun … 6=Sat. publicHolidays: ['YYYY-MM-DD', …].
++  surcharges: {
++    weekend: { enabled: false, percent: 10, days: [0, 6], publicHolidays: [], label: 'Weekend surcharge' },
++    card: { enabled: false, percent: 1.5, label: 'Card surcharge' },
++  },
+   kds: {
+     zones: [],          // [{ id, name, categories:[displayName] }]
+     lookbackHours: 8,   // how far back to pull live tickets
+diff --git a/server/lib/surcharges.js b/server/lib/surcharges.js
+new file mode 100644
+index 0000000..ca652d0
+--- /dev/null
++++ b/server/lib/surcharges.js
+@@ -0,0 +1,77 @@
++// Order surcharges applied server-side as Square service charges (so they show
++// on the receipt and reconcile in Square). Two kinds, both configurable:
++//   • weekend surcharge — a % added on the chosen days (Sat/Sun by default) plus
++//     any listed public-holiday dates. Applied to the item subtotal.
++//   • card surcharge — a % added when the customer pays by card (POS: tender is
++//     card; app: a card payment, not gift balance/comp). Applied to the total,
++//     so it covers the amount actually charged.
++//
++// These are authoritative: the client only estimates a line for transparency;
++// Square recomputes the real total from what we attach here.
++
++const { getSettings } = require('./settings');
++const { venueNow } = require('./catalog');
++
++function cfg() {
++  const s = getSettings().surcharges || {};
++  return { weekend: s.weekend || {}, card: s.card || {} };
++}
++
++// Is `now` a weekend-surcharge day? days: array of dow (0=Sun … 6=Sat).
++function isWeekendDay(now, weekend) {
++  const days = Array.isArray(weekend.days) && weekend.days.length ? weekend.days : [0, 6];
++  if (days.includes(now.dow)) return true;
++  const hol = Array.isArray(weekend.publicHolidays) ? weekend.publicHolidays : [];
++  return hol.includes(now.date); // 'YYYY-MM-DD'
++}
++
++function pct(v) {
++  const n = Number(v);
++  return Number.isFinite(n) && n > 0 ? n : 0;
++}
++
++// Build the Square order.service_charges array for this order.
++function serviceChargesFor({ now = venueNow(), cardPayment = false } = {}) {
++  const { weekend, card } = cfg();
++  const out = [];
++  const wp = pct(weekend.percent);
++  if (weekend.enabled && wp > 0 && isWeekendDay(now, weekend)) {
++    out.push({
++      uid: 'sc-weekend',
++      name: (weekend.label || 'Weekend surcharge').slice(0, 255),
++      percentage: String(wp),
++      calculation_phase: 'SUBTOTAL_PHASE',
++    });
++  }
++  const cp = pct(card.percent);
++  if (cardPayment && card.enabled && cp > 0) {
++    out.push({
++      uid: 'sc-card',
++      name: (card.label || 'Card surcharge').slice(0, 255),
++      percentage: String(cp),
++      calculation_phase: 'TOTAL_PHASE', // on the whole amount charged (incl. any weekend surcharge)
++    });
++  }
++  return out;
++}
++
++// Slim config for the client so it can show an estimate before paying.
++function publicConfig() {
++  const { weekend, card } = cfg();
++  const now = venueNow();
++  return {
++    weekend: {
++      enabled: !!weekend.enabled && pct(weekend.percent) > 0,
++      percent: pct(weekend.percent),
++      label: weekend.label || 'Weekend surcharge',
++      activeToday: !!weekend.enabled && pct(weekend.percent) > 0 && isWeekendDay(now, weekend),
++    },
++    card: {
++      enabled: !!card.enabled && pct(card.percent) > 0,
++      percent: pct(card.percent),
++      label: card.label || 'Card surcharge',
++    },
++  };
++}
++
++module.exports = { serviceChargesFor, publicConfig, isWeekendDay };
+-- 
+2.43.0
+

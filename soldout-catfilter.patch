@@ -1,0 +1,85 @@
+From 3753845ed335313b639fb6a574f0207eb99164c3 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Mon, 31 Aug 2026 00:28:46 +0000
+Subject: [PATCH] Sold-out list: add a category filter (Product Builder items
+ only)
+
+Category chips above the Sold-out list, built from the offered menu items (the
+Product Builder catalogue the customer app actually serves). Pick a category to
+show only its items; 'All' clears it. Works alongside the search box, and only
+appears when there are 2+ categories.
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_0187Jj4Q77V4UPawzEh9gsGr
+---
+ client/src/components/Admin.jsx | 21 +++++++++++++++++++--
+ client/src/styles.css           |  7 +++++++
+ 2 files changed, 26 insertions(+), 2 deletions(-)
+
+diff --git a/client/src/components/Admin.jsx b/client/src/components/Admin.jsx
+index 33c89eb..5a936c2 100644
+--- a/client/src/components/Admin.jsx
++++ b/client/src/components/Admin.jsx
+@@ -200,6 +200,7 @@ export default function Admin({ onExit }) {
+   // ---- Sold Out & Menus tab ----
+   const [availSub, setAvailSub] = useState('items');   // items | exclusions | schedules
+   const [availSearch, setAvailSearch] = useState('');  // product search in the sold-out list
++  const [availCat, setAvailCat] = useState('');        // category filter in the sold-out list ('' = all)
+   const [availBusy, setAvailBusy] = useState('');      // item id currently toggling
+   const [exclDay, setExclDay] = useState(6);           // weekday being edited (default Saturday)
+   const [exclSearch, setExclSearch] = useState('');    // product search in the exclusions picker
+@@ -3936,6 +3937,20 @@ export default function Admin({ onExit }) {
+                       Tap <strong>Sold out</strong> when you run out for the day &mdash; it comes back automatically the next time you open. Tap <strong>Unavailable</strong> to take it off indefinitely (shows red here and in the Product Builder, so you know to check before turning it back on). These save instantly &mdash; no need to press Save changes.
+                     </p>
+                     <input className="avail-search" placeholder="Search items — filters as you type…" value={availSearch} onChange={(e) => setAvailSearch(e.target.value)} autoComplete="off" />
++                    {(() => {
++                      // Category chips, built from the offered (Product Builder) menu items
++                      // only. Pick one to see just that category; "All" clears it.
++                      const cats = [...new Set(offeredProducts.map((p) => (p.category || '').trim()).filter(Boolean))].sort();
++                      if (cats.length < 2) return null;
++                      return (
++                        <div className="avail-catchips">
++                          <button type="button" className={`avail-catchip${availCat === '' ? ' on' : ''}`} onClick={() => setAvailCat('')}>All</button>
++                          {cats.map((c) => (
++                            <button key={c} type="button" className={`avail-catchip${availCat === c ? ' on' : ''}`} onClick={() => setAvailCat(availCat === c ? '' : c)}>{c}</button>
++                          ))}
++                        </div>
++                      );
++                    })()}
+                     <div className="avail-list">
+                       {offeredProducts.length === 0 && offeredIds === null && <p className="muted" style={{ fontSize: 'var(--fs-sm)', padding: 8 }}>Loading items…</p>}
+                       {offeredProducts.length === 0 && offeredIds !== null && <p className="muted" style={{ fontSize: 'var(--fs-sm)', padding: 8 }}>No menu items found. Add items to your app menu first, then they’ll appear here.</p>}
+@@ -3946,8 +3961,10 @@ export default function Admin({ onExit }) {
+                         // customer menu is actually built from and takes effect immediately.
+                         // (The raw Square product list uses a different id space for
+                         // preset-built menus, which is why flags saved against it never showed.)
+-                        const list = offeredProducts.filter((p) => !q || p.name.toLowerCase().includes(q) || (p.category || '').toLowerCase().includes(q));
+-                        if (offeredProducts.length && !list.length) return <p className="muted" style={{ fontSize: 'var(--fs-sm)', padding: 8 }}>No items match “{availSearch.trim()}”.</p>;
++                        const list = offeredProducts.filter((p) =>
++                          (!availCat || (p.category || '').trim() === availCat) &&
++                          (!q || p.name.toLowerCase().includes(q) || (p.category || '').toLowerCase().includes(q)));
++                        if (offeredProducts.length && !list.length) return <p className="muted" style={{ fontSize: 'var(--fs-sm)', padding: 8 }}>No items{availCat ? ` in ${availCat}` : ''}{q ? ` match “${availSearch.trim()}”` : ''}.</p>;
+                         const STATUS = {
+                           available: { label: 'Available', cls: 'ok' },
+                           today: { label: 'Sold out today', cls: 'warn' },
+diff --git a/client/src/styles.css b/client/src/styles.css
+index ff18f0c..21e5462 100644
+--- a/client/src/styles.css
++++ b/client/src/styles.css
+@@ -3145,6 +3145,13 @@ body:has(.store-shell) { background: var(--bc-canvas-deep, #160f12); }
+ .avail-daychip.sm { padding: 7px 0; width: 34px; text-align: center; }
+ .avail-daychip.on { background: var(--admin-accent, var(--brand)); border-color: var(--admin-accent, var(--brand)); color: #fff; }
+ .avail-daycount { margin-left: 6px; background: var(--admin-danger, #c0392b); color: #fff; border-radius: 999px; font-size: 11px; padding: 0 6px; font-weight: 800; }
++.avail-catchips { display: flex; gap: 6px; flex-wrap: wrap; margin: 10px 0 2px; }
++.avail-catchip {
++  border: 1px solid var(--admin-border, var(--line)); background: var(--admin-surface, #fff);
++  color: var(--admin-text, var(--ink)); border-radius: 999px; padding: 6px 13px;
++  font-family: inherit; font-size: var(--fs-sm); font-weight: 700; cursor: pointer;
++}
++.avail-catchip.on { background: var(--admin-accent, var(--brand)); border-color: var(--admin-accent, var(--brand)); color: #fff; }
+ .avail-chipwrap { display: flex; gap: 6px; flex-wrap: wrap; }
+ .avail-chip {
+   display: inline-flex; align-items: center; gap: 6px; background: var(--admin-accent-soft, var(--brand-soft));
+-- 
+2.43.0
+

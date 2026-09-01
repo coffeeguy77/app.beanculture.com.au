@@ -1,0 +1,256 @@
+From e18869951a450c433155b8c7750116ead78d57b6 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Mon, 31 Aug 2026 00:56:49 +0000
+Subject: [PATCH] Fix unpaid-order-to-kitchen, show all AU payment methods,
+ independent admin nav scroll
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+1) Unpaid orders no longer reach the kitchen. App checkouts create the Square
+   order before charging, so a declined/abandoned payment (e.g. Apple Pay that
+   never went through) was still cooked. App orders are now stamped bc_hold='1'
+   and hidden from the KDS until /api/pay confirms payment and clears the flag.
+   The KDS also shows any held order that has a payment tender or has settled, so
+   a paid order is never lost even if the release step fails. A 15-min sweep
+   cancels held orders that were never paid so they don't linger in Square.
+
+2) Every Square-AU payment method is offered at checkout: the one-tap wallets
+   (Apple Pay, Google Pay, Afterpay) now show even when a saved card is the
+   current choice — previously they were hidden for returning customers — so
+   card, wallets and gift balance are all selectable. (Cash App Pay / ACH are
+   US-only and not applicable in AU.) Wallets stay hidden only where the sheet
+   amount could differ from the charge (coupon/reward) or for scheduled orders.
+
+3) Admin nav scrolls independently on iPad. On landscape (>=960px) the sticky
+   nav had no height bound, so a nav taller than the short viewport could only be
+   reached by scrolling the whole page — which a long section like Locations made
+   impossible. The nav now has its own bounded, independently-scrollable height
+   with overscroll containment.
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_0187Jj4Q77V4UPawzEh9gsGr
+---
+ client/src/components/Checkout.jsx |  8 +++-
+ client/src/styles.css              |  8 +++-
+ server/index.js                    | 14 ++++++-
+ server/lib/kds.js                  | 14 ++++++-
+ server/lib/orders.js               | 62 ++++++++++++++++++++++++++++--
+ 5 files changed, 99 insertions(+), 7 deletions(-)
+
+diff --git a/client/src/components/Checkout.jsx b/client/src/components/Checkout.jsx
+index 0624bcf..d5a85f9 100644
+--- a/client/src/components/Checkout.jsx
++++ b/client/src/components/Checkout.jsx
+@@ -201,7 +201,13 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
+   const isRepeat = when === 'repeat';
+   const autocharge = isRepeat || (isSchedule && payTiming === 'later');
+   const usingNewCard = cardChoice === 'new';
+-  const hideWallets = hasCoupon || usingReward || isSchedule || isRepeat || !usingNewCard;
++  // Show the one-tap wallets (Apple Pay / Google Pay / Afterpay) for any
++  // immediate paid order — including when a saved card is the current choice —
++  // so customers always have every Square-AU method to choose from. Hidden only
++  // where the wallet sheet's amount could differ from what's charged (a coupon
++  // or loyalty reward discounts server-side) or for scheduled/auto-charge orders
++  // (which must charge a saved card at pickup, not a one-time wallet token).
++  const hideWallets = hasCoupon || usingReward || isSchedule || isRepeat;
+ 
+   // Loyalty + saved cards for a signed-in user.
+   useEffect(() => {
+diff --git a/client/src/styles.css b/client/src/styles.css
+index 65f8b6a..b8417fc 100644
+--- a/client/src/styles.css
++++ b/client/src/styles.css
+@@ -1076,8 +1076,14 @@ img { max-width: 100%; }
+ @media (min-width: 960px) {
+   .admin-layout { display: grid; grid-template-columns: 232px minmax(0, 1fr); gap: 28px; align-items: start; }
+   .admin-tabs {
+-    flex-direction: column; overflow: visible; position: sticky; top: 16px;
++    flex-direction: column; position: sticky; top: 16px;
+     background: transparent; backdrop-filter: none; padding: 0; gap: 6px;
++    /* Give the nav its own bounded scroll area so it moves independently of the
++       page content. Without this, a nav taller than a short (landscape iPad)
++       viewport can only be reached by scrolling the whole page — which a long
++       section like Locations makes impossible until you scroll it to the end. */
++    max-height: calc(100vh - 32px); overflow-y: auto; overscroll-behavior: contain;
++    -webkit-overflow-scrolling: touch; scrollbar-width: none;
+   }
+   .admin-tab { position: relative; flex-direction: row; justify-content: flex-start; align-items: center; width: 100%; min-width: 0; gap: 12px; height: 42px; padding: 0 14px; font-size: 14px; }
+   .admin-tab.on::before { content: ''; position: absolute; left: 0; top: 8px; bottom: 8px; width: 3px; border-radius: 0 3px 3px 0; background: var(--admin-accent, #D44870); }
+diff --git a/server/index.js b/server/index.js
+index 1793b76..593a38f 100644
+--- a/server/index.js
++++ b/server/index.js
+@@ -332,7 +332,10 @@ app.post('/api/orders', async (req, res) => {
+       ? { fee: shipFee, address: shipReq.address, label: 'Shipping' } : null;
+     const evLoc = locations.resolve(locationId);
+     const eventId = evLoc && evLoc.type === 'event' ? evLoc.id : undefined;
+-    const order = await orders.createOrder({ cart, dineIn: !!dineIn, table, name, coupon, customerId: effectiveCustomerId, pickupAt, note, pifVoucher, squareLocationId, cardPayment: cardPayment !== false, free: freeOrder, freeCategories, shipping, eventId, appLocationId: evLoc ? evLoc.id : undefined });
++    // Hold every app order back from the kitchen until its payment completes
++    // (released in /api/pay). A comp/$0 order is released moments later by its
++    // zero-payment, so the only orders left hidden are ones that never paid.
++    const order = await orders.createOrder({ cart, dineIn: !!dineIn, table, name, coupon, customerId: effectiveCustomerId, pickupAt, note, pifVoucher, squareLocationId, cardPayment: cardPayment !== false, free: freeOrder, freeCategories, shipping, eventId, appLocationId: evLoc ? evLoc.id : undefined, holdForPayment: true });
+ 
+     let rewardApplied = false;
+     if (loy && loy.accountId && loy.tierId) {
+@@ -396,6 +399,7 @@ app.post('/api/pay', async (req, res) => {
+     if (!totalMoney || totalMoney.amount === 0) {
+       const fresh = await orders.getOrder(orderId);
+       await orders.payZeroOrder(orderId, fresh.version);
++      await orders.releaseHold(orderId); // now paid → let the kitchen see it
+       return res.json({ status: 'COMPLETED', comped: true });
+     }
+ 
+@@ -405,6 +409,7 @@ app.post('/api/pay', async (req, res) => {
+       if (!gc || !gc.gan) return res.status(402).json({ error: 'No balance available' });
+       if (gc.balance < totalMoney.amount) return res.status(402).json({ error: 'Not enough balance — top up or pay by card.' });
+       const payment = await giftcards.payWithGiftCard({ gan: gc.gan, orderId, amountMoney: totalMoney, customerId });
++      if (payment.status === 'COMPLETED' || payment.status === 'APPROVED') await orders.releaseHold(orderId);
+       return res.json({ status: payment.status, paymentId: payment.id, paidWithBalance: true });
+     }
+ 
+@@ -418,6 +423,9 @@ app.post('/api/pay', async (req, res) => {
+       customerId,
+       squareLocationId,
+     });
++    // Only a completed/approved charge releases the order to the kitchen. A
++    // declined charge leaves it held (hidden), so nothing unpaid gets cooked.
++    if (payment.status === 'COMPLETED' || payment.status === 'APPROVED') await orders.releaseHold(orderId);
+     res.json({ status: payment.status, paymentId: payment.id, receiptUrl: payment.receipt_url });
+   } catch (err) {
+     console.error('payment error', err.message);
+@@ -2215,6 +2223,10 @@ db.init().finally(() => {
+   // are never deleted) -- runs shortly after boot, then hourly.
+   setTimeout(() => payItForward.sweepExpired().catch((e) => console.warn('[payItForward] expiry sweep failed:', e.message)), 20000);
+   setInterval(() => payItForward.sweepExpired().catch((e) => console.warn('[payItForward] expiry sweep failed:', e.message)), 60 * 60 * 1000);
++  // Cancel app orders held for payment that were never paid (declined/abandoned
++  // checkouts), so they don't linger as OPEN orders in Square. Runs every 15 min.
++  setTimeout(() => orders.sweepHeldOrders().catch(() => {}), 90000);
++  setInterval(() => orders.sweepHeldOrders().catch(() => {}), 15 * 60 * 1000);
+   // Prune the product builder against Square a few times a day: drop tiles whose
+   // Square variation was deleted. It never auto-CREATES tiles — new variations
+   // are pulled in only when the owner clicks "Sync new variations from Square"
+diff --git a/server/lib/kds.js b/server/lib/kds.js
+index 4bf369a..12d81ee 100644
+--- a/server/lib/kds.js
++++ b/server/lib/kds.js
+@@ -117,7 +117,19 @@ async function fetchTickets(squareLocationId, loc) {
+       limit: 150,
+     },
+   });
+-  let orders = (data.orders || []).filter((o) => o && o.state !== 'CANCELED');
++  // An app checkout creates its Square order BEFORE charging (stamped bc_hold),
++  // so a declined/abandoned checkout must never reach the kitchen. Hide a held
++  // order only while it is genuinely unpaid — as soon as it carries a payment
++  // (a tender) or has settled (COMPLETED), it shows, so a paid order is never
++  // lost even if the release step didn't run.
++  const stillUnpaid = (o) => {
++    const m = o.metadata || {};
++    if (m.bc_hold !== '1') return false;
++    if (o.state === 'COMPLETED') return false;
++    if (Array.isArray(o.tenders) && o.tenders.length) return false;
++    return true;
++  };
++  let orders = (data.orders || []).filter((o) => o && o.state !== 'CANCELED' && !stillUnpaid(o));
+   // Several app stores can share ONE Square location (events run on the café's),
+   // so split the board by the screen's chosen store using the order's store tag:
+   //  • an EVENT screen shows only that event's tickets (bc_event);
+diff --git a/server/lib/orders.js b/server/lib/orders.js
+index b572a95..75cd006 100644
+--- a/server/lib/orders.js
++++ b/server/lib/orders.js
+@@ -36,7 +36,7 @@ function buildNote({ dineIn, table }) {
+   return dineIn ? `DINE-IN · ${tableLabel(table) || '?'}` : 'TAKEAWAY';
+ }
+ 
+-async function createOrder({ cart, dineIn, table, name, coupon, customerId, pickupAt, idempotencyKey, note: customerNote, pifVoucher, source, squareLocationId, cardPayment, free, freeCategories, shipping, eventId, appLocationId }) {
++async function createOrder({ cart, dineIn, table, name, coupon, customerId, pickupAt, idempotencyKey, note: customerNote, pifVoucher, source, squareLocationId, cardPayment, free, freeCategories, shipping, eventId, appLocationId, holdForPayment }) {
+   const LOC = squareLocationId || LOCATION_ID;
+   if (!Array.isArray(cart) || cart.length === 0) throw new Error('Cart is empty');
+   // Bake any per-combo locked modifiers into the combo lines before pricing, so
+@@ -126,12 +126,15 @@ async function createOrder({ cart, dineIn, table, name, coupon, customerId, pick
+   // shows only its own orders even when several app stores share ONE Square
+   // location. bc_event isolates an event (for the stats page too); bc_free/
+   // bc_booth mark complimentary ones for the "who got a free coffee" report.
+-  if (appLocationId || eventId || ((isComp || partialComp) && table)) {
++  if (appLocationId || eventId || holdForPayment || ((isComp || partialComp) && table)) {
+     order.metadata = { ...(order.metadata || {}) };
+     if (appLocationId) order.metadata.bc_store = String(appLocationId).slice(0, 60);
+     if (eventId) order.metadata.bc_event = String(eventId).slice(0, 60);
+     if (isComp || partialComp) order.metadata.bc_free = 'event';
+     if (table) order.metadata.bc_booth = String(table).slice(0, 60);
++    // Awaiting online payment → hidden from the kitchen screen until /api/pay
++    // releases it. Prevents a declined/abandoned checkout being cooked.
++    if (holdForPayment) order.metadata.bc_hold = '1';
+   }
+ 
+   // A Pay It Forward voucher takes priority over (never stacks with) a combo
+@@ -332,6 +335,59 @@ async function cancelOrder(orderId) {
+   } catch (e) { return null; }
+ }
+ 
++// Release a "held" app order once its payment has completed, so it now appears
++// on the kitchen screen. App pay-now orders are stamped bc_hold='1' at creation
++// and hidden from the KDS until this clears the flag — that's what stops an
++// abandoned/declined checkout (e.g. Apple Pay that never went through) from
++// being cooked. Best-effort: a failure here never blocks the payment response.
++async function releaseHold(orderId) {
++  try {
++    const cur = await squareFetch(`/v2/orders/${orderId}`);
++    const order = cur.order;
++    if (!order || !order.metadata || order.metadata.bc_hold !== '1') return order; // not held
++    const data = await squareFetch(`/v2/orders/${orderId}`, {
++      method: 'PUT',
++      body: { order: { version: order.version }, fields_to_clear: ['metadata.bc_hold'], idempotency_key: idem() },
++    });
++    return data.order;
++  } catch (e) { return null; }
++}
++
++// Cancel app orders that were held for payment but never paid (declined or
++// abandoned checkouts), once they're older than maxAgeMin. Keeps Square tidy so
++// abandoned tickets don't accumulate as OPEN orders. Best-effort and safe: it
++// only touches OPEN orders tagged bc_hold='1' that carry no payment tender.
++async function sweepHeldOrders(maxAgeMin = 30) {
++  try {
++    const startAt = new Date(Date.now() - 6 * 3600 * 1000).toISOString();
++    const data = await squareFetch('/v2/orders/search', {
++      method: 'POST',
++      body: {
++        location_ids: [LOCATION_ID],
++        query: {
++          filter: {
++            date_time_filter: { created_at: { start_at: startAt } },
++            state_filter: { states: ['OPEN'] },
++          },
++          sort: { sort_field: 'CREATED_AT', sort_order: 'DESC' },
++        },
++      },
++    });
++    const cutoff = Date.now() - maxAgeMin * 60 * 1000;
++    let cancelled = 0;
++    for (const o of (data.orders || [])) {
++      const m = o.metadata || {};
++      if (m.bc_hold !== '1') continue;
++      if (Array.isArray(o.tenders) && o.tenders.length) continue; // it did get paid
++      if (new Date(o.created_at).getTime() > cutoff) continue;     // still fresh
++      await cancelOrder(o.id).catch(() => {});
++      cancelled++;
++    }
++    if (cancelled) console.log(`[sweep] cancelled ${cancelled} unpaid held order(s)`);
++    return cancelled;
++  } catch (e) { console.warn('[sweep] held-order sweep failed:', e.message); return 0; }
++}
++
+ async function getHistory(customerId, limit = 25) {
+   if (!customerId) return [];
+   const data = await squareFetch('/v2/orders/search', {
+@@ -425,4 +481,4 @@ async function createReservationOrder({ name, phone, email, partySize, at, notes
+   return data.order;
+ }
+ 
+-module.exports = { createOrder, getOrder, createPayment, authorizePayment, completePayment, cancelPayment, payZeroOrder, createCashPayment, cancelOrder, getHistory, createReservationOrder };
++module.exports = { createOrder, getOrder, createPayment, authorizePayment, completePayment, cancelPayment, payZeroOrder, createCashPayment, cancelOrder, releaseHold, sweepHeldOrders, getHistory, createReservationOrder };
+-- 
+2.43.0
+

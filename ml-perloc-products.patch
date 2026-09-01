@@ -1,0 +1,123 @@
+From a3d72d6747ae4968846fdbc0611a1abf3bd694b8 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 30 Aug 2026 02:19:48 +0000
+Subject: [PATCH] Per-location availability: list the OFFERED MENU items, not
+ raw Square products
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Root cause of the persistent '0/0 / no food to tick': for menus built from
+the Product Builder, the app menu's item ids are presets (`preset:<id>`), a
+different id space from the raw Square catalog ids returned by getAllProducts.
+The Locations list filtered the 342 raw products by the 111 offered (preset)
+ids — zero overlap — so nothing showed, and any tick would have stored a raw
+id the menu's per-location hide-filter never matches anyway.
+
+- /api/admin/offered-products now also returns `products: [{id,name,category}]`
+  — the offered menu items with their display names and the menu's own ids.
+- Admin Locations tab builds the per-store availability list from that offered
+  menu list, so items show by name and a tick stores the id (e.g. `preset:x`)
+  that catalog.applyAvailability matches on. Falls back to the raw product list
+  only when the offered menu is unavailable (old server / empty menu).
+
+Verified against a preset-based menu: items list by name and per-store hiding
+maps to the correct ids.
+---
+ client/src/components/Admin.jsx | 25 ++++++++++++++++---------
+ server/index.js                 | 19 +++++++++++++++++--
+ 2 files changed, 33 insertions(+), 11 deletions(-)
+
+diff --git a/client/src/components/Admin.jsx b/client/src/components/Admin.jsx
+index 21e4db9..7c11122 100644
+--- a/client/src/components/Admin.jsx
++++ b/client/src/components/Admin.jsx
+@@ -182,6 +182,7 @@ export default function Admin({ onExit }) {
+   const [exclDay, setExclDay] = useState(6);           // weekday being edited (default Saturday)
+   const [exclSearch, setExclSearch] = useState('');    // product search in the exclusions picker
+   const [offeredIds, setOfferedIds] = useState(null);  // Set of item ids actually offered in the app menu
++  const [offeredList, setOfferedList] = useState([]);  // offered menu items with names + menu ids (for per-location availability)
+   const [sqLocations, setSqLocations] = useState([]);  // this Square account's locations (id + name)
+   const [sqConfiguredId, setSqConfiguredId] = useState(''); // env/main Square location id (the current single store)
+   const [collapsedSecs, setCollapsedSecs] = useState({}); // preset section name -> collapsed
+@@ -441,6 +442,10 @@ export default function Admin({ onExit }) {
+     try {
+       const r = await fetch(`/api/admin/offered-products?pass=${encodeURIComponent(pass)}`);
+       const d = await r.json();
++      // Capture the offered items WITH names + the menu's own ids (e.g.
++      // `preset:<id>` for product-builder menus), used by per-location
++      // availability so tick state maps to the id the menu actually hides on.
++      if (r.ok && Array.isArray(d.products)) setOfferedList(d.products);
+       if (r.ok && Array.isArray(d.ids)) { setOfferedIds(new Set(d.ids)); return; }
+       setOfferedIds(false); // couldn't refine — fall back to the full list
+     } catch { setOfferedIds(false); }
+@@ -925,13 +930,15 @@ export default function Admin({ onExit }) {
+     updLoc(locId, { hiddenItemIds: [...hidden] });
+   };
+   // Offered products (with names) for the per-location availability toggles.
+-  // Prefer the app's offered menu when we have it, but fall back to the full
+-  // Square product list whenever the menu-derived filter isn't a populated Set
+-  // (null/false while loading or unavailable, or an empty Set) — a pop-up store
+-  // may well sell items that aren't in the main app menu, so there must always
+-  // be something to tick.
+-  const offeredProducts = (offeredIds instanceof Set && offeredIds.size)
+-    ? allProducts.filter((p) => offeredIds.has(p.id))
++  // Use the app's OFFERED MENU items directly — these carry the menu's own ids
++  // (e.g. `preset:<id>` for product-builder menus), so a tick stores the id the
++  // menu's per-location hide-filter actually matches. The raw Square product
++  // list (allProducts) uses a different id space for preset-built menus and
++  // won't intersect at all, which is why filtering it by the offered ids yielded
++  // an empty "0/0" list. Fall back to the raw product list only when the offered
++  // menu isn't available (old server, or a genuinely empty menu).
++  const offeredProducts = (Array.isArray(offeredList) && offeredList.length)
++    ? offeredList
+     : allProducts;
+ 
+   const availItems = availability.items || {};
+@@ -3217,8 +3224,8 @@ export default function Admin({ onExit }) {
+                           <summary>Items available at {l.name || 'this store'} ({offeredProducts.length - (l.hiddenItemIds || []).length}/{offeredProducts.length})</summary>
+                           <p className="muted" style={{ fontSize: 'var(--fs-xs)', margin: '6px 0' }}>Untick anything this store doesn't make (e.g. hot food at a takeaway site). Unticked items are hidden from this store's menu.</p>
+                           <div className="loc-avail-list">
+-                            {allProducts.length === 0 && offeredIds === null && <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>Loading products…</span>}
+-                            {allProducts.length === 0 && offeredIds !== null && <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>No products found in Square for this account.</span>}
++                            {offeredProducts.length === 0 && offeredIds === null && <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>Loading products…</span>}
++                            {offeredProducts.length === 0 && offeredIds !== null && <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>No menu items found. Add items to your app menu first, then they’ll appear here to switch on or off per store.</span>}
+                             {offeredProducts.map((p) => {
+                               const hidden = (l.hiddenItemIds || []).includes(p.id);
+                               return (
+diff --git a/server/index.js b/server/index.js
+index 92ced53..e3b3e8e 100644
+--- a/server/index.js
++++ b/server/index.js
+@@ -1026,11 +1026,26 @@ app.get('/api/admin/offered-products', async (req, res) => {
+   try {
+     const menu = await catalog.getMenu({ skipAvailability: true });
+     const ids = new Set();
++    // Also return the offered items WITH their display names and the id the
++    // menu itself uses (e.g. a preset's `preset:<id>`, not the raw Square item
++    // id). Tools like per-location availability need the menu id so ticking an
++    // item stores an id the menu's hide-filter actually matches, and need the
++    // name to render — the raw Square product list (getAllProducts) uses a
++    // different id space for preset-built menus and won't intersect at all.
++    const products = [];
++    const seen = new Set();
+     for (const sec of (menu.categories || [])) {
+       if (sec.isCombo) continue; // combos are derived, not individually stocked
+-      for (const it of (sec.items || [])) if (it && it.id) ids.add(it.id);
++      for (const it of (sec.items || [])) {
++        if (!it || !it.id) continue;
++        ids.add(it.id);
++        if (!seen.has(it.id)) {
++          seen.add(it.id);
++          products.push({ id: it.id, name: it.name || 'Item', category: sec.category || '' });
++        }
++      }
+     }
+-    res.json({ ids: [...ids] });
++    res.json({ ids: [...ids], products });
+   } catch (e) {
+     res.status(502).json({ error: e.message });
+   }
+-- 
+2.43.0
+

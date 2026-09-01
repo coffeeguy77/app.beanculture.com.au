@@ -1,0 +1,155 @@
+From caf1a2e7245695171a96b8677dbcdf621e27e5fe Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Tue, 1 Sep 2026 14:44:46 +0000
+Subject: [PATCH] Checkout/cart/reserve readability, PIF cup, Afterpay attach
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Five fixes:
+- Afterpay at checkout threw 'afterpayClearpay has not been attached to the
+  page'. Square requires attach() before tokenize(); the code created the
+  object but never attached it. Now attaches Square's Afterpay button into a
+  slot (mirroring the Google Pay path) and wires its click to tokenize.
+- Christmas checkout is a light card, but the legacy cream heading/label rules
+  turned the 'Checkout' title and 'Your name' field labels light-on-light.
+  Force them to the checkout card's dark ink.
+- Christmas cart PAGE line price is an unclassed inline node that inherited the
+  dark page ink (black on the green cart line); colour .cart-page
+  .cart-line-right cream to match the item name.
+- Reserve-a-table form is a light card on the dark canvas, so its field titles
+  were painted the on-canvas light-muted colour and vanished; give them dark
+  ink.
+- Pay It Forward: selecting a coffee size ran brightness(0)/invert on the cup
+  art, flattening it to a white blob so it looked like the cup disappeared.
+  Removed the filter — only the button background changes now; the cup stays.
+
+Verified checkout/cart/reserve contrast and the PIF cup against headless
+renders; client build passes.
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_0187Jj4Q77V4UPawzEh9gsGr
+---
+ client/src/components/WalletButtons.jsx | 31 ++++++++++++++-----------
+ client/src/seasonal.css                 | 13 +++++++++++
+ client/src/styles.css                   |  7 +++++-
+ 3 files changed, 37 insertions(+), 14 deletions(-)
+
+diff --git a/client/src/components/WalletButtons.jsx b/client/src/components/WalletButtons.jsx
+index 1c7dc39..7a62668 100644
+--- a/client/src/components/WalletButtons.jsx
++++ b/client/src/components/WalletButtons.jsx
+@@ -19,6 +19,7 @@ import React, { useEffect, useRef, useState } from 'react';
+ //   onError    – (message) => {} for surfaced errors
+ export default function WalletButtons({ payments, amount, currency = 'AUD', country = 'AU', label = 'Total', afterpay = false, canStart, onToken, onError }) {
+   const gpayRef = useRef(null);
++  const afterpayRef = useRef(null);
+   const applePayObj = useRef(null);
+   const afterpayObj = useRef(null);
+   const busyRef = useRef(false);
+@@ -79,12 +80,25 @@ export default function WalletButtons({ payments, amount, currency = 'AUD', coun
+         next.apple = true;
+       } catch { applePayObj.current = null; }
+ 
+-      // Afterpay / Clearpay — buy-now-pay-later (checkout only).
++      // Afterpay / Clearpay — buy-now-pay-later (checkout only). Square renders
++      // its own branded button into our slot and REQUIRES attach() before
++      // tokenize() is valid — otherwise tokenize throws "afterpayClearpay has
++      // not been attached to the page". Same shape as the Google Pay path above.
+       if (afterpay) {
+         try {
+           afp = await payments.afterpayClearpay(makeReq());
+-          afterpayObj.current = afp;
+-          next.afterpay = true;
++          if (!cancelled && afterpayRef.current) {
++            afterpayRef.current.innerHTML = '';
++            await afp.attach(afterpayRef.current);
++            afterpayRef.current.onclick = async () => {
++              if (busyRef.current) return;
++              if (canStart && !canStart()) return;
++              try { await handleToken(await afp.tokenize(), 'afterpay'); }
++              catch (e) { emitError(e.message); }
++            };
++            afterpayObj.current = afp;
++            next.afterpay = true;
++          }
+         } catch { afterpayObj.current = null; }
+       }
+ 
+@@ -108,13 +122,6 @@ export default function WalletButtons({ payments, amount, currency = 'AUD', coun
+     if (!ap) return;
+     ap.tokenize().then((r) => handleToken(r, 'apple_pay')).catch((e) => emitError(e.message));
+   }
+-  function onAfterpayClick() {
+-    if (busyRef.current) return;
+-    if (canStart && !canStart()) return;
+-    const afp = afterpayObj.current;
+-    if (!afp) return;
+-    afp.tokenize().then((r) => handleToken(r, 'afterpay')).catch((e) => emitError(e.message));
+-  }
+ 
+   const any = avail.apple || avail.google || avail.afterpay;
+   return (
+@@ -123,9 +130,7 @@ export default function WalletButtons({ payments, amount, currency = 'AUD', coun
+         <button type="button" className="wallet-btn apple" onClick={onAppleClick} aria-label="Pay with Apple Pay"> Pay</button>
+       )}
+       <div ref={gpayRef} className="wallet-slot gpay-slot" style={{ display: avail.google ? 'block' : 'none' }} />
+-      {avail.afterpay && (
+-        <button type="button" className="wallet-btn afterpay" onClick={onAfterpayClick} aria-label="Pay with Afterpay">Pay with Afterpay</button>
+-      )}
++      <div ref={afterpayRef} className="wallet-slot afterpay-slot" style={{ display: avail.afterpay ? 'block' : 'none' }} />
+       <div className="or">or pay by card</div>
+     </div>
+   );
+diff --git a/client/src/seasonal.css b/client/src/seasonal.css
+index 364827b..6396c38 100644
+--- a/client/src/seasonal.css
++++ b/client/src/seasonal.css
+@@ -154,6 +154,19 @@
+ [data-season='christmas'] .card-box { background: var(--season-cream); border-color: var(--season-gold); }
+ [data-season='christmas'] .secure-note, [data-season='christmas'] .empty { color: var(--season-cream2); }
+ 
++/* Cart PAGE line price is an unclassed inline node inside .cart-line-right, so it
++   inherited the dark page ink and read black on the green cart line. Colour the
++   right column cream to match the item name (the panel/drawer cart is a separate
++   light surface and is not affected — this is scoped to .cart-page). */
++[data-season='christmas'] .cart-page .cart-line-right { color: var(--season-cream); }
++
++/* Checkout is an intentionally LIGHT card in every season (dark ink on cream).
++   The legacy cream heading/label rules above turned its title and field labels
++   light-on-light (unreadable). Force them to the checkout card's own dark ink. */
++[data-season='christmas'] .checkout-page > h2,
++[data-season='christmas'] .checkout-page .group-title,
++[data-season='christmas'] .checkout-page .field span { color: var(--checkout-text); }
++
+ /* ── Account / loyalty ── */
+ [data-season='christmas'] .avatar { background: var(--season-red); color: var(--season-cream); }
+ [data-season='christmas'] .loyalty-card { background: linear-gradient(135deg, var(--season-red), var(--season-red-deep)); border: 1px solid var(--season-gold); }
+diff --git a/client/src/styles.css b/client/src/styles.css
+index e5605ad..f86d0be 100644
+--- a/client/src/styles.css
++++ b/client/src/styles.css
+@@ -2462,6 +2462,9 @@ body:has(.store-shell) { background: var(--bc-canvas-deep, #160f12); }
+ .store-shell .page:not(.checkout-page) > h2 { color: var(--bc-text-light); }
+ .store-shell .page:not(.checkout-page) > p.muted { color: var(--bc-text-light-muted); }
+ .store-shell .page:not(.checkout-page) .field > span { color: var(--bc-text-light-muted); }
++/* …but the Reserve-a-table form is a LIGHT card sitting on that dark canvas, so
++   its field titles need the dark ink, not the on-canvas light-muted colour. */
++.store-shell .page .reserve-card .reserve-form .field > span { color: var(--bc-text-dark); }
+ .store-shell .page:not(.checkout-page) .totals .row { color: var(--bc-text-light-muted); }
+ .store-shell .page:not(.checkout-page) .totals .row.grand {
+   color: var(--bc-text-light); border-top-color: rgba(232, 182, 92, .30);
+@@ -2930,7 +2933,9 @@ body:has(.store-shell) { background: var(--bc-canvas-deep, #160f12); }
+ .pif-preset-price { font-size: 12.5px; color: #a06576; }
+ .pif-preset.on { background: linear-gradient(180deg,#9a2246,#7c1a37); border-color: #7c1a37; box-shadow: 0 8px 18px rgba(124,26,55,.3); }
+ .pif-preset.on .pif-preset-name, .pif-preset.on .pif-preset-price { color: #fff; }
+-.pif-preset.on .pif-preset-cup { filter: brightness(0) invert(1); opacity: .92; }
++/* Keep the actual cup art when selected — only the button background changes.
++   (The old brightness(0)/invert filter flattened the cup into a white blob so it
++   looked like the cup vanished.) */
+ 
+ .pif-field { display: block; align-self: stretch; text-align: left; margin-top: 12px; }
+ .pif-field > span { display: block; font-size: 12.5px; color: #8a5b68; margin-bottom: 5px; font-weight: 600; }
+-- 
+2.43.0
+

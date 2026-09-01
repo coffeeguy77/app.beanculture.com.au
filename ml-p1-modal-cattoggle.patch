@@ -1,0 +1,152 @@
+From 3503f5e056bb950272e98e9c258a534a78fb491e Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 30 Aug 2026 02:53:25 +0000
+Subject: [PATCH] Store picker modal readability + per-category availability
+ toggle
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- Choose-your-store popup: the option tiles used theme --bg/--ink which flip to
+  the dark canvas colours on a dark theme, giving dark text on dark tiles. The
+  modal is always a light card, so its contents are now pinned to a light-context
+  palette (dark text on ivory tiles) — readable on every theme. (The 'Ordering
+  from' header pill was already fine and is unchanged.)
+- Per-location availability: items are now grouped by category, each with a
+  header checkbox that ticks/unticks the whole category in one go (with an
+  indeterminate state when partially on). Per-item ticks still work, so you can
+  switch a store's menu on/off either wholesale by category or item by item.
+---
+ client/src/components/Admin.jsx | 64 ++++++++++++++++++++++++++-------
+ client/src/styles.css           | 24 ++++++++-----
+ 2 files changed, 68 insertions(+), 20 deletions(-)
+
+diff --git a/client/src/components/Admin.jsx b/client/src/components/Admin.jsx
+index 7c11122..5b1caf9 100644
+--- a/client/src/components/Admin.jsx
++++ b/client/src/components/Admin.jsx
+@@ -929,6 +929,30 @@ export default function Admin({ onExit }) {
+     hidden.has(itemId) ? hidden.delete(itemId) : hidden.add(itemId);
+     updLoc(locId, { hiddenItemIds: [...hidden] });
+   };
++  // Turn a whole category on/off at once for a store. If every item in the
++  // category is currently on, hide them all; otherwise show them all — so the
++  // header checkbox flips the whole group either way.
++  const toggleLocCategory = (locId, itemIds) => {
++    const l = locs.find((x) => x.id === locId); if (!l) return;
++    const hidden = new Set(l.hiddenItemIds || []);
++    const allOn = itemIds.every((id) => !hidden.has(id));
++    if (allOn) { itemIds.forEach((id) => hidden.add(id)); }
++    else { itemIds.forEach((id) => hidden.delete(id)); }
++    updLoc(locId, { hiddenItemIds: [...hidden] });
++  };
++  // Group the offered products by category (preserving first-seen order) so the
++  // per-location availability list can offer a whole-category toggle.
++  const offeredByCategory = () => {
++    const groups = [];
++    const byName = new Map();
++    for (const p of offeredProducts) {
++      const cat = (p.category || 'Other').trim() || 'Other';
++      let g = byName.get(cat);
++      if (!g) { g = { category: cat, items: [] }; byName.set(cat, g); groups.push(g); }
++      g.items.push(p);
++    }
++    return groups;
++  };
+   // Offered products (with names) for the per-location availability toggles.
+   // Use the app's OFFERED MENU items directly — these carry the menu's own ids
+   // (e.g. `preset:<id>` for product-builder menus), so a tick stores the id the
+@@ -3223,19 +3247,35 @@ export default function Admin({ onExit }) {
+                         <details className="loc-avail">
+                           <summary>Items available at {l.name || 'this store'} ({offeredProducts.length - (l.hiddenItemIds || []).length}/{offeredProducts.length})</summary>
+                           <p className="muted" style={{ fontSize: 'var(--fs-xs)', margin: '6px 0' }}>Untick anything this store doesn't make (e.g. hot food at a takeaway site). Unticked items are hidden from this store's menu.</p>
+-                          <div className="loc-avail-list">
+-                            {offeredProducts.length === 0 && offeredIds === null && <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>Loading products…</span>}
+-                            {offeredProducts.length === 0 && offeredIds !== null && <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>No menu items found. Add items to your app menu first, then they’ll appear here to switch on or off per store.</span>}
+-                            {offeredProducts.map((p) => {
+-                              const hidden = (l.hiddenItemIds || []).includes(p.id);
+-                              return (
+-                                <label key={p.id} className={`loc-avail-item${hidden ? ' off' : ''}`}>
+-                                  <input type="checkbox" checked={!hidden} onChange={() => toggleLocItem(l.id, p.id)} />
+-                                  <span>{p.name}</span>
++                          {offeredProducts.length === 0 && offeredIds === null && <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>Loading products…</p>}
++                          {offeredProducts.length === 0 && offeredIds !== null && <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>No menu items found. Add items to your app menu first, then they’ll appear here to switch on or off per store.</p>}
++                          {offeredByCategory().map((g) => {
++                            const catIds = g.items.map((it) => it.id);
++                            const hiddenList = l.hiddenItemIds || [];
++                            const onCount = catIds.filter((id) => !hiddenList.includes(id)).length;
++                            const allOn = onCount === catIds.length;
++                            const noneOn = onCount === 0;
++                            return (
++                              <div key={g.category} className="loc-avail-cat">
++                                <label className="loc-avail-cathead">
++                                  <input type="checkbox" checked={allOn} ref={(el) => { if (el) el.indeterminate = !allOn && !noneOn; }} onChange={() => toggleLocCategory(l.id, catIds)} />
++                                  <span className="loc-avail-catname">{g.category}</span>
++                                  <span className="loc-avail-catcount muted">{onCount}/{catIds.length}</span>
+                                 </label>
+-                              );
+-                            })}
+-                          </div>
++                                <div className="loc-avail-list">
++                                  {g.items.map((p) => {
++                                    const hidden = hiddenList.includes(p.id);
++                                    return (
++                                      <label key={p.id} className={`loc-avail-item${hidden ? ' off' : ''}`}>
++                                        <input type="checkbox" checked={!hidden} onChange={() => toggleLocItem(l.id, p.id)} />
++                                        <span>{p.name}</span>
++                                      </label>
++                                    );
++                                  })}
++                                </div>
++                              </div>
++                            );
++                          })}
+                         </details>
+                       </div>
+                     </div>
+diff --git a/client/src/styles.css b/client/src/styles.css
+index 731e028..0e9610b 100644
+--- a/client/src/styles.css
++++ b/client/src/styles.css
+@@ -1651,14 +1651,17 @@ body:has(.store-shell) { background: #F7F4EF; }
+ .store-chip-caret { font-size: 11px; }
+ @media (max-width: 600px) { .store-chip-name { font-size: 15px; } .store-chip-label { font-size: 10px; } }
+ .store-picker-backdrop { position: fixed; inset: 0; z-index: 200; background: rgba(20,6,12,.5); display: grid; place-items: center; padding: 16px; }
+-.store-picker { background: var(--card, #fff); color: var(--ink, #2a1620); border-radius: 20px; padding: 26px; width: min(94vw, 460px); box-shadow: 0 30px 80px rgba(0,0,0,.4); }
+-.store-picker h2 { margin: 0 0 4px; font-size: 22px; }
+-.store-picker .muted { margin: 0 0 18px; font-size: 14px; }
++/* The modal is always a light (white) card, so its contents are pinned to a
++   light-context palette — theme tokens like --bg/--ink flip to the dark canvas
++   colours on dark themes and were rendering dark text on dark option tiles. */
++.store-picker { background: #fffdfa; color: #241816; border-radius: 20px; padding: 26px; width: min(94vw, 460px); box-shadow: 0 30px 80px rgba(0,0,0,.4); }
++.store-picker h2 { margin: 0 0 4px; font-size: 22px; color: #241816; }
++.store-picker .muted { margin: 0 0 18px; font-size: 14px; color: #75645f; }
+ .store-picker-list { display: flex; flex-direction: column; gap: 10px; }
+-.store-picker-opt { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 16px 18px; border: 1.5px solid var(--line, #e7ddd2); border-radius: 14px; background: var(--bg, #faf6f0); font: inherit; cursor: pointer; text-align: left; }
+-.store-picker-opt.on, .store-picker-opt:hover { border-color: var(--brand, #b5566e); }
+-.store-picker-name { font-weight: 700; font-size: 17px; }
+-.store-picker-addr { font-size: 13px; color: var(--muted, #8a7a80); }
++.store-picker-opt { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 16px 18px; border: 1.5px solid #e7ddd2; border-radius: 14px; background: #faf6f0; color: #241816; font: inherit; cursor: pointer; text-align: left; transition: border-color .15s ease, background .15s ease; }
++.store-picker-opt.on, .store-picker-opt:hover { border-color: var(--brand, #b5566e); background: #fff; }
++.store-picker-name { font-weight: 700; font-size: 17px; color: #241816; }
++.store-picker-addr { font-size: 13px; color: #75645f; }
+ 
+ .hours-bar {
+   position: sticky; top: var(--header-h, 84px); z-index: calc(var(--z-header, 40) - 1);
+@@ -3570,7 +3573,12 @@ body:has(.store-shell) { background: var(--bc-canvas-deep, #160f12); }
+ /* ── Admin: Locations tab ── */
+ .loc-avail { border: 1px solid var(--admin-border, var(--line)); border-radius: 10px; padding: 8px 12px; background: var(--admin-surface, #fff); }
+ .loc-avail summary { cursor: pointer; font-weight: 700; font-size: var(--fs-sm); }
+-.loc-avail-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 4px 12px; max-height: 320px; overflow-y: auto; margin-top: 6px; }
++.loc-avail > .loc-avail-cat:first-of-type { border-top: none; padding-top: 0; }
++.loc-avail-cat { border-top: 1px solid var(--admin-border, var(--line)); padding-top: 8px; margin-top: 8px; }
++.loc-avail-cathead { display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: 700; font-size: var(--fs-sm); padding: 2px 0; }
++.loc-avail-catname { flex: 1 1 auto; }
++.loc-avail-catcount { flex: none; font-weight: 600; font-size: var(--fs-xs); }
++.loc-avail-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 4px 12px; margin-top: 6px; padding-left: 22px; }
+ .loc-avail-item { display: flex; align-items: center; gap: 8px; font-size: var(--fs-sm); padding: 4px 0; }
+ .loc-avail-item.off span { color: var(--admin-text-muted, var(--muted)); text-decoration: line-through; }
+ .loc-avail + *, .avail-sched .switch { }
+-- 
+2.43.0
+

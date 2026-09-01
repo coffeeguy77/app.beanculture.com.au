@@ -1,0 +1,433 @@
+From 179880a7635b3ac285f6eae8b7b738df622e72ca Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 30 Aug 2026 08:35:09 +0000
+Subject: [PATCH] Multi-location Phase C (rebuilt): per-store KDS + terminals +
+ walk-around QR
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Rebuilt onto the current codebase (original patch no longer applied after this
+week's Locations-tab work). Same behaviour:
+
+- Per-store KDS: a store selector in the KDS top bar (multi-location only); the
+  ticket feed is scoped to that store's Square location, so a Coffee Station at
+  Mitchell and one at TulipTops each show only their own orders.
+- Per-store card terminal: settings.pos.terminalByLocation maps each store to its
+  own paired reader (falls back to the default reader for single-site). The POS
+  resolves the reader for the current store; POS setup pairs/selects/disconnects
+  for that store; /api/pos/order sends the checkout to the order store's reader.
+  Includes a location-aware Disconnect button.
+- Walk-around / general-order QR: Admin -> Locations generates a per-store QR
+  encoding /?loc=<store> (no table) — scanning opens the app already set to that
+  store, for ordering while walking the gardens. Download as PNG.
+
+Verified headless: KDS selector lists both stores; POS resolves the right reader
+per store (Front counter for a paired store, 'No terminal' for an unpaired one);
+walk-around QR generates. Build + server checks pass.
+---
+ client/src/api.js               |  3 +-
+ client/src/components/Admin.jsx | 25 ++++++++++++++
+ client/src/components/Kds.jsx   | 12 ++++++-
+ client/src/components/Pos.jsx   | 48 ++++++++++++++++++---------
+ client/src/styles.css           |  7 ++++
+ server/index.js                 | 58 ++++++++++++++++++++++++++-------
+ server/lib/kds.js               |  4 +--
+ server/lib/settings.js          |  3 +-
+ 8 files changed, 127 insertions(+), 33 deletions(-)
+
+diff --git a/client/src/api.js b/client/src/api.js
+index cc84857..c03fabc 100644
+--- a/client/src/api.js
++++ b/client/src/api.js
+@@ -80,7 +80,8 @@ export const api = {
+   posTerminalPair: (pass, name) => req(`/api/pos/terminal/pair?pass=${encodeURIComponent(pass || '')}`, { method: 'POST', body: JSON.stringify({ name }) }),
+   posTerminalPairStatus: (pass, id) => req(`/api/pos/terminal/pair/${encodeURIComponent(id)}?pass=${encodeURIComponent(pass || '')}`),
+   posTerminalDevices: (pass) => req(`/api/pos/terminal/devices?pass=${encodeURIComponent(pass || '')}`),
+-  posTerminalSelect: (pass, deviceId, name) => req(`/api/pos/terminal/select?pass=${encodeURIComponent(pass || '')}`, { method: 'POST', body: JSON.stringify({ deviceId, name }) }),
++  posTerminalSelect: (pass, deviceId, name, locationId) => req(`/api/pos/terminal/select?pass=${encodeURIComponent(pass || '')}`, { method: 'POST', body: JSON.stringify({ deviceId, name, locationId }) }),
++  posTerminalDisconnect: (pass, locationId) => req(`/api/pos/terminal/disconnect?pass=${encodeURIComponent(pass || '')}`, { method: 'POST', body: JSON.stringify({ locationId }) }),
+ };
+ 
+ // Serve Cloudinary images auto-format (WebP/AVIF), auto-quality and sized to the
+diff --git a/client/src/components/Admin.jsx b/client/src/components/Admin.jsx
+index e16c66c..26a22e3 100644
+--- a/client/src/components/Admin.jsx
++++ b/client/src/components/Admin.jsx
+@@ -185,6 +185,7 @@ export default function Admin({ onExit }) {
+   const [offeredList, setOfferedList] = useState([]);  // offered menu items with names + menu ids (for per-location availability)
+   const [sqLocations, setSqLocations] = useState([]);  // this Square account's locations (id + name)
+   const [sqConfiguredId, setSqConfiguredId] = useState(''); // env/main Square location id (the current single store)
++  const [locQr, setLocQr] = useState({});              // locId -> { url, img } walk-around order QR
+   const [collapsedSecs, setCollapsedSecs] = useState({}); // preset section name -> collapsed
+   const [deleteLock, setDeleteLock] = useState(true); // guard against accidental section deletes
+   const [removedCats, setRemovedCats] = useState(() => new Set()); // categories removed this session
+@@ -929,6 +930,16 @@ export default function Admin({ onExit }) {
+     hidden.has(itemId) ? hidden.delete(itemId) : hidden.add(itemId);
+     updLoc(locId, { hiddenItemIds: [...hidden] });
+   };
++  // Walk-around / general-order QR: opens the app already set to this store (no
++  // table). See App.jsx's ?loc= handling. Save the store first so the link works.
++  async function makeLocQr(locId) {
++    try {
++      const origin = typeof window !== 'undefined' ? window.location.origin : '';
++      const url = `${origin}/?loc=${encodeURIComponent(locId)}&src=qr`;
++      const img = await QRCode.toDataURL(url, { margin: 1, width: 512, errorCorrectionLevel: 'M' });
++      setLocQr((m) => ({ ...m, [locId]: { url, img } }));
++    } catch (e) { alert('QR generation failed: ' + e.message); }
++  }
+   // Turn a whole category on/off at once for a store. If every item in the
+   // category is currently on, hide them all; otherwise show them all — so the
+   // header checkbox flips the whole group either way.
+@@ -3355,6 +3366,20 @@ export default function Admin({ onExit }) {
+                             );
+                           })}
+                         </details>
++
++                        <div className="loc-qr-wrap">
++                          <button type="button" className="btn ghost" onClick={() => makeLocQr(l.id)}>Walk-around order QR</button>
++                          {locQr[l.id] && (
++                            <div className="loc-qr">
++                              <img src={locQr[l.id].img} alt="" width={128} height={128} />
++                              <div className="loc-qr-meta">
++                                <code>{locQr[l.id].url}</code>
++                                <a className="btn" style={{ padding: '6px 12px' }} download={`order-qr-${l.id}.png`} href={locQr[l.id].img}>Download PNG</a>
++                                <span className="muted" style={{ fontSize: 'var(--fs-xs)' }}>Scanning opens the app already set to {l.name || 'this store'} — no table. Save the store first so the link resolves.</span>
++                              </div>
++                            </div>
++                          )}
++                        </div>
+                       </div>
+                     </div>
+                   ))}
+diff --git a/client/src/components/Kds.jsx b/client/src/components/Kds.jsx
+index ed44ce1..8c6a03d 100644
+--- a/client/src/components/Kds.jsx
++++ b/client/src/components/Kds.jsx
+@@ -46,6 +46,7 @@ export default function Kds({ onExit, embedded }) {
+   const [needPass, setNeedPass] = useState(false);
+   const [cfg, setCfg] = useState(null);
+   const [zone, setZone] = useState(() => { try { return localStorage.getItem('bc-kds-zone') || ALL; } catch { return ALL; } });
++  const [kdsLoc, setKdsLoc] = useState(() => { try { return localStorage.getItem('bc-kds-location') || ''; } catch { return ''; } });
+   const [tickets, setTickets] = useState([]);
+   const [err, setErr] = useState('');
+   const [now, setNow] = useState(Date.now());
+@@ -71,12 +72,15 @@ export default function Kds({ onExit, embedded }) {
+     if (r.status === 401) { setNeedPass(true); return false; }
+     const d = await r.json();
+     setCfg(d); setNeedPass(false);
++    // Bind this screen to a store (first one by default) when multi-location.
++    const locs = d.locations || [];
++    if (locs.length && !locs.some((l) => l.id === kdsLoc)) { setKdsLoc(locs[0].id); }
+     try { localStorage.setItem('bc-admin-pass', btoa(p)); } catch {}
+     return true;
+   }
+   async function loadTickets(p = pass) {
+     try {
+-      const r = await fetch(`/api/admin/kds/tickets?pass=${encodeURIComponent(p)}`);
++      const r = await fetch(`/api/admin/kds/tickets?pass=${encodeURIComponent(p)}${kdsLoc ? `&location=${encodeURIComponent(kdsLoc)}` : ''}`);
+       if (r.status === 401) { setNeedPass(true); return; }
+       const d = await r.json();
+       if (!r.ok) throw new Error(d.error || 'Failed to load tickets');
+@@ -116,6 +120,7 @@ export default function Kds({ onExit, embedded }) {
+   }, [needPass, cfg, pass]);
+ 
+   useEffect(() => { try { localStorage.setItem('bc-kds-zone', zone); } catch {} }, [zone]);
++  useEffect(() => { try { localStorage.setItem('bc-kds-location', kdsLoc); } catch {} if (cfg) loadTickets(); /* eslint-disable-next-line */ }, [kdsLoc]);
+   useEffect(() => { try { localStorage.setItem('bc-kds-muted', muted ? '1' : '0'); } catch {} }, [muted]);
+   useEffect(() => { try { localStorage.setItem(LAYOUT_KEY, JSON.stringify(layout)); } catch {} }, [layout]);
+ 
+@@ -221,6 +226,11 @@ export default function Kds({ onExit, embedded }) {
+           })}
+         </div>
+         <div className="kds-top-right">
++          {(cfg.locations || []).length > 1 && (
++            <select className="kds-locsel" value={kdsLoc} onChange={(e) => setKdsLoc(e.target.value)} title="Store">
++              {cfg.locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
++            </select>
++          )}
+           <span className={`kds-live${live ? ' on' : ''}`} title={live ? 'Live' : 'Reconnecting…'}>{live ? '● Live' : '○ Polling'}</span>
+           <button className={`kds-icon${showLayout ? ' on' : ''}`} title="Layout" onClick={() => setShowLayout((v) => !v)}>▦</button>
+           <button className="kds-icon" title={soundOn ? 'Mute new-order sound' : 'Unmute'} onClick={() => setMuted((m) => !m)}>{soundOn ? '🔔' : '🔕'}</button>
+diff --git a/client/src/components/Pos.jsx b/client/src/components/Pos.jsx
+index 8c806c2..8704911 100644
+--- a/client/src/components/Pos.jsx
++++ b/client/src/components/Pos.jsx
+@@ -371,6 +371,8 @@ export default function Pos({ onExit }) {
+   const comboSaving = comboDiscountFor(cart);
+   const total = cartTotal(cart) - comboSaving;
+   const configureMode = mode === 'register' && configuring;
++  // The card reader for THIS store (per-location, else the default reader).
++  const curTerm = (cfg.terminalByLocation && cfg.terminalByLocation[posLoc]) || { deviceId: cfg.terminalDeviceId, name: cfg.terminalName };
+ 
+   const header = (
+     <header className="pos-header">
+@@ -393,8 +395,8 @@ export default function Pos({ onExit }) {
+             {cfg.locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+           </select>
+         )}
+-        <span className={`pos-term${cfg.terminalDeviceId ? ' on' : ''}`} title="Card terminal">
+-          ● {cfg.terminalDeviceId ? (cfg.terminalName || 'Terminal ready') : 'No terminal'}
++        <span className={`pos-term${curTerm.deviceId ? ' on' : ''}`} title="Card terminal">
++          ● {curTerm.deviceId ? (curTerm.name || 'Terminal ready') : 'No terminal'}
+         </span>
+         <span className="pos-staff">{cfg.staff || 'Staff'}</span>
+         <button className="pos-icon" title="POS setup" onClick={() => setShowSetup(true)}>⚙</button>
+@@ -571,7 +573,7 @@ export default function Pos({ onExit }) {
+       {/* Tender overlay */}
+       {tender && (
+         <TenderOverlay tender={tender} setTender={setTender} total={total} currency={currency}
+-          busy={busy} cardEnabled={!!cfg.terminalDeviceId} cardSurchargePct={(cfg.surcharges && cfg.surcharges.card && cfg.surcharges.card.enabled) ? cfg.surcharges.card.percent : 0}
++          busy={busy} cardEnabled={!!curTerm.deviceId} cardSurchargePct={(cfg.surcharges && cfg.surcharges.card && cfg.surcharges.card.enabled) ? cfg.surcharges.card.percent : 0}
+           onCard={() => submit('card')} onCash={(given) => submit('cash', given)} onKitchen={() => submit('unpaid')} onClose={() => setTender(null)} />
+       )}
+ 
+@@ -602,8 +604,10 @@ export default function Pos({ onExit }) {
+       )}
+ 
+       {/* Terminal setup / pairing */}
+-      {showSetup && <TerminalSetup pass={pass} cfg={cfg} onClose={() => setShowSetup(false)}
+-        onSelected={(deviceId, name) => setCfg((c) => ({ ...c, terminalDeviceId: deviceId, terminalName: name }))} />}
++      {showSetup && <TerminalSetup pass={pass} cfg={cfg} locationId={posLoc} curTerm={curTerm} onClose={() => setShowSetup(false)}
++        onSelected={(deviceId, name) => setCfg((c) => posLoc
++          ? ({ ...c, terminalByLocation: { ...(c.terminalByLocation || {}), [posLoc]: { deviceId, name } } })
++          : ({ ...c, terminalDeviceId: deviceId, terminalName: name }))} />}
+ 
+       {/* Success overlay */}
+       {success && (
+@@ -686,16 +690,17 @@ function TenderOverlay({ tender, setTender, total, currency, busy, cardEnabled,
+ }
+ 
+ // ── Terminal pairing / selection (from the POS ⚙ setup) ──
+-function TerminalSetup({ pass, cfg, onClose, onSelected }) {
++function TerminalSetup({ pass, cfg, locationId, curTerm, onClose, onSelected }) {
+   const [devices, setDevices] = useState([]);
+-  const [current, setCurrent] = useState(cfg.terminalDeviceId || '');
+-  const [name, setName] = useState(cfg.deviceName || 'Front counter');
++  const [current, setCurrent] = useState((curTerm && curTerm.deviceId) || '');
++  const [name, setName] = useState((cfg.locations || []).find((l) => l.id === locationId)?.name || cfg.deviceName || 'Front counter');
+   const [pairing, setPairing] = useState(null); // { id, code, status }
+   const [msg, setMsg] = useState('');
+   const [err, setErr] = useState('');
++  const storeName = (cfg.locations || []).find((l) => l.id === locationId)?.name || '';
+ 
+   async function loadDevices() {
+-    try { const d = await api.posTerminalDevices(pass); setDevices(d.devices || []); setCurrent(d.current || current); }
++    try { const d = await api.posTerminalDevices(pass); setDevices(d.devices || []); }
+     catch (e) { setErr(e.message); }
+   }
+   useEffect(() => { loadDevices(); /* eslint-disable-next-line */ }, []);
+@@ -729,23 +734,34 @@ function TerminalSetup({ pass, cfg, onClose, onSelected }) {
+   async function select(deviceId, label) {
+     setErr(''); setMsg('');
+     try {
+-      const r = await api.posTerminalSelect(pass, deviceId, label || 'Terminal');
+-      setCurrent(r.terminalDeviceId);
+-      onSelected && onSelected(r.terminalDeviceId, r.terminalName);
+-      setMsg('Terminal ready for card payments.');
++      const r = await api.posTerminalSelect(pass, deviceId, label || 'Terminal', locationId);
++      setCurrent(deviceId);
++      onSelected && onSelected(deviceId, r.terminalName || label || 'Terminal');
++      setMsg(`Terminal ready for card payments${storeName ? ` at ${storeName}` : ''}.`);
+       setPairing(null);
+       loadDevices();
+     } catch (e) { setErr(e.message); }
+   }
+ 
++  async function disconnect() {
++    setErr(''); setMsg('');
++    try {
++      await api.posTerminalDisconnect(pass, locationId);
++      setCurrent('');
++      onSelected && onSelected('', '');
++      setMsg('Terminal disconnected.');
++      loadDevices();
++    } catch (e) { setErr(e.message); }
++  }
++
+   return (
+     <div className="pos-scrim" onClick={onClose}>
+       <div className="pos-setup" onClick={(e) => e.stopPropagation()}>
+-        <div className="pos-tender-title">Card terminal setup</div>
++        <div className="pos-tender-title">Card terminal setup{storeName ? ` · ${storeName}` : ''}</div>
+ 
+         {current
+-          ? <div className="pos-setup-current">In use: <b>{cfg.terminalName || current}</b></div>
+-          : <div className="pos-setup-current muted">No terminal paired yet.</div>}
++          ? <div className="pos-setup-current">In use: <b>{(curTerm && curTerm.name) || current}</b><button className="pos-setup-disconnect" onClick={disconnect}>Disconnect</button></div>
++          : <div className="pos-setup-current muted">No terminal paired for this store yet.</div>}
+ 
+         {devices.length > 0 && (
+           <div className="pos-setup-list">
+diff --git a/client/src/styles.css b/client/src/styles.css
+index 0e9610b..ac83e67 100644
+--- a/client/src/styles.css
++++ b/client/src/styles.css
+@@ -3583,3 +3583,10 @@ body:has(.store-shell) { background: var(--bc-canvas-deep, #160f12); }
+ .loc-avail-item.off span { color: var(--admin-text-muted, var(--muted)); text-decoration: line-through; }
+ .loc-avail + *, .avail-sched .switch { }
+ .switch { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-sm); font-weight: 600; }
++.kds-locsel { background: #1e242b; color: #eef2f6; border: 1px solid #333d47; border-radius: 9px; padding: 8px 10px; font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; max-width: 160px; }
++.pos-setup-current { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
++.pos-setup-disconnect { margin-left: auto; border: 1px solid color-mix(in srgb, var(--pos-red) 40%, var(--pos-line)); background: none; color: var(--pos-red); border-radius: 8px; padding: 5px 12px; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
++.loc-qr-wrap { margin-top: 8px; }
++.loc-qr { display: flex; gap: 12px; align-items: flex-start; margin-top: 8px; }
++.loc-qr-meta { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
++.loc-qr-meta code { font-size: var(--fs-xs); word-break: break-all; }
+diff --git a/server/index.js b/server/index.js
+index a61aef1..20cc926 100644
+--- a/server/index.js
++++ b/server/index.js
+@@ -23,6 +23,15 @@ const kds = require('./lib/kds');
+ const terminal = require('./lib/terminal');
+ const locations = require('./lib/locations');
+ const surcharges = require('./lib/surcharges');
++
++// Resolve the card terminal for a store: its own paired reader if set, else the
++// default/global one (single-site, or before a per-store reader is paired).
++function posTerminalFor(pos, locId) {
++  const map = (pos && pos.terminalByLocation) || {};
++  const perLoc = locId && map[locId];
++  if (perLoc && perLoc.deviceId) return { deviceId: perLoc.deviceId, name: perLoc.name || 'Terminal' };
++  return { deviceId: pos.terminalDeviceId || '', name: pos.terminalName || 'Terminal' };
++}
+ const weather = require('./lib/weather');
+ const smartCampaigns = require('./lib/smartCampaigns');
+ 
+@@ -1094,6 +1103,7 @@ app.get('/api/pos/config', (req, res) => {
+     surcharges: surcharges.publicConfig(),
+     terminalDeviceId: p.terminalDeviceId || '',
+     terminalName: p.terminalName || '',
++    terminalByLocation: p.terminalByLocation || {},
+     dbEnabled: db.enabled,
+   });
+ });
+@@ -1106,8 +1116,9 @@ app.post('/api/pos/order', async (req, res) => {
+     if (!['cash', 'unpaid', 'card'].includes(tender)) return res.status(400).json({ error: 'Unsupported tender' });
+     const pos = getSettings().pos || {};
+     const squareLocationId = locations.squareIdFor(locationId);
+-    if (tender === 'card' && !pos.terminalDeviceId) {
+-      return res.status(400).json({ error: 'No card terminal is paired. Pair one in POS setup first.' });
++    const posTerminal = posTerminalFor(pos, locationId);
++    if (tender === 'card' && !posTerminal.deviceId) {
++      return res.status(400).json({ error: 'No card terminal is paired for this store. Pair one in POS setup first.' });
+     }
+ 
+     // Server-authoritative order: Square re-prices from the variation/modifier
+@@ -1126,15 +1137,15 @@ app.post('/api/pos/order', async (req, res) => {
+       try {
+         const checkout = await terminal.createCheckout({
+           amountMoney: { amount, currency },
+-          deviceId: pos.terminalDeviceId,
++          deviceId: posTerminal.deviceId,
+           orderId: order.id,
+           referenceId: order.id,
+           note: `${pos.deviceName || 'POS'} · ${name || (dineIn ? 'Dine-in' : 'Takeaway')}`,
+         });
+-        try { await db.posPaymentUpsert({ checkoutId: checkout.id, squareOrderId: order.id, deviceId: pos.terminalDeviceId, amount, status: 'waiting' }); } catch {}
++        try { await db.posPaymentUpsert({ checkoutId: checkout.id, squareOrderId: order.id, deviceId: posTerminal.deviceId, amount, status: 'waiting' }); } catch {}
+         return res.json({
+           orderId: order.id, checkoutId: checkout.id, total: amount, currency,
+-          tender: 'card', status: 'waiting', terminalName: pos.terminalName || pos.deviceName || 'Terminal',
++          tender: 'card', status: 'waiting', terminalName: posTerminal.name || pos.deviceName || 'Terminal',
+         });
+       } catch (e) {
+         // Checkout couldn't start — cancel the just-created order so no orphan
+@@ -1256,29 +1267,52 @@ app.post('/api/pos/terminal/select', async (req, res) => {
+   if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+   if (!db.enabled) return res.status(400).json({ error: 'A database is required to save the terminal selection.' });
+   try {
+-    const { deviceId, name } = req.body || {};
++    const { deviceId, name, locationId } = req.body || {};
+     if (!deviceId) return res.status(400).json({ error: 'Missing device id' });
+     const ov = db.getOverrides() || {};
+     ov.pos = ov.pos || {};
+-    ov.pos.terminalDeviceId = String(deviceId);
+-    ov.pos.terminalName = String(name || '').slice(0, 60);
++    if (locationId) {
++      // Per-store reader (multi-location): this store's POS uses this terminal.
++      ov.pos.terminalByLocation = { ...(ov.pos.terminalByLocation || {}), [locationId]: { deviceId: String(deviceId), name: String(name || '').slice(0, 60) } };
++    } else {
++      ov.pos.terminalDeviceId = String(deviceId);
++      ov.pos.terminalName = String(name || '').slice(0, 60);
++    }
++    await db.saveOverrides(ov);
++    res.json({ ok: true, terminalDeviceId: String(deviceId), terminalName: String(name || '').slice(0, 60) });
++  } catch (e) { res.status(400).json({ error: e.message }); }
++});
++// Forget the paired reader (e.g. it was unpaired on the device itself). Clears
++// this store's reader (or the default one) so the POS stops trying to reach it.
++app.post('/api/pos/terminal/disconnect', async (req, res) => {
++  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
++  if (!db.enabled) return res.status(400).json({ error: 'A database is required to change the terminal.' });
++  try {
++    const { locationId } = req.body || {};
++    const ov = db.getOverrides() || {};
++    ov.pos = ov.pos || {};
++    if (locationId && ov.pos.terminalByLocation && ov.pos.terminalByLocation[locationId]) {
++      const m = { ...ov.pos.terminalByLocation }; delete m[locationId]; ov.pos.terminalByLocation = m;
++    } else {
++      ov.pos.terminalDeviceId = ''; ov.pos.terminalName = '';
++    }
+     await db.saveOverrides(ov);
+-    res.json({ ok: true, terminalDeviceId: ov.pos.terminalDeviceId, terminalName: ov.pos.terminalName });
++    res.json({ ok: true });
+   } catch (e) { res.status(400).json({ error: e.message }); }
+ });
+ 
+ app.get('/api/admin/kds/config', (req, res) => {
+   if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+   const cfg = kds.kdsSettings();
+-  res.json({ ...cfg, allZone: kds.ALL_ZONE, dbEnabled: db.enabled });
++  res.json({ ...cfg, allZone: kds.ALL_ZONE, dbEnabled: db.enabled, locations: locations.publicList() });
+ });
+ 
+-// The live ticket feed.
++// The live ticket feed (scoped to the screen's chosen store).
+ app.get('/api/admin/kds/tickets', async (req, res) => {
+   if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+   res.setHeader('Cache-Control', 'no-store');
+   try {
+-    const data = await kds.fetchTickets();
++    const data = await kds.fetchTickets(locations.squareIdFor(req.query.location));
+     res.json(data);
+   } catch (e) {
+     res.status(502).json({ error: e.message });
+diff --git a/server/lib/kds.js b/server/lib/kds.js
+index 821140a..f811b0e 100644
+--- a/server/lib/kds.js
++++ b/server/lib/kds.js
+@@ -99,13 +99,13 @@ function buildTickets(orders, varCat, states, cfg, now = Date.now()) {
+   });
+ }
+ 
+-async function fetchTickets() {
++async function fetchTickets(squareLocationId) {
+   const cfg = kdsSettings();
+   const startAt = new Date(Date.now() - cfg.lookbackHours * 3600 * 1000).toISOString();
+   const data = await squareFetch('/v2/orders/search', {
+     method: 'POST',
+     body: {
+-      location_ids: [LOCATION_ID],
++      location_ids: [squareLocationId || LOCATION_ID],
+       query: {
+         filter: {
+           date_time_filter: { created_at: { start_at: startAt } },
+diff --git a/server/lib/settings.js b/server/lib/settings.js
+index b6fbcdd..47fc95d 100644
+--- a/server/lib/settings.js
++++ b/server/lib/settings.js
+@@ -381,8 +381,9 @@ const DEFAULTS = {
+     mode: 'pos_kds',        // 'pos_kds' (idle on KDS) | 'pos' | 'kds'
+     autoReturnSec: 3,       // success screen delay before returning to the KDS
+     sourceName: 'Bean Culture POS', // Square order source tag for counter sales
+-    terminalDeviceId: '',   // paired Square Terminal device id for card payments
++    terminalDeviceId: '',   // default/fallback Square Terminal device id
+     terminalName: '',       // friendly name of that reader
++    terminalByLocation: {}, // per-store readers: { [locationId]: { deviceId, name } }
+   },
+   // ── Smart Campaigns: contextual merchandising driven by rules (Weather first;
+   //    future: time, holidays, stock, loyalty…). A single server-side resolver
+-- 
+2.43.0
+

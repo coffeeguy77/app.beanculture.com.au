@@ -1,0 +1,36 @@
+From 5d2fef8628341d0e18721f673cc209833de671d1 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 30 Aug 2026 09:11:07 +0000
+Subject: [PATCH] Fix: Smart Campaigns artwork upload white-screened the admin
+ (lost unsaved work)
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The campaign editor renders <img src={imgUrl(artwork,400)}> once artwork is set,
+but imgUrl was never imported into Admin.jsx — so the moment an image finished
+uploading, the render threw 'imgUrl is not defined', crashing the whole admin to
+a blank screen and losing the unsaved campaign. (Empty artwork showed a 'No
+artwork' placeholder, so it only blew up right after a successful upload.)
+
+One-line fix: import imgUrl alongside formatMoney/api from ../api.js.
+---
+ client/src/components/Admin.jsx | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/client/src/components/Admin.jsx b/client/src/components/Admin.jsx
+index 1a418ea..ce1a5f7 100644
+--- a/client/src/components/Admin.jsx
++++ b/client/src/components/Admin.jsx
+@@ -5,7 +5,7 @@ import IconPicker from './IconPicker.jsx';
+ import HoursEditor from './HoursEditor.jsx';
+ import Insights from './Insights.jsx';
+ import EffectBuilder from './EffectBuilder.jsx';
+-import { formatMoney, api } from '../api.js';
++import { formatMoney, api, imgUrl } from '../api.js';
+ 
+ const LINK_TYPES = ['scroll', 'category', 'item', 'account', 'payitforward', 'url', 'none'];
+ // Friendly labels for the banner "destination" dropdowns.
+-- 
+2.43.0
+

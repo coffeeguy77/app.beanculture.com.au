@@ -1,0 +1,305 @@
+From 6c7211ee8b63c24cac7f028d42ae7f7c2a57f6be Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Tue, 1 Sep 2026 00:09:12 +0000
+Subject: [PATCH] KDS: reliably show paid app orders, item-based All clearing,
+ Square-category routing
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+1) Paid app order didn't reach the kitchen screen. The hold-until-paid change
+   relied on Square clearing the hold flag / returning a payment tender, and both
+   can lag — so a genuinely paid order could stay hidden. /api/pay now writes a
+   '__paid__' marker in our own DB the instant a payment completes, and the KDS
+   treats that (or a tender, or COMPLETED) as 'paid' — a reliable release that
+   doesn't depend on Square propagation. releaseHold now flips bc_hold to '0' via
+   a metadata value update (preserving bc_store/bc_event) instead of a
+   fields_to_clear on a nested key, and the abandoned-order sweep skips anything
+   the DB marks paid so it can never bin a paid order.
+
+2) All-orders clearing is item-based (redo of an earlier fix that never
+   deployed): an item is handled once ANY station that makes it is bumped, and an
+   order leaves All once every item is handled — so a barista bump clears the
+   coffee from All even when an overlapping FOH/expo station also lists it.
+
+3) Stations can route by SQUARE category. A live order line carries the item's
+   Square category, so the station picker now also offers the real Square
+   category names (not just menu/section names). An item Square files under a
+   category that isn't one of your menu names (e.g. a Hot Chocolate under 'Hot
+   Drinks') now bumps through once that Square category is listed on the station.
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_0187Jj4Q77V4UPawzEh9gsGr
+---
+ client/src/components/Admin.jsx | 32 +++++++++++++++++++++++++++++---
+ client/src/components/Kds.jsx   | 29 ++++++++++++++++++++++++-----
+ server/index.js                 | 14 +++++++++++---
+ server/lib/db.js                | 24 +++++++++++++++++++++++-
+ server/lib/kds.js               | 16 +++++++++++-----
+ server/lib/orders.js            | 19 ++++++++++++++-----
+ 6 files changed, 112 insertions(+), 22 deletions(-)
+
+diff --git a/client/src/components/Admin.jsx b/client/src/components/Admin.jsx
+index 112bde8..0f575a9 100644
+--- a/client/src/components/Admin.jsx
++++ b/client/src/components/Admin.jsx
+@@ -1198,6 +1198,20 @@ export default function Admin({ onExit }) {
+     const cats = Array.isArray(z.categories) ? z.categories : [];
+     updateKdsZone(id, { categories: cats.includes(name) ? cats.filter((c) => c !== name) : [...cats, name] });
+   };
++  // A station routes an order by the item's SQUARE category (that's what a live
++  // order line actually carries), so the picker must offer the real Square
++  // category names — not only the app's menu/section names. An item that Square
++  // files under a category the station never listed simply won't bump through
++  // (e.g. a Hot Chocolate whose Square category is "Hot Drinks"): list that
++  // Square category on the station and it routes. We offer the app names first
++  // (familiar) then any Square categories not already covered by that name.
++  const kdsAppCatOptions = scheduleCatOptions;
++  const kdsSquareCatOptions = (() => {
++    const have = new Set(kdsAppCatOptions.map((n) => n.toLowerCase()));
++    return [...new Set(sqCats.filter((c) => !c.isParent).map((c) => c.name).filter(Boolean))]
++      .filter((n) => !have.has(n.toLowerCase()))
++      .sort();
++  })();
+   // Existing section names offered as quick-pick chips (or type a new one).
+   const existingSectionNames = [...new Set([
+     ...presets.map((p) => (p.section || '').trim()),
+@@ -3376,15 +3390,27 @@ export default function Admin({ onExit }) {
+                         <button type="button" className="avail-del" title="Delete station" onClick={() => removeKdsZone(z.id)}>✕</button>
+                       </div>
+                       <div className="avail-sched-cats" style={{ borderTop: 'none', paddingTop: 4 }}>
+-                        <div className="muted" style={{ fontSize: 'var(--fs-xs)', marginBottom: 4 }}>Categories on this station</div>
+-                        {scheduleCatOptions.length === 0 && <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>No categories loaded yet.</span>}
++                        <div className="muted" style={{ fontSize: 'var(--fs-xs)', marginBottom: 4 }}>Menu categories on this station</div>
++                        {kdsAppCatOptions.length === 0 && <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>No categories loaded yet.</span>}
+                         <div className="avail-chipwrap">
+-                          {scheduleCatOptions.map((name) => (
++                          {kdsAppCatOptions.map((name) => (
+                             <button key={name} type="button" className={`chip${(z.categories || []).includes(name) ? ' on' : ''}`} onClick={() => toggleKdsZoneCat(z.id, name)}>
+                               {(z.categories || []).includes(name) ? '✓ ' : '+ '}{name}
+                             </button>
+                           ))}
+                         </div>
++                        {kdsSquareCatOptions.length > 0 && (
++                          <>
++                            <div className="muted" style={{ fontSize: 'var(--fs-xs)', margin: '10px 0 4px' }}>Square categories &mdash; pick these if an item files under a Square category that isn&rsquo;t one of your menu names (so it still bumps through)</div>
++                            <div className="avail-chipwrap">
++                              {kdsSquareCatOptions.map((name) => (
++                                <button key={'sq:' + name} type="button" className={`chip${(z.categories || []).includes(name) ? ' on' : ''}`} onClick={() => toggleKdsZoneCat(z.id, name)}>
++                                  {(z.categories || []).includes(name) ? '✓ ' : '+ '}{name}
++                                </button>
++                              ))}
++                            </div>
++                          </>
++                        )}
+                       </div>
+                     </div>
+                   ))}
+diff --git a/client/src/components/Kds.jsx b/client/src/components/Kds.jsx
+index 33daf91..f1d7684 100644
+--- a/client/src/components/Kds.jsx
++++ b/client/src/components/Kds.jsx
+@@ -67,15 +67,34 @@ export default function Kds({ onExit, embedded }) {
+   // stations, so a barista bump there flows through to All (and vice-versa).
+   // Orders that route to no station fall back to the All pseudo-lane itself.
+   const targetsFor = (t) => { const rz = realZonesOf(t); return rz.length ? rz : [ALL]; };
+-  // Effective status for a lane. "All orders" is an overview: it's DONE once
+-  // every station the order routes to is done (so bumping at the barista station
+-  // removes it from All), and shows as preparing while any station is in flight.
++  // Identify a single line so the same item can be matched across stations.
++  const lineKey = (it) => `${it.name}|${it.variation || ''}|${it.quantity || ''}|${(it.modifiers || []).join(',')}|${it.note || ''}`;
++  // Effective status for a lane. "All orders" is an overview built from the
++  // stations: an item is handled once ANY station that makes it is bumped done,
++  // and the order leaves All once every item has been handled. This clears the
++  // coffee from All when the barista bumps it even if a broader station (an
++  // FOH/expo lane) also lists that item — the old "every station must be done"
++  // rule left an order stuck on All whenever an overlapping station never got
++  // bumped. Multi-item orders across separate stations still wait for each.
+   const statusIn = (t, z) => {
+     if (z !== ALL) return (t.zoneStatus && t.zoneStatus[z]) || 'new';
+     const rz = realZonesOf(t);
+     if (!rz.length) return (t.zoneStatus && t.zoneStatus[ALL]) || 'new';
+-    if (rz.every((r) => t.zoneStatus[r] === 'done')) return 'done';
+-    if (rz.some((r) => t.zoneStatus[r] === 'done' || t.zoneStatus[r] === 'preparing')) return 'preparing';
++    const st = (r) => (t.zoneStatus && t.zoneStatus[r]) || 'new';
++    const stationItems = new Set();     // every item that lives in some station
++    const handledItems = new Set();     // items in a station that's been bumped done
++    let anyProgress = false;
++    for (const r of rz) {
++      const done = st(r) === 'done';
++      if (done || st(r) === 'preparing') anyProgress = true;
++      for (const it of (t.zoneItems[r] || [])) {
++        const k = lineKey(it);
++        stationItems.add(k);
++        if (done) handledItems.add(k);
++      }
++    }
++    if (stationItems.size && [...stationItems].every((k) => handledItems.has(k))) return 'done';
++    if (anyProgress) return 'preparing';
+     return 'new';
+   };
+ 
+diff --git a/server/index.js b/server/index.js
+index 593a38f..9368088 100644
+--- a/server/index.js
++++ b/server/index.js
+@@ -395,11 +395,19 @@ app.post('/api/pay', async (req, res) => {
+     if (!orderId) return res.status(400).json({ error: 'Missing order id' });
+     const squareLocationId = locations.squareIdFor(locationId);
+ 
++    // Mark an order paid to the kitchen screen: our own DB marker is the
++    // reliable release signal (Square's tender/metadata can lag), and the Square
++    // metadata release is a secondary. Best-effort — never fail the payment on it.
++    const release = async () => {
++      await db.kdsMarkPaid(orderId).catch(() => {});
++      await orders.releaseHold(orderId).catch(() => {});
++    };
++
+     // $0 order (comp or fully covered by loyalty): complete without a card.
+     if (!totalMoney || totalMoney.amount === 0) {
+       const fresh = await orders.getOrder(orderId);
+       await orders.payZeroOrder(orderId, fresh.version);
+-      await orders.releaseHold(orderId); // now paid → let the kitchen see it
++      await release(); // now paid → let the kitchen see it
+       return res.json({ status: 'COMPLETED', comped: true });
+     }
+ 
+@@ -409,7 +417,7 @@ app.post('/api/pay', async (req, res) => {
+       if (!gc || !gc.gan) return res.status(402).json({ error: 'No balance available' });
+       if (gc.balance < totalMoney.amount) return res.status(402).json({ error: 'Not enough balance — top up or pay by card.' });
+       const payment = await giftcards.payWithGiftCard({ gan: gc.gan, orderId, amountMoney: totalMoney, customerId });
+-      if (payment.status === 'COMPLETED' || payment.status === 'APPROVED') await orders.releaseHold(orderId);
++      if (payment.status === 'COMPLETED' || payment.status === 'APPROVED') await release();
+       return res.json({ status: payment.status, paymentId: payment.id, paidWithBalance: true });
+     }
+ 
+@@ -425,7 +433,7 @@ app.post('/api/pay', async (req, res) => {
+     });
+     // Only a completed/approved charge releases the order to the kitchen. A
+     // declined charge leaves it held (hidden), so nothing unpaid gets cooked.
+-    if (payment.status === 'COMPLETED' || payment.status === 'APPROVED') await orders.releaseHold(orderId);
++    if (payment.status === 'COMPLETED' || payment.status === 'APPROVED') await release();
+     res.json({ status: payment.status, paymentId: payment.id, receiptUrl: payment.receipt_url });
+   } catch (err) {
+     console.error('payment error', err.message);
+diff --git a/server/lib/db.js b/server/lib/db.js
+index 97ef4d5..a6c33da 100644
+--- a/server/lib/db.js
++++ b/server/lib/db.js
+@@ -813,6 +813,28 @@ async function kdsGetStates(orderIds) {
+   }
+   return out;
+ }
++// A payment-completed marker for an app order, stored as a sentinel row in
++// kds_tickets (zone '__paid__'). This is OUR reliable "the money went through"
++// signal for the kitchen screen, independent of Square metadata propagation or
++// whether the order search happens to return the payment tender yet. Held app
++// orders stay off the screen until this (or a real tender) says they're paid.
++async function kdsMarkPaid(orderId) {
++  if (!pool || !orderId) return;
++  await pool.query(
++    `INSERT INTO kds_tickets (order_id, zone, status, bumped_at, updated_at)
++     VALUES ($1, '__paid__', 'done', now(), now())
++     ON CONFLICT (order_id, zone) DO NOTHING`,
++    [orderId]
++  );
++}
++async function kdsGetPaid(orderIds) {
++  if (!pool || !orderIds || !orderIds.length) return new Set();
++  const r = await pool.query(
++    "SELECT order_id FROM kds_tickets WHERE zone = '__paid__' AND order_id = ANY($1)",
++    [orderIds]
++  );
++  return new Set(r.rows.map((x) => x.order_id));
++}
+ async function kdsSetStatus(orderId, zone, status) {
+   if (!pool) throw new Error('The kitchen screen needs the database to remember bumps.');
+   const r = await pool.query(
+@@ -885,7 +907,7 @@ async function posPaymentByOrder(squareOrderId) {
+ 
+ module.exports = {
+   init, getOverrides, saveOverrides,
+-  kdsGetStates, kdsSetStatus,
++  kdsGetStates, kdsSetStatus, kdsMarkPaid, kdsGetPaid,
+   posRecordOrder, posPaymentUpsert, posPaymentSetStatus, posPaymentGet, posPaymentByOrder,
+   insertScheduled, listScheduledByCustomer, cancelScheduled, claimDue, updateScheduled,
+   track, getAnalytics,
+diff --git a/server/lib/kds.js b/server/lib/kds.js
+index 12d81ee..555f37f 100644
+--- a/server/lib/kds.js
++++ b/server/lib/kds.js
+@@ -118,13 +118,19 @@ async function fetchTickets(squareLocationId, loc) {
+     },
+   });
+   // An app checkout creates its Square order BEFORE charging (stamped bc_hold),
+-  // so a declined/abandoned checkout must never reach the kitchen. Hide a held
+-  // order only while it is genuinely unpaid — as soon as it carries a payment
+-  // (a tender) or has settled (COMPLETED), it shows, so a paid order is never
+-  // lost even if the release step didn't run.
++  // so a declined/abandoned checkout must never reach the kitchen. A held order
++  // is shown the moment payment is confirmed — and "confirmed" is decided from
++  // OUR OWN database (the '__paid__' marker written by /api/pay), which is the
++  // only fully reliable signal: Square's order search does not always return the
++  // payment tender straight away, and the metadata release can lag, so a paid
++  // order must never depend on either of those to appear. Tender/COMPLETED are
++  // kept as extra fail-open signals.
++  const allIds = (data.orders || []).map((o) => o && o.id).filter(Boolean);
++  const paidSet = await db.kdsGetPaid(allIds).catch(() => new Set());
+   const stillUnpaid = (o) => {
+     const m = o.metadata || {};
+-    if (m.bc_hold !== '1') return false;
++    if (m.bc_hold !== '1') return false;   // not a held app order
++    if (paidSet.has(o.id)) return false;   // our DB says the payment went through
+     if (o.state === 'COMPLETED') return false;
+     if (Array.isArray(o.tenders) && o.tenders.length) return false;
+     return true;
+diff --git a/server/lib/orders.js b/server/lib/orders.js
+index 75cd006..cfb7718 100644
+--- a/server/lib/orders.js
++++ b/server/lib/orders.js
+@@ -6,6 +6,7 @@ const coupons = require('./coupons');
+ const combos = require('./combos');
+ const catalog = require('./catalog');
+ const payItForward = require('./payItForward');
++const db = require('./db');
+ 
+ const DINEIN_FULFILLMENT = (process.env.SQUARE_DINEIN_FULFILLMENT || 'PICKUP').toUpperCase();
+ const COMP_COUPON_CODE = (process.env.COMP_COUPON_CODE || '').trim();
+@@ -345,9 +346,14 @@ async function releaseHold(orderId) {
+     const cur = await squareFetch(`/v2/orders/${orderId}`);
+     const order = cur.order;
+     if (!order || !order.metadata || order.metadata.bc_hold !== '1') return order; // not held
++    // Re-send the whole metadata map with bc_hold flipped to '0' (keeping
++    // bc_store / bc_event / etc.), rather than clearing a single nested key —
++    // a plain value update is reliable where fields_to_clear on a metadata key
++    // is not. The KDS hides only bc_hold === '1', so '0' makes it visible.
++    const metadata = { ...order.metadata, bc_hold: '0' };
+     const data = await squareFetch(`/v2/orders/${orderId}`, {
+       method: 'PUT',
+-      body: { order: { version: order.version }, fields_to_clear: ['metadata.bc_hold'], idempotency_key: idem() },
++      body: { order: { version: order.version, metadata }, idempotency_key: idem() },
+     });
+     return data.order;
+   } catch (e) { return null; }
+@@ -374,11 +380,14 @@ async function sweepHeldOrders(maxAgeMin = 30) {
+       },
+     });
+     const cutoff = Date.now() - maxAgeMin * 60 * 1000;
++    // Never cancel an order our own DB has recorded as paid, even if Square's
++    // search hasn't surfaced the tender yet — that would bin a paid order.
++    const held = (data.orders || []).filter((o) => (o.metadata || {}).bc_hold === '1');
++    const paidSet = await db.kdsGetPaid(held.map((o) => o.id)).catch(() => new Set());
+     let cancelled = 0;
+-    for (const o of (data.orders || [])) {
+-      const m = o.metadata || {};
+-      if (m.bc_hold !== '1') continue;
+-      if (Array.isArray(o.tenders) && o.tenders.length) continue; // it did get paid
++    for (const o of held) {
++      if (paidSet.has(o.id)) continue;                             // paid (our DB)
++      if (Array.isArray(o.tenders) && o.tenders.length) continue;  // paid (has a tender)
+       if (new Date(o.created_at).getTime() > cutoff) continue;     // still fresh
+       await cancelOrder(o.id).catch(() => {});
+       cancelled++;
+-- 
+2.43.0
+

@@ -1,0 +1,114 @@
+From 2c2efa9a9456a078781f7413033da421705af6f5 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 30 Aug 2026 15:38:34 +0000
+Subject: [PATCH] Events: hide search bar; no Add button until the event is
+ open
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- The search bar is hidden on event stores (guests get a short curated list, not
+  a searchable menu).
+- Before an event opens, products still show and open, but the item/combo sheet
+  swaps 'Add to order' for a disabled 'Ordering opens <date/time>' — so guests
+  can browse but can't add anything to the cart until the event starts.
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_0187Jj4Q77V4UPawzEh9gsGr
+---
+ client/src/App.jsx                   |  6 +++---
+ client/src/components/ComboModal.jsx | 14 ++++++++++----
+ client/src/components/ItemModal.jsx  | 14 ++++++++++----
+ 3 files changed, 23 insertions(+), 11 deletions(-)
+
+diff --git a/client/src/App.jsx b/client/src/App.jsx
+index 62b4dc3..cf6e425 100644
+--- a/client/src/App.jsx
++++ b/client/src/App.jsx
+@@ -1499,7 +1499,7 @@ export default function App() {
+               const oneSection = (menu.categories || []).length <= 1;
+               return (
+                 <>
+-                  {!oneItem && (
++                  {!oneItem && chosenLocation?.type !== 'event' && (
+                     <div className="search">
+                       <input placeholder="Search the menu…" value={query} onChange={(e) => setQuery(e.target.value)} />
+                     </div>
+@@ -1578,8 +1578,8 @@ export default function App() {
+ 
+       {activeItem && (
+         activeItem.isCombo
+-          ? <ComboModal item={activeItem} currency={currency} onClose={() => setActiveItem(null)} onAdd={addComboToCart} />
+-          : <ItemModal item={activeItem} currency={currency} onClose={() => setActiveItem(null)} onAdd={addToCart} isFree={isFreeCat(activeItem.category)} />
++          ? <ComboModal item={activeItem} currency={currency} onClose={() => setActiveItem(null)} onAdd={addComboToCart} orderingClosed={chosenLocation?.type === 'event' && !canOrder} closedLabel={config.hours?.opening?.label || config.hours?.nextOpen?.label || ''} />
++          : <ItemModal item={activeItem} currency={currency} onClose={() => setActiveItem(null)} onAdd={addToCart} isFree={isFreeCat(activeItem.category)} orderingClosed={chosenLocation?.type === 'event' && !canOrder} closedLabel={config.hours?.opening?.label || config.hours?.nextOpen?.label || ''} />
+       )}
+       {showTheme && (
+         <ThemePicker
+diff --git a/client/src/components/ComboModal.jsx b/client/src/components/ComboModal.jsx
+index e8281e0..27501bf 100644
+--- a/client/src/components/ComboModal.jsx
++++ b/client/src/components/ComboModal.jsx
+@@ -17,7 +17,7 @@ function cheapestPrice(option) {
+   return pool.reduce((min, v) => Math.min(min, v.price ?? Infinity), Infinity);
+ }
+ 
+-export default function ComboModal({ item: combo, currency, onClose, onAdd }) {
++export default function ComboModal({ item: combo, currency, onClose, onAdd, orderingClosed, closedLabel }) {
+   const groups = combo.comboGroups || [];
+   const [picked, setPicked] = useState({});        // groupId -> chosen option's itemId
+   const [variationPick, setVariationPick] = useState({}); // groupId -> variationId
+@@ -247,9 +247,15 @@ export default function ComboModal({ item: combo, currency, onClose, onAdd }) {
+             {/* The red REQUIRED pills already make the outstanding steps obvious —
+                 no need for a repetitive "Choose Choose your item" footer line. */}
+           </div>
+-          <button className="btn sheet-footer-add" onClick={handleAdd} disabled={!canAdd}>
+-            Add to order · {formatMoney(unitPrice * qty, currency)}
+-          </button>
++          {orderingClosed ? (
++            <button className="btn sheet-footer-add" disabled aria-disabled="true" style={{ opacity: 0.6 }}>
++              {closedLabel ? `Ordering opens ${closedLabel}` : 'Ordering not open yet'}
++            </button>
++          ) : (
++            <button className="btn sheet-footer-add" onClick={handleAdd} disabled={!canAdd}>
++              Add to order · {formatMoney(unitPrice * qty, currency)}
++            </button>
++          )}
+         </div>
+       </div>
+     </div>
+diff --git a/client/src/components/ItemModal.jsx b/client/src/components/ItemModal.jsx
+index a7a7d16..1605c45 100644
+--- a/client/src/components/ItemModal.jsx
++++ b/client/src/components/ItemModal.jsx
+@@ -45,7 +45,7 @@ function parseDescription(text) {
+   return { intro, facts };
+ }
+ 
+-export default function ItemModal({ item, currency, onClose, onAdd, isFree }) {
++export default function ItemModal({ item, currency, onClose, onAdd, isFree, orderingClosed, closedLabel }) {
+   // Selection / validation / pricing / cart-item build all come from the shared
+   // hook, so the customer sheet and the staff POS produce identical results.
+   const {
+@@ -212,9 +212,15 @@ export default function ItemModal({ item, currency, onClose, onAdd, isFree }) {
+               <span className="sheet-footer-warn">Choose {unmetGroups.map((g) => g.name).join(', ')}</span>
+             )}
+           </div>
+-          <button className="btn sheet-footer-add" onClick={handleAdd} disabled={unmetGroups.length > 0}>
+-            {isFree ? 'Add to order' : `Add to order · ${formatMoney(unitPrice * qty, currency)}`}
+-          </button>
++          {orderingClosed ? (
++            <button className="btn sheet-footer-add" disabled aria-disabled="true" style={{ opacity: 0.6 }}>
++              {closedLabel ? `Ordering opens ${closedLabel}` : 'Ordering not open yet'}
++            </button>
++          ) : (
++            <button className="btn sheet-footer-add" onClick={handleAdd} disabled={unmetGroups.length > 0}>
++              {isFree ? 'Add to order' : `Add to order · ${formatMoney(unitPrice * qty, currency)}`}
++            </button>
++          )}
+         </div>
+       </div>
+     </div>
+-- 
+2.43.0
+

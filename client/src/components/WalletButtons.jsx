@@ -19,6 +19,7 @@ import React, { useEffect, useRef, useState } from 'react';
 //   onError    – (message) => {} for surfaced errors
 export default function WalletButtons({ payments, amount, currency = 'AUD', country = 'AU', label = 'Total', afterpay = false, canStart, onToken, onError }) {
   const gpayRef = useRef(null);
+  const afterpayRef = useRef(null);
   const applePayObj = useRef(null);
   const afterpayObj = useRef(null);
   const busyRef = useRef(false);
@@ -79,12 +80,25 @@ export default function WalletButtons({ payments, amount, currency = 'AUD', coun
         next.apple = true;
       } catch { applePayObj.current = null; }
 
-      // Afterpay / Clearpay — buy-now-pay-later (checkout only).
+      // Afterpay / Clearpay — buy-now-pay-later (checkout only). Square renders
+      // its own branded button into our slot and REQUIRES attach() before
+      // tokenize() is valid — otherwise tokenize throws "afterpayClearpay has
+      // not been attached to the page". Same shape as the Google Pay path above.
       if (afterpay) {
         try {
           afp = await payments.afterpayClearpay(makeReq());
-          afterpayObj.current = afp;
-          next.afterpay = true;
+          if (!cancelled && afterpayRef.current) {
+            afterpayRef.current.innerHTML = '';
+            await afp.attach(afterpayRef.current);
+            afterpayRef.current.onclick = async () => {
+              if (busyRef.current) return;
+              if (canStart && !canStart()) return;
+              try { await handleToken(await afp.tokenize(), 'afterpay'); }
+              catch (e) { emitError(e.message); }
+            };
+            afterpayObj.current = afp;
+            next.afterpay = true;
+          }
         } catch { afterpayObj.current = null; }
       }
 
@@ -108,13 +122,6 @@ export default function WalletButtons({ payments, amount, currency = 'AUD', coun
     if (!ap) return;
     ap.tokenize().then((r) => handleToken(r, 'apple_pay')).catch((e) => emitError(e.message));
   }
-  function onAfterpayClick() {
-    if (busyRef.current) return;
-    if (canStart && !canStart()) return;
-    const afp = afterpayObj.current;
-    if (!afp) return;
-    afp.tokenize().then((r) => handleToken(r, 'afterpay')).catch((e) => emitError(e.message));
-  }
 
   const any = avail.apple || avail.google || avail.afterpay;
   return (
@@ -123,9 +130,7 @@ export default function WalletButtons({ payments, amount, currency = 'AUD', coun
         <button type="button" className="wallet-btn apple" onClick={onAppleClick} aria-label="Pay with Apple Pay"> Pay</button>
       )}
       <div ref={gpayRef} className="wallet-slot gpay-slot" style={{ display: avail.google ? 'block' : 'none' }} />
-      {avail.afterpay && (
-        <button type="button" className="wallet-btn afterpay" onClick={onAfterpayClick} aria-label="Pay with Afterpay">Pay with Afterpay</button>
-      )}
+      <div ref={afterpayRef} className="wallet-slot afterpay-slot" style={{ display: avail.afterpay ? 'block' : 'none' }} />
       <div className="or">or pay by card</div>
     </div>
   );

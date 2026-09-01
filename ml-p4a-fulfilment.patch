@@ -1,0 +1,227 @@
+From 0585158dbf878b7f594bc5a7ca400e5eb3187684 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 30 Aug 2026 05:42:03 +0000
+Subject: [PATCH] Phase 4a: per-store fulfilment toggles (dine-in / takeaway /
+ reservations)
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Each store now offers only the order types it should. locations.js resolves a
+per-store fulfilment {dineIn,takeaway,reservations}: an explicit per-store toggle
+wins, else a default from the store type — Physical = all three, Pop-up =
+takeaway only, Event = dine-in/booths only. (The 'event' type is recognised now;
+its free/no-payment ordering lands in the next phase.)
+
+- publicList() exposes each store's fulfilment.
+- OrderTypeBar shows only the allowed choices, and when a store offers a single
+  order type it drops the segmented toggle and goes straight to that flow (a
+  takeaway-only pop-up lands directly on the takeaway timing).
+- App keeps the selected order type valid when you switch stores (a stale
+  'Dine in' can't persist onto a takeaway-only pop-up).
+- Admin Locations: 'Order types offered at this store' checkboxes per store,
+  defaulting to the type's defaults and overridable — so a pop-up CAN switch on
+  dine-in/tables for a booth setup.
+
+Backward compatible: a single-site deploy (and any store with no overrides) keeps
+all three order types.
+---
+ client/src/App.jsx                     | 19 +++++++++++-
+ client/src/components/Admin.jsx        | 22 ++++++++++++++
+ client/src/components/OrderTypeBar.jsx | 42 +++++++++++++++++---------
+ server/lib/locations.js                | 29 ++++++++++++++++--
+ 4 files changed, 94 insertions(+), 18 deletions(-)
+
+diff --git a/client/src/App.jsx b/client/src/App.jsx
+index 7da5207..0deb06d 100644
+--- a/client/src/App.jsx
++++ b/client/src/App.jsx
+@@ -365,6 +365,22 @@ export default function App() {
+   const chosenLocation = ((config && config.locations) || []).find((l) => l.id === locationId)
+     || ((config && config.locations) || [])[0] || null;
+ 
++  // Which order types the chosen store offers (default: all, for single-site).
++  const fulfil = (chosenLocation && chosenLocation.fulfilment) || { dineIn: true, takeaway: true, reservations: true };
++  // Keep the selected order type valid for the chosen store: a takeaway-only
++  // pop-up must never sit on a stale "Dine in" choice, and a booth-only event
++  // must never sit on "Takeaway".
++  useEffect(() => {
++    if (!chosenLocation) return;
++    if (dineIn === true && !fulfil.dineIn) setDineIn(false);
++    else if (dineIn === false && !fulfil.takeaway && fulfil.dineIn) setDineIn(true);
++    else if (dineIn == null) {
++      if (fulfil.takeaway && !fulfil.dineIn) setDineIn(false);      // takeaway-only
++      else if (fulfil.dineIn && !fulfil.takeaway) setDineIn(true);  // dine-in/booths-only
++    }
++    // eslint-disable-next-line react-hooks/exhaustive-deps
++  }, [locationId, fulfil.dineIn, fulfil.takeaway]);
++
+   // Single-layout default: activate the FIRST top-nav category (e.g. Coffee) so
+   // its dock tile renders active on load showing its real live count, and the
+   // Coffee items are what's shown. Config + menu load separately, so this waits
+@@ -1423,7 +1439,8 @@ export default function App() {
+             {!(wide && view === 'checkout') && (
+               <OrderTypeBar dineIn={dineIn} setDineIn={setDineIn} table={table} setTable={setTable} lock={tableLock} onUnlock={unlockTable} onScanned={applyScannedTable}
+                 when={preWhen} setWhen={setPreWhen} at={preAt} setAt={setPreAt} hours={config.hours}
+-                onReserve={config.reservations ? () => setView('reserve') : null} />
++                allowDineIn={fulfil.dineIn} allowTakeaway={fulfil.takeaway}
++                onReserve={(config.reservations && fulfil.reservations) ? () => setView('reserve') : null} />
+             )}
+             <div className="search">
+               <input placeholder="Search the menu…" value={query} onChange={(e) => setQuery(e.target.value)} />
+diff --git a/client/src/components/Admin.jsx b/client/src/components/Admin.jsx
+index 635ab6b..25efe01 100644
+--- a/client/src/components/Admin.jsx
++++ b/client/src/components/Admin.jsx
+@@ -3264,6 +3264,28 @@ export default function Admin({ onExit }) {
+                           </div>
+                         )}
+ 
++                        {(() => {
++                          const defs = l.type === 'popup' ? { dineIn: false, takeaway: true, reservations: false }
++                            : l.type === 'event' ? { dineIn: true, takeaway: false, reservations: false }
++                            : { dineIn: true, takeaway: true, reservations: true };
++                          const f = l.fulfilment || {};
++                          const eff = (k) => (f[k] != null ? !!f[k] : defs[k]);
++                          const setF = (k, v) => updLoc(l.id, { fulfilment: { ...(l.fulfilment || {}), [k]: v } });
++                          return (
++                            <div className="field" style={{ margin: 0 }}>
++                              <span>Order types offered at this store</span>
++                              <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', marginTop: 4 }}>
++                                <label className="switch"><input type="checkbox" checked={eff('dineIn')} onChange={(e) => setF('dineIn', e.target.checked)} /> <span>Dine in / tables</span></label>
++                                <label className="switch"><input type="checkbox" checked={eff('takeaway')} onChange={(e) => setF('takeaway', e.target.checked)} /> <span>Takeaway</span></label>
++                                <label className="switch"><input type="checkbox" checked={eff('reservations')} onChange={(e) => setF('reservations', e.target.checked)} /> <span>Reservations</span></label>
++                              </div>
++                              <p className="muted" style={{ fontSize: 'var(--fs-xs)', margin: '4px 0 0' }}>
++                                Defaults follow the store type; tick to override. A pop-up is takeaway-only unless you switch dine-in/tables on.
++                              </p>
++                            </div>
++                          );
++                        })()}
++
+                         <details className="loc-avail">
+                           <summary>Opening hours for {l.name || 'this store'}{(l.hours && Object.keys(l.hours).length) ? ' (custom)' : ' (using Square hours)'}</summary>
+                           <label className="switch" style={{ margin: '6px 0' }}>
+diff --git a/client/src/components/OrderTypeBar.jsx b/client/src/components/OrderTypeBar.jsx
+index 5317f7e..86e0de5 100644
+--- a/client/src/components/OrderTypeBar.jsx
++++ b/client/src/components/OrderTypeBar.jsx
+@@ -2,7 +2,7 @@ import React from 'react';
+ import { TableLockPill, TableEntry } from './TableControls.jsx';
+ import ScheduleWhen from './ScheduleWhen.jsx';
+ 
+-export default function OrderTypeBar({ dineIn, setDineIn, table, setTable, lock, onUnlock, onScanned, when, setWhen, at, setAt, hours, onReserve }) {
++export default function OrderTypeBar({ dineIn, setDineIn, table, setTable, lock, onUnlock, onScanned, when, setWhen, at, setAt, hours, onReserve, allowDineIn = true, allowTakeaway = true, dineInLabel = 'Dine in' }) {
+   const storeOpen = hours?.open !== false;
+   // Stage 2 — scanned: prominent solid pill only, no toggle.
+   if (lock >= 2 && dineIn && table) {
+@@ -13,22 +13,34 @@ export default function OrderTypeBar({ dineIn, setDineIn, table, setTable, lock,
+     );
+   }
+ 
++  // How many order-type choices this store actually offers. With a single
++  // option there's nothing to toggle, so the segmented bar is hidden and we go
++  // straight to that option's controls (table entry, or takeaway timing).
++  const choiceCount = (allowDineIn ? 1 : 0) + (allowTakeaway ? 1 : 0) + (onReserve ? 1 : 0);
++  const showSeg = choiceCount > 1;
++
+   return (
+     <section className="ordertype">
+-      <div className={`segmented ${onReserve ? 'three' : ''}`}>
+-        <button className={dineIn === true ? 'seg active' : 'seg'} disabled={!storeOpen}
+-          onClick={() => storeOpen && setDineIn(true)} type="button"
+-          style={!storeOpen ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}>
+-          {storeOpen ? 'Dine in' : 'Dine in · Closed'}
+-        </button>
+-        <button className={dineIn === false ? 'seg active' : 'seg'} onClick={() => setDineIn(false)} type="button">
+-          Takeaway
+-        </button>
+-        {onReserve && (
+-          <button className="seg" onClick={onReserve} type="button">Reserve a table</button>
+-        )}
+-      </div>
+-      {dineIn === null && <p className="muted" style={{ fontSize: 12, margin: 0 }}>Choose dine in or takeaway to continue.</p>}
++      {showSeg && (
++        <div className={`segmented ${(allowDineIn && onReserve) ? 'three' : ''}`}>
++          {allowDineIn && (
++            <button className={dineIn === true ? 'seg active' : 'seg'} disabled={!storeOpen}
++              onClick={() => storeOpen && setDineIn(true)} type="button"
++              style={!storeOpen ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}>
++              {storeOpen ? dineInLabel : `${dineInLabel} · Closed`}
++            </button>
++          )}
++          {allowTakeaway && (
++            <button className={dineIn === false ? 'seg active' : 'seg'} onClick={() => setDineIn(false)} type="button">
++              Takeaway
++            </button>
++          )}
++          {onReserve && (
++            <button className="seg" onClick={onReserve} type="button">Reserve a table</button>
++          )}
++        </div>
++      )}
++      {showSeg && dineIn === null && <p className="muted" style={{ fontSize: 12, margin: 0 }}>Choose {allowDineIn ? `${dineInLabel.toLowerCase()} or ` : ''}takeaway to continue.</p>}
+       {dineIn === true && (
+         <TableEntry lock={lock} table={table} setTable={setTable} onUnlock={onUnlock} onScanned={onScanned} />
+       )}
+diff --git a/server/lib/locations.js b/server/lib/locations.js
+index 736402e..a9b5f3a 100644
+--- a/server/lib/locations.js
++++ b/server/lib/locations.js
+@@ -48,6 +48,25 @@ function popupState(l, today = todayISO()) {
+   return 'live';
+ }
+ 
++// Fulfilment options for a location: each store's own toggle if set, else a
++// sensible default from its type. Physical = dine-in + takeaway + reservations;
++// Pop-up = takeaway only (tick dine-in on if it has a table/booth setup);
++// Event = booth/table ordering only (free), no takeaway or reservations.
++function typeFulfilmentDefaults(type) {
++  if (type === 'popup') return { dineIn: false, takeaway: true, reservations: false };
++  if (type === 'event') return { dineIn: true, takeaway: false, reservations: false };
++  return { dineIn: true, takeaway: true, reservations: true };
++}
++function fulfilmentFor(l) {
++  const def = typeFulfilmentDefaults(l && l.type);
++  const f = (l && l.fulfilment) || {};
++  return {
++    dineIn: f.dineIn != null ? !!f.dineIn : def.dineIn,
++    takeaway: f.takeaway != null ? !!f.takeaway : def.takeaway,
++    reservations: f.reservations != null ? !!f.reservations : def.reservations,
++  };
++}
++
+ // The configured locations, always non-empty. A blank squareLocationId falls
+ // back to the env default so a half-configured second location can't misroute
+ // money. Carries the full per-store config (hours, weather, pop-up window,
+@@ -74,7 +93,10 @@ function list() {
+     address: l.address || '',
+     active: l.active !== false,
+     hiddenItemIds: Array.isArray(l.hiddenItemIds) ? l.hiddenItemIds : [],
+-    type: l.type === 'popup' ? 'popup' : 'physical',
++    type: (l.type === 'popup' || l.type === 'event') ? l.type : 'physical',
++    // Per-store fulfilment overrides ({ dineIn, takeaway, reservations }); any
++    // key left undefined falls back to the type default (see fulfilmentFor).
++    fulfilment: (l.fulfilment && typeof l.fulfilment === 'object') ? l.fulfilment : null,
+     startDate: l.startDate || '',
+     endDate: l.endDate || '',
+     // Per-store weekly hours ({ MON:[{open,close}], … }); blank → falls back to
+@@ -136,11 +158,14 @@ function publicList() {
+       status: state,
+       daysUntilOpen: (l.type === 'popup' && l.startDate) ? Math.max(0, dayDiff(today, l.startDate)) : null,
+       hasStorePage: !!l.storePage,
++      // Which order types this store offers, so the app can show only the
++      // relevant choices (e.g. takeaway-only at a pop-up).
++      fulfilment: fulfilmentFor(l),
+     };
+   });
+ }
+ 
+ module.exports = {
+   list, active, resolve, squareIdFor, hiddenSet, publicList, slug,
+-  popupState, todayISO, dayDiff,
++  popupState, todayISO, dayDiff, fulfilmentFor, typeFulfilmentDefaults,
+ };
+-- 
+2.43.0
+

@@ -1,0 +1,232 @@
+From 7532c83f9cc07a8503f76eaf5269eeb19eeb6a85 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 30 Aug 2026 09:43:45 +0000
+Subject: [PATCH] Smart Campaigns: image fit controls, app-category product
+ picker, per-store targeting
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- Add cover/contain/fill fit control for homepage + category artwork, applied
+  in the admin preview and on the customer hero + category banners.
+- Replace the 'When tapped → Specific product' picker (which listed every raw
+  Square catalogue item) with the banner-builder picker: app categories →
+  product-builder products, so a tap loads the key product ready to add to cart.
+  Shared by the hero and category placements.
+- Add per-store targeting to each campaign ('All stores' or tick specific
+  stores; unticked stores excluded), matching the banner builder. Filtered
+  client-side for hero slides and per-category banners.
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_0187Jj4Q77V4UPawzEh9gsGr
+---
+ client/src/App.jsx                   | 20 ++++++++---
+ client/src/components/Admin.jsx      | 52 ++++++++++++++++++++++++----
+ client/src/components/HeroSlider.jsx |  2 +-
+ client/src/components/MenuList.jsx   |  2 +-
+ server/lib/smartCampaigns.js         |  8 +++++
+ 5 files changed, 71 insertions(+), 13 deletions(-)
+
+diff --git a/client/src/App.jsx b/client/src/App.jsx
+index ae8dca4..2e9fee6 100644
+--- a/client/src/App.jsx
++++ b/client/src/App.jsx
+@@ -1038,12 +1038,22 @@ export default function App() {
+   const seasonBanner = eventSeasonal?.banner || null;
+   // Smart Campaign banners (resolved server-side) go FIRST, then the seasonal
+   // banner, then the normal shop banners — an insertion, never a replacement.
+-  const smartSlides = (config.smartCampaigns && config.smartCampaigns.heroSlides) || [];
+-  // Per-store banner targeting: a hero slide with a non-empty `locations` list
++  // Per-store banner targeting: a slide/banner with a non-empty `locations` list
+   // shows only at those stores (e.g. hide a kitchen special at a no-kitchen
+-  // pop-up); an empty/absent list shows everywhere.
++  // pop-up); an empty/absent list shows everywhere. Applies to normal shop
++  // banners AND Smart-Campaign placements (hero + per-category).
+   const bannerLocId = (chosenLocation && chosenLocation.id) || locationId || '';
+-  const shopSlides = (config.hero || []).filter((sl) => !Array.isArray(sl.locations) || sl.locations.length === 0 || sl.locations.includes(bannerLocId));
++  const atThisStore = (x) => !x || !Array.isArray(x.locations) || x.locations.length === 0 || x.locations.includes(bannerLocId);
++  const smartSlides = ((config.smartCampaigns && config.smartCampaigns.heroSlides) || []).filter(atThisStore);
++  const shopSlides = (config.hero || []).filter(atThisStore);
++  // Per-category Smart-Campaign banners, filtered to the chosen store.
++  const smartByCategoryForStore = (() => {
++    const src = (config.smartCampaigns && config.smartCampaigns.byCategory) || null;
++    if (!src) return src;
++    const out = {};
++    for (const k of Object.keys(src)) if (atThisStore(src[k])) out[k] = src[k];
++    return out;
++  })();
+   const heroSlides = [
+     ...smartSlides,
+     ...(seasonBanner ? [{ id: 'season-banner', ...seasonBanner }] : []),
+@@ -1475,7 +1485,7 @@ export default function App() {
+               scrollKey={scrollTick}
+               onScrolled={() => setActiveCat(null)}
+               kitchenClosedCats={kitchenClosedCats}
+-              smartByCategory={config.smartCampaigns && config.smartCampaigns.byCategory}
++              smartByCategory={smartByCategoryForStore}
+               onSmartLink={onBannerLink}
+             />
+             {!isMobile && <InstallButton />}
+diff --git a/client/src/components/Admin.jsx b/client/src/components/Admin.jsx
+index 0546bcc..415ae23 100644
+--- a/client/src/components/Admin.jsx
++++ b/client/src/components/Admin.jsx
+@@ -2893,9 +2893,9 @@ export default function Admin({ onExit }) {
+                 id: newId(), name: 'New weather campaign', internal_description: '', active: true, priority: 20,
+                 trigger_type: 'weather', weather_source: 'current', comparison_operator: 'gte', threshold_min: 28, threshold_max: 33,
+                 active_days: [], active_start_time: '', active_end_time: '', start_date: '', end_date: '',
+-                homepage_enabled: true, homepage_artwork: '', homepage_mobile_artwork: '', homepage_title: '', homepage_subtitle: '', homepage_alt_text: '', homepage_position: 'first',
+-                category_enabled: false, category_id: '', category_artwork: '', category_mobile_artwork: '', category_title: '', category_position: 'before',
+-                destination_type: 'category', destination_id: '', destination_url: '', cta_text: '', created_at: nowIso(), updated_at: nowIso(),
++                homepage_enabled: true, homepage_artwork: '', homepage_mobile_artwork: '', homepage_title: '', homepage_subtitle: '', homepage_alt_text: '', homepage_position: 'first', homepage_fit: 'cover',
++                category_enabled: false, category_id: '', category_artwork: '', category_mobile_artwork: '', category_title: '', category_position: 'before', category_fit: 'cover',
++                destination_type: 'category', destination_id: '', destination_label: '', destination_url: '', cta_text: '', locations: [], created_at: nowIso(), updated_at: nowIso(),
+               });
+               const addCampaign = () => { const c = blankCampaign(); setCampaigns([...campaigns, c]); setCampEditId(c.id); };
+               const updateCampaign = (id, patch) => setCampaigns(campaigns.map((c) => (c.id === id ? { ...c, ...patch, updated_at: nowIso() } : c)));
+@@ -3103,12 +3103,18 @@ export default function Admin({ onExit }) {
+                             <>
+                               <div className="muted" style={{ fontSize: 'var(--fs-sm)', margin: '6px 0' }}>Shows first on the homepage (before the seasonal banner). Big 3:2 artwork.</div>
+                               <div className="camp-art">
+-                                {c.homepage_artwork ? <img src={imgUrl(c.homepage_artwork, 400)} alt="" /> : <span className="camp-art-ph">No artwork</span>}
++                                {c.homepage_artwork ? <img src={imgUrl(c.homepage_artwork, 400)} alt="" style={{ objectFit: c.homepage_fit || 'cover' }} /> : <span className="camp-art-ph">No artwork</span>}
+                                 <div className="camp-art-btns">
+                                   <label className="btn ghost" style={{ padding: '7px 12px' }}><input type="file" accept="image/*" hidden onChange={uploadTo('homepage_artwork')} />{c.homepage_artwork ? 'Replace' : 'Upload'}</label>
+                                   {c.homepage_artwork && <button type="button" className="btn ghost" style={{ padding: '7px 12px' }} onClick={() => up({ homepage_artwork: '' })}>Remove</button>}
+                                 </div>
+                               </div>
++                              <label className="field" style={{ marginTop: 10 }}><span>Image fit</span>
++                                <select value={c.homepage_fit || 'cover'} onChange={(e) => up({ homepage_fit: e.target.value })}>
++                                  <option value="cover">Cover — fill the banner, crop overflow</option>
++                                  <option value="contain">Contain — show the whole image (letterboxed)</option>
++                                  <option value="fill">Fill — stretch to the banner shape</option>
++                                </select></label>
+                               <label className="field" style={{ marginTop: 10 }}><span>Title (optional overlay)</span><input value={c.homepage_title || ''} onChange={(e) => up({ homepage_title: e.target.value })} /></label>
+                               <label className="field" style={{ marginTop: 10 }}><span>Subtitle (optional)</span><input value={c.homepage_subtitle || ''} onChange={(e) => up({ homepage_subtitle: e.target.value })} /></label>
+                               <label className="field" style={{ marginTop: 10 }}><span>Alt text (accessibility)</span><input value={c.homepage_alt_text || ''} onChange={(e) => up({ homepage_alt_text: e.target.value })} placeholder={c.name} /></label>
+@@ -3116,7 +3122,15 @@ export default function Admin({ onExit }) {
+                               <label className="field" style={{ marginTop: 10 }}><span>When tapped</span>
+                                 <select value={c.destination_type} onChange={(e) => up({ destination_type: e.target.value })}>{Object.entries(DESTS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></label>
+                               {c.destination_type === 'category' && <label className="field" style={{ marginTop: 8 }}><span>Category</span><select value={c.destination_id || ''} onChange={(e) => up({ destination_id: e.target.value })}><option value="">— pick a category —</option>{scheduleCatOptions.map((n) => <option key={n} value={n}>{n}</option>)}</select></label>}
+-                              {c.destination_type === 'item' && <div style={{ marginTop: 8 }}>{renderSourcePicker('campdest-' + c.id, c.destination_id, (id) => up({ destination_id: id }))}</div>}
++                              {c.destination_type === 'item' && <label className="field" style={{ marginTop: 8 }}><span>Product (loads ready to add to cart)</span>
++                                <select value={c.destination_id || ''} onChange={(e) => { const opt = e.target.selectedOptions[0]; up({ destination_id: e.target.value, destination_label: opt ? opt.text : '' }); }}>
++                                  <option value="">{adminCat.length ? '— pick a product —' : 'Loading products…'}</option>
++                                  {adminCat.map((cc) => (
++                                    <optgroup key={cc.category} label={cc.category}>
++                                      {cc.items.map((it) => <option key={it.id} value={it.id}>{it.name}</option>)}
++                                    </optgroup>
++                                  ))}
++                                </select></label>}
+                               {c.destination_type === 'url' && <label className="field" style={{ marginTop: 8 }}><span>Web link</span><input value={c.destination_url || ''} onChange={(e) => up({ destination_url: e.target.value })} placeholder="https://…" /></label>}
+                             </>
+                           )}
+@@ -3132,12 +3146,18 @@ export default function Admin({ onExit }) {
+                               <div className="muted" style={{ fontSize: 'var(--fs-sm)', margin: '6px 0' }}>A slim banner inside a category. Uses <strong>separate</strong> artwork (4:1) &mdash; it never overwrites the category&rsquo;s own banner.</div>
+                               <label className="field"><span>Category</span><select value={c.category_id || ''} onChange={(e) => up({ category_id: e.target.value })}><option value="">— pick a category —</option>{scheduleCatOptions.map((n) => <option key={n} value={n}>{n}</option>)}</select></label>
+                               <div className="camp-art" style={{ marginTop: 10 }}>
+-                                {c.category_artwork ? <img src={imgUrl(c.category_artwork, 400)} alt="" /> : <span className="camp-art-ph">No slim artwork</span>}
++                                {c.category_artwork ? <img src={imgUrl(c.category_artwork, 400)} alt="" style={{ objectFit: c.category_fit || 'cover' }} /> : <span className="camp-art-ph">No slim artwork</span>}
+                                 <div className="camp-art-btns">
+                                   <label className="btn ghost" style={{ padding: '7px 12px' }}><input type="file" accept="image/*" hidden onChange={uploadTo('category_artwork')} />{c.category_artwork ? 'Replace' : 'Upload'}</label>
+                                   {c.category_artwork && <button type="button" className="btn ghost" style={{ padding: '7px 12px' }} onClick={() => up({ category_artwork: '' })}>Remove</button>}
+                                 </div>
+                               </div>
++                              <label className="field" style={{ marginTop: 10 }}><span>Image fit</span>
++                                <select value={c.category_fit || 'cover'} onChange={(e) => up({ category_fit: e.target.value })}>
++                                  <option value="cover">Cover — fill the banner, crop overflow</option>
++                                  <option value="contain">Contain — show the whole image (letterboxed)</option>
++                                  <option value="fill">Fill — stretch to the banner shape</option>
++                                </select></label>
+                               <label className="field" style={{ marginTop: 10 }}><span>Title (optional overlay)</span><input value={c.category_title || ''} onChange={(e) => up({ category_title: e.target.value })} /></label>
+                               <label className="field" style={{ marginTop: 10 }}><span>Placement</span>
+                                 <select value={c.category_position || 'before'} onChange={(e) => up({ category_position: e.target.value })}>
+@@ -3149,6 +3169,26 @@ export default function Admin({ onExit }) {
+                           )}
+                         </div>
+ 
++                        {locs.length > 1 && (
++                          <div className="card" style={card}>
++                            <div className="group-title">6 · Show at</div>
++                            <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 0 }}>Which stores this campaign runs at. Leave <strong>All stores</strong> on to run everywhere, or tick specific stores to limit it — the unticked stores are excluded.</p>
++                            <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginTop: 8 }}>
++                              <label className="avail-switch"><input type="checkbox" checked={!(Array.isArray(c.locations) && c.locations.length)} onChange={() => up({ locations: [] })} /><span>All stores</span></label>
++                              {locs.map((l) => {
++                                const sel = (c.locations || []).includes(l.id);
++                                return (
++                                  <label key={l.id} className="avail-switch"><input type="checkbox" checked={sel} onChange={(e) => {
++                                    const cur = new Set(c.locations || []);
++                                    e.target.checked ? cur.add(l.id) : cur.delete(l.id);
++                                    up({ locations: [...cur] });
++                                  }} /><span>{l.name || l.id}</span></label>
++                                );
++                              })}
++                            </div>
++                          </div>
++                        )}
++
+                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+                           <button type="button" className="btn ghost" onClick={() => setCampEditId(null)}>← Back</button>
+                           <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>Press <strong>Save changes</strong> to make it live.</span>
+diff --git a/client/src/components/HeroSlider.jsx b/client/src/components/HeroSlider.jsx
+index afc12da..565e593 100644
+--- a/client/src/components/HeroSlider.jsx
++++ b/client/src/components/HeroSlider.jsx
+@@ -70,7 +70,7 @@ export default function HeroSlider({ hero, onLink, ratio, autoplay = true, inter
+               style={raw ? { color: s.textColor || '#fff' } : { background: s.bg, color: s.textColor || '#fff' }}
+               onClick={() => onLink(s.link, s)}
+             >
+-              {raw && <img className="hero-img" src={src} alt={s.title || ''} loading={eager ? 'eager' : 'lazy'} fetchpriority={eager ? 'high' : 'auto'} decoding="async" />}
++              {raw && <img className="hero-img" src={src} alt={s.title || ''} style={s.fit ? { objectFit: s.fit === 'fill' ? 'fill' : s.fit } : undefined} loading={eager ? 'eager' : 'lazy'} fetchpriority={eager ? 'high' : 'auto'} decoding="async" />}
+               {hasCopy && (
+                 <div className="hero-copy">
+                   {s.title && <h3>{s.title}</h3>}
+diff --git a/client/src/components/MenuList.jsx b/client/src/components/MenuList.jsx
+index adcaad4..fa8a0c9 100644
+--- a/client/src/components/MenuList.jsx
++++ b/client/src/components/MenuList.jsx
+@@ -64,7 +64,7 @@ export default function MenuList({ categories, currency, onPick, scrollTo, scrol
+             const smartEl = smart && smart.image ? (
+               <button type="button" className="feature-banner weather-banner"
+                 onClick={() => onSmartLink && onSmartLink(smart.link, smart)}
+-                style={{ backgroundImage: `url(${imgUrl(smart.image, 900)})` }}>
++                style={{ backgroundImage: `url(${imgUrl(smart.image, 900)})`, ...(smart.fit && smart.fit !== 'cover' ? { backgroundSize: smart.fit === 'fill' ? '100% 100%' : 'contain', backgroundRepeat: 'no-repeat', backgroundPosition: 'center' } : null) }}>
+                 {(smart.title || smart.cta) && (
+                   <span className="feature-banner-body">
+                     {smart.title && <span className="feature-banner-title">{smart.title}</span>}
+diff --git a/server/lib/smartCampaigns.js b/server/lib/smartCampaigns.js
+index a7c1f79..d77742f 100644
+--- a/server/lib/smartCampaigns.js
++++ b/server/lib/smartCampaigns.js
+@@ -107,6 +107,9 @@ function destToLink(c) {
+ // One campaign → its homepage slide + category placement (shared by the live
+ // resolver and the admin preview, so a preview looks exactly like the real thing).
+ function campaignToSlides(c, { heroSlides, byCategory }) {
++  // Per-store targeting: an empty/absent list means "all stores"; a non-empty
++  // list limits the placement to those location ids (the frontend filters on it).
++  const locations = Array.isArray(c.locations) ? c.locations.filter(Boolean) : [];
+   if (c.homepage_enabled && c.homepage_artwork) {
+     heroSlides.push({
+       id: `smart-${c.id}`,
+@@ -117,6 +120,9 @@ function campaignToSlides(c, { heroSlides, byCategory }) {
+       image: c.homepage_artwork,
+       mobileImage: c.homepage_mobile_artwork || '',
+       alt: c.homepage_alt_text || c.name || '',
++      // How the artwork fills the banner box: cover (default) | contain | fill.
++      fit: c.homepage_fit || 'cover',
++      locations,
+       link: destToLink(c),
+     });
+   }
+@@ -129,6 +135,8 @@ function campaignToSlides(c, { heroSlides, byCategory }) {
+         mobileImage: c.category_mobile_artwork || '',
+         title: c.category_title || '',
+         cta: c.cta_text || '',
++        fit: c.category_fit || 'cover',
++        locations,
+         link: destToLink(c),
+         position: c.category_position || 'before', // before | after | replace
+       };
+-- 
+2.43.0
+

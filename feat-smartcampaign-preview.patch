@@ -1,0 +1,239 @@
+From 854610a56452436dbc145556aee027111aba49f5 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 30 Aug 2026 09:14:46 +0000
+Subject: [PATCH] Smart Campaigns: 'Preview on homepage (5 min)' button
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+A campaign editor button that forces the campaign onto the live homepage for 5
+minutes so the owner can see it exactly as customers would — regardless of the
+weather rules, and without touching saved campaigns.
+
+- smartCampaigns.js: a shared campaignToSlides() builder + an in-memory,
+  auto-expiring preview (setPreview/activePreview/previewPlan). Never persisted.
+- /api/config injects the preview banner first (winning over normal weather
+  resolution, and working even with no campaigns configured yet); dedupes if the
+  same campaign is already showing. New endpoints POST /api/admin/smartcampaigns/
+  preview and .../preview/stop.
+- Admin: the button posts the campaign being edited (its artwork is already
+  uploaded, so it previews even before you Save) and opens the homepage in a new
+  tab. Preview ignores the paused/active toggle so you can test a draft.
+---
+ client/src/components/Admin.jsx | 22 ++++++--
+ server/index.js                 | 42 ++++++++++++---
+ server/lib/smartCampaigns.js    | 93 ++++++++++++++++++++++-----------
+ 3 files changed, 117 insertions(+), 40 deletions(-)
+
+diff --git a/client/src/components/Admin.jsx b/client/src/components/Admin.jsx
+index ce1a5f7..f7ddda3 100644
+--- a/client/src/components/Admin.jsx
++++ b/client/src/components/Admin.jsx
+@@ -3032,10 +3032,24 @@ export default function Admin({ onExit }) {
+                     return (
+                       <>
+                         <div className="card" style={card}>
+-                          <button type="button" className="link" onClick={() => setCampEditId(null)} style={{ fontSize: 'var(--fs-base)' }}>← Back to campaigns</button>
+-                          {matchNow != null && (
+-                            <span className={`camp-pill ${matchNow ? 'live' : 'off'}`} style={{ float: 'right' }}>{matchNow ? 'Would show now' : 'Would not show now'}</span>
+-                          )}
++                          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
++                            <button type="button" className="link" onClick={() => setCampEditId(null)} style={{ fontSize: 'var(--fs-base)' }}>← Back to campaigns</button>
++                            <button type="button" className="btn ghost" style={{ marginLeft: 'auto', padding: '7px 12px', fontSize: 'var(--fs-base)' }}
++                              title="Force this campaign onto your live homepage for 5 minutes so you can see it — doesn't change your saved campaigns or the weather rules."
++                              onClick={async () => {
++                                if (!c.homepage_artwork) { alert('Add homepage artwork first, then preview.'); return; }
++                                try {
++                                  const r = await fetch(`/api/admin/smartcampaigns/preview?pass=${encodeURIComponent(pass)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ campaign: c, minutes: 5 }) });
++                                  const d = await r.json();
++                                  if (!r.ok) throw new Error(d.error || 'Preview failed');
++                                  window.open('/', '_blank', 'noopener');
++                                  alert('Live on your homepage for 5 minutes — check the new tab. This is only a preview: it doesn’t change your saved campaigns or weather rules, and it clears itself.');
++                                } catch (e) { alert('Preview failed: ' + e.message); }
++                              }}>Preview on homepage (5 min)</button>
++                            {matchNow != null && (
++                              <span className={`camp-pill ${matchNow ? 'live' : 'off'}`}>{matchNow ? 'Would show now' : 'Would not show now'}</span>
++                            )}
++                          </div>
+                           {/* 1 · Campaign */}
+                           <div className="group-title" style={{ marginTop: 8 }}>1 · Campaign</div>
+                           <label className="field"><span>Name</span><input value={c.name || ''} onChange={(e) => up({ name: e.target.value })} placeholder="Hot Day Smoothies" /></label>
+diff --git a/server/index.js b/server/index.js
+index f2bbe9e..7a06ea0 100644
+--- a/server/index.js
++++ b/server/index.js
+@@ -129,14 +129,27 @@ app.get('/api/config', async (_req, res) => {
+     // as plain data. Empty (no-op) when no weather campaign is active — behaviour
+     // is then identical to before. Never blocks: weather is cached/bounded.
+     smartCampaigns: await (async () => {
++      // Admin "Preview on homepage" forces one campaign to the top for a few
++      // minutes regardless of weather — it wins over the normal resolution.
++      const pv = smartCampaigns.previewPlan();
+       const sc = settings.smartCampaigns || {};
+       const hasCampaigns = Array.isArray(sc.weather) && sc.weather.some((c) => c && c.active !== false && (c.homepage_enabled || c.category_enabled));
+-      if (!hasCampaigns) return { heroSlides: [], byCategory: {} };
+-      let wx = null; try { wx = await weather.forConfig(); } catch {}
+-      try {
+-        const plan = smartCampaigns.resolveSmartPlacements({ settings, weather: wx, now: catalog.venueNow() });
+-        return { heroSlides: plan.heroSlides, byCategory: plan.byCategory };
+-      } catch (e) { console.warn('[smartCampaigns] resolve failed:', e.message); return { heroSlides: [], byCategory: {} }; }
++      if (!hasCampaigns && !pv) return { heroSlides: [], byCategory: {} };
++      let heroSlides = []; let byCategory = {};
++      if (hasCampaigns) {
++        let wx = null; try { wx = await weather.forConfig(); } catch {}
++        try {
++          const plan = smartCampaigns.resolveSmartPlacements({ settings, weather: wx, now: catalog.venueNow() });
++          heroSlides = plan.heroSlides; byCategory = plan.byCategory;
++        } catch (e) { console.warn('[smartCampaigns] resolve failed:', e.message); }
++      }
++      if (pv) {
++        // Preview banner first; drop any normal slide for the same campaign so it
++        // isn't shown twice.
++        heroSlides = [...pv.heroSlides, ...heroSlides.filter((s) => s.campaignId !== pv.campaignId)];
++        byCategory = { ...byCategory, ...pv.byCategory };
++      }
++      return { heroSlides, byCategory, previewUntil: pv ? pv.until : undefined };
+     })(),
+     hours: hoursStatus,
+     scheduling: {
+@@ -1397,6 +1410,23 @@ app.post('/api/admin/weather/refresh', async (req, res) => {
+   try { res.json({ weather: await weather.getWeather({ force }), refreshed: force }); }
+   catch (e) { res.json({ weather: { ok: false, reason: e.message } }); }
+ });
++// ---- Admin: Smart Campaign homepage preview (force one to the top for a few
++//      minutes so the owner can see it live, regardless of the weather). ----
++app.post('/api/admin/smartcampaigns/preview', (req, res) => {
++  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
++  try {
++    const { campaign, minutes } = req.body || {};
++    if (!campaign || !campaign.homepage_artwork) return res.status(400).json({ error: 'Add homepage artwork first, then preview.' });
++    const ms = (Number(minutes) > 0 ? Number(minutes) : 5) * 60000;
++    const until = smartCampaigns.setPreview(campaign, ms);
++    res.json({ ok: true, until });
++  } catch (e) { res.status(400).json({ error: e.message }); }
++});
++app.post('/api/admin/smartcampaigns/preview/stop', (req, res) => {
++  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
++  smartCampaigns.clearPreview();
++  res.json({ ok: true });
++});
+ // ---- Admin: sales by store & source (app self-order vs counter POS) ----
+ // Authoritative from Square: completed orders per location, bucketed by day and
+ // classified by order source. Used by the Locations tab's analytics.
+diff --git a/server/lib/smartCampaigns.js b/server/lib/smartCampaigns.js
+index 534622c..a7c1f79 100644
+--- a/server/lib/smartCampaigns.js
++++ b/server/lib/smartCampaigns.js
+@@ -104,46 +104,79 @@ function destToLink(c) {
+   return { type: 'none', value: '' };
+ }
+ 
+-// Turn the active campaigns into a placement plan the frontend consumes as data.
+-function resolveSmartPlacements({ settings, weather, now = catalog.venueNow() }) {
+-  const active = getActiveSmartCampaigns({ settings, weather, now });
+-  const heroSlides = [];
+-  const byCategory = {};
+-  for (const c of active) {
+-    if (c.homepage_enabled && c.homepage_artwork) {
+-      heroSlides.push({
+-        id: `smart-${c.id}`,
++// One campaign → its homepage slide + category placement (shared by the live
++// resolver and the admin preview, so a preview looks exactly like the real thing).
++function campaignToSlides(c, { heroSlides, byCategory }) {
++  if (c.homepage_enabled && c.homepage_artwork) {
++    heroSlides.push({
++      id: `smart-${c.id}`,
++      campaignId: c.id,
++      title: c.homepage_title || '',
++      subtitle: c.homepage_subtitle || '',
++      cta: c.cta_text || '',
++      image: c.homepage_artwork,
++      mobileImage: c.homepage_mobile_artwork || '',
++      alt: c.homepage_alt_text || c.name || '',
++      link: destToLink(c),
++    });
++  }
++  if (c.category_enabled && c.category_id && (c.category_artwork || c.category_title)) {
++    const key = String(c.category_id).toLowerCase();
++    if (!byCategory[key]) {
++      byCategory[key] = {
+         campaignId: c.id,
+-        title: c.homepage_title || '',
+-        subtitle: c.homepage_subtitle || '',
++        image: c.category_artwork || '',
++        mobileImage: c.category_mobile_artwork || '',
++        title: c.category_title || '',
+         cta: c.cta_text || '',
+-        image: c.homepage_artwork,
+-        mobileImage: c.homepage_mobile_artwork || '',
+-        alt: c.homepage_alt_text || c.name || '',
+         link: destToLink(c),
+-      });
+-    }
+-    if (c.category_enabled && c.category_id && (c.category_artwork || c.category_title)) {
+-      const key = String(c.category_id).toLowerCase();
+-      if (!byCategory[key]) {
+-        byCategory[key] = {
+-          campaignId: c.id,
+-          image: c.category_artwork || '',
+-          mobileImage: c.category_mobile_artwork || '',
+-          title: c.category_title || '',
+-          cta: c.cta_text || '',
+-          link: destToLink(c),
+-          position: c.category_position || 'before', // before | after | replace
+-        };
+-      }
++        position: c.category_position || 'before', // before | after | replace
++      };
+     }
+   }
++}
++
++// Turn the active campaigns into a placement plan the frontend consumes as data.
++function resolveSmartPlacements({ settings, weather, now = catalog.venueNow() }) {
++  const active = getActiveSmartCampaigns({ settings, weather, now });
++  const heroSlides = [];
++  const byCategory = {};
++  for (const c of active) campaignToSlides(c, { heroSlides, byCategory });
+   return { heroSlides, byCategory, activeCampaignIds: active.map((c) => c.id) };
+ }
+ 
++// ── Admin preview: force one campaign onto the homepage for a few minutes,
++// regardless of the weather, so the owner can see exactly how it looks. Held in
++// memory (a short-lived test), auto-expiring; never persisted. ──
++let preview = null; // { campaign, until }
++const PREVIEW_MS = 5 * 60 * 1000;
++function setPreview(campaign, ms = PREVIEW_MS) {
++  if (!campaign || typeof campaign !== 'object') throw new Error('No campaign to preview');
++  preview = { campaign, until: Date.now() + Math.max(30000, Math.min(ms, 30 * 60000)) };
++  return preview.until;
++}
++function clearPreview() { preview = null; }
++function activePreview() {
++  if (preview && Date.now() < preview.until) return preview;
++  preview = null;
++  return null;
++}
++// The slide plan for the active preview campaign (empty when no preview).
++function previewPlan() {
++  const p = activePreview();
++  if (!p) return null;
++  const heroSlides = [];
++  const byCategory = {};
++  // Preview ignores active/enabled toggles for the homepage banner so you can
++  // test a paused or still-being-built campaign.
++  campaignToSlides({ ...p.campaign, homepage_enabled: p.campaign.homepage_enabled !== false }, { heroSlides, byCategory });
++  return { heroSlides, byCategory, until: p.until, campaignId: p.campaign.id };
++}
++
+ function _resetStateForTest() { for (const k of Object.keys(onState)) delete onState[k]; }
+ 
+ module.exports = {
+-  getActiveSmartCampaigns, resolveSmartPlacements,
++  getActiveSmartCampaigns, resolveSmartPlacements, campaignToSlides,
++  setPreview, clearPreview, activePreview, previewPlan,
+   rawMatch, scheduleMatch, destToLink, _resetStateForTest,
+ };
+-- 
+2.43.0
+

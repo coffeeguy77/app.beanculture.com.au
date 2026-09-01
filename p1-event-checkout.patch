@@ -1,0 +1,137 @@
+From bf34c42a21ce48fef3782723f75e1a1e6c5717ea Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 30 Aug 2026 15:02:04 +0000
+Subject: [PATCH] Events: strip checkout + hide menu chrome for a tiny menu
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- Event checkout drops the choices events don't need: no Dine in / Takeaway,
+  no When (ASAP/Schedule/Repeat, dates, pay-now/auto-charge), no kitchen notes,
+  no promo / gift / loyalty rows. Just name + mobile → order (address + card
+  only when the cart has paid beans).
+- Hide the search bar when the menu has one item or fewer, and the category
+  dock when there's one section or fewer — so a single event coffee isn't
+  surrounded by empty chrome.
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_0187Jj4Q77V4UPawzEh9gsGr
+---
+ client/src/App.jsx                 | 26 ++++++++++++++++++++------
+ client/src/components/Checkout.jsx | 24 ++++++++++++++----------
+ 2 files changed, 34 insertions(+), 16 deletions(-)
+
+diff --git a/client/src/App.jsx b/client/src/App.jsx
+index cd9121c..62b4dc3 100644
+--- a/client/src/App.jsx
++++ b/client/src/App.jsx
+@@ -1490,12 +1490,26 @@ export default function App() {
+                 allowDineIn={fulfil.dineIn} allowTakeaway={fulfil.takeaway}
+                 onReserve={(config.reservations && fulfil.reservations) ? () => setView('reserve') : null} />
+             )}
+-            <div className="search">
+-              <input placeholder="Search the menu…" value={query} onChange={(e) => setQuery(e.target.value)} />
+-            </div>
+-            {!query && (
+-              <MenuDock categories={dockCategories} active={dockActiveCats} onPick={pickCategory} />
+-            )}
++            {(() => {
++              // A tiny menu (an event's single coffee, say) doesn't need search or a
++              // category dock — they'd just waste space. Hide the search when there's
++              // one item or fewer, and the dock when there's one section or fewer.
++              const totalItems = (menu.categories || []).reduce((n, c) => n + ((c.items && c.items.length) || 0), 0);
++              const oneItem = totalItems <= 1;
++              const oneSection = (menu.categories || []).length <= 1;
++              return (
++                <>
++                  {!oneItem && (
++                    <div className="search">
++                      <input placeholder="Search the menu…" value={query} onChange={(e) => setQuery(e.target.value)} />
++                    </div>
++                  )}
++                  {!query && !oneSection && (
++                    <MenuDock categories={dockCategories} active={dockActiveCats} onPick={pickCategory} />
++                  )}
++                </>
++              );
++            })()}
+             <MenuList
+               categories={filteredMenu}
+               currency={currency}
+diff --git a/client/src/components/Checkout.jsx b/client/src/components/Checkout.jsx
+index f8d020f..6d60961 100644
+--- a/client/src/components/Checkout.jsx
++++ b/client/src/components/Checkout.jsx
+@@ -413,7 +413,7 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
+ 
+       {bigPill ? (
+         <div style={{ marginBottom: 12 }}><TableLockPill table={table} onUnlock={onUnlockTable} /></div>
+-      ) : (
++      ) : eventMode ? null : (
+         <div className="segmented" style={{ marginBottom: 12 }}>
+           <button className={dineIn === true ? 'seg active' : 'seg'} onClick={() => setDineIn(true)} type="button">Dine in</button>
+           <button className={dineIn === false ? 'seg active' : 'seg'} onClick={() => setDineIn(false)} type="button">Takeaway</button>
+@@ -444,7 +444,8 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
+         )}
+       </div>
+ 
+-      {/* When to order */}
++      {/* When to order — hidden at events (ordering is immediate, one tap) */}
++      {!eventMode && (
+       <div className="group" style={{ marginTop: 16 }}>
+         <div className="group-title">When</div>
+         <div className="segmented three">
+@@ -492,12 +493,13 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
+           </div>
+         )}
+       </div>
++      )}
+ 
+       {(isSchedule || isRepeat) && !user?.customerId && (
+         <p className="error-text" style={{ fontSize: 13 }}>Sign in from the Account tab to schedule or repeat an order.</p>
+       )}
+ 
+-      {loyalty?.active && loyalty.tiers?.length > 0 && when === 'asap' && (
++      {!eventMode && loyalty?.active && loyalty.tiers?.length > 0 && when === 'asap' && (
+         <div style={{ marginTop: 16 }}>
+           <div className="group-title">Rewards · {loyalty.balance} {loyalty.terminology?.other || 'points'}</div>
+           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+@@ -511,15 +513,15 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
+         </div>
+       )}
+ 
+-      {pifVoucher && (
++      {!eventMode && pifVoucher && (
+         <div className="pif-applied-row">
+           <span>☕ Coffee gift applied {pifVoucher.remainingCents != null ? `· up to ${formatMoney(pifVoucher.remainingCents, currency)}` : ''}</span>
+           <button type="button" className="link" onClick={() => { onClearPifVoucher && onClearPifVoucher(); setPifError(''); }}>Remove</button>
+         </div>
+       )}
+-      {pifError && <p className="error-text">{pifError}</p>}
++      {!eventMode && pifError && <p className="error-text">{pifError}</p>}
+ 
+-      {when === 'asap' && (
++      {!eventMode && when === 'asap' && (
+         hasCombo ? (
+           <p className="muted" style={{ marginTop: 16, fontSize: 14 }}>Your combo discount is already applied — promo codes can't be combined with a combo deal.</p>
+         ) : hasPif ? (
+@@ -540,10 +542,12 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
+         )
+       )}
+ 
+-      <label className="field" style={{ marginTop: 14 }}>
+-        <span>Notes for the kitchen (optional)</span>
+-        <textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. extra hot, no sugar, allergy info" />
+-      </label>
++      {!eventMode && (
++        <label className="field" style={{ marginTop: 14 }}>
++          <span>Notes for the kitchen (optional)</span>
++          <textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. extra hot, no sugar, allergy info" />
++        </label>
++      )}
+ 
+       {/* Complimentary event order — no payment. */}
+       {isFree && storeFree && (
+-- 
+2.43.0
+

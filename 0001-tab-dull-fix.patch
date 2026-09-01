@@ -1,0 +1,130 @@
+From 7244f73769890b8442d0e1131571e29ee1b75934 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Tue, 1 Sep 2026 14:20:08 +0000
+Subject: [PATCH] Fix category tab going dull on tap (all themes) + festive
+ Christmas dock/header
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Root cause of the 'categories go dull when you press them': the store-shell
+skin has two .dock-tab:hover rules (styles.css) that sit LATER in the file
+than .dock-tab.on with equal specificity, so on touch devices the stuck
+:hover after a tap repaints the ACTIVE tab to the pale --bc-blush-strong /
+--s-card surface. The pre-selected tab (never tapped, no hover) kept its
+highlight, which is why it looked fine until you pressed another category.
+Scope both hover rules :not(.on) so hover never overrides the active tab —
+fixes every theme, verified against a forced-hover render.
+
+Christmas also gets a proper festive dock (evergreen tiles, gold hairlines,
+bright cherry-red active tab, gold count badge) and an evergreen product-
+modal header pane so the cream title is readable instead of sitting on the
+base beige.
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_0187Jj4Q77V4UPawzEh9gsGr
+---
+ client/src/seasonal.css | 55 ++++++++++++++++++++++++++++++++++++++++-
+ client/src/styles.css   |  6 +++--
+ 2 files changed, 58 insertions(+), 3 deletions(-)
+
+diff --git a/client/src/seasonal.css b/client/src/seasonal.css
+index 522813d..364827b 100644
+--- a/client/src/seasonal.css
++++ b/client/src/seasonal.css
+@@ -193,7 +193,13 @@
+ [data-season='christmas'] .item-sheet .sheet-right-head h3 { color: var(--season-cream); }
+ [data-season='christmas'] .item-sheet .tasting-pill { background: rgba(216, 169, 59, 0.16); color: var(--season-gold-light); }
+ [data-season='christmas'] .item-sheet .sheet-right { border-top-color: var(--season-gold); }
+-[data-season='christmas'] .item-sheet .sheet-left { border-right-color: var(--season-gold); }
++/* The header/left pane defaults to a light beige (--bc-blush) from the base
++   store-shell layer, so the cream title read light-on-light. Dress it evergreen
++   so the eyebrow/title/price sit on a rich festive ground and stay legible. */
++[data-season='christmas'] .item-sheet .sheet-left {
++  background: var(--season-green-deep);
++  border-right-color: var(--season-gold);
++}
+ [data-season='christmas'] .item-sheet .sheet-close { background: rgba(0, 0, 0, 0.3); color: var(--season-cream); box-shadow: none; }
+ 
+ /* Option-group headings + the selectable option cards. */
+@@ -221,6 +227,53 @@
+ [data-season='christmas'] .item-sheet .sheet-footer { background: var(--season-green-deep); border-top-color: var(--season-gold); }
+ 
+ 
++/* ── Category dock (the horizontal "Browse the menu" tab strip) ──
++   The store-shell dock hardcodes neutral store tokens (--s-card, --dark plum,
++   --bc-blush) that no season overrides, so under Christmas the active tab read
++   dull and the rest stayed pale — the "categories are dull when you press them"
++   the storefront was showing. Re-skin the whole dock: evergreen tiles with a
++   gold hairline, and a BRIGHT cherry-red active tab so the current category
++   reads unmistakably festive. */
++[data-season='christmas'] .menu-dock-wrap { background: transparent; }
++[data-season='christmas'] .menu-dock {
++  background: var(--season-green);
++  border: 1px solid var(--season-gold);
++}
++[data-season='christmas'] .menu-dock-eyebrow {
++  color: var(--season-gold-light);
++  border-right-color: var(--season-gold);
++}
++[data-season='christmas'] .dock-tab {
++  background: var(--season-green-deep);
++  border: 1px solid var(--season-gold);
++  color: var(--season-cream);
++}
++[data-season='christmas'] .dock-tab-ic { color: var(--season-gold-light); }
++[data-season='christmas'] .dock-tab:hover:not(.on) {
++  border-color: var(--season-gold-light);
++  background: var(--season-green-deep);
++}
++[data-season='christmas'] .dock-tab.on {
++  background: var(--season-red);
++  border-color: var(--season-gold-light);
++  color: var(--season-cream);
++  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.34);
++}
++[data-season='christmas'] .dock-tab.on .dock-tab-ic { color: var(--season-cream); }
++[data-season='christmas'] .dock-tab-count {
++  background: var(--season-gold);
++  color: var(--season-green-deep);
++  border-color: var(--season-gold-light);
++}
++[data-season='christmas'] .dock-fade.left { background: linear-gradient(to right, var(--season-green), transparent); }
++[data-season='christmas'] .dock-fade.right { background: linear-gradient(to left, var(--season-green), transparent); }
++[data-season='christmas'] .dock-arrow {
++  background: var(--season-green-deep);
++  border: 1px solid var(--season-gold);
++  color: var(--season-gold-light);
++}
++[data-season='christmas'] .dock-arrow:not(:disabled):hover { border-color: var(--season-gold-light); color: var(--season-cream); }
++
+ /* ── Reduced motion: hide the falling snow entirely (no frozen flakes) ── */
+ @media (prefers-reduced-motion: reduce) {
+   .fx-snow { display: none; }
+diff --git a/client/src/styles.css b/client/src/styles.css
+index 714c3f4..e5605ad 100644
+--- a/client/src/styles.css
++++ b/client/src/styles.css
+@@ -1921,7 +1921,9 @@ body:has(.store-shell) { background: #F7F4EF; }
+   background: color-mix(in srgb, var(--s-line) 22%, #fff); color: var(--s-ink);
+   transition: background .16s ease, border-color .16s ease, color .16s ease, transform .1s ease, box-shadow .16s ease;
+ }
+-.dock-tab:hover { border-color: var(--brand); background: var(--s-card); }
++/* :not(.on) so a stuck touch-hover never repaints the ACTIVE tab (iOS keeps
++   :hover after a tap; without this the selected category loses its highlight). */
++.dock-tab:hover:not(.on) { border-color: var(--brand); background: var(--s-card); }
+ .dock-tab:active { transform: scale(.97); }
+ /* Consistent, owner-scalable dock icons: fixed HEIGHT (so every icon reads the
+    same size regardless of its artwork), width follows the square viewBox, and
+@@ -2349,7 +2351,7 @@ body:has(.store-shell) { background: var(--bc-canvas-deep, #160f12); }
+    menu content never bleeds through when the dock is stuck. */
+ .menu-dock-wrap { background: var(--bc-canvas-gradient); background-attachment: fixed; }
+ .dock-tab { background: var(--bc-blush); border-color: var(--bc-border-rose); }
+-.dock-tab:hover { background: var(--bc-blush-strong); border-color: var(--bc-raspberry); }
++.dock-tab:hover:not(.on) { background: var(--bc-blush-strong); border-color: var(--bc-raspberry); }
+ .dock-tab.on .dock-tab-count { background: var(--bc-champagne); color: var(--bc-text-dark); border-color: var(--bc-champagne); }
+ 
+ /* ── Search icon (storefront-only, scoped to the existing override block) ── */
+-- 
+2.43.0
+

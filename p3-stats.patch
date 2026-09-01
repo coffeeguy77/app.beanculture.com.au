@@ -1,0 +1,414 @@
+From 2864c9bc03037aab2ae1c0195a01e532255361e3 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 30 Aug 2026 15:09:01 +0000
+Subject: [PATCH] Organiser stats page at /stats (share-code gated)
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+A private, shareable read-out for whoever ran the event:
+- Each event gets an auto-generated share code (Admin → event editor → Organiser
+  stats link, with a copy-ready URL). The organiser opens /stats?event=&key=…
+  and sees it without any admin access.
+- New public /api/stats validates the code against the event's statsCode and
+  returns totals (free coffees/cups, unique guests, paid sales, app-vs-counter),
+  a per-booth breakdown, and the full guest list (name + mobile + booth + time).
+- Refactored the guest aggregation into aggregateEventStats(), shared by the
+  admin guest log and the new page. StatsPage.jsx renders standalone (no app
+  chrome); main.jsx routes /stats to it.
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_0187Jj4Q77V4UPawzEh9gsGr
+---
+ client/src/components/Admin.jsx     |  25 +++++
+ client/src/components/StatsPage.jsx | 130 +++++++++++++++++++++++
+ client/src/main.jsx                 |   7 +-
+ server/index.js                     | 156 +++++++++++++++++-----------
+ server/lib/locations.js             |   2 +
+ 5 files changed, 256 insertions(+), 64 deletions(-)
+ create mode 100644 client/src/components/StatsPage.jsx
+
+diff --git a/client/src/components/Admin.jsx b/client/src/components/Admin.jsx
+index e38a1c7..0417cad 100644
+--- a/client/src/components/Admin.jsx
++++ b/client/src/components/Admin.jsx
+@@ -3606,6 +3606,31 @@ export default function Admin({ onExit }) {
+                             </div>
+                           );
+                         })()}
++                        {l.type === 'event' && (() => {
++                          const code = l.statsCode || '';
++                          const link = code ? `${origin}/stats?event=${encodeURIComponent(l.id)}&key=${encodeURIComponent(code)}` : '';
++                          const gen = () => updLoc(l.id, { statsCode: Math.random().toString(36).slice(2, 10) });
++                          return (
++                            <div className="field" style={{ margin: 0 }}>
++                              <span style={{ fontWeight: 600, fontSize: 'var(--fs-sm)' }}>Organiser stats link</span>
++                              <p className="muted" style={{ fontSize: 'var(--fs-xs)', margin: '2px 0 8px' }}>
++                                A private link the event organiser can open to see live numbers — coffees given, booth breakdown and the guest list (names + mobiles). Share it only with people allowed to see guest details.
++                              </p>
++                              {!code ? (
++                                <button type="button" className="btn ghost" style={{ padding: '6px 12px' }} onClick={gen}>Create share link</button>
++                              ) : (
++                                <>
++                                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
++                                    <input readOnly value={link} onFocus={(e) => e.target.select()} style={{ flex: '1 1 260px', minWidth: 200, padding: '7px 9px', border: '1px solid var(--line)', borderRadius: 8, fontSize: 'var(--fs-xs)' }} />
++                                    <button type="button" className="btn ghost" style={{ padding: '6px 12px' }} onClick={() => { try { navigator.clipboard.writeText(link); } catch {} }}>Copy</button>
++                                    <button type="button" className="link" onClick={gen} title="Make a new code (the old link stops working)">Reset code</button>
++                                  </div>
++                                  <p className="muted" style={{ fontSize: 'var(--fs-xs)', margin: '4px 0 0' }}>Remember to press <strong>Save changes</strong> after creating or resetting the code.</p>
++                                </>
++                              )}
++                            </div>
++                          );
++                        })()}
+ 
+                         {(() => {
+                           const defs = l.type === 'popup' ? { dineIn: false, takeaway: true, reservations: false }
+diff --git a/client/src/components/StatsPage.jsx b/client/src/components/StatsPage.jsx
+new file mode 100644
+index 0000000..4905deb
+--- /dev/null
++++ b/client/src/components/StatsPage.jsx
+@@ -0,0 +1,130 @@
++import React, { useEffect, useState } from 'react';
++
++// Standalone organiser stats page (served at /stats). No app chrome — it's a
++// private, shareable read-out for whoever ran the event. Access is gated by the
++// event's share code (?event=<id>&key=<code>); if the code is missing we prompt
++// for it. Shows totals, a per-booth breakdown, the app-vs-counter split, and the
++// full guest list (name + mobile + booth).
++const params = new URLSearchParams(window.location.search);
++
++function money(cents, cur) {
++  try { return new Intl.NumberFormat('en-AU', { style: 'currency', currency: cur || 'AUD' }).format((cents || 0) / 100); }
++  catch { return `$${((cents || 0) / 100).toFixed(2)}`; }
++}
++function when(iso) {
++  if (!iso) return '';
++  try { return new Date(iso).toLocaleString('en-AU', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }); }
++  catch { return ''; }
++}
++
++export default function StatsPage() {
++  const event = params.get('event') || '';
++  const [key, setKey] = useState(params.get('key') || '');
++  const [days, setDays] = useState(Number(params.get('days')) || 30);
++  const [data, setData] = useState(null);
++  const [err, setErr] = useState('');
++  const [busy, setBusy] = useState(false);
++  const [codeInput, setCodeInput] = useState('');
++
++  async function load(k = key, d = days) {
++    if (!event || !k) return;
++    setBusy(true); setErr('');
++    try {
++      const r = await fetch(`/api/stats?event=${encodeURIComponent(event)}&key=${encodeURIComponent(k)}&days=${d}`);
++      const j = await r.json();
++      if (!r.ok) throw new Error(j.error || 'Could not load stats');
++      setData(j);
++    } catch (e) { setErr(e.message); setData(null); }
++    finally { setBusy(false); }
++  }
++  useEffect(() => { if (event && key) load(key, days); /* eslint-disable-next-line */ }, []);
++
++  const card = { background: '#fff', border: '1px solid #eadfe4', borderRadius: 14, padding: 16, boxShadow: '0 1px 3px rgba(0,0,0,.04)' };
++  const wrap = { maxWidth: 820, margin: '0 auto', padding: '24px 16px 60px', color: '#3b2b30', fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif' };
++
++  if (!event) return <div style={wrap}><div style={card}>This link is missing its event. Please use the full stats link you were sent.</div></div>;
++
++  // No code yet — prompt for it.
++  if (!key || (err && /access code/i.test(err))) {
++    return (
++      <div style={{ ...wrap, maxWidth: 420 }}>
++        <h1 style={{ fontSize: 22, marginBottom: 4 }}>Event stats</h1>
++        <p style={{ color: '#8a7680', marginTop: 0, fontSize: 14 }}>Enter the access code you were given to view this event’s numbers.</p>
++        <div style={card}>
++          <input value={codeInput} onChange={(e) => setCodeInput(e.target.value)} placeholder="Access code" autoCapitalize="none"
++            style={{ width: '100%', padding: '10px 12px', border: '1px solid #eadfe4', borderRadius: 10, fontSize: 16, boxSizing: 'border-box' }} />
++          {err && <p style={{ color: '#c0392b', fontSize: 13 }}>{err}</p>}
++          <button onClick={() => { const k = codeInput.trim(); setKey(k); const u = new URL(window.location); u.searchParams.set('key', k); window.history.replaceState({}, '', u); load(k, days); }}
++            disabled={busy || !codeInput.trim()}
++            style={{ marginTop: 10, width: '100%', padding: '11px 12px', border: 'none', borderRadius: 10, background: '#b5566e', color: '#fff', fontSize: 16, fontWeight: 600, cursor: 'pointer' }}>
++            {busy ? 'Checking…' : 'View stats'}
++          </button>
++        </div>
++      </div>
++    );
++  }
++
++  const Stat = ({ label, value, sub }) => (
++    <div style={{ ...card, flex: '1 1 150px', minWidth: 140 }}>
++      <div style={{ fontSize: 12, color: '#8a7680', textTransform: 'uppercase', letterSpacing: '.04em' }}>{label}</div>
++      <div style={{ fontSize: 30, fontWeight: 800, lineHeight: 1.1, marginTop: 4 }}>{value}</div>
++      {sub && <div style={{ fontSize: 12, color: '#8a7680', marginTop: 2 }}>{sub}</div>}
++    </div>
++  );
++
++  return (
++    <div style={wrap}>
++      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
++        <h1 style={{ fontSize: 24, margin: 0 }}>{data?.event?.name || 'Event'} — stats</h1>
++        <select value={days} onChange={(e) => { const d = Number(e.target.value); setDays(d); load(key, d); }} style={{ marginLeft: 'auto', padding: '6px 8px', borderRadius: 8, border: '1px solid #eadfe4' }}>
++          <option value={1}>Today</option><option value={7}>7 days</option><option value={30}>30 days</option><option value={90}>90 days</option>
++        </select>
++        <button onClick={() => load()} disabled={busy} style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid #eadfe4', background: '#fff', cursor: 'pointer' }}>{busy ? '…' : 'Refresh'}</button>
++      </div>
++      {err && <div style={{ ...card, color: '#c0392b' }}>{err}</div>}
++      {data && (
++        <>
++          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
++            <Stat label="Free coffees" value={data.freeCups} sub={`${data.freeOrders} orders`} />
++            <Stat label="Guests" value={data.uniqueGuests} sub="unique people" />
++            <Stat label="Paid sales" value={money(data.paidSales, data.currency)} sub={`${data.paidOrders} paid orders`} />
++            <Stat label="Via app / counter" value={`${data.bySource.app} / ${data.bySource.pos}`} sub={data.bySource.other ? `${data.bySource.other} other` : 'self-order / POS'} />
++          </div>
++
++          {data.byBooth && data.byBooth.length > 0 && (
++            <div style={{ ...card, marginBottom: 16 }}>
++              <div style={{ fontWeight: 700, marginBottom: 8 }}>Coffees by booth</div>
++              {data.byBooth.map((b, i) => {
++                const max = data.byBooth[0].cups || 1;
++                return (
++                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '3px 0' }}>
++                    <span style={{ minWidth: 130, fontSize: 14 }}>{b.booth}</span>
++                    <span style={{ flex: 1, height: 10, background: '#f2e6ea', borderRadius: 6, overflow: 'hidden' }}>
++                      <span style={{ display: 'block', height: '100%', width: `${Math.round((b.cups / max) * 100)}%`, background: '#b5566e' }} />
++                    </span>
++                    <strong style={{ minWidth: 30, textAlign: 'right' }}>{b.cups}</strong>
++                  </div>
++                );
++              })}
++            </div>
++          )}
++
++          <div style={card}>
++            <div style={{ fontWeight: 700, marginBottom: 8 }}>Guests ({data.guests.length})</div>
++            {data.guests.length === 0 && <div style={{ color: '#8a7680', fontSize: 14 }}>No coffees yet in this window.</div>}
++            {data.guests.map((g, i) => (
++              <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'baseline', padding: '6px 0', borderTop: i ? '1px solid #f2e6ea' : 'none', flexWrap: 'wrap' }}>
++                <strong style={{ minWidth: 130 }}>{g.name}</strong>
++                <a href={`tel:${g.phone}`} style={{ color: '#b5566e', textDecoration: 'none' }}>{g.phone || '—'}</a>
++                {g.booth && <span style={{ fontSize: 12, background: '#f2e6ea', padding: '2px 8px', borderRadius: 20 }}>{g.booth}</span>}
++                {g.paidExtra && <span style={{ fontSize: 12, background: '#e7f0e7', padding: '2px 8px', borderRadius: 20 }}>+ purchase</span>}
++                <span style={{ marginLeft: 'auto', color: '#8a7680', fontSize: 13 }}>{when(g.at)}</span>
++              </div>
++            ))}
++          </div>
++          <p style={{ color: '#8a7680', fontSize: 12, marginTop: 14 }}>Private link — anyone with the code can see this. Live from Square.</p>
++        </>
++      )}
++    </div>
++  );
++}
+diff --git a/client/src/main.jsx b/client/src/main.jsx
+index 74bdb70..af9627f 100644
+--- a/client/src/main.jsx
++++ b/client/src/main.jsx
+@@ -1,12 +1,17 @@
+ import React from 'react';
+ import { createRoot } from 'react-dom/client';
+ import App from './App.jsx';
++import StatsPage from './components/StatsPage.jsx';
+ import './styles.css';
+ import './seasonal.css';
+ 
++// The organiser stats page is a standalone route — it needs none of the app's
++// config/menu, so render it directly instead of booting the whole storefront.
++const isStats = window.location.pathname.replace(/\/$/, '') === '/stats';
++
+ createRoot(document.getElementById('root')).render(
+   <React.StrictMode>
+-    <App />
++    {isStats ? <StatsPage /> : <App />}
+   </React.StrictMode>
+ );
+ 
+diff --git a/server/index.js b/server/index.js
+index 3b28f89..7763444 100644
+--- a/server/index.js
++++ b/server/index.js
+@@ -1588,75 +1588,105 @@ app.get('/api/admin/analytics/sales', async (req, res) => {
+ // This joins those comp orders to their Square customer (name + phone) so the
+ // owner sees e.g. "Bill · 0404 040 404 · Microsoft Booth · 9:14am". Read-only,
+ // derived live from Square — nothing new is stored.
++// Shared event aggregation: pulls the completed Square orders for one or more
++// event stores over `days` and derives the free-coffee guest list, booth
++// breakdown, cups given, paid sales and the app-vs-counter split. Used by the
++// admin guest log AND the organiser /stats page.
++async function aggregateEventStats(sqLocIds, days) {
++  const startAt = new Date(Date.now() - days * 86400000).toISOString();
++  const orders = [];
++  for (const locId of sqLocIds) {
++    let cursor; let pages = 0;
++    do {
++      const data = await sq.squareFetch('/v2/orders/search', {
++        method: 'POST',
++        body: {
++          location_ids: [locId], cursor,
++          query: {
++            filter: { date_time_filter: { created_at: { start_at: startAt } }, state_filter: { states: ['COMPLETED'] } },
++            sort: { sort_field: 'CREATED_AT', sort_order: 'DESC' },
++          },
++          limit: 500,
++        },
++      }).catch(() => ({}));
++      for (const o of (data.orders || [])) orders.push(o);
++      cursor = data.cursor; pages += 1;
++    } while (cursor && pages < 6);
++  }
++  const isCompOrder = (o) =>
++    (o.metadata && o.metadata.bc_free === 'event') ||
++    (o.discounts || []).some((d) => /complimentary \(event\)/i.test(d.name || ''));
++  const boothOf = (o) => {
++    if (o.metadata && o.metadata.bc_booth) return o.metadata.bc_booth;
++    const note = (o.fulfillments && o.fulfillments[0] && o.fulfillments[0].pickup_details && o.fulfillments[0].pickup_details.note) || o.note || '';
++    const m = /DINE-IN ·\s*([^·]+)/i.exec(note);
++    return m ? m[1].trim() : '';
++  };
++  const cupsOf = (o) => (o.line_items || []).reduce((n, li) => n + (Number(li.quantity) || 0), 0);
++  const rows = orders.filter(isCompOrder).map((o) => ({
++    customerId: o.customer_id || null, booth: boothOf(o), at: o.created_at,
++    paid: (o.total_money && o.total_money.amount) || 0, cups: cupsOf(o),
++  }));
++  // Join Square customers for name + phone (bulk, chunked).
++  const ids = [...new Set(rows.map((r) => r.customerId).filter(Boolean))];
++  const custMap = new Map();
++  for (let i = 0; i < ids.length; i += 100) {
++    try {
++      const data = await sq.squareFetch('/v2/customers/bulk-retrieve', { method: 'POST', body: { customer_ids: ids.slice(i, i + 100) } });
++      for (const [id, r] of Object.entries(data.responses || {})) if (r.customer) custMap.set(id, r.customer);
++    } catch { /* thinner detail on a failed chunk */ }
++  }
++  const guests = rows.map((r) => {
++    const c = r.customerId ? custMap.get(r.customerId) : null;
++    const name = c ? ([c.given_name, c.family_name].filter(Boolean).join(' ').trim() || c.company_name || c.nickname || '') : '';
++    return { name: name || 'Guest', phone: (c && c.phone_number) || '', booth: r.booth || '', at: r.at, paidExtra: r.paid > 0 };
++  }).sort((a, b) => new Date(b.at) - new Date(a.at));
++  const byBoothMap = {};
++  for (const r of rows) { const b = r.booth || '—'; byBoothMap[b] = (byBoothMap[b] || 0) + r.cups; }
++  const byBooth = Object.entries(byBoothMap).map(([booth, cups]) => ({ booth, cups })).sort((a, b) => b.cups - a.cups);
++  let paidSales = 0; let paidOrders = 0; const bySource = { app: 0, pos: 0, other: 0 };
++  for (const o of orders) {
++    const amt = (o.total_money && o.total_money.amount) || 0;
++    if (amt > 0) { paidSales += amt; paidOrders += 1; }
++    bySource[saleSource(o.source && o.source.name)] += 1;
++  }
++  const uniqueGuests = new Set(rows.filter((r) => r.customerId).map((r) => r.customerId)).size + rows.filter((r) => !r.customerId).length;
++  return {
++    guests, byBooth, bySource,
++    freeOrders: rows.length, freeCups: rows.reduce((n, r) => n + r.cups, 0),
++    uniqueGuests, paidSales, paidOrders, totalOrders: orders.length,
++    currency: sq.CURRENCY,
++  };
++}
++
+ app.get('/api/admin/analytics/event-guests', async (req, res) => {
+   if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+   try {
+     const days = Math.max(1, Math.min(120, parseInt(req.query.days, 10) || 30));
+-    const startAt = new Date(Date.now() - days * 86400000).toISOString();
+-    // A specific event store, or every store when none is given.
+-    const stores = req.query.location
+-      ? [locations.resolve(req.query.location)]
+-      : locations.active();
+-    // De-dupe by Square location id (several events can share one).
++    const stores = req.query.location ? [locations.resolve(req.query.location)] : locations.active();
+     const sqLocIds = [...new Set(stores.map((s) => s.squareLocationId).filter(Boolean))];
+-    const rows = [];
+-    const isCompOrder = (o) =>
+-      (o.metadata && o.metadata.bc_free === 'event') ||
+-      (o.discounts || []).some((d) => /complimentary \(event\)/i.test(d.name || ''));
+-    const boothOf = (o) => {
+-      if (o.metadata && o.metadata.bc_booth) return o.metadata.bc_booth;
+-      const note = (o.fulfillments && o.fulfillments[0] && o.fulfillments[0].pickup_details && o.fulfillments[0].pickup_details.note) || o.note || '';
+-      const m = /DINE-IN ·\s*([^·]+)/i.exec(note);
+-      return m ? m[1].trim() : '';
+-    };
+-    for (const locId of sqLocIds) {
+-      let cursor; let pages = 0;
+-      do {
+-        const data = await sq.squareFetch('/v2/orders/search', {
+-          method: 'POST',
+-          body: {
+-            location_ids: [locId], cursor,
+-            query: {
+-              filter: { date_time_filter: { created_at: { start_at: startAt } }, state_filter: { states: ['COMPLETED'] } },
+-              sort: { sort_field: 'CREATED_AT', sort_order: 'DESC' },
+-            },
+-            limit: 500,
+-          },
+-        }).catch(() => ({}));
+-        for (const o of (data.orders || [])) {
+-          if (!isCompOrder(o)) continue;
+-          rows.push({
+-            orderId: o.id,
+-            customerId: o.customer_id || null,
+-            booth: boothOf(o),
+-            at: o.created_at,
+-            paid: (o.total_money && o.total_money.amount) || 0, // >0 = also bought beans etc.
+-          });
+-        }
+-        cursor = data.cursor; pages += 1;
+-      } while (cursor && pages < 6);
+-    }
+-    // Join Square customers for name + phone (bulk, chunked).
+-    const ids = [...new Set(rows.map((r) => r.customerId).filter(Boolean))];
+-    const custMap = new Map();
+-    for (let i = 0; i < ids.length; i += 100) {
+-      try {
+-        const data = await sq.squareFetch('/v2/customers/bulk-retrieve', { method: 'POST', body: { customer_ids: ids.slice(i, i + 100) } });
+-        for (const [id, r] of Object.entries(data.responses || {})) if (r.customer) custMap.set(id, r.customer);
+-      } catch { /* thinner detail on a failed chunk */ }
++    const stats = await aggregateEventStats(sqLocIds, days);
++    res.json({ days, count: stats.guests.length, guests: stats.guests });
++  } catch (e) { res.status(502).json({ error: e.message }); }
++});
++
++// ---- Organiser stats page (public, gated by the event's private share code) ----
++// The event owner shares /stats?event=<id>&key=<code>. We validate the code
++// against that event's statsCode, then return the full picture: totals, booth
++// breakdown, app-vs-counter split, and the guest list (name + mobile + booth).
++app.get('/api/stats', async (req, res) => {
++  res.setHeader('Cache-Control', 'no-store');
++  try {
++    const eventId = String(req.query.event || '');
++    const key = String(req.query.key || '');
++    const ev = locations.resolve(eventId);
++    if (!ev || ev.id !== eventId || !ev.statsCode || key !== ev.statsCode) {
++      return res.status(403).json({ error: 'Invalid or missing access code.' });
+     }
+-    const guests = rows.map((r) => {
+-      const c = r.customerId ? custMap.get(r.customerId) : null;
+-      const name = c ? ([c.given_name, c.family_name].filter(Boolean).join(' ').trim() || c.company_name || c.nickname || '') : '';
+-      return {
+-        name: name || 'Guest',
+-        phone: (c && c.phone_number) || '',
+-        booth: r.booth || '',
+-        at: r.at,
+-        paidExtra: r.paid > 0,
+-      };
+-    }).sort((a, b) => new Date(b.at) - new Date(a.at));
+-    res.json({ days, count: guests.length, guests });
++    const days = Math.max(1, Math.min(120, parseInt(req.query.days, 10) || 30));
++    const sqLocIds = [ev.squareLocationId].filter(Boolean);
++    const stats = await aggregateEventStats(sqLocIds, days);
++    res.json({ event: { id: ev.id, name: ev.name }, days, ...stats });
+   } catch (e) { res.status(502).json({ error: e.message }); }
+ });
+ 
+diff --git a/server/lib/locations.js b/server/lib/locations.js
+index 6b9db2d..494f052 100644
+--- a/server/lib/locations.js
++++ b/server/lib/locations.js
+@@ -119,6 +119,8 @@ function list() {
+     // Event stores: explicit dated sessions ([{date, open, close}]) — each day
+     // its own hours. Drives the countdown + ordering gate (see hours.js).
+     sessions: Array.isArray(l.sessions) ? l.sessions.filter((x) => x && x.date) : [],
++    // Private share code for the organiser stats page (/stats?event=…&key=…).
++    statsCode: l.statsCode || '',
+     // Per-store weekly hours ({ MON:[{open,close}], … }); blank → falls back to
+     // the global store hours / Square hours in hours.js.
+     hours: (l.hours && typeof l.hours === 'object') ? l.hours : null,
+-- 
+2.43.0
+

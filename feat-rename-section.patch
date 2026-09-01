@@ -1,0 +1,68 @@
+From f5408661e45e75791fa5783dbf269568fa7e25cc Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 30 Aug 2026 15:46:03 +0000
+Subject: [PATCH] =?UTF-8?q?Product=20Builder:=20rename=20a=20section=20(?=
+ =?UTF-8?q?=E2=9C=8F=EF=B8=8F=20Rename=20on=20the=20section=20header)?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Sections were only nameable by editing each tile's section field. Added a
+Rename control on each section header that renames it everywhere it's
+referenced at once — every tile in the section, the section's nav/banner
+config, footer buttons, and any event-menu / free-category lists that name it —
+so nothing is orphaned. Takes effect on Save changes.
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_0187Jj4Q77V4UPawzEh9gsGr
+---
+ client/src/components/Admin.jsx | 26 ++++++++++++++++++++++++++
+ 1 file changed, 26 insertions(+)
+
+diff --git a/client/src/components/Admin.jsx b/client/src/components/Admin.jsx
+index 08e516a..8a3a5b5 100644
+--- a/client/src/components/Admin.jsx
++++ b/client/src/components/Admin.jsx
+@@ -979,6 +979,31 @@ export default function Admin({ onExit }) {
+   // Per-section top/footer nav inclusion (product-builder sections).
+   const presetSectionNav = s?.presetSectionNav || {};
+   const setSectionNav = (name, patch) => set({ presetSectionNav: { ...presetSectionNav, [name]: { ...(presetSectionNav[name] || {}), ...patch } } });
++  // Rename a Product Builder section everywhere it's referenced: every tile's
++  // `section`, the section's own nav/banner config, footer buttons, and any
++  // event-menu / free-category lists that name it — so the rename doesn't orphan
++  // the section on the storefront or in event setup.
++  const renameSection = (oldName) => {
++    const cur = oldName === '(no section)' ? '' : oldName;
++    const raw = window.prompt('Rename this product section:', cur);
++    if (raw == null) return; // cancelled
++    const next = raw.trim();
++    if (!next || next === cur) return;
++    const eqCur = (n) => String(n || '').trim().toLowerCase() === cur.toLowerCase();
++    const mapNames = (arr) => (Array.isArray(arr) ? arr.map((n) => (eqCur(n) ? next : n)) : arr);
++    const nextPresets = (s?.presets || []).map((p) => (eqCur(p.section) ? { ...p, section: next } : p));
++    const nav = { ...(s?.presetSectionNav || {}) };
++    if (nav[oldName]) { nav[next] = { ...(nav[next] || {}), ...nav[oldName] }; if (oldName !== next) delete nav[oldName]; }
++    const patch = { presets: nextPresets, presetSectionNav: nav };
++    if (Array.isArray(s?.footer)) patch.footer = s.footer.map((f) => ({ ...f, categories: mapNames(f.categories) }));
++    if (Array.isArray(s?.locations)) patch.locations = s.locations.map((l) => {
++      const o = { ...l };
++      if (Array.isArray(l.menuSections)) o.menuSections = mapNames(l.menuSections);
++      if (Array.isArray(l.freeCategories)) o.freeCategories = mapNames(l.freeCategories);
++      return o;
++    });
++    set(patch);
++  };
+ 
+   // ---- Availability: sold-out overrides, day exclusions, menu schedules ----
+   const DOW_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+@@ -2486,6 +2511,7 @@ export default function Admin({ onExit }) {
+                             style={{ flex: 1, minWidth: 120, textAlign: 'left', background: 'none', border: 'none', fontWeight: 700, cursor: 'pointer' }}>
+                             {secName} · {secCount} {secCount === 1 ? 'tile' : 'tiles'} {secCollapsed ? '▼' : '▲'}
+                           </button>
++                          <button type="button" className="link" title="Rename this section" onClick={() => renameSection(secName)} style={{ fontSize: 'var(--fs-sm)' }}>✏️ Rename</button>
+                           {secSel.length >= 2 && (
+                             <button className="btn" disabled={!secCanCombine} title={secCanCombine ? 'Combine the selected tiles' : 'Selected tiles must be from the same product'}
+                               onClick={() => combinePresets(secSel.map((x) => x.id))} style={{ padding: '5px 10px', fontSize: 'var(--fs-sm)', opacity: secCanCombine ? 1 : 0.5 }}>⛓ Combine ({secSel.length})</button>
+-- 
+2.43.0
+

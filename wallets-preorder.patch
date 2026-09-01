@@ -1,0 +1,110 @@
+From 373fa947bad277525bb06fd1a34706803c892059 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Tue, 1 Sep 2026 09:22:58 +0000
+Subject: [PATCH] Wallets for pre-orders + countdown transparent corners
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Payments — offer every method on a 'pay now' pre-order, not just card:
+- Apple Pay / Google Pay / Afterpay now show whenever the customer pays now,
+  including a scheduled pre-order while the store is closed. They're hidden only
+  for auto-charge/repeat (which must charge a saved card later) and coupon/reward
+  (wallet sheet amount could differ from the charge). The wallet flow now carries
+  the scheduled pickup time so a pre-order keeps its slot.
+- A 'pay now' pre-order no longer forces sign-in — it's just a paid order with a
+  future pickup, so a guest can place it with any method. Sign-in is required only
+  for auto-charge at pickup (needs a saved card on the account).
+
+UI — the store/kitchen countdown card no longer shows white corner tips: the
+wrapping notice's square surface is now transparent on every viewport (was
+mobile-only), so only the card's own rounded surface shows.
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_0187Jj4Q77V4UPawzEh9gsGr
+---
+ client/src/components/Checkout.jsx | 24 ++++++++++++++++++------
+ client/src/styles.css              | 10 ++++++++++
+ 2 files changed, 28 insertions(+), 6 deletions(-)
+
+diff --git a/client/src/components/Checkout.jsx b/client/src/components/Checkout.jsx
+index cdc29e1..cb021bc 100644
+--- a/client/src/components/Checkout.jsx
++++ b/client/src/components/Checkout.jsx
+@@ -221,7 +221,13 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
+   // where the wallet sheet's amount could differ from what's charged (a coupon
+   // or loyalty reward discounts server-side) or for scheduled/auto-charge orders
+   // (which must charge a saved card at pickup, not a one-time wallet token).
+-  const hideWallets = hasCoupon || usingReward || isSchedule || isRepeat;
++  // Show the one-tap wallets (Apple Pay / Google Pay / Afterpay) for any order
++  // the customer pays for NOW — including a "pay now" pre-order while the store is
++  // closed — so they never have to fall back to typing a card. Hidden only for
++  // auto-charge/repeat (those must charge a saved card later, not a one-time
++  // wallet token) and where the wallet sheet amount could differ from the charge
++  // (a coupon or loyalty reward discounts server-side).
++  const hideWallets = hasCoupon || usingReward || autocharge;
+ 
+   // Loyalty + saved cards for a signed-in user.
+   useEffect(() => {
+@@ -284,7 +290,10 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
+     if (!eventMode && dineIn === null) { setError('Please choose Dine in or Takeaway.'); return false; }
+     if (!eventMode && dineIn && !table.trim()) { setError('Please enter your table number.'); return false; }
+     if (!eventMode && (!canOrder || closedNow) && when === 'asap') { setError('We’re closed right now — schedule a pickup time instead.'); return false; }
+-    if ((isSchedule || isRepeat) && !user?.customerId) { setError('Please sign in (via Account) to schedule an order.'); return false; }
++    // Only auto-charge (pay-later / repeat) needs an account — it charges a saved
++    // card at pickup. A "pay now" pre-order is just a paid order with a future
++    // pickup time, so a guest can place it (and pay by wallet or card).
++    if (autocharge && !user?.customerId) { setError('Please sign in (via Account) to set up auto-charge at pickup.'); return false; }
+     if ((isSchedule || isRepeat) && !sched.enabled && autocharge) { setError('Scheduled auto-charge is not available right now.'); return false; }
+     if (isRepeat && repeatType === 'weekly' && !repeatDays.length) { setError('Pick at least one day to repeat on.'); return false; }
+     return true;
+@@ -423,9 +432,12 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
+   async function onWalletToken(token) {
+     setBusy(true); setError('');
+     try {
+-      const order = await createOrder(null);
++      // Carry the scheduled pickup time through the wallet flow so a "pay now"
++      // pre-order keeps its pickup slot (not just ASAP orders).
++      const pickupAt = isSchedule ? pickupIso() : null;
++      const order = await createOrder(pickupAt);
+       const pay = await api.pay({ sourceId: token, orderId: order.orderId, totalMoney: order.totalMoney, customerId: user?.customerId, locationId: location?.id });
+-      if (pay.status === 'COMPLETED' || pay.status === 'APPROVED') { clearPending(); if (hasPif && onClearPifVoucher) { track('gift_redeemed', { ref: effectivePifCode }); onClearPifVoucher(); } onPaid(pay, order, {}); }
++      if (pay.status === 'COMPLETED' || pay.status === 'APPROVED') { clearPending(); if (hasPif && onClearPifVoucher) { track('gift_redeemed', { ref: effectivePifCode }); onClearPifVoucher(); } onPaid(pay, order, { pickupAt }); }
+       else throw new Error(`Payment ${pay.status}`);
+     } catch (e) {
+       // Wallet payment didn't complete — cancel the order so it never reaches the
+@@ -546,8 +558,8 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
+       </div>
+       )}
+ 
+-      {(isSchedule || isRepeat) && !user?.customerId && (
+-        <p className="error-text" style={{ fontSize: 13 }}>Sign in from the Account tab to schedule or repeat an order.</p>
++      {autocharge && !user?.customerId && (
++        <p className="error-text" style={{ fontSize: 13 }}>Sign in from the Account tab to set up auto-charge at pickup. Or choose “Pay now” to pre-order as a guest.</p>
+       )}
+ 
+       {!eventMode && loyalty?.active && loyalty.tiers?.length > 0 && when === 'asap' && (
+diff --git a/client/src/styles.css b/client/src/styles.css
+index b8417fc..714c3f4 100644
+--- a/client/src/styles.css
++++ b/client/src/styles.css
+@@ -2318,6 +2318,16 @@ body:has(.store-shell) { background: var(--bc-canvas-deep, #160f12); }
+ .kc-cta, .kc-mcta { background: var(--bc-champagne); color: var(--bc-text-dark); }
+ .kc-cta:hover, .kc-mcta:hover { filter: brightness(1.05); background: var(--bc-champagne-soft); }
+ .kc-cta:focus-visible, .kc-mcta:focus-visible { outline-color: var(--bc-champagne); }
++/* The countdown card (kc-desktop / kc-tablet / kc-mobile) is self-contained —
++   its own gradient, border and radius. The wrapping notice must NOT paint its
++   own surface, or that square band shows its corners behind the card's rounded
++   ones (the "4 white tips in the corners"). Mobile already neutralised this; do
++   it on every viewport so tablet/desktop match. Overrides the --warning /
++   --urgent variant background these notices also carry. */
++.store-shell .site-notice--kitchen,
++.store-shell .site-notice--reopen {
++  background: none; border-top: none;
++}
+ /* Thicker, fully-rounded progress: subdued champagne track, berry→coral fill. */
+ .kc-progress { background: var(--progress-track); }
+ .kc-progress-fill { background: linear-gradient(90deg, var(--progress-fill-start), var(--progress-fill-end)); }
+-- 
+2.43.0
+

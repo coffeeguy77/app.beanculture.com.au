@@ -1,0 +1,169 @@
+From 217f1d8254e68e159d1f026166b7a7e507923408 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 30 Aug 2026 08:01:57 +0000
+Subject: [PATCH] Phase 3: per-store Visit page + Store Opening link
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Each store now has its own Visit page. locations.publicList() exposes a per-store
+storePage (photo, blurb, phone, map); StorePage overlays those + the store's own
+name, address and (already per-store) hours over the global store info, so Tulip
+Tops shows its own photo/blurb/Sutton address while Mitchell keeps the roastery
+page. Stores without their own content fall back to the global page, so single-
+site deploys are unchanged.
+
+- The pop-up 'Opening soon' countdown gains a 'Store details' button that opens
+  that store's Visit page (photos, info, hours) — the teaser the customer taps
+  before the store opens.
+- Admin Locations: a 'Visit / store page' editor per store (photo upload, blurb,
+  optional phone).
+---
+ client/src/App.jsx                  |  6 ++++--
+ client/src/components/Admin.jsx     | 23 +++++++++++++++++++++++
+ client/src/components/StorePage.jsx | 27 ++++++++++++++++++++-------
+ server/lib/locations.js             |  8 ++++++++
+ 4 files changed, 55 insertions(+), 9 deletions(-)
+
+diff --git a/client/src/App.jsx b/client/src/App.jsx
+index 61330a8..ae8dca4 100644
+--- a/client/src/App.jsx
++++ b/client/src/App.jsx
+@@ -153,7 +153,7 @@ function SiteNotice({ notices }) {
+           eyebrow={n.opening ? 'Opening soon' : 'We’re closed'}
+           subLabel={n.reopenLabel ? `We ${openWord} ${n.reopenLabel}` : (n.opening ? 'Opening soon' : 'Reopening soon')}
+           heading={n.reopenLabel ? `We ${openWord} ${n.reopenLabel}` : (n.opening ? 'Opening soon' : 'Reopening soon')}
+-          sub2={n.opening ? (n.cta ? undefined : 'Ordering opens when we do — see you then!') : 'Pre-order now — we’ll have it ready when we open'}
++          sub2={n.opening ? 'Tap for photos, opening hours & how to find us' : 'Pre-order now — we’ll have it ready when we open'}
+           ctaLabel={n.opening ? (n.cta?.label || undefined) : 'Pre-order now'}
+           onOrderNow={n.cta?.onClick}
+         />
+@@ -1250,6 +1250,8 @@ export default function App() {
+         minsUntil: no?.minsUntil,
+         reopenLabel: no?.label || opening.dateLabel,
+         text: `${chosenLocation?.name || config.storeName || 'This store'} opens ${no?.label || opening.dateLabel}.`,
++        // Tapping the notice opens this store's Visit page (photo, info, hours).
++        cta: { label: 'Store details', onClick: () => setView('store') },
+       });
+     } else if (preorder) {
+       const no = nHours.nextOpen;
+@@ -1436,7 +1438,7 @@ export default function App() {
+       )}
+ 
+       {view === 'store' && (
+-        <StorePage config={config} onTrack={track} onBack={() => setView('home')} />
++        <StorePage config={config} location={chosenLocation} onTrack={track} onBack={() => setView('home')} />
+       )}
+ 
+       {view === 'reserve' && (
+diff --git a/client/src/components/Admin.jsx b/client/src/components/Admin.jsx
+index 4ee4c19..f60a80a 100644
+--- a/client/src/components/Admin.jsx
++++ b/client/src/components/Admin.jsx
+@@ -3313,6 +3313,29 @@ export default function Admin({ onExit }) {
+                           </div>
+                         </details>
+ 
++                        <details className="loc-avail">
++                          <summary>Visit / store page for {l.name || 'this store'}{(l.storePage && (l.storePage.photo || l.storePage.bio)) ? ' (custom)' : ' (using main store)'}</summary>
++                          <p className="muted" style={{ fontSize: 'var(--fs-xs)', margin: '6px 0' }}>The “Visit” page customers see for this store — its own photo, blurb and phone. Its address and opening hours come from the fields above. Leave blank to use your main store’s details.</p>
++                          <div style={{ display: 'grid', gap: 8 }}>
++                            <div style={row}>
++                              <label className="btn ghost" style={{ padding: '8px 12px', fontSize: 'var(--fs-base)', cursor: 'pointer' }}>
++                                {l.storePage?.photo ? 'Change photo' : 'Upload photo'}
++                                <input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files[0]; if (f) uploadImage(f, (url) => updLoc(l.id, { storePage: { ...(l.storePage || {}), photo: url } }), 'stores'); e.target.value = ''; }} />
++                              </label>
++                              {l.storePage?.photo && (
++                                <>
++                                  <img src={l.storePage.photo} alt="" style={{ height: 40, borderRadius: 6 }} />
++                                  <button type="button" className="link" style={{ color: '#c0392b' }} onClick={() => updLoc(l.id, { storePage: { ...(l.storePage || {}), photo: '' } })}>Remove</button>
++                                </>
++                              )}
++                            </div>
++                            <label className="field" style={{ margin: 0 }}><span>Blurb (a line or two about this store)</span>
++                              <textarea rows={2} value={l.storePage?.bio || ''} placeholder="e.g. Find us in the marquee by the tulip beds — great coffee while you wander the gardens." onChange={(e) => updLoc(l.id, { storePage: { ...(l.storePage || {}), bio: e.target.value } })} style={{ padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 10, font: 'inherit', resize: 'vertical' }} /></label>
++                            <label className="field" style={{ margin: 0 }}><span>Phone (optional)</span>
++                              <input value={l.storePage?.phone || ''} placeholder="Leave blank to use your main number" onChange={(e) => updLoc(l.id, { storePage: { ...(l.storePage || {}), phone: e.target.value } })} /></label>
++                          </div>
++                        </details>
++
+                         <details className="loc-avail">
+                           <summary>Items available at {l.name || 'this store'} ({offeredProducts.length - (l.hiddenItemIds || []).length}/{offeredProducts.length})</summary>
+                           <p className="muted" style={{ fontSize: 'var(--fs-xs)', margin: '6px 0' }}>Untick anything this store doesn't make (e.g. hot food at a takeaway site). Unticked items are hidden from this store's menu.</p>
+diff --git a/client/src/components/StorePage.jsx b/client/src/components/StorePage.jsx
+index 400e55d..87fac67 100644
+--- a/client/src/components/StorePage.jsx
++++ b/client/src/components/StorePage.jsx
+@@ -28,8 +28,21 @@ function fmtTime(t) {
+   return m === '00' ? `${hh}${ap}` : `${hh}:${m}${ap}`;
+ }
+ 
+-export default function StorePage({ config, onTrack, onBack }) {
+-  const contact = config.contact || {};
++export default function StorePage({ config, onTrack, onBack, location }) {
++  // Per-store venue page: when a specific store is chosen, its own name, photo,
++  // blurb, address and phone override the global store info. Anything the store
++  // leaves blank falls back to the global values, so a single-site deploy (and
++  // any store without its own page) renders exactly as before.
++  const sp = (location && location.storePage) || {};
++  const storeName = (location && location.name) || config.storeName;
++  const storePhoto = sp.photo || config.storePhoto;
++  const bio = sp.bio || config.bio;
++  const contact = {
++    ...(config.contact || {}),
++    ...((location && location.address) ? { address: location.address } : {}),
++    ...(sp.phone ? { phone: sp.phone } : {}),
++    ...(sp.mapsUrl ? { mapsUrl: sp.mapsUrl } : {}),
++  };
+   const address = contact.address || '';
+   const mapsUrl = contact.mapsUrl || (address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}` : '');
+   // Google geocodes a bare "U5, …" as just "U5", so build the directions query
+@@ -39,7 +52,7 @@ export default function StorePage({ config, onTrack, onBack }) {
+     .replace(/^\s*(u|unit|shop|suite|ste|lvl|level)\s*\.?\s*\d+[a-z]?[,/\s-]+/i, '')
+     .replace(/^\s*\d+[a-z]?\s*\/\s*/, '')
+     .trim();
+-  const geoQuery = [config.storeName, cleanAddr || address].filter(Boolean).join(', ');
++  const geoQuery = [storeName, cleanAddr || address].filter(Boolean).join(', ');
+   const dirUrl = geoQuery ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(geoQuery)}` : mapsUrl;
+   const storeOpen = config.hours ? config.hours.open : null;
+   const nextLabel = config.hours?.nextOpen?.label;
+@@ -101,13 +114,13 @@ export default function StorePage({ config, onTrack, onBack }) {
+     <main className="store-page">
+       <button className="link store-back" onClick={onBack}>← Menu</button>
+ 
+-      {config.storePhoto && (
++      {storePhoto && (
+         <div className="store-hero">
+-          <img src={imgUrl(config.storePhoto, 1600)} alt={config.storeName || 'Our café'} loading="eager" decoding="async" />
++          <img src={imgUrl(storePhoto, 1600)} alt={storeName || 'Our café'} loading="eager" decoding="async" />
+         </div>
+       )}
+-      <div className={`store-top ${config.bio ? '' : 'no-bio'}`}>
+-        {config.bio && <p className="store-bio">{config.bio}</p>}
++      <div className={`store-top ${bio ? '' : 'no-bio'}`}>
++        {bio && <p className="store-bio">{bio}</p>}
+         {(address || tel) && (
+           <section className="store-card store-find">
+             <div className="store-card-head"><PinIcon /> Find us</div>
+diff --git a/server/lib/locations.js b/server/lib/locations.js
+index a9b5f3a..55c60d7 100644
+--- a/server/lib/locations.js
++++ b/server/lib/locations.js
+@@ -158,6 +158,14 @@ function publicList() {
+       status: state,
+       daysUntilOpen: (l.type === 'popup' && l.startDate) ? Math.max(0, dayDiff(today, l.startDate)) : null,
+       hasStorePage: !!l.storePage,
++      // Per-store "Visit" page content (photo, blurb, phone, map). Only what the
++      // page needs to render — falls back to the global store info on the client.
++      storePage: l.storePage ? {
++        photo: l.storePage.photo || '',
++        bio: l.storePage.bio || '',
++        phone: l.storePage.phone || '',
++        mapsUrl: l.storePage.mapsUrl || '',
++      } : null,
+       // Which order types this store offers, so the app can show only the
+       // relevant choices (e.g. takeaway-only at a pop-up).
+       fulfilment: fulfilmentFor(l),
+-- 
+2.43.0
+

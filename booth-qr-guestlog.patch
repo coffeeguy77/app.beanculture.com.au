@@ -1,0 +1,450 @@
+From 831f2b09ff2355bbe5f6a9b9f674148958292838 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 30 Aug 2026 12:35:36 +0000
+Subject: [PATCH] Booth QR by venue, named-booth tickets, and the event
+ free-coffee guest log
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- Tables tab is now venue-aware: pick a store, and its QR codes carry ?loc= so
+  scanning sets the venue (menu, free categories, hidden-event access) AND the
+  booth. Booth styles per venue: numbered ('Booth 1' with a custom word), a
+  named list you paste in ('Microsoft Booth'), or both ('Booth 1 · Microsoft').
+  Plain numbered 'Table' codes keep the bare ?table=7 so tickets still read 'T7';
+  single-site deploys are unchanged.
+
+- Kitchen tickets show a named booth as-is ('Microsoft Booth') instead of the
+  numeric 'T7' prefix; numeric tables keep 'T7'. The booth is also stamped into
+  the order metadata for reliable reporting.
+
+- New 'Free coffees — who we gave them to' report in the Locations tab: every
+  guest who took a complimentary coffee at an event, with their name, mobile and
+  the booth they came from (e.g. 'Bill · 0404040404 · Microsoft Booth'). A live
+  lead list derived from Square comp orders joined to their customer record.
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_0187Jj4Q77V4UPawzEh9gsGr
+---
+ client/src/components/Admin.jsx | 194 ++++++++++++++++++++++++++++----
+ server/index.js                 |  78 +++++++++++++
+ server/lib/orders.js            |  23 +++-
+ 3 files changed, 268 insertions(+), 27 deletions(-)
+
+diff --git a/client/src/components/Admin.jsx b/client/src/components/Admin.jsx
+index a81e8f3..22ef2d1 100644
+--- a/client/src/components/Admin.jsx
++++ b/client/src/components/Admin.jsx
+@@ -7,6 +7,28 @@ import Insights from './Insights.jsx';
+ import EffectBuilder from './EffectBuilder.jsx';
+ import { formatMoney, api, imgUrl } from '../api.js';
+ 
++// Booth / table label builder for a venue's QR codes. Three modes:
++//  • numbered — "<word> 1..N" (word defaults to "Table"; e.g. "Booth 1")
++//  • label    — a hand-built / pasted list of names ("Microsoft Booth", …)
++//  • both      — numbered AND named ("Booth 1 · Microsoft")
++// Returns { label, param }: label is printed on the card and read on the phone;
++// param is what goes into ?table= (a bare number for plain "Table" numbering, so
++// tickets keep the familiar "T7"; the full label otherwise).
++function boothEntries(booths) {
++  const b = booths || {};
++  const word = (String(b.word || 'Table').trim()) || 'Table';
++  const labels = String(b.labels || '').split('\n').map((s) => s.trim()).filter(Boolean).slice(0, 300);
++  const mode = b.mode || 'numbered';
++  if (mode === 'label') return labels.map((s) => ({ label: s, param: s }));
++  if (mode === 'both') return labels.map((s, i) => { const l = `${word} ${i + 1} · ${s}`; return { label: l, param: l }; });
++  const from = Math.max(1, parseInt(b.from, 10) || 1);
++  const to = Math.max(from, parseInt(b.to, 10) || from);
++  const plainTable = word.toLowerCase() === 'table';
++  const out = [];
++  for (let n = from; n <= to && out.length < 300; n++) out.push({ label: `${word} ${n}`, param: plainTable ? String(n) : `${word} ${n}` });
++  return out;
++}
++
+ const LINK_TYPES = ['scroll', 'category', 'item', 'account', 'payitforward', 'url', 'none'];
+ // Friendly labels for the banner "destination" dropdowns.
+ const LINK_TYPE_LABELS = {
+@@ -189,6 +211,10 @@ export default function Admin({ onExit }) {
+   const [salesData, setSalesData] = useState(null);    // per-store sales (app vs counter)
+   const [salesDays, setSalesDays] = useState(7);
+   const [salesBusy, setSalesBusy] = useState(false);
++  const [guests, setGuests] = useState(null);          // event free-coffee guest log
++  const [guestsDays, setGuestsDays] = useState(30);
++  const [guestVenue, setGuestVenue] = useState('');
++  const [guestsBusy, setGuestsBusy] = useState(false);
+   const [collapsedSecs, setCollapsedSecs] = useState({}); // preset section name -> collapsed
+   const [deleteLock, setDeleteLock] = useState(true); // guard against accidental section deletes
+   const [removedCats, setRemovedCats] = useState(() => new Set()); // categories removed this session
+@@ -210,6 +236,7 @@ export default function Admin({ onExit }) {
+   const [tab, setTab] = useState('overview');
+   const [qrFrom, setQrFrom] = useState(1);
+   const [qrTo, setQrTo] = useState(12);
++  const [qrVenue, setQrVenue] = useState('');   // which store the QR codes are for
+   const [qrCodes, setQrCodes] = useState([]);
+   const [qrBusy, setQrBusy] = useState(false);
+   const [qrFg, setQrFg] = useState('#2b2126');
+@@ -284,18 +311,31 @@ export default function Admin({ onExit }) {
+   async function generateQR() {
+     setQrBusy(true);
+     try {
+-      const from = Math.max(1, parseInt(qrFrom, 10) || 1);
+-      const to = Math.max(from, parseInt(qrTo, 10) || from);
+-      const nums = [];
+-      for (let n = from; n <= to && nums.length < 200; n++) nums.push(n);
++      const allLocs = Array.isArray(s?.locations) ? s.locations : [];
++      const venue = allLocs.find((l) => l.id === qrVenue) || null;
++      // A venue with booth config drives the labels; otherwise fall back to the
++      // plain numeric table range (single-site / a venue with no booth setup).
++      let entries;
++      if (venue && venue.booths && venue.booths.enabled) {
++        entries = boothEntries(venue.booths);
++      } else {
++        const from = Math.max(1, parseInt(qrFrom, 10) || 1);
++        const to = Math.max(from, parseInt(qrTo, 10) || from);
++        entries = [];
++        for (let n = from; n <= to && entries.length < 200; n++) entries.push({ label: `Table ${n}`, param: String(n) });
++      }
++      if (!entries.length) { setQrCodes([]); alert('Nothing to generate — add some booth labels or a table range first.'); return; }
++      // Scanning sets the store (?loc=) AND the booth (?table=). Events are hidden
++      // from the picker, so this QR is the only way in — exactly what we want.
++      const locPart = venue && !venue._default ? `loc=${encodeURIComponent(venue.id)}&` : '';
+       const codes = await Promise.all(
+-        nums.map(async (n) => {
+-          const url = `${origin}/?table=${n}&src=qr`;
++        entries.map(async (e, i) => {
++          const url = `${origin}/?${locPart}table=${encodeURIComponent(e.param)}&src=qr`;
+           const img = await QRCode.toDataURL(url, {
+             margin: 1, width: 512, errorCorrectionLevel: 'M',
+             color: { dark: qrFg, light: qrBg },
+           });
+-          return { n, url, img };
++          return { n: i + 1, label: e.label, url, img };
+         })
+       );
+       setQrCodes(codes);
+@@ -464,6 +504,17 @@ export default function Admin({ onExit }) {
+     } catch (e) { setSalesData({ error: e.message }); }
+     finally { setSalesBusy(false); }
+   }
++  // Event guest log ("who got a free coffee") — name, phone, booth, time.
++  async function loadGuests(days = guestsDays, venue = guestVenue) {
++    setGuestsBusy(true);
++    try {
++      const q = `days=${days}${venue ? `&location=${encodeURIComponent(venue)}` : ''}&pass=${encodeURIComponent(pass)}`;
++      const r = await fetch(`/api/admin/analytics/event-guests?${q}`);
++      const d = await r.json();
++      if (r.ok) setGuests(d); else setGuests({ error: d.error || 'Failed' });
++    } catch (e) { setGuests({ error: e.message }); }
++    finally { setGuestsBusy(false); }
++  }
+   async function loadSquareLocations() {
+     try {
+       const r = await fetch(`/api/admin/square-locations?pass=${encodeURIComponent(pass)}`);
+@@ -3329,6 +3380,39 @@ export default function Admin({ onExit }) {
+                   })()}
+                 </div>
+ 
++                {locs.some((l) => l.type === 'event') && (
++                  <div className="card" style={card}>
++                    <div className="group-title" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
++                      Free coffees — who we gave them to
++                      <select value={guestVenue} onChange={(e) => { setGuestVenue(e.target.value); loadGuests(guestsDays, e.target.value); }} style={{ marginLeft: 'auto' }}>
++                        <option value="">All venues</option>
++                        {locs.filter((l) => l.type === 'event').map((l) => <option key={l.id} value={l.id}>{l.name || l.id}</option>)}
++                      </select>
++                      <select value={guestsDays} onChange={(e) => { const d = Number(e.target.value); setGuestsDays(d); loadGuests(d, guestVenue); }}>
++                        <option value={1}>Today</option><option value={7}>7 days</option><option value={30}>30 days</option><option value={90}>90 days</option>
++                      </select>
++                      <button type="button" className="btn ghost" style={{ padding: '6px 12px' }} disabled={guestsBusy} onClick={() => loadGuests()}>{guestsBusy ? 'Loading…' : (guests ? 'Refresh' : 'Load')}</button>
++                    </div>
++                    <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 0 }}>Every guest who ordered a complimentary coffee at an event, with the booth they came from — a ready-made lead list from the event. Pulled live from Square.</p>
++                    {guests && guests.error && <p className="muted" style={{ color: 'var(--admin-danger,#c0392b)' }}>{guests.error}</p>}
++                    {guests && Array.isArray(guests.guests) && guests.guests.length === 0 && <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>No free coffees in this window yet.</p>}
++                    {guests && Array.isArray(guests.guests) && guests.guests.length > 0 && (
++                      <div className="loc-avail-list" style={{ maxHeight: 340 }}>
++                        {guests.guests.map((g, i) => (
++                          <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'baseline', padding: '4px 0', borderTop: i ? '1px solid var(--line)' : 'none', fontSize: 'var(--fs-sm)', flexWrap: 'wrap' }}>
++                            <strong style={{ minWidth: 120 }}>{g.name || 'Guest'}</strong>
++                            <span className="muted">{g.phone || '—'}</span>
++                            {g.booth && <span className="camp-pill" style={{ background: 'var(--brand-soft, #f2dfe6)' }}>{g.booth}</span>}
++                            {g.paidExtra && <span className="camp-pill">+ purchase</span>}
++                            <span className="muted" style={{ marginLeft: 'auto' }}>{g.at ? new Date(g.at).toLocaleString('en-AU', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : ''}</span>
++                          </div>
++                        ))}
++                      </div>
++                    )}
++                    {guests && guests.count > 0 && <p className="muted" style={{ fontSize: 'var(--fs-xs)', marginTop: 8 }}>{guests.count} free coffee{guests.count === 1 ? '' : 's'} given in the last {guests.days} days.</p>}
++                  </div>
++                )}
++
+                 {locs.some((l) => l.type === 'event') && (
+                   <div className="card" style={card}>
+                     <div className="group-title">Event settings</div>
+@@ -4339,22 +4423,83 @@ export default function Admin({ onExit }) {
+             )}
+ 
+             {/* ───────── TABLES (QR) ───────── */}
+-            {tab === 'tables' && (
++            {tab === 'tables' && (() => {
++              const qLocs = Array.isArray(s?.locations) ? s.locations : [];
++              const venue = qLocs.find((l) => l.id === qrVenue) || null;
++              const booths = (venue && venue.booths) || {};
++              const boothMode = booths.mode || 'numbered';
++              const boothWord = booths.word != null ? booths.word : 'Table';
++              const setBooths = (patch) => { if (venue) updLoc(venue.id, { booths: { ...(venue.booths || {}), ...patch } }); };
++              const boothOn = !!(venue && booths.enabled);
++              const preview = boothOn ? boothEntries(booths) : [];
++              return (
+               <div className="card" style={card}>
+-                <div className="group-title">Table QR codes</div>
++                <div className="group-title">Table &amp; booth QR codes</div>
+                 <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 0 }}>
+-                  Generate a QR for each table. Scanning it opens the app with <strong>Dine in</strong> and that
+-                  table number locked in — the guest taps ✕ only if they need to change it. Print and place one on each table.
++                  Generate a QR for each table or event booth. Scanning it opens the app <strong>at that venue</strong> with
++                  the table / booth locked in. For an event, this is the only way in (the store is hidden from the picker),
++                  so the booth QR decides the venue, the menu, and what the guest sees.
+                 </p>
+-                <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+-                  <label className="field" style={{ flex: '1 1 90px', minWidth: 80 }}><span>From table</span>
+-                    <input type="number" min="1" value={qrFrom} onChange={(e) => setQrFrom(e.target.value)} /></label>
+-                  <label className="field" style={{ flex: '1 1 90px', minWidth: 80 }}><span>To table</span>
+-                    <input type="number" min="1" value={qrTo} onChange={(e) => setQrTo(e.target.value)} /></label>
+-                  <button className="btn" style={{ minWidth: 120 }} disabled={qrBusy} onClick={generateQR}>
+-                    {qrBusy ? 'Generating…' : 'Generate'}
+-                  </button>
+-                </div>
++
++                {qLocs.length > 0 && (
++                  <label className="field" style={{ maxWidth: 320 }}><span>Which venue are these codes for?</span>
++                    <select value={qrVenue} onChange={(e) => setQrVenue(e.target.value)}>
++                      <option value="">Main site (no specific venue)</option>
++                      {qLocs.map((l) => <option key={l.id} value={l.id}>{l.name || l.id}{l.type === 'event' ? ' · event' : ''}</option>)}
++                    </select>
++                  </label>
++                )}
++
++                {venue ? (
++                  <div className="avail-sched" style={{ margin: '10px 0' }}>
++                    <label className="switch"><input type="checkbox" checked={boothOn} onChange={(e) => setBooths({ enabled: e.target.checked, mode: booths.mode || 'numbered' })} /> <span>Custom booths / labels for {venue.name || 'this venue'}</span></label>
++                    {boothOn && (
++                      <>
++                        <label className="field" style={{ marginTop: 10, maxWidth: 320 }}><span>Style</span>
++                          <select value={boothMode} onChange={(e) => setBooths({ mode: e.target.value })}>
++                            <option value="numbered">Numbered (Booth 1, Booth 2 …)</option>
++                            <option value="label">Named list (Microsoft Booth, Reception …)</option>
++                            <option value="both">Numbered + named (Booth 1 · Microsoft)</option>
++                          </select>
++                        </label>
++                        {(boothMode === 'numbered' || boothMode === 'both') && (
++                          <label className="field" style={{ marginTop: 10, maxWidth: 220 }}><span>Word (instead of “Table”)</span>
++                            <input value={boothWord} placeholder="Booth" onChange={(e) => setBooths({ word: e.target.value })} /></label>
++                        )}
++                        {boothMode === 'numbered' && (
++                          <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>
++                            <label className="field" style={{ flex: '1 1 90px', minWidth: 80 }}><span>From</span>
++                              <input type="number" min="1" value={booths.from != null ? booths.from : 1} onChange={(e) => setBooths({ from: e.target.value })} /></label>
++                            <label className="field" style={{ flex: '1 1 90px', minWidth: 80 }}><span>To</span>
++                              <input type="number" min="1" value={booths.to != null ? booths.to : 12} onChange={(e) => setBooths({ to: e.target.value })} /></label>
++                          </div>
++                        )}
++                        {(boothMode === 'label' || boothMode === 'both') && (
++                          <label className="field" style={{ marginTop: 10 }}><span>Booth names — one per line (paste your list)</span>
++                            <textarea rows={5} value={booths.labels || ''} placeholder={'Microsoft Booth\nGoogle Booth\nReception\nMain Stage'} onChange={(e) => setBooths({ labels: e.target.value })} style={{ padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 10, font: 'inherit', resize: 'vertical' }} /></label>
++                        )}
++                        <p className="muted" style={{ fontSize: 'var(--fs-xs)', margin: '8px 0 0' }}>
++                          {preview.length
++                            ? <>Will make <strong>{preview.length}</strong> code{preview.length === 1 ? '' : 's'}: {preview.slice(0, 4).map((e) => e.label).join(', ')}{preview.length > 4 ? '…' : ''}. Booth config saves with <strong>Save changes</strong>.</>
++                            : 'Add a range or some names above.'}
++                        </p>
++                      </>
++                    )}
++                    <div style={{ marginTop: 12 }}>
++                      <button className="btn" style={{ minWidth: 120 }} disabled={qrBusy} onClick={generateQR}>{qrBusy ? 'Generating…' : 'Generate QR codes'}</button>
++                    </div>
++                  </div>
++                ) : (
++                  <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap', marginTop: 10 }}>
++                    <label className="field" style={{ flex: '1 1 90px', minWidth: 80 }}><span>From table</span>
++                      <input type="number" min="1" value={qrFrom} onChange={(e) => setQrFrom(e.target.value)} /></label>
++                    <label className="field" style={{ flex: '1 1 90px', minWidth: 80 }}><span>To table</span>
++                      <input type="number" min="1" value={qrTo} onChange={(e) => setQrTo(e.target.value)} /></label>
++                    <button className="btn" style={{ minWidth: 120 }} disabled={qrBusy} onClick={generateQR}>
++                      {qrBusy ? 'Generating…' : 'Generate'}
++                    </button>
++                  </div>
++                )}
+                 <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap', marginTop: 14 }}>
+                   <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                     <span className="muted" style={{ fontSize: 'var(--fs-base)' }}>Code colour</span>
+@@ -4372,7 +4517,7 @@ export default function Admin({ onExit }) {
+                 {qrCodes.length > 0 && (
+                   <>
+                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '14px 0 2px' }}>
+-                      <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>{qrCodes.length} table{qrCodes.length === 1 ? '' : 's'} · links to {origin || 'this site'}</span>
++                      <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>{qrCodes.length} code{qrCodes.length === 1 ? '' : 's'} · links to {origin || 'this site'}</span>
+                       <button className="link" onClick={() => window.print()}>🖨 Print cards</button>
+                     </div>
+                     <div className="qr-print" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${Math.min(qrSize + 48, 300)}px, 1fr))` }}>
+@@ -4380,15 +4525,16 @@ export default function Admin({ onExit }) {
+                         <div key={q.n} className="qr-card">
+                           <div className="qr-card-brand">{(s && s.storeName) || 'Bean Culture'}</div>
+                           <div className="qr-card-scan">Scan to order</div>
+-                          <img src={q.img} alt={`Table ${q.n} QR code`} style={{ width: qrSize, maxWidth: '100%' }} />
+-                          <div className="qr-card-table">Table {q.n}</div>
++                          <img src={q.img} alt={`${q.label} QR code`} style={{ width: qrSize, maxWidth: '100%' }} />
++                          <div className="qr-card-table">{q.label || `Table ${q.n}`}</div>
+                         </div>
+                       ))}
+                     </div>
+                   </>
+                 )}
+               </div>
+-            )}
++              );
++            })()}
+ 
+             {/* ───────── THEME ───────── */}
+             {tab === 'theme' && (
+diff --git a/server/index.js b/server/index.js
+index 6be4221..1aa8268 100644
+--- a/server/index.js
++++ b/server/index.js
+@@ -1536,6 +1536,84 @@ app.get('/api/admin/analytics/sales', async (req, res) => {
+   } catch (e) { res.status(502).json({ error: e.message }); }
+ });
+ 
++// ---- Admin: "who did we give a free coffee to" — the event guest log ----
++// For an event store, every complimentary order is a captured lead: the person
++// enrolled with name + mobile, and the booth they ordered from is on the order.
++// This joins those comp orders to their Square customer (name + phone) so the
++// owner sees e.g. "Bill · 0404 040 404 · Microsoft Booth · 9:14am". Read-only,
++// derived live from Square — nothing new is stored.
++app.get('/api/admin/analytics/event-guests', async (req, res) => {
++  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
++  try {
++    const days = Math.max(1, Math.min(120, parseInt(req.query.days, 10) || 30));
++    const startAt = new Date(Date.now() - days * 86400000).toISOString();
++    // A specific event store, or every store when none is given.
++    const stores = req.query.location
++      ? [locations.resolve(req.query.location)]
++      : locations.active();
++    // De-dupe by Square location id (several events can share one).
++    const sqLocIds = [...new Set(stores.map((s) => s.squareLocationId).filter(Boolean))];
++    const rows = [];
++    const isCompOrder = (o) =>
++      (o.metadata && o.metadata.bc_free === 'event') ||
++      (o.discounts || []).some((d) => /complimentary \(event\)/i.test(d.name || ''));
++    const boothOf = (o) => {
++      if (o.metadata && o.metadata.bc_booth) return o.metadata.bc_booth;
++      const note = (o.fulfillments && o.fulfillments[0] && o.fulfillments[0].pickup_details && o.fulfillments[0].pickup_details.note) || o.note || '';
++      const m = /DINE-IN ·\s*([^·]+)/i.exec(note);
++      return m ? m[1].trim() : '';
++    };
++    for (const locId of sqLocIds) {
++      let cursor; let pages = 0;
++      do {
++        const data = await sq.squareFetch('/v2/orders/search', {
++          method: 'POST',
++          body: {
++            location_ids: [locId], cursor,
++            query: {
++              filter: { date_time_filter: { created_at: { start_at: startAt } }, state_filter: { states: ['COMPLETED'] } },
++              sort: { sort_field: 'CREATED_AT', sort_order: 'DESC' },
++            },
++            limit: 500,
++          },
++        }).catch(() => ({}));
++        for (const o of (data.orders || [])) {
++          if (!isCompOrder(o)) continue;
++          rows.push({
++            orderId: o.id,
++            customerId: o.customer_id || null,
++            booth: boothOf(o),
++            at: o.created_at,
++            paid: (o.total_money && o.total_money.amount) || 0, // >0 = also bought beans etc.
++          });
++        }
++        cursor = data.cursor; pages += 1;
++      } while (cursor && pages < 6);
++    }
++    // Join Square customers for name + phone (bulk, chunked).
++    const ids = [...new Set(rows.map((r) => r.customerId).filter(Boolean))];
++    const custMap = new Map();
++    for (let i = 0; i < ids.length; i += 100) {
++      try {
++        const data = await sq.squareFetch('/v2/customers/bulk-retrieve', { method: 'POST', body: { customer_ids: ids.slice(i, i + 100) } });
++        for (const [id, r] of Object.entries(data.responses || {})) if (r.customer) custMap.set(id, r.customer);
++      } catch { /* thinner detail on a failed chunk */ }
++    }
++    const guests = rows.map((r) => {
++      const c = r.customerId ? custMap.get(r.customerId) : null;
++      const name = c ? ([c.given_name, c.family_name].filter(Boolean).join(' ').trim() || c.company_name || c.nickname || '') : '';
++      return {
++        name: name || 'Guest',
++        phone: (c && c.phone_number) || '',
++        booth: r.booth || '',
++        at: r.at,
++        paidExtra: r.paid > 0,
++      };
++    }).sort((a, b) => new Date(b.at) - new Date(a.at));
++    res.json({ days, count: guests.length, guests });
++  } catch (e) { res.status(502).json({ error: e.message }); }
++});
++
+ // ---- Admin: list this Square account's locations (id + name) so the Locations
+ //      setup can offer a dropdown instead of hunting for the id in Square. ----
+ app.get('/api/admin/square-locations', async (req, res) => {
+diff --git a/server/lib/orders.js b/server/lib/orders.js
+index 9e2b797..2f26c47 100644
+--- a/server/lib/orders.js
++++ b/server/lib/orders.js
+@@ -10,10 +10,22 @@ const payItForward = require('./payItForward');
+ const DINEIN_FULFILLMENT = (process.env.SQUARE_DINEIN_FULFILLMENT || 'PICKUP').toUpperCase();
+ const COMP_COUPON_CODE = (process.env.COMP_COUPON_CODE || '').trim();
+ 
++// A table can be a plain number ("7") or a custom booth label ("Microsoft
++// Booth", "Booth 1 · Google"). Numbers get the familiar "T7"; a named booth is
++// shown as-is (no "T"/"Table" prefix) so the ticket reads naturally.
++const isNumericTable = (t) => /^\d+$/.test(String(t == null ? '' : t).trim());
++function tableLabel(table) {
++  const t = String(table == null ? '' : table).trim();
++  if (!t) return '';
++  return isNumericTable(t) ? `Table ${t}` : t;
++}
++
+ function buildTicketName({ dineIn, table, name }) {
+   let t;
+-  if (dineIn) t = table ? `T${table} DINE-IN` : 'DINE-IN';
+-  else {
++  if (dineIn) {
++    if (!table) t = 'DINE-IN';
++    else t = isNumericTable(table) ? `T${table} DINE-IN` : String(table);
++  } else {
+     t = 'TAKEAWAY';
+     if (name) t += ` ${name}`;
+   }
+@@ -21,7 +33,7 @@ function buildTicketName({ dineIn, table, name }) {
+ }
+ 
+ function buildNote({ dineIn, table }) {
+-  return dineIn ? `DINE-IN · Table ${table || '?'}` : 'TAKEAWAY';
++  return dineIn ? `DINE-IN · ${tableLabel(table) || '?'}` : 'TAKEAWAY';
+ }
+ 
+ async function createOrder({ cart, dineIn, table, name, coupon, customerId, pickupAt, idempotencyKey, note: customerNote, pifVoucher, source, squareLocationId, cardPayment, free, freeCategories, shipping }) {
+@@ -110,6 +122,11 @@ async function createOrder({ cart, dineIn, table, name, coupon, customerId, pick
+     source: { name: source || 'Bean Culture App' },
+   };
+   if (customerId) order.customer_id = customerId;
++  // Stamp the booth/table on complimentary event orders so the "who got a free
++  // coffee" report can read it straight off the order (no note parsing).
++  if ((isComp || partialComp) && table) {
++    order.metadata = { ...(order.metadata || {}), bc_booth: String(table).slice(0, 60), bc_free: 'event' };
++  }
+ 
+   // A Pay It Forward voucher takes priority over (never stacks with) a combo
+   // or typed coupon, same precedent as combo-beats-coupon below. The balance
+-- 
+2.43.0
+

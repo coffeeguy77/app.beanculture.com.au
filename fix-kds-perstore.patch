@@ -1,0 +1,134 @@
+From f813691295a96a0d9735226364b7cbb5776a34ce Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 30 Aug 2026 16:12:40 +0000
+Subject: [PATCH] KDS: per-store ticket isolation + surface failed bumps
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- Every order is tagged with the app store it was placed at (bc_store), so each
+  kitchen screen shows only ITS store's tickets even when several app stores
+  share one Square location. Event screens still show only their event; café /
+  pop-up screens show their own store plus untagged legacy orders, never events.
+- The bump call now checks the response: a failed bump shows an error and
+  reverts, instead of silently 'coming back' on the next poll.
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_0187Jj4Q77V4UPawzEh9gsGr
+---
+ client/src/components/Kds.jsx | 12 ++++++++++--
+ server/index.js               |  3 ++-
+ server/lib/kds.js             | 15 +++++++++++----
+ server/lib/orders.js          | 12 +++++++-----
+ 4 files changed, 30 insertions(+), 12 deletions(-)
+
+diff --git a/client/src/components/Kds.jsx b/client/src/components/Kds.jsx
+index 8c6a03d..92cbf28 100644
+--- a/client/src/components/Kds.jsx
++++ b/client/src/components/Kds.jsx
+@@ -134,11 +134,19 @@ export default function Kds({ onExit, embedded }) {
+   async function bump(orderId, status) {
+     setTickets((ts) => ts.map((t) => (t.orderId === orderId ? { ...t, zoneStatus: { ...t.zoneStatus, [zone]: status } } : t)));
+     try {
+-      await fetch(`/api/admin/kds/bump?pass=${encodeURIComponent(pass)}`, {
++      const r = await fetch(`/api/admin/kds/bump?pass=${encodeURIComponent(pass)}`, {
+         method: 'POST', headers: { 'Content-Type': 'application/json' },
+         body: JSON.stringify({ orderId, zone, status }),
+       });
+-    } catch { loadTickets(); }
++      // A non-OK response never rejects fetch — check it, so a failed bump shows
++      // an error and reverts instead of silently "coming back" on the next poll.
++      if (!r.ok) {
++        let msg = `Bump failed (${r.status})`;
++        try { const d = await r.json(); if (d && d.error) msg = `Bump failed: ${d.error}`; } catch {}
++        setErr(msg);
++        loadTickets();
++      } else { setErr(''); }
++    } catch { setErr('Bump didn’t save — check the connection.'); loadTickets(); }
+   }
+ 
+   async function installKds() {
+diff --git a/server/index.js b/server/index.js
+index 7434840..8338dd6 100644
+--- a/server/index.js
++++ b/server/index.js
+@@ -332,7 +332,7 @@ app.post('/api/orders', async (req, res) => {
+       ? { fee: shipFee, address: shipReq.address, label: 'Shipping' } : null;
+     const evLoc = locations.resolve(locationId);
+     const eventId = evLoc && evLoc.type === 'event' ? evLoc.id : undefined;
+-    const order = await orders.createOrder({ cart, dineIn: !!dineIn, table, name, coupon, customerId: effectiveCustomerId, pickupAt, note, pifVoucher, squareLocationId, cardPayment: cardPayment !== false, free: freeOrder, freeCategories, shipping, eventId });
++    const order = await orders.createOrder({ cart, dineIn: !!dineIn, table, name, coupon, customerId: effectiveCustomerId, pickupAt, note, pifVoucher, squareLocationId, cardPayment: cardPayment !== false, free: freeOrder, freeCategories, shipping, eventId, appLocationId: evLoc ? evLoc.id : undefined });
+ 
+     let rewardApplied = false;
+     if (loy && loy.accountId && loy.tierId) {
+@@ -1213,6 +1213,7 @@ app.post('/api/pos/order', async (req, res) => {
+       free: locations.isFree(locationId) && posFreeCategories.length === 0,
+       freeCategories: posFreeCategories,
+       eventId: posEvLoc && posEvLoc.type === 'event' ? posEvLoc.id : undefined,
++      appLocationId: posEvLoc ? posEvLoc.id : undefined,
+     });
+     const amount = order.total_money ? order.total_money.amount : 0;
+     const currency = (order.total_money && order.total_money.currency) || sq.CURRENCY;
+diff --git a/server/lib/kds.js b/server/lib/kds.js
+index 4d8f875..4bf369a 100644
+--- a/server/lib/kds.js
++++ b/server/lib/kds.js
+@@ -118,13 +118,20 @@ async function fetchTickets(squareLocationId, loc) {
+     },
+   });
+   let orders = (data.orders || []).filter((o) => o && o.state !== 'CANCELED');
+-  // Several stores can share one Square location (events run on the café's), so
+-  // split the board by the screen's chosen store: an EVENT screen shows only
+-  // that event's tickets; any other screen shows only non-event tickets.
++  // Several app stores can share ONE Square location (events run on the café's),
++  // so split the board by the screen's chosen store using the order's store tag:
++  //  • an EVENT screen shows only that event's tickets (bc_event);
++  //  • any other screen shows its own store's tickets (bc_store), plus untagged
++  //    legacy orders, and never an event's tickets.
+   if (loc && loc.type === 'event') {
+     orders = orders.filter((o) => o.metadata && o.metadata.bc_event === loc.id);
+   } else if (loc) {
+-    orders = orders.filter((o) => !(o.metadata && o.metadata.bc_event));
++    orders = orders.filter((o) => {
++      const m = o.metadata || {};
++      if (m.bc_event) return false;          // events belong to the booth board
++      if (m.bc_store) return m.bc_store === loc.id; // tagged → only its own store
++      return true;                            // untagged legacy order → show it
++    });
+   }
+   const [varCat, states] = await Promise.all([
+     catalog.getVariationCategoryMap().catch(() => ({})),
+diff --git a/server/lib/orders.js b/server/lib/orders.js
+index a5d1cca..ce35028 100644
+--- a/server/lib/orders.js
++++ b/server/lib/orders.js
+@@ -36,7 +36,7 @@ function buildNote({ dineIn, table }) {
+   return dineIn ? `DINE-IN · ${tableLabel(table) || '?'}` : 'TAKEAWAY';
+ }
+ 
+-async function createOrder({ cart, dineIn, table, name, coupon, customerId, pickupAt, idempotencyKey, note: customerNote, pifVoucher, source, squareLocationId, cardPayment, free, freeCategories, shipping, eventId }) {
++async function createOrder({ cart, dineIn, table, name, coupon, customerId, pickupAt, idempotencyKey, note: customerNote, pifVoucher, source, squareLocationId, cardPayment, free, freeCategories, shipping, eventId, appLocationId }) {
+   const LOC = squareLocationId || LOCATION_ID;
+   if (!Array.isArray(cart) || cart.length === 0) throw new Error('Cart is empty');
+   // Bake any per-combo locked modifiers into the combo lines before pricing, so
+@@ -122,11 +122,13 @@ async function createOrder({ cart, dineIn, table, name, coupon, customerId, pick
+     source: { name: source || 'Bean Culture App' },
+   };
+   if (customerId) order.customer_id = customerId;
+-  // Tag event orders so the stats page can isolate THIS event (events share the
+-  // main Square location): bc_event = the event store id on every event order;
+-  // bc_free/bc_booth on complimentary ones for the "who got a free coffee" report.
+-  if (eventId || ((isComp || partialComp) && table)) {
++  // Tag the app store this order was placed at, so each store's kitchen screen
++  // shows only its own orders even when several app stores share ONE Square
++  // location. bc_event isolates an event (for the stats page too); bc_free/
++  // bc_booth mark complimentary ones for the "who got a free coffee" report.
++  if (appLocationId || eventId || ((isComp || partialComp) && table)) {
+     order.metadata = { ...(order.metadata || {}) };
++    if (appLocationId) order.metadata.bc_store = String(appLocationId).slice(0, 60);
+     if (eventId) order.metadata.bc_event = String(eventId).slice(0, 60);
+     if (isComp || partialComp) order.metadata.bc_free = 'event';
+     if (table) order.metadata.bc_booth = String(table).slice(0, 60);
+-- 
+2.43.0
+

@@ -1,0 +1,184 @@
+From 8fb34abb23381027b3f3cfdea4da193f575a46c6 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 30 Aug 2026 16:30:50 +0000
+Subject: [PATCH] Surcharges per-location + a delete lock for stores
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- Weekend and card surcharges can each be limited to specific stores ('Applies
+  at' chips; empty = all stores). Server applies them only at those locations
+  (app + POS, via the order's store tag); the checkout estimate matches.
+- Locations get a delete lock like reservations: a 🔒 Delete locked toggle on the
+  'Your stores' card, the ✕ is disabled until unlocked, and it confirms before
+  removing a store — so a whole location can't be deleted by accident.
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_0187Jj4Q77V4UPawzEh9gsGr
+---
+ client/src/components/Admin.jsx    | 38 +++++++++++++++++++++++++++---
+ client/src/components/Checkout.jsx |  7 ++++--
+ server/lib/orders.js               |  2 +-
+ server/lib/surcharges.js           | 15 +++++++++---
+ 4 files changed, 53 insertions(+), 9 deletions(-)
+
+diff --git a/client/src/components/Admin.jsx b/client/src/components/Admin.jsx
+index a2d8396..145d8e2 100644
+--- a/client/src/components/Admin.jsx
++++ b/client/src/components/Admin.jsx
+@@ -262,6 +262,7 @@ export default function Admin({ onExit }) {
+   // inspect() result for the currently-linked Square item (see effect below).
+   const [resvPrintStatus, setResvPrintStatus] = useState(null);
+   const [resvDeleteLock, setResvDeleteLock] = useState(true); // guard against accidental reservation deletes
++  const [locDeleteLock, setLocDeleteLock] = useState(true); // guard against accidentally deleting a whole location
+   const [resvSetupBusy, setResvSetupBusy] = useState(false);
+   const [resvSetupMsg, setResvSetupMsg] = useState('');
+   const [newClosure, setNewClosure] = useState({ date: '', annual: false, label: '' });
+@@ -3504,8 +3505,15 @@ export default function Admin({ onExit }) {
+                 )}
+ 
+                 <div className="card" style={card}>
+-                  <div className="group-title">Your stores</div>
+-                  <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 0 }}>
++                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
++                    <div className="group-title" style={{ margin: 0 }}>Your stores</div>
++                    {locs.length > 0 && (
++                      <button type="button" className={`chip ${locDeleteLock ? 'on' : ''}`} onClick={() => setLocDeleteLock((v) => !v)}
++                        style={{ fontSize: 'var(--fs-sm)' }} title={locDeleteLock ? 'Locked — tap to allow deleting a store' : 'Unlocked — tap to lock again'}>
++                        {locDeleteLock ? '🔒 Delete locked' : '🔓 Delete unlocked'}</button>
++                    )}
++                  </div>
++                  <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 6 }}>
+                     {locs.length === 0
+                       ? 'You’re running as a single store right now. Add your existing store first (the button below prefills it), then add the new one. The customer store picker only appears once TWO or more active stores are listed — with a single store the app just uses it. Once any store is listed here, the app uses this list.'
+                       : 'Each store maps to one of your Square locations. Set up each location’s bank account in the Square dashboard so its takings deposit separately. The customer store picker appears once two or more stores are active. Remember to press '}
+@@ -3529,7 +3537,7 @@ export default function Admin({ onExit }) {
+                         <label className="switch" style={{ marginLeft: 'auto' }} title="Customers can order from this store">
+                           <input type="checkbox" checked={l.active !== false} onChange={(e) => updLoc(l.id, { active: e.target.checked })} /> <span>Active</span>
+                         </label>
+-                        <button type="button" className="avail-del" title="Delete store" onClick={() => rmLoc(l.id)}>✕</button>
++                        <button type="button" className="avail-del" disabled={locDeleteLock} style={{ opacity: locDeleteLock ? 0.3 : 1 }} title={locDeleteLock ? 'Unlock delete (top of card) to remove this store' : 'Delete store'} onClick={() => { if (window.confirm(`Delete "${l.name || l.id}"? This removes the store from the app. It does not touch Square.`)) rmLoc(l.id); }}>✕</button>
+                       </div>
+                       <div style={{ display: 'grid', gap: 8, marginTop: 8 }}>
+                         <label className="field" style={{ margin: 0 }}>
+@@ -3851,6 +3859,18 @@ export default function Admin({ onExit }) {
+                         <label className="field" style={{ margin: 0 }}><span>Label on receipt</span>
+                           <input value={scfg.weekend?.label || 'Weekend surcharge'} onChange={(e) => setWeekendSc({ label: e.target.value })} />
+                         </label>
++                        {locs.length > 1 && (
++                          <div>
++                            <div className="muted" style={{ fontSize: 'var(--fs-xs)', marginBottom: 4 }}>Applies at</div>
++                            <div className="avail-chipwrap">
++                              <button type="button" className={`avail-chip${!(scfg.weekend?.locations || []).length ? ' on' : ''}`} onClick={() => setWeekendSc({ locations: [] })}>All stores</button>
++                              {locs.map((l) => {
++                                const on = (scfg.weekend?.locations || []).includes(l.id);
++                                return <button type="button" key={l.id} className={`avail-chip${on ? ' on' : ''}`} onClick={() => { const set = new Set(scfg.weekend?.locations || []); on ? set.delete(l.id) : set.add(l.id); setWeekendSc({ locations: [...set] }); }}>{l.name || l.id}</button>;
++                              })}
++                            </div>
++                          </div>
++                        )}
+                       </div>
+                     )}
+                   </div>
+@@ -3866,6 +3886,18 @@ export default function Admin({ onExit }) {
+                           <input value={scfg.card?.label || 'Card surcharge'} onChange={(e) => setCardSc({ label: e.target.value })} />
+                         </label>
+                         <p className="muted" style={{ fontSize: 'var(--fs-xs)', margin: 0 }}>Applied to card payments only (app card + POS card tender), never to cash or gift balance.</p>
++                        {locs.length > 1 && (
++                          <div>
++                            <div className="muted" style={{ fontSize: 'var(--fs-xs)', marginBottom: 4 }}>Applies at</div>
++                            <div className="avail-chipwrap">
++                              <button type="button" className={`avail-chip${!(scfg.card?.locations || []).length ? ' on' : ''}`} onClick={() => setCardSc({ locations: [] })}>All stores</button>
++                              {locs.map((l) => {
++                                const on = (scfg.card?.locations || []).includes(l.id);
++                                return <button type="button" key={l.id} className={`avail-chip${on ? ' on' : ''}`} onClick={() => { const set = new Set(scfg.card?.locations || []); on ? set.delete(l.id) : set.add(l.id); setCardSc({ locations: [...set] }); }}>{l.name || l.id}</button>;
++                              })}
++                            </div>
++                          </div>
++                        )}
+                       </div>
+                     )}
+                   </div>
+diff --git a/client/src/components/Checkout.jsx b/client/src/components/Checkout.jsx
+index 6aeea0c..0624bcf 100644
+--- a/client/src/components/Checkout.jsx
++++ b/client/src/components/Checkout.jsx
+@@ -181,8 +181,11 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
+   // Surcharge estimate (server is authoritative; this mirrors it for the summary
+   // so the customer sees the weekend/card surcharge before paying).
+   const scfg = (config && config.surcharges) || {};
+-  const weekendActive = !!(scfg.weekend && scfg.weekend.activeToday) && payTotal > 0;
+-  const cardActive = !!(scfg.card && scfg.card.enabled) && cardChoice !== 'balance' && payTotal > 0;
++  // A surcharge with a non-empty `locations` list only applies at those stores
++  // (the server is authoritative; this keeps the estimate honest per store).
++  const scAppliesHere = (conf) => { const ls = (conf && conf.locations) || []; return !ls.length || (location && ls.includes(location.id)); };
++  const weekendActive = !!(scfg.weekend && scfg.weekend.activeToday) && scAppliesHere(scfg.weekend) && payTotal > 0;
++  const cardActive = !!(scfg.card && scfg.card.enabled) && scAppliesHere(scfg.card) && cardChoice !== 'balance' && payTotal > 0;
+   const weekendSc = weekendActive ? Math.round(payTotal * (scfg.weekend.percent || 0) / 100) : 0;
+   const cardSc = cardActive ? Math.round((payTotal + weekendSc) * (scfg.card.percent || 0) / 100) : 0;
+   const grandTotal = payTotal + weekendSc + cardSc + shipCost;
+diff --git a/server/lib/orders.js b/server/lib/orders.js
+index ce35028..b572a95 100644
+--- a/server/lib/orders.js
++++ b/server/lib/orders.js
+@@ -190,7 +190,7 @@ async function createOrder({ cart, dineIn, table, name, coupon, customerId, pick
+   // Skipped for comps (a 100%-off order shouldn't still bill a surcharge).
+   if (!isComp) {
+     try {
+-      const sc = require('./surcharges').serviceChargesFor({ cardPayment: !!cardPayment });
++      const sc = require('./surcharges').serviceChargesFor({ cardPayment: !!cardPayment, locationId: appLocationId || null });
+       if (sc.length) order.service_charges = [...(order.service_charges || []), ...sc];
+     } catch (e) { console.warn('[surcharges] skipped:', e.message); }
+   }
+diff --git a/server/lib/surcharges.js b/server/lib/surcharges.js
+index ca652d0..30e559f 100644
+--- a/server/lib/surcharges.js
++++ b/server/lib/surcharges.js
+@@ -30,12 +30,19 @@ function pct(v) {
+   return Number.isFinite(n) && n > 0 ? n : 0;
+ }
+ 
++// Whether a surcharge applies at a given store. Empty/absent `locations` list =
++// applies everywhere; otherwise only at the listed store ids.
++function appliesAtLocation(conf, locationId) {
++  const locs = Array.isArray(conf.locations) ? conf.locations.filter(Boolean) : [];
++  return !locs.length || (!!locationId && locs.includes(locationId));
++}
++
+ // Build the Square order.service_charges array for this order.
+-function serviceChargesFor({ now = venueNow(), cardPayment = false } = {}) {
++function serviceChargesFor({ now = venueNow(), cardPayment = false, locationId = null } = {}) {
+   const { weekend, card } = cfg();
+   const out = [];
+   const wp = pct(weekend.percent);
+-  if (weekend.enabled && wp > 0 && isWeekendDay(now, weekend)) {
++  if (weekend.enabled && wp > 0 && isWeekendDay(now, weekend) && appliesAtLocation(weekend, locationId)) {
+     out.push({
+       uid: 'sc-weekend',
+       name: (weekend.label || 'Weekend surcharge').slice(0, 255),
+@@ -44,7 +51,7 @@ function serviceChargesFor({ now = venueNow(), cardPayment = false } = {}) {
+     });
+   }
+   const cp = pct(card.percent);
+-  if (cardPayment && card.enabled && cp > 0) {
++  if (cardPayment && card.enabled && cp > 0 && appliesAtLocation(card, locationId)) {
+     out.push({
+       uid: 'sc-card',
+       name: (card.label || 'Card surcharge').slice(0, 255),
+@@ -65,11 +72,13 @@ function publicConfig() {
+       percent: pct(weekend.percent),
+       label: weekend.label || 'Weekend surcharge',
+       activeToday: !!weekend.enabled && pct(weekend.percent) > 0 && isWeekendDay(now, weekend),
++      locations: Array.isArray(weekend.locations) ? weekend.locations : [],
+     },
+     card: {
+       enabled: !!card.enabled && pct(card.percent) > 0,
+       percent: pct(card.percent),
+       label: card.label || 'Card surcharge',
++      locations: Array.isArray(card.locations) ? card.locations : [],
+     },
+   };
+ }
+-- 
+2.43.0
+

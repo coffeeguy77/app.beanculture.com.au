@@ -1,0 +1,133 @@
+From 3706cb4f3410168f83528b0229c44d949d6e8a4b Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 30 Aug 2026 13:08:40 +0000
+Subject: [PATCH] Event menu: per-event section allowlist for a short, fast
+ menu
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+An event store can now list the exact sections guests see — a curated 'Event
+menu'. Tick the sections (e.g. an 'Event Coffees' section built in Product
+Builder, plus beans) and the app shows ONLY those, in the order chosen, so event
+customers get few, fast choices instead of the whole menu. Empty list = show
+everything (normal stores unchanged).
+
+- locations.js: per-store menuSections[] + menuSectionsFor().
+- /api/menu: restricts and re-orders the store's categories to that allowlist.
+- Admin event-store editor: 'Event menu — show only these sections' picker,
+  reusing the app-category/Product-Builder-section list.
+
+The simplified tiles themselves (one size, milk + extra shot, no sugar) are built
+with the existing Product Builder — no new Square category needed.
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_0187Jj4Q77V4UPawzEh9gsGr
+---
+ client/src/components/Admin.jsx | 28 ++++++++++++++++++++++++++++
+ server/index.js                 | 11 ++++++++++-
+ server/lib/locations.js         | 14 +++++++++++++-
+ 3 files changed, 51 insertions(+), 2 deletions(-)
+
+diff --git a/client/src/components/Admin.jsx b/client/src/components/Admin.jsx
+index 22ef2d1..419a200 100644
+--- a/client/src/components/Admin.jsx
++++ b/client/src/components/Admin.jsx
+@@ -3534,6 +3534,34 @@ export default function Admin({ onExit }) {
+                             </div>
+                           );
+                         })()}
++                        {l.type === 'event' && (() => {
++                          const sel = Array.isArray(l.menuSections) ? l.menuSections : [];
++                          const toggleSec = (name) => {
++                            const set = new Set(sel.map((n) => n.toLowerCase()));
++                            set.has(name.toLowerCase()) ? set.delete(name.toLowerCase()) : set.add(name.toLowerCase());
++                            updLoc(l.id, { menuSections: scheduleCatOptions.filter((n) => set.has(n.toLowerCase())) });
++                          };
++                          return (
++                            <div className="field" style={{ margin: 0 }}>
++                              <span style={{ fontWeight: 600, fontSize: 'var(--fs-sm)' }}>Event menu — show only these sections</span>
++                              <p className="muted" style={{ fontSize: 'var(--fs-xs)', margin: '2px 0 6px' }}>
++                                Keep events short and fast: tick only the sections guests should see (e.g. a curated “Event Coffees” section you built in <strong>Product builder</strong>, and maybe your beans). Everything else is hidden here. Leave all unticked to show the full menu.
++                              </p>
++                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
++                                {scheduleCatOptions.length === 0 && <span className="muted" style={{ fontSize: 'var(--fs-xs)' }}>No sections yet — build one in Product builder first.</span>}
++                                {scheduleCatOptions.map((n) => {
++                                  const on = sel.some((x) => x.toLowerCase() === n.toLowerCase());
++                                  return (
++                                    <label key={n} className="switch" style={{ gap: 6 }}>
++                                      <input type="checkbox" checked={on} onChange={() => toggleSec(n)} /> <span>{n}</span>
++                                    </label>
++                                  );
++                                })}
++                              </div>
++                              {sel.length > 0 && <p className="muted" style={{ fontSize: 'var(--fs-xs)', margin: '6px 0 0' }}>Guests here see only: <strong>{sel.join(', ')}</strong>.</p>}
++                            </div>
++                          );
++                        })()}
+                         {l.type === 'popup' && (
+                           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                             <label className="field" style={{ margin: 0 }}><span>Opens (first day)</span>
+diff --git a/server/index.js b/server/index.js
+index 1aa8268..d46eaf4 100644
+--- a/server/index.js
++++ b/server/index.js
+@@ -181,7 +181,16 @@ app.get('/api/menu', async (req, res) => {
+     const loc = locations.resolve(req.query.location).id;
+     const hit = menuByLoc[loc];
+     if (hit && hit.data && now - hit.at < MENU_TTL_MS) return res.json(hit.data);
+-    const menu = await catalog.getMenu({ location: loc });
++    let menu = await catalog.getMenu({ location: loc });
++    // Curated event menu: if this store lists specific sections, show ONLY those
++    // (in the order the store chose) so event guests get a short, fast menu.
++    const only = locations.menuSectionsFor(loc);
++    if (only.length && Array.isArray(menu.categories)) {
++      const rank = new Map(only.map((n, i) => [n, i]));
++      const kept = menu.categories.filter((c) => rank.has(String(c.category || '').toLowerCase()));
++      kept.sort((a, b) => rank.get(String(a.category).toLowerCase()) - rank.get(String(b.category).toLowerCase()));
++      menu = { ...menu, categories: kept };
++    }
+     menuByLoc[loc] = { data: menu, at: now };
+     if (loc === locations.resolve(null).id) menuCache = { data: menu, at: now }; // keep legacy field warm
+     res.json(menu);
+diff --git a/server/lib/locations.js b/server/lib/locations.js
+index 8a12448..c8aef35 100644
+--- a/server/lib/locations.js
++++ b/server/lib/locations.js
+@@ -102,6 +102,11 @@ function list() {
+     // normal PAID item (e.g. retail coffee beans). Empty list + free:true means
+     // the WHOLE store is complimentary (the original event behaviour).
+     freeCategories: Array.isArray(l.freeCategories) ? l.freeCategories.filter(Boolean) : [],
++    // The event menu: the ONLY sections (categories / Product-Builder sections)
++    // shown at this store — a short, curated list so event guests get few, fast
++    // choices. Empty = show the whole menu (normal stores). Names are matched
++    // case-insensitively against the storefront section names.
++    menuSections: Array.isArray(l.menuSections) ? l.menuSections.filter(Boolean) : [],
+     // Hidden from the public store picker — reachable only by its own QR / booth
+     // link (?loc=…). Events default to hidden (found via booth QR at the event
+     // only); overridable per store.
+@@ -162,6 +167,13 @@ function freeCategoriesFor(locId) {
+   return new Set((l.freeCategories || []).map((n) => String(n).toLowerCase()));
+ }
+ 
++// The curated event menu for a store: the only storefront sections shown there
++// (lowercased names). Empty array means "no restriction — show everything".
++function menuSectionsFor(locId) {
++  const l = resolve(locId);
++  return (l.menuSections || []).map((n) => String(n).toLowerCase());
++}
++
+ // The "Visit" store page every Event borrows by default, so an event always
+ // points customers to a real cafe afterwards (e.g. the Mitchell Roastery).
+ // Chosen globally in settings.eventDefaultStorePageLocId; null when unset or the
+@@ -225,6 +237,6 @@ function publicList() {
+ 
+ module.exports = {
+   list, active, resolve, squareIdFor, hiddenSet, isFree, freeCategoriesFor,
+-  eventDefaultStorePage, publicList, slug,
++  menuSectionsFor, eventDefaultStorePage, publicList, slug,
+   popupState, todayISO, dayDiff, fulfilmentFor, typeFulfilmentDefaults,
+ };
+-- 
+2.43.0
+

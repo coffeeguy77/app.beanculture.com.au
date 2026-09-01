@@ -1,0 +1,137 @@
+From 44c2fd7503e436a2c8f7ccca2a85c25498d370b2 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 30 Aug 2026 16:45:29 +0000
+Subject: [PATCH] Fix: deleted product-builder tiles (extra teas) no longer
+ come back
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The 30s-after-boot + 6-hourly background job syncPresetsWithSquare() was
+re-creating a tile for every Square variation not covered by an existing
+preset. Because a deleted item's Square source stays referenced by a sibling
+tile (e.g. English Breakfast keeps the shared Tea item in scope), each run
+re-created the teas the owner had deleted — the cause of them returning after
+every deploy.
+
+- syncPresetsWithSquare now only PRUNES (removes tiles whose Square variation
+  is gone, trims dead variation ids); it never auto-creates tiles. New
+  variations are pulled in only via the admin's manual 'Sync new variations
+  from Square' button, which honours the deleted-variations list.
+- purgeExcludedPresets() runs once on boot to remove any tile still sitting in
+  saved presets for a variation the owner already deleted, so they don't have
+  to delete it again.
+---
+ server/index.js | 68 +++++++++++++++++++++++++++++--------------------
+ 1 file changed, 41 insertions(+), 27 deletions(-)
+
+diff --git a/server/index.js b/server/index.js
+index 4458f41..c392977 100644
+--- a/server/index.js
++++ b/server/index.js
+@@ -2196,6 +2196,7 @@ app.listen(PORT, () => console.log(`Bean Culture app on :${PORT} (Square env: ${
+ db.init().finally(() => {
+   scheduler.start();
+   seedPresetNavFooter();
++  purgeExcludedPresets();
+   // Keep the weather cache warm whenever the temperature display or a weather
+   // campaign is in use, so the customer chip / campaigns always have a fresh
+   // reading without any request having to wait on the provider.
+@@ -2207,9 +2208,10 @@ db.init().finally(() => {
+   // are never deleted) -- runs shortly after boot, then hourly.
+   setTimeout(() => payItForward.sweepExpired().catch((e) => console.warn('[payItForward] expiry sweep failed:', e.message)), 20000);
+   setInterval(() => payItForward.sweepExpired().catch((e) => console.warn('[payItForward] expiry sweep failed:', e.message)), 60 * 60 * 1000);
+-  // Auto-sync the product builder with Square a few times a day (incl. each
+-  // morning) so newly-added variations appear and deleted ones are cleaned up
+-  // without anyone pressing Sync. First run shortly after boot.
++  // Prune the product builder against Square a few times a day: drop tiles whose
++  // Square variation was deleted. It never auto-CREATES tiles — new variations
++  // are pulled in only when the owner clicks "Sync new variations from Square"
++  // in the admin (so deleted items never silently return). First run after boot.
+   setTimeout(syncPresetsWithSquare, 30000);
+   setInterval(syncPresetsWithSquare, 6 * 60 * 60 * 1000);
+ });
+@@ -2229,40 +2231,29 @@ async function syncPresetsWithSquare() {
+     const configs = {};
+     for (const id of sourceIds) { try { const cfg = await catalog.getItemConfig(id); if (cfg) configs[id] = cfg; } catch {} }
+     if (!Object.keys(configs).length) return; // couldn't reach Square — skip this run
+-    const coveredBySource = {}; const sectionBySource = {};
+-    for (const p of presets) {
+-      if (!coveredBySource[p.sourceItemId]) coveredBySource[p.sourceItemId] = new Set();
+-      vids(p).forEach((v) => coveredBySource[p.sourceItemId].add(v));
+-      if (!sectionBySource[p.sourceItemId]) sectionBySource[p.sourceItemId] = p.section || 'Specials';
+-    }
+-    const reconciled = []; let removedDead = 0;
++    // IMPORTANT: this background job only PRUNES — it removes tiles whose Square
++    // variation no longer exists and trims dead variation ids off combined
++    // tiles. It must NEVER auto-create new tiles. Auto-adding here is what made
++    // deleted items (the "extra teas") reappear after every deploy: the owner
++    // deletes a tile, but the shared source item is still referenced by a
++    // sibling tile, so the old code re-created a tile for the "uncovered"
++    // variation on the next run. New variations are pulled in only when the
++    // owner clicks "Sync new variations from Square" in the admin (which honours
++    // the deleted-variations list). Predictable and owner-controlled.
++    const reconciled = []; let removedDead = 0, trimmed = 0;
+     for (const p of presets) {
+       const cfg = configs[p.sourceItemId];
+       if (!cfg) { reconciled.push(p); continue; }
+       const alive = vids(p).filter((vid) => cfg.variations.some((v) => v.id === vid));
+       if (!alive.length) { removedDead++; continue; }
++      if (alive.length !== vids(p).length) trimmed++;
+       reconciled.push({ ...p, variationId: alive[0], variationIds: alive.length > 1 ? alive : undefined });
+     }
+-    const combinedForSource = {};
+-    for (const p of reconciled) if (vids(p).length > 1 && !combinedForSource[p.sourceItemId]) combinedForSource[p.sourceItemId] = p;
+-    let added = 0, extended = 0;
+-    const newId = () => 'pre' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+-    for (const id of sourceIds) {
+-      const cfg = configs[id]; if (!cfg) continue;
+-      const covered = coveredBySource[id] || new Set();
+-      for (const v of cfg.variations) {
+-        if (covered.has(v.id)) continue;
+-        covered.add(v.id);
+-        const combo = combinedForSource[id];
+-        if (combo) { combo.variationIds = [...vids(combo), v.id]; combo.variationId = combo.variationIds[0]; extended++; }
+-        else { reconciled.push({ id: newId(), name: v.name || cfg.name, section: sectionBySource[id] || 'Specials', sourceItemId: id, variationId: v.id, groups: {}, showImages: true }); added++; }
+-      }
+-    }
+-    if (!added && !extended && !removedDead) return; // nothing structural changed
++    if (!removedDead && !trimmed) return; // nothing structural changed
+     const overrides = { ...(db.getOverrides() || {}), presets: reconciled };
+     await db.saveOverrides(overrides);
+     bustMenuCache();
+-    console.log(`[sync] presets reconciled with Square — +${added} tiles, +${extended} sizes, -${removedDead} removed`);
++    console.log(`[sync] presets pruned against Square — -${removedDead} removed, ${trimmed} trimmed (no auto-add)`);
+   } catch (e) { console.error('[sync] preset auto-sync failed:', e.message); }
+ }
+ 
+@@ -2290,3 +2281,26 @@ async function seedPresetNavFooter() {
+     console.log(`[migrate] preset nav: seeded footer:true for ${seeded} section(s)`);
+   } catch (e) { console.error('[migrate] preset nav seed failed:', e.message); }
+ }
++
++// One-time cleanup: earlier the background sync would re-create tiles the owner
++// had deleted (the "extra teas kept coming back" bug). Now that auto-add is gone,
++// this removes any tile that is still sitting in the saved presets for a
++// variation the owner explicitly deleted (recorded in builderExcludedVariationIds),
++// so they don't have to delete it one more time. Purely subtractive and only
++// touches variations the owner already chose to remove — never deletes anything
++// that isn't already on the deleted list.
++async function purgeExcludedPresets() {
++  try {
++    if (!db.enabled) return;
++    const overrides = db.getOverrides() || {};
++    const excluded = new Set(Array.isArray(overrides.builderExcludedVariationIds) ? overrides.builderExcludedVariationIds : []);
++    if (!excluded.size || !Array.isArray(overrides.presets) || !overrides.presets.length) return;
++    const vids = (p) => (Array.isArray(p.variationIds) && p.variationIds.length ? p.variationIds : [p.variationId].filter(Boolean));
++    const before = overrides.presets.length;
++    const kept = overrides.presets.filter((p) => !vids(p).some((v) => excluded.has(v)));
++    if (kept.length === before) return; // nothing to purge
++    await db.saveOverrides({ ...overrides, presets: kept });
++    bustMenuCache();
++    console.log(`[migrate] purged ${before - kept.length} previously-deleted tile(s) that had been re-created`);
++  } catch (e) { console.error('[migrate] purge excluded presets failed:', e.message); }
++}
+-- 
+2.43.0
+

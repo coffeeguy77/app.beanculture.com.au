@@ -1,0 +1,545 @@
+From 806aa545a79be1e5dd8f7c915dd79a0f66862f71 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 30 Aug 2026 03:02:07 +0000
+Subject: [PATCH] Phase 2: per-store hours + weather + pop-up window
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Per-store hours:
+- hours.getStatus(locId) now reads THAT store's Square location hours (cached per
+  location id) and applies a per-store weekly-hours override + per-store closures.
+- New /api/hours?location=<id> returns the selected store's open/closed status
+  AND its weather; the app refetches it on store switch and patches config, so
+  the closed banner, reopen countdown and temperature chip all follow the store.
+
+Per-store weather:
+- weather.js caches per coordinate (Sutton ≠ Mitchell) with per-coord single-
+  flight; getWeather/forConfig/peek accept a store; coordsFor() falls back to the
+  global store coords when a store sets none.
+
+Pop-up locations (locations.js as the single resolver):
+- Each location has type physical|popup; a pop-up carries startDate/endDate.
+  active()/publicList() drop pop-ups past their end date automatically and mark
+  upcoming ones (status:'upcoming', daysUntilOpen) for the app's teaser.
+
+Admin Locations tab: per store — type selector, pop-up open/close dates, an
+optional custom weekly-hours editor, and weather coordinates.
+
+Backward compatible: a store that sets no custom hours/weather falls back to its
+Square hours and the global weather location; single-site deploys are unchanged.
+---
+ client/src/App.jsx              | 16 ++++++
+ client/src/api.js               |  2 +-
+ client/src/components/Admin.jsx | 47 +++++++++++++++++
+ server/index.js                 | 12 ++++-
+ server/lib/hours.js             | 52 +++++++++++++-----
+ server/lib/locations.js         | 93 +++++++++++++++++++++++++++++----
+ server/lib/weather.js           | 67 +++++++++++++++---------
+ 7 files changed, 239 insertions(+), 50 deletions(-)
+
+diff --git a/client/src/App.jsx b/client/src/App.jsx
+index e6f9d34..7da5207 100644
+--- a/client/src/App.jsx
++++ b/client/src/App.jsx
+@@ -327,6 +327,22 @@ export default function App() {
+     api.getMenu(locationId).then(setMenu).catch((e) => setLoadErr(e.message));
+   }, [locationId]);
+ 
++  // Per-store open/closed status + weather. When the customer switches stores,
++  // refetch that store's hours (closed banner, reopen countdown) and its own
++  // temperature (Sutton ≠ Mitchell), patching them into config so the whole UI
++  // reflects the selected location. Only runs once real locations exist and a
++  // store is chosen — single-site deploys keep the config snapshot from load.
++  useEffect(() => {
++    if (!config || !locationId) return;
++    const locs = config.locations || [];
++    if (locs.length < 2) return;
++    let cancelled = false;
++    api.getHours(locationId)
++      .then((h) => { if (!cancelled && h) setConfig((prev) => prev ? { ...prev, hours: h, weather: h.weather || prev.weather } : prev); })
++      .catch(() => {});
++    return () => { cancelled = true; };
++  }, [locationId, config?.locations?.length]); // eslint-disable-line react-hooks/exhaustive-deps
++
+   // Persist the store choice + prompt for one when several stores exist and the
+   // customer hasn't picked yet (and didn't arrive via a ?loc= store link).
+   useEffect(() => {
+diff --git a/client/src/api.js b/client/src/api.js
+index 7df1a37..cc84857 100644
+--- a/client/src/api.js
++++ b/client/src/api.js
+@@ -8,7 +8,7 @@ async function req(path, options = {}) {
+ export const api = {
+   getConfig: () => req('/api/config'),
+   getMenu: (location) => req(`/api/menu${location ? `?location=${encodeURIComponent(location)}` : ''}`),
+-  getHours: () => req('/api/hours'),
++  getHours: (location) => req(`/api/hours${location ? `?location=${encodeURIComponent(location)}` : ''}`),
+   auth: (phone, name) => req('/api/auth', { method: 'POST', body: JSON.stringify({ phone, name }) }),
+   getLoyalty: (phone) => req(`/api/loyalty?phone=${encodeURIComponent(phone)}`),
+   getHistory: (customerId) => req(`/api/history?customerId=${encodeURIComponent(customerId)}`),
+diff --git a/client/src/components/Admin.jsx b/client/src/components/Admin.jsx
+index 5b1caf9..635ab6b 100644
+--- a/client/src/components/Admin.jsx
++++ b/client/src/components/Admin.jsx
+@@ -3244,6 +3244,53 @@ export default function Admin({ onExit }) {
+                           <input value={l.address || ''} placeholder="e.g. Tulip Tops, Sutton NSW" onChange={(e) => updLoc(l.id, { address: e.target.value })} />
+                         </label>
+ 
++                        <label className="field" style={{ margin: 0 }}><span>Store type</span>
++                          <select value={l.type === 'popup' ? 'popup' : 'physical'} onChange={(e) => updLoc(l.id, { type: e.target.value })}>
++                            <option value="physical">Permanent store</option>
++                            <option value="popup">Pop-up (time-limited)</option>
++                          </select>
++                        </label>
++                        {l.type === 'popup' && (
++                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
++                            <label className="field" style={{ margin: 0 }}><span>Opens (first day)</span>
++                              <input type="date" value={l.startDate || ''} onChange={(e) => updLoc(l.id, { startDate: e.target.value })} />
++                            </label>
++                            <label className="field" style={{ margin: 0 }}><span>Closes (last day)</span>
++                              <input type="date" value={l.endDate || ''} onChange={(e) => updLoc(l.id, { endDate: e.target.value })} />
++                            </label>
++                            <p className="muted" style={{ fontSize: 'var(--fs-xs)', margin: 0, gridColumn: '1 / -1' }}>
++                              Before the opening day the app shows a “Store opening soon” notice with a countdown that opens this store’s page. After the last day the store disappears from the picker automatically.
++                            </p>
++                          </div>
++                        )}
++
++                        <details className="loc-avail">
++                          <summary>Opening hours for {l.name || 'this store'}{(l.hours && Object.keys(l.hours).length) ? ' (custom)' : ' (using Square hours)'}</summary>
++                          <label className="switch" style={{ margin: '6px 0' }}>
++                            <input type="checkbox" checked={!!(l.hours && Object.keys(l.hours).length)} onChange={(e) => updLoc(l.id, { hours: e.target.checked ? (l.hours && Object.keys(l.hours).length ? l.hours : { MON: [{ open: '07:00', close: '15:00' }] }) : null })} />
++                            <span>Set custom hours for this store</span>
++                          </label>
++                          <p className="muted" style={{ fontSize: 'var(--fs-xs)', margin: '2px 0 8px' }}>
++                            {(l.hours && Object.keys(l.hours).length)
++                              ? 'These hours decide when this store is open, when customers can order “now”, and the reopen countdown they see.'
++                              : 'This store follows its Square location hours. Tick above to set different hours (handy for a pop-up).'}
++                          </p>
++                          {(l.hours && Object.keys(l.hours).length) ? <HoursEditor value={l.hours} onChange={(v) => updLoc(l.id, { hours: v })} /> : null}
++                        </details>
++
++                        <details className="loc-avail">
++                          <summary>Weather for {l.name || 'this store'}{(l.weather && (l.weather.lat != null && l.weather.lat !== '')) ? ` (${l.weather.label || 'custom'})` : ' (using main store)'}</summary>
++                          <p className="muted" style={{ fontSize: 'var(--fs-xs)', margin: '6px 0' }}>The temperature chip shows this store’s local weather. Leave blank to use your main store’s location.</p>
++                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
++                            <label className="field" style={{ margin: 0 }}><span>Latitude</span>
++                              <input type="number" step="0.0001" value={l.weather?.lat ?? ''} placeholder="-35.15" onChange={(e) => updLoc(l.id, { weather: { ...(l.weather || {}), lat: e.target.value === '' ? null : Number(e.target.value) } })} /></label>
++                            <label className="field" style={{ margin: 0 }}><span>Longitude</span>
++                              <input type="number" step="0.0001" value={l.weather?.lng ?? ''} placeholder="149.28" onChange={(e) => updLoc(l.id, { weather: { ...(l.weather || {}), lng: e.target.value === '' ? null : Number(e.target.value) } })} /></label>
++                            <label className="field" style={{ margin: 0 }}><span>Label (optional)</span>
++                              <input value={l.weather?.label || ''} placeholder="Sutton" onChange={(e) => updLoc(l.id, { weather: { ...(l.weather || {}), label: e.target.value } })} /></label>
++                          </div>
++                        </details>
++
+                         <details className="loc-avail">
+                           <summary>Items available at {l.name || 'this store'} ({offeredProducts.length - (l.hiddenItemIds || []).length}/{offeredProducts.length})</summary>
+                           <p className="muted" style={{ fontSize: 'var(--fs-xs)', margin: '6px 0' }}>Untick anything this store doesn't make (e.g. hot food at a takeaway site). Unticked items are hidden from this store's menu.</p>
+diff --git a/server/index.js b/server/index.js
+index e3b3e8e..098a1e7 100644
+--- a/server/index.js
++++ b/server/index.js
+@@ -162,9 +162,17 @@ app.get('/api/menu', async (req, res) => {
+   }
+ });
+ 
+-app.get('/api/hours', async (_req, res) => {
++// Per-store open/closed status + that store's current weather. The customer app
++// calls this whenever the chosen store changes, so the closed banner, reopen
++// countdown and temperature chip all reflect the selected location.
++app.get('/api/hours', async (req, res) => {
++  res.setHeader('Cache-Control', 'no-store');
+   try {
+-    res.json(await hours.getStatus());
++    const locId = req.query.location || req.query.loc || '';
++    const status = await hours.getStatus(locId);
++    let wx = null;
++    try { const loc = locations.resolve(locId); wx = weather.publicWeather(await weather.forConfig(3000, loc)); } catch {}
++    res.json({ ...status, weather: wx });
+   } catch (e) {
+     res.status(502).json({ error: e.message });
+   }
+diff --git a/server/lib/hours.js b/server/lib/hours.js
+index 549b846..0f12d3f 100644
+--- a/server/lib/hours.js
++++ b/server/lib/hours.js
+@@ -4,6 +4,9 @@
+ 
+ const { squareFetch, LOCATION_ID } = require('./squareClient');
+ const { getSettings, isClosedDate } = require('./settings');
++// Lazy require to avoid any load-order surprises; locations only needs settings.
++let _locations = null;
++function locationsLib() { if (!_locations) { try { _locations = require('./locations'); } catch { _locations = null; } } return _locations; }
+ 
+ const PREORDER_ENABLED = (process.env.PREORDER_ENABLED || 'false').toLowerCase() === 'true';
+ const ORDERING_DISABLED = (process.env.ORDERING_DISABLED || 'false').toLowerCase() === 'true';
+@@ -47,7 +50,9 @@ function isOpenAt(weekly, dow, minutes) {
+   return null;
+ }
+ 
+-let cache = { data: null, at: 0 };
++// Base Square-hours cache, keyed by Square location id (so each store's hours
++// are fetched and cached independently).
++const baseCache = new Map(); // sqLocationId -> { data, at }
+ 
+ function toMinutes(hhmmss) {
+   if (!hhmmss) return null;
+@@ -74,19 +79,22 @@ function localNow(timeZone) {
+   return { dow, minutes };
+ }
+ 
+-async function getStatus() {
++// Read a Square location's business hours (cached 60s per location id).
++async function baseFor(sqLocationId) {
++  const id = sqLocationId || LOCATION_ID;
+   const now = Date.now();
+-  if (cache.data && now - cache.at < 60 * 1000) return withRuntime(cache.data);
++  const hit = baseCache.get(id);
++  if (hit && now - hit.at < 60 * 1000) return hit.data;
+ 
+   let location;
+   try {
+-    const data = await squareFetch(`/v2/locations/${LOCATION_ID}`);
++    const data = await squareFetch(`/v2/locations/${id}`);
+     location = data.location;
+   } catch (e) {
+     // If we can't read hours, assume open (don't block ordering on an API hiccup).
+     const fallback = { timezone: 'Australia/Sydney', weekly: {}, hasHours: false };
+-    cache = { data: fallback, at: now };
+-    return withRuntime(fallback);
++    baseCache.set(id, { data: fallback, at: now });
++    return fallback;
+   }
+ 
+   const timezone = location.timezone || 'Australia/Sydney';
+@@ -103,8 +111,16 @@ async function getStatus() {
+     });
+   }
+   const data = { timezone, weekly, hasHours: periods.length > 0 };
+-  cache = { data, at: now };
+-  return withRuntime(data);
++  baseCache.set(id, { data, at: now });
++  return data;
++}
++
++// Open/closed status for a store. Pass a location id to get THAT store's hours
++// (its own Square hours + any per-store override); omit it for the default store.
++async function getStatus(locId) {
++  const loc = (() => { const L = locationsLib(); try { return L ? L.resolve(locId) : null; } catch { return null; } })();
++  const base = await baseFor(loc ? loc.squareLocationId : LOCATION_ID);
++  return withRuntime(base, undefined, loc);
+ }
+ 
+ // Today's date in a timezone as { full: 'YYYY-MM-DD', md: 'MM-DD' }.
+@@ -121,11 +137,13 @@ function addDays(fullDate, n) {
+   return d.toISOString().slice(0, 10);
+ }
+ 
+-function withRuntime(base, nowOverride) {
++function withRuntime(base, nowOverride, loc) {
+   const s = (() => { try { return getSettings(); } catch { return {}; } })();
+ 
+-  // Store hours: admin-defined (override) when turned on, else Square's.
+-  const appWeekly = s.useAppHours ? editableToWeekly(s.storeHours) : null;
++  // Store hours precedence: this store's own per-store hours (if set) > the
++  // global app-hours override (if enabled) > the store's Square business hours.
++  const locWeekly = (loc && loc.hours) ? editableToWeekly(loc.hours) : null;
++  const appWeekly = locWeekly || (s.useAppHours ? editableToWeekly(s.storeHours) : null);
+   const weekly = appWeekly || base.weekly;
+   const hasHours = appWeekly ? true : base.hasHours;
+   // Kitchen hours: its own schedule when enabled, else same as the store.
+@@ -139,7 +157,7 @@ function withRuntime(base, nowOverride) {
+   }
+ 
+   let closures = [];
+-  try { closures = s.closures || []; } catch {}
++  try { closures = (loc && Array.isArray(loc.closures)) ? loc.closures : (s.closures || []); } catch {}
+   const td = nowOverride ? { full: nowOverride.todayFull, md: nowOverride.todayFull.slice(5) } : todayDate(base.timezone);
+   const closedToday = isClosedDate(closures, td.full);
+ 
+@@ -225,6 +243,16 @@ function withRuntime(base, nowOverride) {
+     openDays,
+     closedToday,
+     closures,
++    // Which store this status is for, and — for a pop-up — its lifecycle so the
++    // app can show a "Store Opening" teaser + countdown before it opens.
++    location: loc ? {
++      id: loc.id,
++      name: loc.name,
++      type: loc.type || 'physical',
++      startDate: loc.startDate || '',
++      endDate: loc.endDate || '',
++      popupState: (() => { const L = locationsLib(); try { return L ? L.popupState(loc) : 'live'; } catch { return 'live'; } })(),
++    } : null,
+   };
+ }
+ 
+diff --git a/server/lib/locations.js b/server/lib/locations.js
+index ab513ac..736402e 100644
+--- a/server/lib/locations.js
++++ b/server/lib/locations.js
+@@ -4,6 +4,11 @@
+ // its payment are created against (so takings land in the right location's
+ // books/deposits) and which items show (per-location availability).
+ //
++// A location may be a permanent PHYSICAL store or a time-boxed POP-UP (a market
++// stall, a one-month garden kiosk). A pop-up carries startDate/endDate: before
++// it opens the app shows a "Store Opening" teaser; after it ends the store drops
++// out of the picker automatically.
++//
+ // Backward-compatible: with no locations configured we synthesise a single
+ // "main" location from the existing SQUARE_LOCATION_ID env, so nothing changes
+ // for a single-site deploy.
+@@ -16,9 +21,37 @@ function slug(s) {
+     .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'loc';
+ }
+ 
+-// The configured locations, always non-empty. Each: { id, name, squareLocationId,
+-// address, active, hiddenItemIds:[] }. A blank squareLocationId falls back to the
+-// env default so a half-configured second location can't misroute money.
++// Today's date (YYYY-MM-DD) in the venue timezone, for pop-up window maths.
++function todayISO(tz = 'Australia/Sydney') {
++  try {
++    const p = {};
++    for (const part of new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date())) p[part.type] = part.value;
++    return `${p.year}-${p.month}-${p.day}`;
++  } catch { return new Date().toISOString().slice(0, 10); }
++}
++
++// Whole-day difference b - a for 'YYYY-MM-DD' strings (UTC-safe).
++function dayDiff(aISO, bISO) {
++  const a = new Date(`${aISO}T00:00:00Z`).getTime();
++  const b = new Date(`${bISO}T00:00:00Z`).getTime();
++  return Math.round((b - a) / 86400000);
++}
++
++// Pop-up lifecycle for a location relative to `today`:
++//   'upcoming' — a pop-up whose startDate is still in the future
++//   'ended'    — a pop-up whose endDate has passed
++//   'live'     — everything else (physical stores, or a pop-up within its window)
++function popupState(l, today = todayISO()) {
++  if (!l || l.type !== 'popup') return 'live';
++  if (l.startDate && dayDiff(today, l.startDate) > 0) return 'upcoming';
++  if (l.endDate && dayDiff(today, l.endDate) < 0) return 'ended';
++  return 'live';
++}
++
++// The configured locations, always non-empty. A blank squareLocationId falls
++// back to the env default so a half-configured second location can't misroute
++// money. Carries the full per-store config (hours, weather, pop-up window,
++// store page) so the resolver below is the single source of truth.
+ function list() {
+   const s = getSettings();
+   const raw = Array.isArray(s.locations) ? s.locations.filter((l) => l && l.id) : [];
+@@ -30,6 +63,7 @@ function list() {
+       address: (s.contact && s.contact.address) || '',
+       active: true,
+       hiddenItemIds: [],
++      type: 'physical',
+       _default: true,
+     }];
+   }
+@@ -40,13 +74,31 @@ function list() {
+     address: l.address || '',
+     active: l.active !== false,
+     hiddenItemIds: Array.isArray(l.hiddenItemIds) ? l.hiddenItemIds : [],
++    type: l.type === 'popup' ? 'popup' : 'physical',
++    startDate: l.startDate || '',
++    endDate: l.endDate || '',
++    // Per-store weekly hours ({ MON:[{open,close}], … }); blank → falls back to
++    // the global store hours / Square hours in hours.js.
++    hours: (l.hours && typeof l.hours === 'object') ? l.hours : null,
++    closures: Array.isArray(l.closures) ? l.closures : null,
++    // Per-store weather coordinates (Sutton ≠ Mitchell). Blank → global.
++    weather: (l.weather && (l.weather.lat != null || l.weather.lng != null)) ? l.weather : null,
++    // Per-store "Visit" page content (photo, blurb). Blank → the global store info.
++    storePage: (l.storePage && typeof l.storePage === 'object') ? l.storePage : null,
+   }));
+ }
+ 
+-// Only the locations a customer may pick (active). Falls back to all if none active.
++// Locations a customer may pick right now: active, and — for pop-ups — not past
++// their end date. Upcoming pop-ups ARE included (so the app can tease them);
++// callers use popupState()/publicList().status to gate ordering. Falls back to
++// the full list if that leaves nothing.
+ function active() {
+-  const a = list().filter((l) => l.active);
+-  return a.length ? a : list();
++  const today = todayISO();
++  const all = list();
++  const pickable = all.filter((l) => l.active && popupState(l, today) !== 'ended');
++  if (pickable.length) return pickable;
++  const anyActive = all.filter((l) => l.active);
++  return anyActive.length ? anyActive : all;
+ }
+ 
+ function resolve(locId) {
+@@ -65,11 +117,30 @@ function hiddenSet(locId) {
+ // Shape for the client. Includes squareLocationId because the browser card SDK
+ // (Square.payments) is already initialised with a Square location id — it must
+ // tokenise against the store the customer chose so the charge lands there.
++// Also carries pop-up window + status so the app can show the "Store Opening"
++// teaser and its countdown, and a per-store weather label + store-page presence.
+ function publicList() {
+-  // `_default` flags the synthesised single-store fallback so the client can
+-  // tell a genuinely-configured single store (show its name in the header) from
+-  // a plain single-site deploy that never touched Locations (show nothing).
+-  return active().map((l) => ({ id: l.id, name: l.name, address: l.address, squareLocationId: l.squareLocationId, _default: !!l._default }));
++  const today = todayISO();
++  return active().map((l) => {
++    const state = popupState(l, today);
++    return {
++      id: l.id,
++      name: l.name,
++      address: l.address,
++      squareLocationId: l.squareLocationId,
++      _default: !!l._default,
++      type: l.type,
++      startDate: l.startDate || '',
++      endDate: l.endDate || '',
++      // 'upcoming' (pop-up not open yet) | 'live'. 'ended' is filtered out above.
++      status: state,
++      daysUntilOpen: (l.type === 'popup' && l.startDate) ? Math.max(0, dayDiff(today, l.startDate)) : null,
++      hasStorePage: !!l.storePage,
++    };
++  });
+ }
+ 
+-module.exports = { list, active, resolve, squareIdFor, hiddenSet, publicList, slug };
++module.exports = {
++  list, active, resolve, squareIdFor, hiddenSet, publicList, slug,
++  popupState, todayISO, dayDiff,
++};
+diff --git a/server/lib/weather.js b/server/lib/weather.js
+index 08152f8..8704cf6 100644
+--- a/server/lib/weather.js
++++ b/server/lib/weather.js
+@@ -18,8 +18,11 @@ const CACHE_MS = 15 * 60 * 1000;        // refresh at most every ~15 minutes
+ const STALE_MS = 2 * 60 * 60 * 1000;    // serve cached up to 2h old if a refresh fails
+ const TIMEOUT_MS = 6000;
+ 
+-let cache = null; // { data, at, lat, lng }
+-let inflight = null;
++// Per-coordinate caches so each store (Mitchell, Sutton, …) is fetched and
++// cached independently — a temperature in Sutton must not overwrite Mitchell's.
++const caches = new Map();   // "lat,lng" -> { data, at, lat, lng }
++const inflights = new Map(); // "lat,lng" -> Promise<boolean>
++const coordKey = (c) => `${c.lat},${c.lng}`;
+ 
+ // WMO weather code → normalized condition (icon key) + human label.
+ function mapCondition(code) {
+@@ -44,6 +47,16 @@ function storeCoords() {
+   return null;
+ }
+ 
++// Coordinates for a specific store: its own weather coords if configured, else
++// the global store coordinates. Returns null when neither is set.
++function coordsFor(loc) {
++  if (loc && loc.weather) {
++    const lat = Number(loc.weather.lat), lng = Number(loc.weather.lng);
++    if (Number.isFinite(lat) && Number.isFinite(lng) && (lat !== 0 || lng !== 0)) return { lat, lng };
++  }
++  return storeCoords();
++}
++
+ // Non-production temperature override (never honoured in production, never from a
+ // query param — env only). Lets us test campaigns without waiting on real weather.
+ function devOverride(data) {
+@@ -117,33 +130,37 @@ function withAge(c) {
+   return { ...c.data, age_seconds: Math.round((Date.now() - c.at) / 1000) };
+ }
+ 
+-// Normalized weather for the store — cached, stale-tolerant, never throws.
+-async function getWeather({ force = false } = {}) {
+-  const coords = storeCoords();
++// Normalized weather — cached per coordinate, stale-tolerant, never throws.
++// Pass a `loc` (store) or explicit `coords`; omit both for the global store.
++async function getWeather({ force = false, coords: coordsIn = null, loc = null } = {}) {
++  const coords = coordsIn || coordsFor(loc);
+   if (!coords) return devOverride({ ok: false, reason: 'no-coordinates', provider: PROVIDER });
+ 
++  const key = coordKey(coords);
+   const now = Date.now();
+-  const cacheValid = cache && cache.data && cache.data.ok && cache.lat === coords.lat && cache.lng === coords.lng;
++  const cache = caches.get(key);
++  const cacheValid = cache && cache.data && cache.data.ok;
+   if (cacheValid && !force && (now - cache.at) < CACHE_MS) return devOverride(withAge(cache));
+ 
+-  // Single-flight: collapse concurrent refreshes into one provider call.
+-  if (!inflight) {
+-    inflight = (async () => {
++  // Single-flight per coordinate: collapse concurrent refreshes into one call.
++  if (!inflights.get(key)) {
++    inflights.set(key, (async () => {
+       try {
+         const data = await fetchFromProvider(coords.lat, coords.lng);
+-        cache = { data, at: Date.now(), lat: coords.lat, lng: coords.lng };
++        caches.set(key, { data, at: Date.now(), lat: coords.lat, lng: coords.lng });
+         return true;
+       } catch (e) {
+         console.warn('[weather] refresh failed:', e.message);
+         return false;
+-      } finally { inflight = null; }
+-    })();
++      } finally { inflights.delete(key); }
++    })());
+   }
+-  const okRefresh = await inflight;
++  const okRefresh = await inflights.get(key);
+ 
+-  if (okRefresh) return devOverride(withAge(cache));
++  const fresh = caches.get(key);
++  if (okRefresh) return devOverride(withAge(fresh));
+   // Refresh failed — serve a recent cached reading if we have one.
+-  if (cacheValid && (Date.now() - cache.at) < STALE_MS) return devOverride({ ...withAge(cache), stale: true });
++  if (fresh && fresh.data && fresh.data.ok && (Date.now() - fresh.at) < STALE_MS) return devOverride({ ...withAge(fresh), stale: true });
+   return devOverride({ ok: false, reason: 'unavailable', provider: PROVIDER });
+ }
+ 
+@@ -151,24 +168,26 @@ async function getWeather({ force = false } = {}) {
+ // cached (never fetches inline), and fires a background refresh if it's stale so
+ // the value is fresh on the next request. Keeps app load fast — weather never
+ // blocks it.
+-function peek() {
++function peek(loc) {
++  const coords = coordsFor(loc);
++  const cache = coords ? caches.get(coordKey(coords)) : null;
+   const c = cache && cache.data ? withAge(cache) : { ok: false, provider: PROVIDER };
+   return devOverride(c);
+ }
+-function kickoff() { getWeather().catch(() => {}); }
++function kickoff(loc) { getWeather({ loc }).catch(() => {}); }
+ 
+ // For /api/config: return the cached reading instantly if warm; if the cache is
+ // cold, wait a SHORT bounded time for a fresh fetch so the temperature appears on
+ // the very first load after it's enabled — but never block app load for long. A
+ // background warmer (see startWarmer) normally keeps the cache warm so this rarely
+ // has to wait at all.
+-async function forConfig(capMs = 3000) {
+-  const p = peek();
++async function forConfig(capMs = 3000, loc = null) {
++  const p = peek(loc);
+   if (p && p.ok) return p;
+-  if (!storeCoords()) return p; // no coordinates → nothing to fetch
++  if (!coordsFor(loc)) return p; // no coordinates → nothing to fetch
+   const timed = new Promise((res) => setTimeout(() => res(null), capMs));
+-  const fetched = await Promise.race([getWeather().then((w) => (w && w.ok ? w : null)).catch(() => null), timed]);
+-  return fetched || peek();
++  const fetched = await Promise.race([getWeather({ loc }).then((w) => (w && w.ok ? w : null)).catch(() => null), timed]);
++  return fetched || peek(loc);
+ }
+ 
+ // Keep the cache warm so the customer temperature chip and (later) weather
+@@ -195,6 +214,6 @@ function publicWeather(w) {
+   };
+ }
+ 
+-function _resetCacheForTest() { cache = null; inflight = null; }
++function _resetCacheForTest() { caches.clear(); inflights.clear(); }
+ 
+-module.exports = { getWeather, peek, kickoff, forConfig, startWarmer, publicWeather, mapCondition, storeCoords, PROVIDER, _resetCacheForTest };
++module.exports = { getWeather, peek, kickoff, forConfig, startWarmer, publicWeather, mapCondition, storeCoords, coordsFor, PROVIDER, _resetCacheForTest };
+-- 
+2.43.0
+
