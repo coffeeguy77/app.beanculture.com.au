@@ -395,11 +395,19 @@ app.post('/api/pay', async (req, res) => {
     if (!orderId) return res.status(400).json({ error: 'Missing order id' });
     const squareLocationId = locations.squareIdFor(locationId);
 
+    // Mark an order paid to the kitchen screen: our own DB marker is the
+    // reliable release signal (Square's tender/metadata can lag), and the Square
+    // metadata release is a secondary. Best-effort — never fail the payment on it.
+    const release = async () => {
+      await db.kdsMarkPaid(orderId).catch(() => {});
+      await orders.releaseHold(orderId).catch(() => {});
+    };
+
     // $0 order (comp or fully covered by loyalty): complete without a card.
     if (!totalMoney || totalMoney.amount === 0) {
       const fresh = await orders.getOrder(orderId);
       await orders.payZeroOrder(orderId, fresh.version);
-      await orders.releaseHold(orderId); // now paid → let the kitchen see it
+      await release(); // now paid → let the kitchen see it
       return res.json({ status: 'COMPLETED', comped: true });
     }
 
@@ -409,7 +417,7 @@ app.post('/api/pay', async (req, res) => {
       if (!gc || !gc.gan) return res.status(402).json({ error: 'No balance available' });
       if (gc.balance < totalMoney.amount) return res.status(402).json({ error: 'Not enough balance — top up or pay by card.' });
       const payment = await giftcards.payWithGiftCard({ gan: gc.gan, orderId, amountMoney: totalMoney, customerId });
-      if (payment.status === 'COMPLETED' || payment.status === 'APPROVED') await orders.releaseHold(orderId);
+      if (payment.status === 'COMPLETED' || payment.status === 'APPROVED') await release();
       return res.json({ status: payment.status, paymentId: payment.id, paidWithBalance: true });
     }
 
@@ -425,7 +433,7 @@ app.post('/api/pay', async (req, res) => {
     });
     // Only a completed/approved charge releases the order to the kitchen. A
     // declined charge leaves it held (hidden), so nothing unpaid gets cooked.
-    if (payment.status === 'COMPLETED' || payment.status === 'APPROVED') await orders.releaseHold(orderId);
+    if (payment.status === 'COMPLETED' || payment.status === 'APPROVED') await release();
     res.json({ status: payment.status, paymentId: payment.id, receiptUrl: payment.receipt_url });
   } catch (err) {
     console.error('payment error', err.message);

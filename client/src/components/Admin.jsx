@@ -1198,6 +1198,20 @@ export default function Admin({ onExit }) {
     const cats = Array.isArray(z.categories) ? z.categories : [];
     updateKdsZone(id, { categories: cats.includes(name) ? cats.filter((c) => c !== name) : [...cats, name] });
   };
+  // A station routes an order by the item's SQUARE category (that's what a live
+  // order line actually carries), so the picker must offer the real Square
+  // category names — not only the app's menu/section names. An item that Square
+  // files under a category the station never listed simply won't bump through
+  // (e.g. a Hot Chocolate whose Square category is "Hot Drinks"): list that
+  // Square category on the station and it routes. We offer the app names first
+  // (familiar) then any Square categories not already covered by that name.
+  const kdsAppCatOptions = scheduleCatOptions;
+  const kdsSquareCatOptions = (() => {
+    const have = new Set(kdsAppCatOptions.map((n) => n.toLowerCase()));
+    return [...new Set(sqCats.filter((c) => !c.isParent).map((c) => c.name).filter(Boolean))]
+      .filter((n) => !have.has(n.toLowerCase()))
+      .sort();
+  })();
   // Existing section names offered as quick-pick chips (or type a new one).
   const existingSectionNames = [...new Set([
     ...presets.map((p) => (p.section || '').trim()),
@@ -3376,15 +3390,27 @@ export default function Admin({ onExit }) {
                         <button type="button" className="avail-del" title="Delete station" onClick={() => removeKdsZone(z.id)}>✕</button>
                       </div>
                       <div className="avail-sched-cats" style={{ borderTop: 'none', paddingTop: 4 }}>
-                        <div className="muted" style={{ fontSize: 'var(--fs-xs)', marginBottom: 4 }}>Categories on this station</div>
-                        {scheduleCatOptions.length === 0 && <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>No categories loaded yet.</span>}
+                        <div className="muted" style={{ fontSize: 'var(--fs-xs)', marginBottom: 4 }}>Menu categories on this station</div>
+                        {kdsAppCatOptions.length === 0 && <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>No categories loaded yet.</span>}
                         <div className="avail-chipwrap">
-                          {scheduleCatOptions.map((name) => (
+                          {kdsAppCatOptions.map((name) => (
                             <button key={name} type="button" className={`chip${(z.categories || []).includes(name) ? ' on' : ''}`} onClick={() => toggleKdsZoneCat(z.id, name)}>
                               {(z.categories || []).includes(name) ? '✓ ' : '+ '}{name}
                             </button>
                           ))}
                         </div>
+                        {kdsSquareCatOptions.length > 0 && (
+                          <>
+                            <div className="muted" style={{ fontSize: 'var(--fs-xs)', margin: '10px 0 4px' }}>Square categories &mdash; pick these if an item files under a Square category that isn&rsquo;t one of your menu names (so it still bumps through)</div>
+                            <div className="avail-chipwrap">
+                              {kdsSquareCatOptions.map((name) => (
+                                <button key={'sq:' + name} type="button" className={`chip${(z.categories || []).includes(name) ? ' on' : ''}`} onClick={() => toggleKdsZoneCat(z.id, name)}>
+                                  {(z.categories || []).includes(name) ? '✓ ' : '+ '}{name}
+                                </button>
+                              ))}
+                            </div>
+                          </>
+                        )}
                       </div>
                     </div>
                   ))}

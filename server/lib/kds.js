@@ -118,13 +118,19 @@ async function fetchTickets(squareLocationId, loc) {
     },
   });
   // An app checkout creates its Square order BEFORE charging (stamped bc_hold),
-  // so a declined/abandoned checkout must never reach the kitchen. Hide a held
-  // order only while it is genuinely unpaid — as soon as it carries a payment
-  // (a tender) or has settled (COMPLETED), it shows, so a paid order is never
-  // lost even if the release step didn't run.
+  // so a declined/abandoned checkout must never reach the kitchen. A held order
+  // is shown the moment payment is confirmed — and "confirmed" is decided from
+  // OUR OWN database (the '__paid__' marker written by /api/pay), which is the
+  // only fully reliable signal: Square's order search does not always return the
+  // payment tender straight away, and the metadata release can lag, so a paid
+  // order must never depend on either of those to appear. Tender/COMPLETED are
+  // kept as extra fail-open signals.
+  const allIds = (data.orders || []).map((o) => o && o.id).filter(Boolean);
+  const paidSet = await db.kdsGetPaid(allIds).catch(() => new Set());
   const stillUnpaid = (o) => {
     const m = o.metadata || {};
-    if (m.bc_hold !== '1') return false;
+    if (m.bc_hold !== '1') return false;   // not a held app order
+    if (paidSet.has(o.id)) return false;   // our DB says the payment went through
     if (o.state === 'COMPLETED') return false;
     if (Array.isArray(o.tenders) && o.tenders.length) return false;
     return true;

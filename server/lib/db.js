@@ -813,6 +813,28 @@ async function kdsGetStates(orderIds) {
   }
   return out;
 }
+// A payment-completed marker for an app order, stored as a sentinel row in
+// kds_tickets (zone '__paid__'). This is OUR reliable "the money went through"
+// signal for the kitchen screen, independent of Square metadata propagation or
+// whether the order search happens to return the payment tender yet. Held app
+// orders stay off the screen until this (or a real tender) says they're paid.
+async function kdsMarkPaid(orderId) {
+  if (!pool || !orderId) return;
+  await pool.query(
+    `INSERT INTO kds_tickets (order_id, zone, status, bumped_at, updated_at)
+     VALUES ($1, '__paid__', 'done', now(), now())
+     ON CONFLICT (order_id, zone) DO NOTHING`,
+    [orderId]
+  );
+}
+async function kdsGetPaid(orderIds) {
+  if (!pool || !orderIds || !orderIds.length) return new Set();
+  const r = await pool.query(
+    "SELECT order_id FROM kds_tickets WHERE zone = '__paid__' AND order_id = ANY($1)",
+    [orderIds]
+  );
+  return new Set(r.rows.map((x) => x.order_id));
+}
 async function kdsSetStatus(orderId, zone, status) {
   if (!pool) throw new Error('The kitchen screen needs the database to remember bumps.');
   const r = await pool.query(
@@ -885,7 +907,7 @@ async function posPaymentByOrder(squareOrderId) {
 
 module.exports = {
   init, getOverrides, saveOverrides,
-  kdsGetStates, kdsSetStatus,
+  kdsGetStates, kdsSetStatus, kdsMarkPaid, kdsGetPaid,
   posRecordOrder, posPaymentUpsert, posPaymentSetStatus, posPaymentGet, posPaymentByOrder,
   insertScheduled, listScheduledByCustomer, cancelScheduled, claimDue, updateScheduled,
   track, getAnalytics,

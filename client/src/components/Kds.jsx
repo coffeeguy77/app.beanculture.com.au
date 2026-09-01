@@ -67,15 +67,34 @@ export default function Kds({ onExit, embedded }) {
   // stations, so a barista bump there flows through to All (and vice-versa).
   // Orders that route to no station fall back to the All pseudo-lane itself.
   const targetsFor = (t) => { const rz = realZonesOf(t); return rz.length ? rz : [ALL]; };
-  // Effective status for a lane. "All orders" is an overview: it's DONE once
-  // every station the order routes to is done (so bumping at the barista station
-  // removes it from All), and shows as preparing while any station is in flight.
+  // Identify a single line so the same item can be matched across stations.
+  const lineKey = (it) => `${it.name}|${it.variation || ''}|${it.quantity || ''}|${(it.modifiers || []).join(',')}|${it.note || ''}`;
+  // Effective status for a lane. "All orders" is an overview built from the
+  // stations: an item is handled once ANY station that makes it is bumped done,
+  // and the order leaves All once every item has been handled. This clears the
+  // coffee from All when the barista bumps it even if a broader station (an
+  // FOH/expo lane) also lists that item — the old "every station must be done"
+  // rule left an order stuck on All whenever an overlapping station never got
+  // bumped. Multi-item orders across separate stations still wait for each.
   const statusIn = (t, z) => {
     if (z !== ALL) return (t.zoneStatus && t.zoneStatus[z]) || 'new';
     const rz = realZonesOf(t);
     if (!rz.length) return (t.zoneStatus && t.zoneStatus[ALL]) || 'new';
-    if (rz.every((r) => t.zoneStatus[r] === 'done')) return 'done';
-    if (rz.some((r) => t.zoneStatus[r] === 'done' || t.zoneStatus[r] === 'preparing')) return 'preparing';
+    const st = (r) => (t.zoneStatus && t.zoneStatus[r]) || 'new';
+    const stationItems = new Set();     // every item that lives in some station
+    const handledItems = new Set();     // items in a station that's been bumped done
+    let anyProgress = false;
+    for (const r of rz) {
+      const done = st(r) === 'done';
+      if (done || st(r) === 'preparing') anyProgress = true;
+      for (const it of (t.zoneItems[r] || [])) {
+        const k = lineKey(it);
+        stationItems.add(k);
+        if (done) handledItems.add(k);
+      }
+    }
+    if (stationItems.size && [...stationItems].every((k) => handledItems.has(k))) return 'done';
+    if (anyProgress) return 'preparing';
     return 'new';
   };
 

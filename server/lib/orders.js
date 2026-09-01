@@ -6,6 +6,7 @@ const coupons = require('./coupons');
 const combos = require('./combos');
 const catalog = require('./catalog');
 const payItForward = require('./payItForward');
+const db = require('./db');
 
 const DINEIN_FULFILLMENT = (process.env.SQUARE_DINEIN_FULFILLMENT || 'PICKUP').toUpperCase();
 const COMP_COUPON_CODE = (process.env.COMP_COUPON_CODE || '').trim();
@@ -345,9 +346,14 @@ async function releaseHold(orderId) {
     const cur = await squareFetch(`/v2/orders/${orderId}`);
     const order = cur.order;
     if (!order || !order.metadata || order.metadata.bc_hold !== '1') return order; // not held
+    // Re-send the whole metadata map with bc_hold flipped to '0' (keeping
+    // bc_store / bc_event / etc.), rather than clearing a single nested key —
+    // a plain value update is reliable where fields_to_clear on a metadata key
+    // is not. The KDS hides only bc_hold === '1', so '0' makes it visible.
+    const metadata = { ...order.metadata, bc_hold: '0' };
     const data = await squareFetch(`/v2/orders/${orderId}`, {
       method: 'PUT',
-      body: { order: { version: order.version }, fields_to_clear: ['metadata.bc_hold'], idempotency_key: idem() },
+      body: { order: { version: order.version, metadata }, idempotency_key: idem() },
     });
     return data.order;
   } catch (e) { return null; }
@@ -374,11 +380,14 @@ async function sweepHeldOrders(maxAgeMin = 30) {
       },
     });
     const cutoff = Date.now() - maxAgeMin * 60 * 1000;
+    // Never cancel an order our own DB has recorded as paid, even if Square's
+    // search hasn't surfaced the tender yet — that would bin a paid order.
+    const held = (data.orders || []).filter((o) => (o.metadata || {}).bc_hold === '1');
+    const paidSet = await db.kdsGetPaid(held.map((o) => o.id)).catch(() => new Set());
     let cancelled = 0;
-    for (const o of (data.orders || [])) {
-      const m = o.metadata || {};
-      if (m.bc_hold !== '1') continue;
-      if (Array.isArray(o.tenders) && o.tenders.length) continue; // it did get paid
+    for (const o of held) {
+      if (paidSet.has(o.id)) continue;                             // paid (our DB)
+      if (Array.isArray(o.tenders) && o.tenders.length) continue;  // paid (has a tender)
       if (new Date(o.created_at).getTime() > cutoff) continue;     // still fresh
       await cancelOrder(o.id).catch(() => {});
       cancelled++;
