@@ -1,23 +1,228 @@
 /* ─────────────────────────────────────────────────────────────────────────
-   Seasonal accessibility only.
-
-   The full seasonal RE-SKIN of every component is handled by the --t-* palette
-   engine (themes.js buildSeasonalTokens + SEASONAL_PALETTES in settings.js),
-   which re-skins the entire storefront per event with readable, WCAG-sane
-   surface/text pairings — exactly like the eight permanent presets.
-
-   The old per-component overrides that used to live here (a Christmas-only dark
-   evergreen skin: dark sheets/cards with cream text) were removed: they applied
-   ON TOP of the v2 palette and fought it, leaving light v2 surfaces with the
-   legacy light text — e.g. the product modal rendered a white title on a white
-   header. Christmas now renders through the same v2 engine as every other
-   season, so it stays readable everywhere.
-
-   The only thing that must remain here is the reduced-motion guard for the
-   festive particle overlays.
+   Seasonal skin. Activated by [data-season="<id>"] on <html>. Components are
+   untouched — they keep their normal classes; this layer re-skins them using
+   semantic --season-* tokens. Removing the attribute restores the base theme.
+   Christmas: deep evergreen environment, rich red cards, cream/gold detailing.
    ───────────────────────────────────────────────────────────────────────── */
 
+[data-season='christmas'] {
+  --line: var(--season-gold);
+}
+
+/* Page background: rich evergreen with a soft top glow (no flat plastic green). */
+[data-season='christmas'] .app {
+  background:
+    radial-gradient(120% 60% at 50% -8%, rgba(24, 120, 78, 0.5), transparent 55%),
+    radial-gradient(80% 40% at 100% 10%, rgba(183, 19, 32, 0.14), transparent 60%),
+    var(--season-green-deep);
+}
+
+/* ── Header ── */
+[data-season='christmas'] .topbar {
+  background: color-mix(in srgb, var(--season-green-deep) 82%, transparent);
+  border-bottom: 1px solid var(--season-gold);
+  padding-top: calc(14px + env(safe-area-inset-top));
+}
+[data-season='christmas'] .logo-wrap { color: var(--season-cream); }
+[data-season='christmas'] .iconbtn {
+  background: rgba(255, 245, 223, 0.06);
+  border: 1.5px solid var(--season-gold);
+  color: var(--season-gold-light);
+}
+
+/* ── Announcement / banners ── */
+[data-season='christmas'] .announce { background: var(--season-red); color: var(--season-cream); }
+[data-season='christmas'] .closed-banner { background: rgba(0, 0, 0, 0.28); color: var(--season-gold-light); }
+
+/* ── Hero ── */
+/* Text slides get the festive red gradient + gold frame. */
+[data-season='christmas'] .hero-slide:not(.has-img) {
+  background:
+    radial-gradient(90% 120% at 90% 0%, rgba(216, 169, 59, 0.22), transparent 55%),
+    linear-gradient(135deg, var(--season-red) 0%, var(--season-red-deep) 100%) !important;
+  border: 2px solid var(--season-gold);
+  color: var(--season-cream);
+}
+/* Image banners fill the box 100% — no red/gold frame bleeding around them. */
+[data-season='christmas'] .hero-slide.has-img {
+  background: transparent !important;
+  border: none;
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.4);
+  color: var(--season-cream);
+}
+[data-season='christmas'] .hero-cta {
+  background: var(--season-cream);
+  color: var(--season-red-deep);
+  border: 1px solid var(--season-gold);
+}
+[data-season='christmas'] .hero-dots button { background: rgba(255, 245, 223, 0.3); }
+[data-season='christmas'] .hero-dots button.on { background: var(--season-gold); }
+
+/* ── Order type toggle ── */
+[data-season='christmas'] .segmented { background: rgba(0, 0, 0, 0.28); border: 1px solid var(--season-gold); }
+[data-season='christmas'] .seg { color: var(--season-cream); }
+[data-season='christmas'] .seg.active { background: var(--season-cream); color: var(--season-red); box-shadow: none; }
+
+/* ── Search ── */
+[data-season='christmas'] .search { background: transparent; }
+[data-season='christmas'] .search input {
+  background: var(--season-green-deep)
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' fill='none' stroke='%23D8A93B' stroke-width='2' viewBox='0 0 24 24'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='M21 21l-4.3-4.3'/%3E%3C/svg%3E")
+    no-repeat 14px center;
+  border: 1.5px solid var(--season-gold);
+  color: var(--season-cream);
+}
+[data-season='christmas'] .search input::placeholder { color: rgba(255, 245, 223, 0.55); }
+[data-season='christmas'] .search input:focus { outline: none; border-color: var(--season-gold-light); box-shadow: 0 0 0 3px rgba(216, 169, 59, 0.22); }
+
+/* ── Category pills ── */
+[data-season='christmas'] .catnav { background: transparent; border-bottom: 1px solid var(--season-gold); }
+[data-season='christmas'] .chip { background: var(--season-green-deep); color: var(--season-cream); border: 1px solid var(--season-gold); }
+[data-season='christmas'] .chip.on { background: var(--season-red); color: var(--season-cream); border-color: var(--season-gold-light); }
+
+/* ── Section headings ── */
+[data-season='christmas'] .cat-title { color: var(--season-gold); position: relative; }
+[data-season='christmas'] .cat-title::after {
+  content: ''; display: block; height: 2px; margin-top: 8px; border-radius: 2px;
+  background: linear-gradient(90deg, var(--season-gold), transparent);
+}
+
+/* ── Product cards (Square content unchanged; only the wrapper is restyled) ── */
+[data-season='christmas'] .item {
+  background:
+    radial-gradient(120% 80% at 100% 0%, rgba(216, 169, 59, 0.16), transparent 55%),
+    linear-gradient(160deg, var(--season-card-bg), var(--season-red-deep));
+  border: 1.5px solid var(--season-card-border);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.32);
+}
+[data-season='christmas'] .item-name { color: var(--season-cream); }
+[data-season='christmas'] .item-desc { color: var(--season-cream2); opacity: 0.85; }
+[data-season='christmas'] .item-price { color: var(--season-gold-light); }
+[data-season='christmas'] .item-img { background: var(--season-green-deep); border: 1px solid var(--season-gold); }
+[data-season='christmas'] .item-noimg { background: var(--season-green-deep); color: var(--season-gold); border: 1px solid var(--season-gold); }
+[data-season='christmas'] .plus { background: var(--season-green-deep); color: var(--season-gold-light); border: 1.5px solid var(--season-gold); }
+[data-season='christmas'] .sold-tag { background: var(--season-gold); color: var(--season-green-deep); }
+
+/* ── Buttons ── */
+[data-season='christmas'] .btn { background: var(--season-red); color: var(--season-cream); border: 1px solid var(--season-gold); }
+[data-season='christmas'] .btn.ghost { background: transparent; color: var(--season-gold); border: 1.5px solid var(--season-gold); }
+[data-season='christmas'] .link { color: var(--season-gold-light); }
+
+/* ── Floating cart bar ── */
+[data-season='christmas'] .cartbar { background: var(--season-red); border: 1px solid var(--season-gold); }
+[data-season='christmas'] .badge { background: rgba(255, 245, 223, 0.2); color: var(--season-cream); }
+
+/* ── Bottom nav with snow bank ── */
+[data-season='christmas'] .bottomnav {
+  background: var(--season-green-deep);
+  border-top: 1px solid var(--season-gold);
+}
+[data-season='christmas'] .navitem { color: var(--season-cream); }
+[data-season='christmas'] .navitem.on { color: var(--season-gold-light); }
+
+/* ── Sheets / modals / drawers (product, cart context, theme picker, account) ── */
+[data-season='christmas'] .sheet { background: var(--season-green); color: var(--season-cream); border: 1px solid var(--season-gold); }
+[data-season='christmas'] .sheet h2 { color: var(--season-cream); }
+[data-season='christmas'] .sheet .muted { color: var(--season-cream2); }
+[data-season='christmas'] .sheet-close { background: rgba(0, 0, 0, 0.25); color: var(--season-cream); }
+[data-season='christmas'] .group { border-top-color: var(--season-gold); }
+[data-season='christmas'] .group-title { color: var(--season-gold-light); }
+[data-season='christmas'] .opt-name { color: var(--season-cream); }
+[data-season='christmas'] .opt-price { color: var(--season-cream2); }
+[data-season='christmas'] .opt input { accent-color: var(--season-red); }
+[data-season='christmas'] .stepper { border-color: var(--season-gold); }
+[data-season='christmas'] .stepper button { background: var(--season-green-deep); color: var(--season-gold-light); }
+[data-season='christmas'] .stepper span { color: var(--season-cream); }
+
+/* ── Forms (kept high-contrast: cream fields on green) ── */
+[data-season='christmas'] .field span { color: var(--season-cream2); }
+[data-season='christmas'] .field input, [data-season='christmas'] .field textarea {
+  background: var(--season-cream); color: var(--season-text-on-cream); border: 1px solid var(--season-gold);
+}
+[data-season='christmas'] .field input::placeholder { color: rgba(51, 38, 29, 0.5); }
+
+/* ── Cart / checkout (calmer surfaces) ── */
+[data-season='christmas'] .page h2 { color: var(--season-cream); }
+[data-season='christmas'] .context-pill { background: rgba(216, 169, 59, 0.18); color: var(--season-gold-light); }
+[data-season='christmas'] .cart-line { background: var(--season-green); border: 1px solid var(--season-gold); }
+[data-season='christmas'] .cart-line-name { color: var(--season-cream); }
+[data-season='christmas'] .cart-line-sub { color: var(--season-cream2); }
+[data-season='christmas'] .totals .row { color: var(--season-cream2); }
+[data-season='christmas'] .totals .row.grand { color: var(--season-gold-light); border-top-color: var(--season-gold); }
+[data-season='christmas'] .totals .row.discount { color: var(--season-gold); }
+[data-season='christmas'] .card { background: var(--season-green); color: var(--season-cream); border: 1px solid var(--season-gold); }
+[data-season='christmas'] .card-box { background: var(--season-cream); border-color: var(--season-gold); }
+[data-season='christmas'] .secure-note, [data-season='christmas'] .empty { color: var(--season-cream2); }
+
+/* ── Account / loyalty ── */
+[data-season='christmas'] .avatar { background: var(--season-red); color: var(--season-cream); }
+[data-season='christmas'] .loyalty-card { background: linear-gradient(135deg, var(--season-red), var(--season-red-deep)); border: 1px solid var(--season-gold); }
+[data-season='christmas'] .history-item { background: var(--season-green); color: var(--season-cream); border: 1px solid var(--season-gold); }
+[data-season='christmas'] .reward { background: var(--season-green); color: var(--season-cream); border-color: var(--season-gold); }
+[data-season='christmas'] .reward.picked { border-color: var(--season-gold-light); background: rgba(216, 169, 59, 0.15); }
+[data-season='christmas'] .pill { background: rgba(216, 169, 59, 0.2); color: var(--season-gold-light); }
+
+/* ── Theme picker swatches ── */
+[data-season='christmas'] .swatch { border-color: var(--season-gold); }
+[data-season='christmas'] .swatch.on { border-color: var(--season-gold-light); }
+[data-season='christmas'] .color-row { border-top-color: var(--season-gold); }
+
+/* ── Spinner / states ── */
+[data-season='christmas'] .spinner { border-color: rgba(255, 245, 223, 0.25); border-top-color: var(--season-gold); }
+
+[data-season='christmas'] .sheet-img { background: var(--season-green-deep); }
+
+/* ── Product / combo modal, in full ──
+   The item sheet has many inner panels (eyebrow, price, description, the option
+   cards, the right pane and the footer) that default to the light base surfaces.
+   Left alone they read as washed-out cream islands inside the festive green
+   modal (and the title looked light-on-light). Dress every one of them in the
+   evergreen/red/gold palette so the whole product page stays festive AND
+   readable. */
+[data-season='christmas'] .item-sheet .sheet-img-ph { background: var(--season-green-deep); color: var(--season-gold); }
+[data-season='christmas'] .item-sheet .sheet-eyebrow { color: var(--season-gold-light); }
+[data-season='christmas'] .item-sheet h2 { color: var(--season-cream); }
+[data-season='christmas'] .item-sheet .sheet-from-price { color: var(--season-gold-light); }
+[data-season='christmas'] .item-sheet .sheet-desc,
+[data-season='christmas'] .item-sheet .sheet-tasting-label,
+[data-season='christmas'] .item-sheet .sheet-fact dd,
+[data-season='christmas'] .item-sheet .sheet-right-head p,
+[data-season='christmas'] .item-sheet .sheet-footer-summary { color: var(--season-cream2); }
+[data-season='christmas'] .item-sheet .sheet-origin,
+[data-season='christmas'] .item-sheet .sheet-fact dt,
+[data-season='christmas'] .item-sheet .sheet-right-head h3 { color: var(--season-cream); }
+[data-season='christmas'] .item-sheet .tasting-pill { background: rgba(216, 169, 59, 0.16); color: var(--season-gold-light); }
+[data-season='christmas'] .item-sheet .sheet-right { border-top-color: var(--season-gold); }
+[data-season='christmas'] .item-sheet .sheet-left { border-right-color: var(--season-gold); }
+[data-season='christmas'] .item-sheet .sheet-close { background: rgba(0, 0, 0, 0.3); color: var(--season-cream); box-shadow: none; }
+
+/* Option-group headings + the selectable option cards. */
+[data-season='christmas'] .cgroup-num { background: var(--season-red); color: var(--season-cream); }
+[data-season='christmas'] .cgroup-name { color: var(--season-cream); }
+[data-season='christmas'] .cgroup-hint { color: var(--season-cream2); }
+[data-season='christmas'] .cgroup-req { background: rgba(216, 169, 59, 0.18); color: var(--season-gold-light); }
+[data-season='christmas'] .ccard { background: var(--season-green-deep); border-color: var(--season-gold); }
+[data-season='christmas'] .ccard-name { color: var(--season-cream); }
+[data-season='christmas'] .ccard-price { color: var(--season-cream2); }
+[data-season='christmas'] .ccard:hover:not(.disabled):not(.on) { border-color: var(--season-gold-light); }
+[data-season='christmas'] .ccard.on {
+  background: color-mix(in srgb, var(--season-red) 32%, var(--season-green-deep));
+  border-color: var(--season-gold-light); box-shadow: 0 0 0 1px var(--season-gold-light) inset;
+}
+[data-season='christmas'] .ccard.on .ccard-price { color: var(--season-gold-light); }
+[data-season='christmas'] .ccard-check { background: var(--season-red); color: var(--season-cream); }
+
+/* Combo Builder nested customise block. */
+[data-season='christmas'] .combo-customize { background: rgba(0, 0, 0, 0.2); border-left-color: var(--season-gold); }
+[data-season='christmas'] .combo-customize-label,
+[data-season='christmas'] .combo-included { color: var(--season-gold-light); }
+
+/* The modal footer (running total + Add button) — evergreen, gold hairline. */
+[data-season='christmas'] .item-sheet .sheet-footer { background: var(--season-green-deep); border-top-color: var(--season-gold); }
+
+
+/* ── Reduced motion: hide the falling snow entirely (no frozen flakes) ── */
 @media (prefers-reduced-motion: reduce) {
-  .fx-snow { display: none; }               /* no drifting (or frozen) snow */
+  .fx-snow { display: none; }
   .fx-bulb, .fx-orn { animation: none !important; }
 }
