@@ -2462,9 +2462,11 @@ body:has(.store-shell) { background: var(--bc-canvas-deep, #160f12); }
 .store-shell .page:not(.checkout-page) > h2 { color: var(--bc-text-light); }
 .store-shell .page:not(.checkout-page) > p.muted { color: var(--bc-text-light-muted); }
 .store-shell .page:not(.checkout-page) .field > span { color: var(--bc-text-light-muted); }
-/* …but the Reserve-a-table form is a LIGHT card sitting on that dark canvas, so
-   its field titles need the dark ink, not the on-canvas light-muted colour. */
-.store-shell .page .reserve-card .reserve-form .field > span { color: var(--bc-text-dark); }
+/* …but the Reserve-a-table form and the store-page "Get in touch" form are LIGHT
+   cards sitting on that dark canvas, so their field titles need the dark ink,
+   not the on-canvas light-muted colour. */
+.store-shell .page .reserve-card .reserve-form .field > span,
+.store-shell .page .store-card .store-form .field > span { color: var(--bc-text-dark); }
 .store-shell .page:not(.checkout-page) .totals .row { color: var(--bc-text-light-muted); }
 .store-shell .page:not(.checkout-page) .totals .row.grand {
   color: var(--bc-text-light); border-top-color: rgba(232, 182, 92, .30);
