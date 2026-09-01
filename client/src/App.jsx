@@ -1125,13 +1125,14 @@ export default function App() {
   // this, a fresh object literal every render would cancel+restart the
   // engine's boot before its idle-callback ever fires, so the canvas would
   // exist but never actually draw a single particle.
-  const seasonalEc = eventSeasonal?.effectsConfig;
-  const seasonalDeps = [eventSeasonal?.id, seasonalEc?.effectsEnabled, seasonalEc?.effectId, seasonalEc?.intensity, effectsList];
+  const themeForEffect = activeTheme || eventSeasonal;
+  const seasonalEc = themeForEffect?.effectsConfig;
+  const seasonalDeps = [themeForEffect?.id, seasonalEc?.effectsEnabled, seasonalEc?.effectId, seasonalEc?.intensity, effectsList];
   const seasonalDepsChanged = !effectMemoRef.current.seasonalDeps
     || seasonalDeps.some((v, i) => v !== effectMemoRef.current.seasonalDeps[i]);
   if (seasonalDepsChanged) {
     effectMemoRef.current.seasonal = (() => {
-      if (!eventSeasonal || !seasonalEc || seasonalEc.effectsEnabled === false || !seasonalEc.effectId) return null;
+      if (!themeForEffect || !seasonalEc || seasonalEc.effectsEnabled === false || !seasonalEc.effectId) return null;
       const e = findEffect(seasonalEc.effectId);
       if (!e) return null;
       const mult = EFFECT_INTENSITY[seasonalEc.intensity] || 1;
@@ -1601,6 +1602,7 @@ export default function App() {
             saveStoredTheme({ id: s.id, v: 1, ts: Date.now(), explicit: true, tokens: buildTokens(seasonalAsPreset(s)) });
             setSavedTheme(null);
             setSeasonOptOut(true);
+            setEffectPref({ mode: 'theme-default' });
           }}
           onReset={resetTheme}
           onClose={() => setShowTheme(false)}
