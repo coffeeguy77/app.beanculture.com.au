@@ -193,7 +193,13 @@
 [data-season='christmas'] .item-sheet .sheet-right-head h3 { color: var(--season-cream); }
 [data-season='christmas'] .item-sheet .tasting-pill { background: rgba(216, 169, 59, 0.16); color: var(--season-gold-light); }
 [data-season='christmas'] .item-sheet .sheet-right { border-top-color: var(--season-gold); }
-[data-season='christmas'] .item-sheet .sheet-left { border-right-color: var(--season-gold); }
+/* The header/left pane defaults to a light beige (--bc-blush) from the base
+   store-shell layer, so the cream title read light-on-light. Dress it evergreen
+   so the eyebrow/title/price sit on a rich festive ground and stay legible. */
+[data-season='christmas'] .item-sheet .sheet-left {
+  background: var(--season-green-deep);
+  border-right-color: var(--season-gold);
+}
 [data-season='christmas'] .item-sheet .sheet-close { background: rgba(0, 0, 0, 0.3); color: var(--season-cream); box-shadow: none; }
 
 /* Option-group headings + the selectable option cards. */
@@ -220,6 +226,53 @@
 /* The modal footer (running total + Add button) — evergreen, gold hairline. */
 [data-season='christmas'] .item-sheet .sheet-footer { background: var(--season-green-deep); border-top-color: var(--season-gold); }
 
+
+/* ── Category dock (the horizontal "Browse the menu" tab strip) ──
+   The store-shell dock hardcodes neutral store tokens (--s-card, --dark plum,
+   --bc-blush) that no season overrides, so under Christmas the active tab read
+   dull and the rest stayed pale — the "categories are dull when you press them"
+   the storefront was showing. Re-skin the whole dock: evergreen tiles with a
+   gold hairline, and a BRIGHT cherry-red active tab so the current category
+   reads unmistakably festive. */
+[data-season='christmas'] .menu-dock-wrap { background: transparent; }
+[data-season='christmas'] .menu-dock {
+  background: var(--season-green);
+  border: 1px solid var(--season-gold);
+}
+[data-season='christmas'] .menu-dock-eyebrow {
+  color: var(--season-gold-light);
+  border-right-color: var(--season-gold);
+}
+[data-season='christmas'] .dock-tab {
+  background: var(--season-green-deep);
+  border: 1px solid var(--season-gold);
+  color: var(--season-cream);
+}
+[data-season='christmas'] .dock-tab-ic { color: var(--season-gold-light); }
+[data-season='christmas'] .dock-tab:hover:not(.on) {
+  border-color: var(--season-gold-light);
+  background: var(--season-green-deep);
+}
+[data-season='christmas'] .dock-tab.on {
+  background: var(--season-red);
+  border-color: var(--season-gold-light);
+  color: var(--season-cream);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.34);
+}
+[data-season='christmas'] .dock-tab.on .dock-tab-ic { color: var(--season-cream); }
+[data-season='christmas'] .dock-tab-count {
+  background: var(--season-gold);
+  color: var(--season-green-deep);
+  border-color: var(--season-gold-light);
+}
+[data-season='christmas'] .dock-fade.left { background: linear-gradient(to right, var(--season-green), transparent); }
+[data-season='christmas'] .dock-fade.right { background: linear-gradient(to left, var(--season-green), transparent); }
+[data-season='christmas'] .dock-arrow {
+  background: var(--season-green-deep);
+  border: 1px solid var(--season-gold);
+  color: var(--season-gold-light);
+}
+[data-season='christmas'] .dock-arrow:not(:disabled):hover { border-color: var(--season-gold-light); color: var(--season-cream); }
 
 /* ── Reduced motion: hide the falling snow entirely (no frozen flakes) ── */
 @media (prefers-reduced-motion: reduce) {

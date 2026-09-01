@@ -1921,7 +1921,9 @@ body:has(.store-shell) { background: #F7F4EF; }
   background: color-mix(in srgb, var(--s-line) 22%, #fff); color: var(--s-ink);
   transition: background .16s ease, border-color .16s ease, color .16s ease, transform .1s ease, box-shadow .16s ease;
 }
-.dock-tab:hover { border-color: var(--brand); background: var(--s-card); }
+/* :not(.on) so a stuck touch-hover never repaints the ACTIVE tab (iOS keeps
+   :hover after a tap; without this the selected category loses its highlight). */
+.dock-tab:hover:not(.on) { border-color: var(--brand); background: var(--s-card); }
 .dock-tab:active { transform: scale(.97); }
 /* Consistent, owner-scalable dock icons: fixed HEIGHT (so every icon reads the
    same size regardless of its artwork), width follows the square viewBox, and
@@ -2349,7 +2351,7 @@ body:has(.store-shell) { background: var(--bc-canvas-deep, #160f12); }
    menu content never bleeds through when the dock is stuck. */
 .menu-dock-wrap { background: var(--bc-canvas-gradient); background-attachment: fixed; }
 .dock-tab { background: var(--bc-blush); border-color: var(--bc-border-rose); }
-.dock-tab:hover { background: var(--bc-blush-strong); border-color: var(--bc-raspberry); }
+.dock-tab:hover:not(.on) { background: var(--bc-blush-strong); border-color: var(--bc-raspberry); }
 .dock-tab.on .dock-tab-count { background: var(--bc-champagne); color: var(--bc-text-dark); border-color: var(--bc-champagne); }
 
 /* ── Search icon (storefront-only, scoped to the existing override block) ── */
