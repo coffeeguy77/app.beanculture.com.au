@@ -104,6 +104,20 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
 
   const paymentsRef = useRef(null);
   const cardRef = useRef(null);
+  // The Square order gets created before payment, so it exists while the customer
+  // is still on the payment step. If payment fails or they leave, we cancel it so
+  // an unpaid order can never reach the kitchen. Holds the id of an order that has
+  // been created but not yet paid.
+  const pendingOrderRef = useRef(null);
+  const cancelPending = React.useCallback(() => {
+    const id = pendingOrderRef.current;
+    if (!id) return;
+    pendingOrderRef.current = null;
+    api.cancelOrder(id).catch(() => {}); // server only cancels a held, unpaid order
+  }, []);
+  // If the checkout unmounts (customer navigates away / closes) with an unpaid
+  // order still pending, cancel it on the way out.
+  useEffect(() => () => { cancelPending(); }, [cancelPending]);
 
   // Displayed total must match the authoritative server total, which already
   // subtracts the combo discount — otherwise the "Pay $X" button shows the
@@ -317,6 +331,9 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
       loyalty: tierId && loyalty?.accountId ? { accountId: loyalty.accountId, tierId } : undefined,
       pifVoucher: hasPif ? effectivePifCode : undefined,
     });
+    // Track it as unpaid-pending until payment completes, so it gets cancelled if
+    // the customer never pays (declined / abandoned).
+    if (res && res.orderId) pendingOrderRef.current = res.orderId;
     // The server hands back the enrolled walk-up customer — remember them on the
     // device so their next order at the event is one tap and pre-filled.
     if (res && res.customer && res.customer.customerId && onEnrolled) {
@@ -324,6 +341,8 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
     }
     return res;
   }
+  // Payment succeeded — this order is real now, so stop tracking it for cancellation.
+  const clearPending = () => { pendingOrderRef.current = null; };
 
   // Main submit — routes to schedule (auto-charge) or immediate payment.
   async function place() {
@@ -356,12 +375,13 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
       // Pay from prepaid balance (gift card).
       if (cardChoice === 'balance') {
         const pay = await api.pay({ orderId: order.orderId, totalMoney: order.totalMoney, customerId: user.customerId, payWith: 'balance', locationId: location?.id });
-        if (pay.status === 'COMPLETED' || pay.status === 'APPROVED') { if (hasPif && onClearPifVoucher) { track('gift_redeemed', { ref: effectivePifCode }); onClearPifVoucher(); } return onPaid(pay, order, { pickupAt }); }
+        if (pay.status === 'COMPLETED' || pay.status === 'APPROVED') { clearPending(); if (hasPif && onClearPifVoucher) { track('gift_redeemed', { ref: effectivePifCode }); onClearPifVoucher(); } return onPaid(pay, order, { pickupAt }); }
         throw new Error(`Payment ${pay.status}`);
       }
 
       if (!order.totalMoney || order.totalMoney.amount === 0) {
         await api.pay({ orderId: order.orderId, totalMoney: order.totalMoney, locationId: location?.id });
+        clearPending();
         if (hasPif && onClearPifVoucher) { track('gift_redeemed', { ref: effectivePifCode }); onClearPifVoucher(); }
         onPaid({ status: 'COMPLETED', comped: !usingReward, receiptUrl: null }, order, { pickupAt });
         return;
@@ -381,16 +401,19 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
         sourceId, orderId: order.orderId, totalMoney: order.totalMoney,
         verificationToken, customerId: user?.customerId, locationId: location?.id,
       });
-      if (pay.status === 'COMPLETED' || pay.status === 'APPROVED') { if (hasPif && onClearPifVoucher) { track('gift_redeemed', { ref: effectivePifCode }); onClearPifVoucher(); } onPaid(pay, order, { pickupAt }); }
+      if (pay.status === 'COMPLETED' || pay.status === 'APPROVED') { clearPending(); if (hasPif && onClearPifVoucher) { track('gift_redeemed', { ref: effectivePifCode }); onClearPifVoucher(); } onPaid(pay, order, { pickupAt }); }
       else throw new Error(`Payment ${pay.status}`);
     } catch (e) {
+      // Payment didn't go through — cancel the just-created order so it can't
+      // reach the kitchen unpaid. A retry creates a fresh order.
+      cancelPending();
       if (e.pifReason) {
         setPifError(e.message);
         track('gift_redemption_failed', { ref: e.pifReason });
         if (['not_found', 'not_redeemable', 'expired'].includes(e.pifReason) && onClearPifVoucher) onClearPifVoucher();
       } else {
         const declined = /insufficient|declin|cvv|card|402|fund/i.test(e.message || '');
-        setError(declined ? 'Your card was declined — your order is still here. Try another card.' : e.message);
+        setError(declined ? 'Your card was declined — nothing was charged. Try another card or method.' : e.message);
       }
     } finally { setBusy(false); }
   }
@@ -402,16 +425,19 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
     try {
       const order = await createOrder(null);
       const pay = await api.pay({ sourceId: token, orderId: order.orderId, totalMoney: order.totalMoney, customerId: user?.customerId, locationId: location?.id });
-      if (pay.status === 'COMPLETED' || pay.status === 'APPROVED') { if (hasPif && onClearPifVoucher) { track('gift_redeemed', { ref: effectivePifCode }); onClearPifVoucher(); } onPaid(pay, order, {}); }
+      if (pay.status === 'COMPLETED' || pay.status === 'APPROVED') { clearPending(); if (hasPif && onClearPifVoucher) { track('gift_redeemed', { ref: effectivePifCode }); onClearPifVoucher(); } onPaid(pay, order, {}); }
       else throw new Error(`Payment ${pay.status}`);
     } catch (e) {
+      // Wallet payment didn't complete — cancel the order so it never reaches the
+      // kitchen unpaid.
+      cancelPending();
       if (e.pifReason) {
         setPifError(e.message);
         track('gift_redemption_failed', { ref: e.pifReason });
         if (['not_found', 'not_redeemable', 'expired'].includes(e.pifReason) && onClearPifVoucher) onClearPifVoucher();
       } else {
         const declined = /insufficient|declin|cvv|card|402|fund/i.test(e.message || '');
-        setError(declined ? 'That payment was declined — your order is still here. Try another method.' : e.message);
+        setError(declined ? 'That payment was declined — nothing was charged. Try another method.' : e.message);
       }
     } finally { setBusy(false); }
   }

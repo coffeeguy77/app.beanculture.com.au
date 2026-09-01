@@ -136,6 +136,17 @@ async function fetchTickets(squareLocationId, loc) {
     return true;
   };
   let orders = (data.orders || []).filter((o) => o && o.state !== 'CANCELED' && !stillUnpaid(o));
+  // Leak detector: a held (bc_hold='1') order should only be visible once it is
+  // genuinely paid. Log any that slip through, with the reason, so a real leak
+  // (an unpaid order reaching the kitchen) is captured instead of guessed at.
+  for (const o of orders) {
+    if (o.metadata && o.metadata.bc_hold === '1') {
+      const why = paidSet.has(o.id) ? 'db-paid-marker'
+        : (o.state === 'COMPLETED' ? 'order-COMPLETED'
+        : (Array.isArray(o.tenders) && o.tenders.length ? 'has-tender' : 'UNKNOWN'));
+      console.warn(`[kds] held order shown on screen id=${o.id} reason=${why} state=${o.state} tenders=${(o.tenders || []).length}`);
+    }
+  }
   // Several app stores can share ONE Square location (events run on the café's),
   // so split the board by the screen's chosen store using the order's store tag:
   //  • an EVENT screen shows only that event's tickets (bc_event);

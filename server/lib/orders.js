@@ -363,7 +363,7 @@ async function releaseHold(orderId) {
 // abandoned checkouts), once they're older than maxAgeMin. Keeps Square tidy so
 // abandoned tickets don't accumulate as OPEN orders. Best-effort and safe: it
 // only touches OPEN orders tagged bc_hold='1' that carry no payment tender.
-async function sweepHeldOrders(maxAgeMin = 30) {
+async function sweepHeldOrders(maxAgeMin = 5) {
   try {
     const startAt = new Date(Date.now() - 6 * 3600 * 1000).toISOString();
     const data = await squareFetch('/v2/orders/search', {
@@ -384,15 +384,19 @@ async function sweepHeldOrders(maxAgeMin = 30) {
     // search hasn't surfaced the tender yet — that would bin a paid order.
     const held = (data.orders || []).filter((o) => (o.metadata || {}).bc_hold === '1');
     const paidSet = await db.kdsGetPaid(held.map((o) => o.id)).catch(() => new Set());
-    let cancelled = 0;
+    let cancelled = 0, failed = 0;
     for (const o of held) {
       if (paidSet.has(o.id)) continue;                             // paid (our DB)
       if (Array.isArray(o.tenders) && o.tenders.length) continue;  // paid (has a tender)
       if (new Date(o.created_at).getTime() > cutoff) continue;     // still fresh
-      await cancelOrder(o.id).catch(() => {});
-      cancelled++;
+      const r = await cancelOrder(o.id).catch(() => null);
+      // Only count a real cancel. A null means the PUT was rejected (Square can
+      // refuse to cancel some orders) — log it so a stuck held order is visible
+      // rather than showing a misleading "cancelled" every run.
+      if (r && r.state === 'CANCELED') cancelled++;
+      else { failed++; console.warn(`[sweep] could NOT cancel held order id=${o.id} state=${o.state}`); }
     }
-    if (cancelled) console.log(`[sweep] cancelled ${cancelled} unpaid held order(s)`);
+    if (cancelled || failed) console.log(`[sweep] unpaid held orders — cancelled ${cancelled}, could-not-cancel ${failed}`);
     return cancelled;
   } catch (e) { console.warn('[sweep] held-order sweep failed:', e.message); return 0; }
 }

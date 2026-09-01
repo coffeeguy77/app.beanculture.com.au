@@ -13,6 +13,7 @@ export const api = {
   getLoyalty: (phone) => req(`/api/loyalty?phone=${encodeURIComponent(phone)}`),
   getHistory: (customerId) => req(`/api/history?customerId=${encodeURIComponent(customerId)}`),
   createOrder: (payload) => req('/api/orders', { method: 'POST', body: JSON.stringify(payload) }),
+  cancelOrder: (orderId) => req(`/api/orders/${encodeURIComponent(orderId)}/cancel`, { method: 'POST' }),
   pay: (payload) => req('/api/pay', { method: 'POST', body: JSON.stringify(payload) }),
   adminOverview: (pass) => req(`/api/admin/overview?pass=${encodeURIComponent(pass || '')}`),
   // Saved cards (card-on-file)

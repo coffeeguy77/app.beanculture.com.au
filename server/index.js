@@ -441,6 +441,30 @@ app.post('/api/pay', async (req, res) => {
   }
 });
 
+// Cancel an app order whose payment failed or was abandoned, so it can never
+// reach the kitchen. Called by the app the moment checkout fails or the customer
+// backs out. Safe by design: it only cancels an order still stamped bc_hold='1'
+// (an app order awaiting payment) that carries no payment — it can't touch a paid
+// or counter order. This is the reliable guard against a declined/abandoned
+// checkout being cooked, on top of the KDS hold-hide and the periodic sweep.
+app.post('/api/orders/:id/cancel', async (req, res) => {
+  try {
+    const orderId = req.params.id;
+    if (!orderId) return res.status(400).json({ error: 'Missing order id' });
+    const cur = await orders.getOrder(orderId).catch(() => null);
+    if (!cur) return res.json({ ok: true, already: true });
+    const md = cur.metadata || {};
+    if (md.bc_hold !== '1') return res.json({ ok: false, reason: 'not_held' }); // never cancel a real/paid order
+    if (Array.isArray(cur.tenders) && cur.tenders.length) return res.json({ ok: false, reason: 'paid' });
+    const paid = await db.kdsGetPaid([orderId]).catch(() => new Set());
+    if (paid.has(orderId)) return res.json({ ok: false, reason: 'paid' });
+    await orders.cancelOrder(orderId);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
 // ---- Saved cards (card-on-file) ----
 app.get('/api/cards', async (req, res) => {
   try {
@@ -2233,8 +2257,8 @@ db.init().finally(() => {
   setInterval(() => payItForward.sweepExpired().catch((e) => console.warn('[payItForward] expiry sweep failed:', e.message)), 60 * 60 * 1000);
   // Cancel app orders held for payment that were never paid (declined/abandoned
   // checkouts), so they don't linger as OPEN orders in Square. Runs every 15 min.
-  setTimeout(() => orders.sweepHeldOrders().catch(() => {}), 90000);
-  setInterval(() => orders.sweepHeldOrders().catch(() => {}), 15 * 60 * 1000);
+  setTimeout(() => orders.sweepHeldOrders().catch(() => {}), 60000);
+  setInterval(() => orders.sweepHeldOrders().catch(() => {}), 2 * 60 * 1000);
   // Prune the product builder against Square a few times a day: drop tiles whose
   // Square variation was deleted. It never auto-CREATES tiles — new variations
   // are pulled in only when the owner clicks "Sync new variations from Square"
