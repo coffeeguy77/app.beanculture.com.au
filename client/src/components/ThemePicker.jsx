@@ -48,7 +48,7 @@ function ThemeCard({ name, core, selected, onClick, effectIcon, eventActive }) {
         {eventActive && <span className="theme-card-live">● Event active</span>}
         {selected && <span className="theme-card-check" aria-hidden="true">✓</span>}
       </div>
-      <span className="theme-card-name">{name}</span>
+      <span className="theme-card-name" style={{ color: core.primary }}>{name}</span>
     </button>
   );
 }
