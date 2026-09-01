@@ -221,7 +221,13 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
   // where the wallet sheet's amount could differ from what's charged (a coupon
   // or loyalty reward discounts server-side) or for scheduled/auto-charge orders
   // (which must charge a saved card at pickup, not a one-time wallet token).
-  const hideWallets = hasCoupon || usingReward || isSchedule || isRepeat;
+  // Show the one-tap wallets (Apple Pay / Google Pay / Afterpay) for any order
+  // the customer pays for NOW — including a "pay now" pre-order while the store is
+  // closed — so they never have to fall back to typing a card. Hidden only for
+  // auto-charge/repeat (those must charge a saved card later, not a one-time
+  // wallet token) and where the wallet sheet amount could differ from the charge
+  // (a coupon or loyalty reward discounts server-side).
+  const hideWallets = hasCoupon || usingReward || autocharge;
 
   // Loyalty + saved cards for a signed-in user.
   useEffect(() => {
@@ -284,7 +290,10 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
     if (!eventMode && dineIn === null) { setError('Please choose Dine in or Takeaway.'); return false; }
     if (!eventMode && dineIn && !table.trim()) { setError('Please enter your table number.'); return false; }
     if (!eventMode && (!canOrder || closedNow) && when === 'asap') { setError('We’re closed right now — schedule a pickup time instead.'); return false; }
-    if ((isSchedule || isRepeat) && !user?.customerId) { setError('Please sign in (via Account) to schedule an order.'); return false; }
+    // Only auto-charge (pay-later / repeat) needs an account — it charges a saved
+    // card at pickup. A "pay now" pre-order is just a paid order with a future
+    // pickup time, so a guest can place it (and pay by wallet or card).
+    if (autocharge && !user?.customerId) { setError('Please sign in (via Account) to set up auto-charge at pickup.'); return false; }
     if ((isSchedule || isRepeat) && !sched.enabled && autocharge) { setError('Scheduled auto-charge is not available right now.'); return false; }
     if (isRepeat && repeatType === 'weekly' && !repeatDays.length) { setError('Pick at least one day to repeat on.'); return false; }
     return true;
@@ -423,9 +432,12 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
   async function onWalletToken(token) {
     setBusy(true); setError('');
     try {
-      const order = await createOrder(null);
+      // Carry the scheduled pickup time through the wallet flow so a "pay now"
+      // pre-order keeps its pickup slot (not just ASAP orders).
+      const pickupAt = isSchedule ? pickupIso() : null;
+      const order = await createOrder(pickupAt);
       const pay = await api.pay({ sourceId: token, orderId: order.orderId, totalMoney: order.totalMoney, customerId: user?.customerId, locationId: location?.id });
-      if (pay.status === 'COMPLETED' || pay.status === 'APPROVED') { clearPending(); if (hasPif && onClearPifVoucher) { track('gift_redeemed', { ref: effectivePifCode }); onClearPifVoucher(); } onPaid(pay, order, {}); }
+      if (pay.status === 'COMPLETED' || pay.status === 'APPROVED') { clearPending(); if (hasPif && onClearPifVoucher) { track('gift_redeemed', { ref: effectivePifCode }); onClearPifVoucher(); } onPaid(pay, order, { pickupAt }); }
       else throw new Error(`Payment ${pay.status}`);
     } catch (e) {
       // Wallet payment didn't complete — cancel the order so it never reaches the
@@ -546,8 +558,8 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
       </div>
       )}
 
-      {(isSchedule || isRepeat) && !user?.customerId && (
-        <p className="error-text" style={{ fontSize: 13 }}>Sign in from the Account tab to schedule or repeat an order.</p>
+      {autocharge && !user?.customerId && (
+        <p className="error-text" style={{ fontSize: 13 }}>Sign in from the Account tab to set up auto-charge at pickup. Or choose “Pay now” to pre-order as a guest.</p>
       )}
 
       {!eventMode && loyalty?.active && loyalty.tiers?.length > 0 && when === 'asap' && (
