@@ -1968,14 +1968,18 @@ app.post('/api/admin/upload', async (req, res) => {
 
 // ---- Serve the built client (single service) ----
 const clientDist = path.join(__dirname, '..', 'client', 'dist');
-// Apple Pay domain verification. Register the site's domain in the Square
-// Developer Dashboard (Apple Pay tab), then paste the association file contents
-// into the APPLE_PAY_DOMAIN_ASSOCIATION env var. Served here as plain text so
-// Apple Pay can verify the domain — no code redeploy needed to update it.
+// Apple Pay domain verification. The association file is committed at
+// server/apple-pay-domain-association.txt and served EXACTLY as Apple expects
+// (the file is the source of truth — an env var truncates on large values,
+// which makes Apple report a "partial response"). Read once at boot; the
+// APPLE_PAY_DOMAIN_ASSOCIATION env var is only a fallback if the file is absent.
+const APPLE_PAY_ASSOC = (() => {
+  try { return require('fs').readFileSync(path.join(__dirname, 'apple-pay-domain-association.txt'), 'utf8'); }
+  catch { return process.env.APPLE_PAY_DOMAIN_ASSOCIATION || ''; }
+})();
 app.get('/.well-known/apple-developer-merchantid-domain-association', (_req, res) => {
-  const body = process.env.APPLE_PAY_DOMAIN_ASSOCIATION;
-  if (!body) return res.status(404).send('Apple Pay domain association not configured.');
-  res.type('text/plain').send(body);
+  if (!APPLE_PAY_ASSOC) return res.status(404).send('Apple Pay domain association not configured.');
+  res.type('text/plain').send(APPLE_PAY_ASSOC);
 });
 
 // Cache policy: Vite fingerprints /assets/* filenames, so they can be cached
