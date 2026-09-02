@@ -503,7 +503,7 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
           </label>
         )}
         {dineIn === true && !bigPill && (
-          <TableEntry lock={tableLock} table={table} setTable={setTable} onUnlock={onUnlockTable} onScanned={onScanTable} />
+          <TableEntry lock={tableLock} table={table} setTable={setTable} onUnlock={onUnlockTable} onScanned={onScanTable} user={user} />
         )}
       </div>
 

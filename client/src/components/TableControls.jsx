@@ -19,9 +19,21 @@ export function TableLockPill({ table, onUnlock }) {
 // Stages 1 & 0 for the table field, plus the Scan button + camera.
 //   lock === 1 → solid (non-editable) chip; ✕ steps down to manual entry.
 //   lock === 0 → editable table-number input.
-export function TableEntry({ lock, table, setTable, onUnlock, onScanned }) {
+// `user` (the signed-in account) unlocks a PRIVATE quick-pick — "Shaun's Desk"
+// only ever appears for the owner's own phone number, no one else.
+const OWNER_DESK_PHONE = '0414631463';
+const OWNER_DESK_LABEL = "Shaun's Desk";
+function normalisePhone(p) {
+  let d = (p || '').replace(/\D/g, '');
+  if (d.startsWith('61')) d = '0' + d.slice(2);      // +61 4… → 04…
+  if (d.length === 9 && d[0] === '4') d = '0' + d;    // 4146… → 04146…
+  return d;
+}
+export function TableEntry({ lock, table, setTable, onUnlock, onScanned, user }) {
   const [scanOpen, setScanOpen] = useState(false);
   const semi = lock === 1 && table;
+  const isOwner = normalisePhone(user?.phone) === OWNER_DESK_PHONE;
+  const onDesk = table === OWNER_DESK_LABEL;
   return (
     <>
       <div className={`dinein-row ${semi ? 'semi' : ''}`}>
@@ -29,6 +41,11 @@ export function TableEntry({ lock, table, setTable, onUnlock, onScanned }) {
           <div className="table-chip">
             <span>Table {table}</span>
             <button className="table-chip-x" type="button" onClick={onUnlock} aria-label="Enter table number manually">✕</button>
+          </div>
+        ) : onDesk ? (
+          <div className="table-chip special-table-chip">
+            <span>⭐ {OWNER_DESK_LABEL}</span>
+            <button className="table-chip-x" type="button" onClick={() => setTable('')} aria-label="Choose a different table">✕</button>
           </div>
         ) : (
           <label className="field dinein-field">
@@ -40,6 +57,12 @@ export function TableEntry({ lock, table, setTable, onUnlock, onScanned }) {
           <ScanIcon /> Scan
         </button>
       </div>
+      {isOwner && !onDesk && !semi && (
+        <button type="button" className="special-table-btn" onClick={() => setTable(OWNER_DESK_LABEL)}>
+          <span>⭐ {OWNER_DESK_LABEL}</span>
+          <span className="special-table-tag">Special Table</span>
+        </button>
+      )}
       {scanOpen && (
         <QRScanner onClose={() => setScanOpen(false)} onResult={(v) => { setScanOpen(false); onScanned && onScanned(v); }} />
       )}
