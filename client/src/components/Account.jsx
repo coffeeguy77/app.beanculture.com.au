@@ -74,6 +74,10 @@ export default function Account({ user, currency, config, onSignIn, onSignOut, o
   const [savedFavs, setSavedFavs] = useState(() => new Set()); // order ids just saved to favourites
   const [coffeeGifts, setCoffeeGifts] = useState(null); // { sent, received }
   const [coffeeTab, setCoffeeTab] = useState('received'); // received | sent
+  const [birthday, setBirthday] = useState('');          // 'MM-DD' saved on file
+  const [bdayInput, setBdayInput] = useState('');        // 'YYYY-MM-DD' in the picker
+  const [bdayBusy, setBdayBusy] = useState(false);
+  const [bdayMsg, setBdayMsg] = useState('');
 
   useEffect(() => {
     if (user?.phone) api.getLoyalty(user.phone).then(setLoyalty).catch(() => {});
@@ -82,11 +86,27 @@ export default function Account({ user, currency, config, onSignIn, onSignOut, o
       api.getCards(user.customerId).then((r) => setCards(r.cards || [])).catch(() => setCards([]));
       api.getScheduled(user.customerId).then((r) => setScheduled(r.orders || [])).catch(() => setScheduled([]));
       api.giftBalance(user.customerId).then((b) => setBalance(b.balance || 0)).catch(() => setBalance(0));
+      api.getBirthday(user.customerId).then((r) => {
+        const mmdd = (r && r.birthday) || '';
+        setBirthday(mmdd);
+        setBdayInput(mmdd ? `2000-${mmdd}` : '');
+      }).catch(() => {});
     }
     if (user?.customerId || user?.phone) {
       api.myGifts(user.customerId, user.phone).then(setCoffeeGifts).catch(() => setCoffeeGifts({ sent: [], received: [] }));
     }
   }, [user]);
+
+  async function saveBirthday() {
+    if (!user?.customerId || !bdayInput) return;
+    setBdayBusy(true); setBdayMsg('');
+    try {
+      const r = await api.setBirthday(user.customerId, bdayInput);
+      setBirthday(r.birthday || '');
+      setBdayMsg('Saved 🎉');
+    } catch (e) { setBdayMsg(e.message || 'Could not save.'); }
+    finally { setBdayBusy(false); }
+  }
 
   async function removeCard(id) {
     try { await api.removeCard(id); setCards((cs) => (cs || []).filter((c) => c.id !== id)); } catch (e) { alert(e.message); }
@@ -387,6 +407,21 @@ function pifStatusPill(status) {
                 <h1>Hi {user.name || 'there'}, welcome back</h1>
                 <p className="muted">Ready for your next {config?.storeName || 'Bean Culture'} coffee?</p>
               </header>
+              {user.customerId && (
+                <div className="acct-card" style={{ padding: 16, marginBottom: 14 }}>
+                  <div style={{ fontWeight: 700, marginBottom: 4 }}>🎂 Your birthday</div>
+                  <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>Add your birthday and we’ll have a little treat waiting for you around the day.</p>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <input type="date" value={bdayInput} onChange={(e) => setBdayInput(e.target.value)}
+                      style={{ padding: '8px 10px', border: '1px solid var(--line, #e0d6da)', borderRadius: 10, fontSize: 15 }} />
+                    <button className="btn" disabled={bdayBusy || !bdayInput} onClick={saveBirthday} style={{ padding: '8px 16px' }}>
+                      {bdayBusy ? 'Saving…' : (birthday ? 'Update' : 'Save')}
+                    </button>
+                    {bdayMsg && <span className="muted" style={{ fontSize: 13 }}>{bdayMsg}</span>}
+                  </div>
+                  <p className="muted" style={{ fontSize: 11.5, marginTop: 8 }}>We only keep the day and month, never the year.</p>
+                </div>
+              )}
               {ScheduledBlock}
               {OrderHistory}
             </>

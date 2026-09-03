@@ -3,6 +3,20 @@ import { api, formatMoney, comboDiscountFor } from '../api.js';
 import { track } from '../analytics.js';
 import { TableLockPill, TableEntry } from './TableControls.jsx';
 import WalletButtons from './WalletButtons.jsx';
+
+// Friendly reason a typed coupon isn't applying, so the customer knows why
+// (e.g. it's a first-visit code, or only valid on their birthday / certain days).
+function couponReasonText(info) {
+  switch (info && info.reason) {
+    case 'not_first_visit': return 'Coupon is first-visit only';
+    case 'not_birthday': return 'Coupon is a birthday treat only';
+    case 'wrong_day': return 'Coupon isn’t valid today';
+    case 'not_started': return 'Coupon hasn’t started yet';
+    case 'expired': return 'Coupon has expired';
+    case 'inactive': return 'Coupon is not active';
+    default: return 'Coupon not recognised';
+  }
+}
 import ScheduleWhen from './ScheduleWhen.jsx';
 
 // Group flat cart lines so a combo (several lines sharing one comboInstanceId)
@@ -161,18 +175,19 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
 
   // Validate the entered coupon against the app's codes so we can show the real
   // discount and take payment for the reduced total (not assume it's a freebie).
-  const [couponInfo, setCouponInfo] = useState(null); // {valid,type,value,comp,label} | null
+  const [couponInfo, setCouponInfo] = useState(null); // {valid,type,value,comp,upgrade,label,condition,reason} | null
   useEffect(() => {
     const code = coupon.trim();
     if (!code) { setCouponInfo(null); return; }
     let live = true;
     const t = setTimeout(() => {
-      api.getCoupon(code)
-        .then((d) => { if (live) setCouponInfo(d && d.valid ? d : { valid: false }); })
+      // Pass the signed-in customer so the server can judge first-visit / birthday.
+      api.getCoupon(code, user?.customerId)
+        .then((d) => { if (live) setCouponInfo(d || { valid: false }); })
         .catch(() => { if (live) setCouponInfo(null); });
     }, 350);
     return () => { live = false; clearTimeout(t); };
-  }, [coupon]);
+  }, [coupon, user?.customerId]);
 
   // Custom Tables: a private table can carry a coupon that rings up automatically
   // when the customer picks it (e.g. the owner's "Shaun's Desk", or a regular's
@@ -189,6 +204,10 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
   const couponValid = !!couponInfo?.valid;
   const discountedTotal = couponValid
     ? (couponInfo.comp ? 0
+      // A size-upgrade coupon is priced per line from the live catalog on the
+      // server; the client can't compute it, so the preview shows the full total
+      // and the real (lower) charge comes back on the created order.
+      : couponInfo.upgrade ? cartTotal
       : couponInfo.type === 'amount' ? Math.max(0, cartTotal - Math.round((couponInfo.value || 0) * 100))
       : Math.max(0, Math.round(cartTotal * (1 - (couponInfo.value || 0) / 100))))
     : cartTotal;
@@ -735,9 +754,14 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
         ) : couponValid ? (
           <>
             <div className="row"><span>Subtotal</span><span>{formatMoney(cartTotal, currency)}</span></div>
-            <div className="row discount"><span>Coupon {couponInfo.code || coupon.trim().toUpperCase()} · {couponInfo.label}</span><span>−{formatMoney(cartTotal - discountedTotal, currency)}</span></div>
+            {couponInfo.upgrade ? (
+              <div className="row discount"><span>Coupon {couponInfo.code || coupon.trim().toUpperCase()} · {couponInfo.label}</span><span>at payment</span></div>
+            ) : (
+              <div className="row discount"><span>Coupon {couponInfo.code || coupon.trim().toUpperCase()} · {couponInfo.label}</span><span>−{formatMoney(cartTotal - discountedTotal, currency)}</span></div>
+            )}
             {surchargeRows}
             <div className="row grand"><span>Total</span><span>{formatMoney(grandTotal, currency)}</span></div>
+            {couponInfo.upgrade && <p className="muted" style={{ fontSize: 11.5, marginTop: 2 }}>Each drink is charged at the small size price — confirmed at payment.</p>}
           </>
         ) : hasPif ? (
           <>
@@ -750,7 +774,7 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
         ) : (
           <>{surchargeRows}<div className="row grand"><span>Total</span><span>{formatMoney(grandTotal, currency)}</span></div></>
         )}
-        {hasCoupon && !couponValid && couponInfo && <div className="row discount"><span>Coupon not recognised</span><span>—</span></div>}
+        {hasCoupon && !couponValid && couponInfo && <div className="row discount"><span>{couponReasonText(couponInfo)}</span><span>—</span></div>}
         {usingReward && <div className="row discount"><span>Reward applied at payment</span><span>—</span></div>}
         {autocharge && <div className="row"><span>{isRepeat ? 'Charged each time' : 'Charged at pickup'}</span><span>{formatMoney(payTotal, currency)}</span></div>}
       </div>

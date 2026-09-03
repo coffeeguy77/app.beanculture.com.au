@@ -37,7 +37,7 @@ function buildNote({ dineIn, table }) {
   return dineIn ? `DINE-IN · ${tableLabel(table) || '?'}` : 'TAKEAWAY';
 }
 
-async function createOrder({ cart, dineIn, table, name, coupon, customerId, pickupAt, idempotencyKey, note: customerNote, pifVoucher, source, squareLocationId, cardPayment, free, freeCategories, shipping, eventId, appLocationId, holdForPayment }) {
+async function createOrder({ cart, dineIn, table, name, coupon, couponContext, customerId, pickupAt, idempotencyKey, note: customerNote, pifVoucher, source, squareLocationId, cardPayment, free, freeCategories, shipping, eventId, appLocationId, holdForPayment }) {
   const LOC = squareLocationId || LOCATION_ID;
   if (!Array.isArray(cart) || cart.length === 0) throw new Error('Cart is empty');
   // Bake any per-combo locked modifiers into the combo lines before pricing, so
@@ -75,17 +75,24 @@ async function createOrder({ cart, dineIn, table, name, coupon, customerId, pick
   const isComp = isTestComp || !!free || allFree;
   const partialComp = !isComp && freeIdx.size > 0; // some free lines, some paid
 
+  // Resolve an admin coupon ONCE, gated by its eligibility rules (active, date
+  // range, day-of-week, first-visit, birthday). couponContext carries the
+  // customer signals the caller looked up (orderCount, birthday). An ineligible
+  // code simply doesn't discount — it's never applied "anyway".
+  const couponObj = coupon ? coupons.find(coupon) : null;
+  const couponEligible = couponObj ? coupons.isEligible(couponObj, couponContext || {}).ok : false;
+  const activeCoupon = couponEligible ? couponObj : null;
+
   // Will this order bill $0? A comp always does; so does an admin coupon that is
   // a "comp" type or a 100%-off percent. A $0 order must NOT be held for payment
   // (there is nothing to pay), otherwise it would sit hidden from the kitchen
   // waiting for a card charge that never comes — that is why Shaun's Desk (auto
   // COMP_COUPON_CODE) orders never appeared. Held is only for real card charges.
   let couponIsFree = false;
-  if (!isComp && coupon) {
-    const c = coupons.find(coupon);
-    if (c) {
-      const type = c.type || 'percent';
-      couponIsFree = type === 'comp' || (type !== 'amount' && (Number(c.value) || 0) >= 100);
+  if (!isComp && activeCoupon) {
+    {
+      const type = activeCoupon.type || 'percent';
+      couponIsFree = type === 'comp' || (type !== 'amount' && type !== 'upgrade' && (Number(activeCoupon.value) || 0) >= 100);
     }
   }
   const willBeFree = isComp || couponIsFree;
@@ -192,11 +199,31 @@ async function createOrder({ cart, dineIn, table, name, coupon, customerId, pick
     const comboDiscounts = await combos.discountsForCart(cart);
     if (comboDiscounts.length) {
       order.discounts = comboDiscounts;
-    } else if (coupon) {
+    } else if (activeCoupon) {
       // App-managed coupon → order-level discount (Square recomputes the total).
-      const c = coupons.find(coupon);
-      const d = c && coupons.discountFor(c);
-      if (d) order.discounts = [d];
+      // A "upgrade" coupon (any size for the price of a small) has no order-level
+      // discount — instead each line is discounted down to its item's cheapest
+      // (small) variation price, from the live catalog. Everything is re-derived
+      // server-side; the client's numbers are never trusted.
+      if ((activeCoupon.type || 'percent') === 'upgrade') {
+        let upMap = {};
+        try { upMap = await catalog.getVariationUpgradeMap(); } catch (e) { console.warn('[orders] upgrade map failed:', e.message); }
+        const lineDiscounts = [];
+        cart.forEach((ci, i) => {
+          const info = upMap[ci.variationId];
+          if (!info) return;
+          const perUnit = Math.max(0, (info.price || 0) - (info.minPrice || 0));
+          if (perUnit <= 0) return;                       // already the small size
+          const qty = Math.max(1, Number(ci.quantity) || 1);
+          const uid = `upg${i}`;
+          lineDiscounts.push({ uid, name: 'Size upgrade', amount_money: { amount: perUnit * qty, currency: CURRENCY }, scope: 'LINE_ITEM' });
+          if (lineItems[i]) lineItems[i].applied_discounts = [...(lineItems[i].applied_discounts || []), { discount_uid: uid }];
+        });
+        if (lineDiscounts.length) order.discounts = [...(order.discounts || []), ...lineDiscounts];
+      } else {
+        const d = coupons.discountFor(activeCoupon);
+        if (d) order.discounts = [d];
+      }
     }
   }
 

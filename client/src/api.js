@@ -38,8 +38,12 @@ export const api = {
   reservationItemInspect: (pass, id) => req(`/api/admin/reservation-item/inspect?pass=${encodeURIComponent(pass || '')}&id=${encodeURIComponent(id || '')}`),
   reservationItemFixCategory: (pass, itemId, categoryId) => req(`/api/admin/reservation-item/fix-category?pass=${encodeURIComponent(pass || '')}`, { method: 'POST', body: JSON.stringify({ itemId, categoryId }) }),
   reservationItemSetup: (pass, body) => req(`/api/admin/reservation-item/setup?pass=${encodeURIComponent(pass || '')}`, { method: 'POST', body: JSON.stringify(body || {}) }),
-  // Coupons (validate a code at checkout)
-  getCoupon: (code) => req(`/api/coupon?code=${encodeURIComponent(code || '')}`),
+  // Coupons (validate a code at checkout). customerId lets the server judge
+  // first-visit / birthday conditions for the signed-in customer.
+  getCoupon: (code, customerId) => req(`/api/coupon?code=${encodeURIComponent(code || '')}${customerId ? `&customerId=${encodeURIComponent(customerId)}` : ''}`),
+  // Customer birthday (for birthday-special coupons)
+  getBirthday: (customerId) => req(`/api/profile/birthday?customerId=${encodeURIComponent(customerId || '')}`),
+  setBirthday: (customerId, birthday) => req('/api/profile/birthday', { method: 'POST', body: JSON.stringify({ customerId, birthday }) }),
   // Admin: customers enrolled via Square loyalty
   adminCustomers: (pass) => req(`/api/admin/customers?pass=${encodeURIComponent(pass || '')}`),
   // Admin: real sales + loyalty signups dashboard

@@ -286,6 +286,22 @@ app.get('/api/history', async (req, res) => {
   }
 });
 
+// Build the customer signals a coupon's conditions need (first-visit history,
+// birthday), but ONLY when the coupon actually has such a condition — a plain
+// %/$ coupon pays for no extra Square lookups. Judged server-side so the client
+// can't fake a first visit or birthday.
+async function couponContextFor(customerId, couponObj) {
+  const ctx = { now: new Date(), orderCount: null, birthday: null };
+  if (!customerId || !coupons.needsCustomer(couponObj)) return ctx;
+  const [hist, bd] = await Promise.all([
+    couponObj.firstVisitOnly ? orders.getHistory(customerId, 5).catch(() => null) : Promise.resolve(null),
+    couponObj.birthdayOnly ? customers.getBirthday(customerId).catch(() => '') : Promise.resolve(''),
+  ]);
+  if (Array.isArray(hist)) ctx.orderCount = hist.length;
+  ctx.birthday = bd || null;
+  return ctx;
+}
+
 // ---- Create an order (with optional loyalty redemption) ----
 app.post('/api/orders', async (req, res) => {
   try {
@@ -341,7 +357,8 @@ app.post('/api/orders', async (req, res) => {
     // Hold every app order back from the kitchen until its payment completes
     // (released in /api/pay). A comp/$0 order is released moments later by its
     // zero-payment, so the only orders left hidden are ones that never paid.
-    const order = await orders.createOrder({ cart, dineIn: !!dineIn, table, name, coupon, customerId: effectiveCustomerId, pickupAt, note, pifVoucher, squareLocationId, cardPayment: cardPayment !== false, free: freeOrder, freeCategories, shipping, eventId, appLocationId: evLoc ? evLoc.id : undefined, holdForPayment: true });
+    const couponContext = await couponContextFor(effectiveCustomerId, coupon ? coupons.find(coupon) : null);
+    const order = await orders.createOrder({ cart, dineIn: !!dineIn, table, name, coupon, couponContext, customerId: effectiveCustomerId, pickupAt, note, pifVoucher, squareLocationId, cardPayment: cardPayment !== false, free: freeOrder, freeCategories, shipping, eventId, appLocationId: evLoc ? evLoc.id : undefined, holdForPayment: true });
 
     let rewardApplied = false;
     if (loy && loy.accountId && loy.tierId) {
@@ -1867,7 +1884,7 @@ app.get('/api/admin/item-config', async (req, res) => {
 });
 
 // ---- Validate a coupon code (for the checkout to show the discount) ----
-app.get('/api/coupon', (req, res) => {
+app.get('/api/coupon', async (req, res) => {
   try {
     const code = String(req.query.code || '').trim();
     // The built-in comp code (env COMP_COUPON_CODE) rings up 100% off — the
@@ -1878,8 +1895,41 @@ app.get('/api/coupon', (req, res) => {
     }
     const c = coupons.find(code);
     if (!c) return res.json({ valid: false });
-    res.json({ valid: true, code: String(c.code).toUpperCase(), type: c.type || 'percent', value: Number(c.value) || 0, comp: (c.type || 'percent') === 'comp', label: coupons.label(c) });
+    // Judge the coupon's conditions with the signed-in customer's real context.
+    const ctx = await couponContextFor(req.query.customerId, c);
+    const elig = coupons.isEligible(c, ctx);
+    const type = c.type || 'percent';
+    if (!elig.ok) {
+      return res.json({ valid: false, reason: elig.reason, code: String(c.code).toUpperCase(), condition: coupons.conditionLabel(c), label: coupons.label(c) });
+    }
+    res.json({
+      valid: true,
+      code: String(c.code).toUpperCase(),
+      type,
+      value: Number(c.value) || 0,
+      comp: type === 'comp',
+      upgrade: type === 'upgrade',
+      label: coupons.label(c),
+      condition: coupons.conditionLabel(c),
+    });
   } catch (e) { res.json({ valid: false }); }
+});
+
+// ---- Customer birthday (for birthday-special coupons) ----
+// Stored on the Square customer with a blank year; we keep only month + day.
+app.get('/api/profile/birthday', async (req, res) => {
+  try {
+    const bd = await customers.getBirthday(req.query.customerId);
+    res.json({ birthday: bd || '' });
+  } catch (e) { res.json({ birthday: '' }); }
+});
+app.post('/api/profile/birthday', async (req, res) => {
+  try {
+    const { customerId, birthday } = req.body || {};
+    if (!customerId) return res.status(400).json({ error: 'Please sign in first.' });
+    const saved = await customers.setBirthday(customerId, birthday);
+    res.json({ ok: true, birthday: saved });
+  } catch (e) { res.status(400).json({ error: e.message || 'Could not save your birthday.' }); }
 });
 
 // ---- Admin: customers enrolled via Square loyalty ----

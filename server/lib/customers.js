@@ -53,4 +53,31 @@ async function get(id) {
   catch { return null; }
 }
 
-module.exports = { findOrCreate, normalizePhone, get };
+// ── Birthday (for birthday-special coupons) ──
+// Stored on the Square customer's `birthday` field with a blank year
+// (0000-MM-DD) — we only ever need month + day, never the birth year.
+function birthdayToMMDD(bd) {
+  const m = String(bd || '').match(/(\d{2})-(\d{2})$/);
+  return m ? `${m[1]}-${m[2]}` : '';
+}
+async function getBirthday(id) {
+  const c = await get(id);
+  return c ? birthdayToMMDD(c.birthday) : '';
+}
+// Accepts an ISO date (YYYY-MM-DD, from a date input) or a plain MM-DD/DD-MM and
+// stores only the month/day. Returns the saved MM-DD.
+async function setBirthday(id, input) {
+  if (!id) throw new Error('Not signed in');
+  const s = String(input || '').trim();
+  let mm, dd;
+  let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);        // ISO YYYY-MM-DD
+  if (m) { mm = m[2]; dd = m[3]; }
+  else { m = s.match(/^(\d{1,2})[-/](\d{1,2})$/); if (m) { mm = m[1]; dd = m[2]; } }
+  if (!mm || !dd) throw new Error('A valid birthday is required');
+  mm = String(mm).padStart(2, '0'); dd = String(dd).padStart(2, '0');
+  if (Number(mm) < 1 || Number(mm) > 12 || Number(dd) < 1 || Number(dd) > 31) throw new Error('A valid birthday is required');
+  const data = await squareFetch(`/v2/customers/${id}`, { method: 'PUT', body: { birthday: `0000-${mm}-${dd}` } });
+  return birthdayToMMDD((data.customer || {}).birthday) || `${mm}-${dd}`;
+}
+
+module.exports = { findOrCreate, normalizePhone, get, getBirthday, setBirthday, birthdayToMMDD };

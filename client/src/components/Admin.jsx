@@ -4588,8 +4588,9 @@ export default function Admin({ onExit }) {
                         <option value="percent">% off</option>
                         <option value="amount">$ off</option>
                         <option value="comp">Free (100%)</option>
+                        <option value="upgrade">Size upgrade (large for small price)</option>
                       </select>
-                      {c.type !== 'comp' && (
+                      {c.type !== 'comp' && c.type !== 'upgrade' && (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                           {c.type === 'amount' && <span className="muted">$</span>}
                           <input inputMode="decimal" value={c.value ?? ''} onChange={(e) => updCoupon(i, { value: parseFloat(e.target.value) || 0 })}
@@ -4606,11 +4607,51 @@ export default function Admin({ onExit }) {
                           style={{ padding: '6px 8px', border: '1px solid var(--line)', borderRadius: 10 }} />
                         {c.expiry && <button className="link" style={{ fontSize: 'var(--fs-sm)', padding: 2 }} onClick={() => updCoupon(i, { expiry: '' })}>clear</button>}
                       </label>
+                      <label style={{ ...row, fontSize: 'var(--fs-base)' }} className="muted">
+                        <span>Starts</span>
+                        <input type="date" value={c.startDate || ''} onChange={(e) => updCoupon(i, { startDate: e.target.value })}
+                          style={{ padding: '6px 8px', border: '1px solid var(--line)', borderRadius: 10 }} />
+                        {c.startDate && <button className="link" style={{ fontSize: 'var(--fs-sm)', padding: 2 }} onClick={() => updCoupon(i, { startDate: '' })}>clear</button>}
+                      </label>
                       <label style={{ ...row, cursor: 'pointer', fontSize: 'var(--fs-base)' }}>
                         <input type="checkbox" checked={c.active !== false} onChange={(e) => updCoupon(i, { active: e.target.checked })} />
                         <span>{c.active !== false ? 'Active' : 'Off'}</span>
                       </label>
                     </div>
+                    {/* Conditions: which days, first-visit, birthday */}
+                    <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center', marginTop: 10, paddingTop: 10, borderTop: '1px dashed var(--line)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                        <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>Valid on</span>
+                        {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d, di) => {
+                          const days = Array.isArray(c.days) ? c.days.map(Number) : [];
+                          const on = days.includes(di);
+                          return (
+                            <button key={di} type="button"
+                              onClick={() => updCoupon(i, { days: on ? days.filter((x) => x !== di) : [...days, di] })}
+                              style={{ padding: '4px 8px', borderRadius: 8, border: '1px solid var(--line)', cursor: 'pointer', fontSize: 'var(--fs-sm)', fontWeight: on ? 700 : 400, background: on ? 'var(--admin-accent-soft, #fbe7ee)' : 'transparent', color: on ? 'var(--admin-accent, #b5566e)' : 'inherit' }}>
+                              {d}
+                            </button>
+                          );
+                        })}
+                        {Array.isArray(c.days) && c.days.length > 0 && <button className="link" style={{ fontSize: 'var(--fs-sm)', padding: 2 }} onClick={() => updCoupon(i, { days: [] })}>any day</button>}
+                      </div>
+                      <label style={{ ...row, cursor: 'pointer', fontSize: 'var(--fs-base)' }}>
+                        <input type="checkbox" checked={!!c.firstVisitOnly} onChange={(e) => updCoupon(i, { firstVisitOnly: e.target.checked })} />
+                        <span>First visit only</span>
+                      </label>
+                      <label style={{ ...row, cursor: 'pointer', fontSize: 'var(--fs-base)' }}>
+                        <input type="checkbox" checked={!!c.birthdayOnly} onChange={(e) => updCoupon(i, { birthdayOnly: e.target.checked })} />
+                        <span>Birthday treat</span>
+                      </label>
+                      {c.birthdayOnly && (
+                        <label style={{ ...row, fontSize: 'var(--fs-base)' }} className="muted">
+                          <span>± days</span>
+                          <input inputMode="numeric" value={c.birthdayWindowDays ?? 0} onChange={(e) => updCoupon(i, { birthdayWindowDays: Math.max(0, Math.min(31, parseInt(e.target.value, 10) || 0)) })}
+                            style={{ width: 48, padding: '6px 8px', border: '1px solid var(--line)', borderRadius: 10 }} />
+                        </label>
+                      )}
+                    </div>
+                    {(c.firstVisitOnly || c.birthdayOnly) && <p className="muted" style={{ fontSize: 'var(--fs-sm)', margin: '6px 0 0' }}>Needs the customer signed in{c.birthdayOnly ? ' with a birthday saved (they add it in their account)' : ''}.</p>}
                   </div>
                 ))}
                 <button className="btn ghost full" style={{ marginTop: 4 }} onClick={addCoupon}>+ Add coupon</button>

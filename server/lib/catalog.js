@@ -802,6 +802,30 @@ async function getVariationCategoryMap() {
   return map;
 }
 
+// For the "any size for the price of a small" (upgrade) coupon: map every
+// variation id to its own price and the CHEAPEST variation price of the same
+// item (the "small"). The upgrade discount for a line is then (price - minPrice)
+// per unit — charging the small price for whatever size was chosen. Prices are
+// in minor units (cents), matching Square discount amount_money. Cached briefly.
+let varUpgradeCache = { data: null, at: 0 };
+async function getVariationUpgradeMap() {
+  const now = Date.now();
+  if (varUpgradeCache.data && now - varUpgradeCache.at < 60000) return varUpgradeCache.data;
+  const objects = await listAllCatalog('ITEM');
+  const map = {};
+  for (const o of objects) {
+    if (o.is_deleted || o.type !== 'ITEM') continue;
+    const vars = (o.item_data?.variations || [])
+      .map((v) => ({ id: v.id, price: moneyToNumber(v.item_variation_data?.price_money) }))
+      .filter((v) => v.id && typeof v.price === 'number');
+    if (!vars.length) continue;
+    const minPrice = Math.min(...vars.map((v) => v.price));
+    for (const v of vars) map[v.id] = { price: v.price, minPrice };
+  }
+  varUpgradeCache = { data: map, at: now };
+  return map;
+}
+
 // Flat list of EVERY offerable Square product (id, name, image, category name),
 // regardless of which categories are loaded in the app — used by the admin
 // "product sections" picker so any product can be hand-picked into a section.
@@ -1086,5 +1110,5 @@ module.exports = {
   searchItemsByName, createReservationCatalogItem, inspectItem, setReportingCategory,
   findOrCreateCategory, setupReservationPrinting, listAllCatalog,
   venueNow, nextOpenDate, applyAvailability, scheduleActiveNow,
-  getVariationCategoryMap,
+  getVariationCategoryMap, getVariationUpgradeMap,
 };
