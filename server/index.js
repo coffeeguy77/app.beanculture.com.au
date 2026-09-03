@@ -12,6 +12,7 @@ const { getSettings, activeSeasonal, seasonalForPicker } = require('./lib/settin
 const cloudinary = require('./lib/cloudinary');
 const squareImages = require('./lib/squareImages');
 const coupons = require('./lib/coupons');
+const COMP_COUPON_CODE = (process.env.COMP_COUPON_CODE || '').trim();
 const sales = require('./lib/sales');
 const db = require('./lib/db');
 const cards = require('./lib/cards');
@@ -1863,7 +1864,14 @@ app.get('/api/admin/item-config', async (req, res) => {
 // ---- Validate a coupon code (for the checkout to show the discount) ----
 app.get('/api/coupon', (req, res) => {
   try {
-    const c = coupons.find(req.query.code || '');
+    const code = String(req.query.code || '').trim();
+    // The built-in comp code (env COMP_COUPON_CODE) rings up 100% off — the
+    // order pipeline already honours it; surface it here too so the checkout
+    // shows "Complimentary" instead of a price the buyer would still see.
+    if (COMP_COUPON_CODE && code.toLowerCase() === COMP_COUPON_CODE.toLowerCase()) {
+      return res.json({ valid: true, code: code.toUpperCase(), type: 'comp', value: 100, comp: true, label: 'Complimentary' });
+    }
+    const c = coupons.find(code);
     if (!c) return res.json({ valid: false });
     res.json({ valid: true, code: String(c.code).toUpperCase(), type: c.type || 'percent', value: Number(c.value) || 0, comp: (c.type || 'percent') === 'comp', label: coupons.label(c) });
   } catch (e) { res.json({ valid: false }); }

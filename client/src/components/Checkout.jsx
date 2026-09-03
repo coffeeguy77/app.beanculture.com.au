@@ -173,6 +173,21 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
     }, 350);
     return () => { live = false; clearTimeout(t); };
   }, [coupon]);
+
+  // The owner's private "Shaun's Desk" table rings up free automatically: apply
+  // the COFFEEGUY77 comp code whenever that table is selected, and clear it if
+  // the table changes (without clobbering a coupon typed by hand). Gated on the
+  // owner's own phone too — the table option itself only ever shows for it.
+  const ownerAcct = (() => {
+    let d = (user?.phone || '').replace(/\D/g, '');
+    if (d.startsWith('61')) d = '0' + d.slice(2);
+    if (d.length === 9 && d[0] === '4') d = '0' + d;
+    return d === '0414631463';
+  })();
+  useEffect(() => {
+    if (ownerAcct && table === "Shaun's Desk") setCoupon('COFFEEGUY77');
+    else setCoupon((c) => (c === 'COFFEEGUY77' ? '' : c));
+  }, [table, ownerAcct]);
   const couponValid = !!couponInfo?.valid;
   const discountedTotal = couponValid
     ? (couponInfo.comp ? 0
