@@ -388,7 +388,7 @@ export default function Kds({ onExit, embedded }) {
                 <div className="kds-card-title">
                   {label(t)}
                   {t.appOrigin && <span className="kds-badge origin">APP</span>}
-                  <span className={`kds-badge ${t.dineIn ? 'dinein' : 'takeaway'}`}>{t.dineIn ? (t.table ? `T${t.table}` : 'Dine-in') : 'Takeaway'}</span>
+                  <span className={`kds-badge ${t.dineIn ? 'dinein' : 'takeaway'}`}>{t.dineIn ? (t.table ? (/^\d+$/.test(String(t.table).trim()) ? `T${t.table}` : t.table) : 'Dine-in') : 'Takeaway'}</span>
                 </div>
                 <div className={`kds-age lvl-${lvl}`}>{fmtAge(sec)}</div>
               </div>
@@ -398,7 +398,7 @@ export default function Kds({ onExit, embedded }) {
                     <span className="kds-qty">{it.quantity}×</span>
                     <span className="kds-item-body">
                       <span className="kds-item-name">{it.name}{it.variation ? <em> · {it.variation}</em> : null}</span>
-                      {it.modifiers.length > 0 && <span className="kds-mods">{it.modifiers.join(', ')}</span>}
+                      {it.modifiers.map((m, mi) => <span key={mi} className="kds-mods">{m}</span>)}
                       {it.note && <span className="kds-note">“{it.note}”</span>}
                     </span>
                   </li>

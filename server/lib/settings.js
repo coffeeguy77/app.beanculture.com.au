@@ -72,6 +72,17 @@ const DEFAULTS = {
   // Admin → Reservations). Overrides the RESERVATION_OWNER_EMAIL env var.
   reservationNotifyEmail: '',
   reservationItemId: '',
+  // Custom Tables — private, phone-gated quick-pick tables the owner defines for
+  // regulars (Admin → Orders & Service → Custom Tables). Each entry maps a
+  // mobile number to a custom table label the app offers ONLY to that signed-in
+  // customer (e.g. the owner's "Shaun's Desk", or "AUDI" for a regular who wants
+  // it brought to her car). An optional coupon is auto-applied at checkout when
+  // that table is chosen. The phone list is never sent to the public config —
+  // it is resolved server-side per signed-in user (see lib/customTables.js).
+  customTables: [
+    { phone: '0414631463', label: "Shaun's Desk", coupon: 'COFFEEGUY77' },
+    { phone: '0412708337', label: 'AUDI', coupon: 'COFFEEGUY77' },
+  ],
   // Custom order for the menu sections on the storefront, as an array of display
   // names (e.g. ['Coffee','All Day Menu',…]). Set from the admin "Menu items
   // offered" ↑/↓ controls. Covers both categories and product sections; names

@@ -303,6 +303,95 @@ function RevenuePerformanceChart({ sales }) {
   );
 }
 
+// Date + time for an individual app order row.
+function dateTime(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d)) return '';
+  try { return new Intl.DateTimeFormat('en-AU', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }).format(d); }
+  catch { return ''; }
+}
+
+// App sales — the mobile app's own takings, split out from the combined
+// (app + POS) revenue above. Shows a per-day value breakdown and every
+// individual app order, which is what the owner asked to see on the dashboard.
+function AppSalesCard({ sales }) {
+  const [expanded, setExpanded] = useState(false);
+  const cur = (sales && sales.currency) || 'AUD';
+  const app = (sales && sales.app) || null;
+
+  if (sales && sales.error) {
+    return <DashboardCard title="App sales" subtitle="Mobile app orders, by day" span="3">
+      <ErrorState message={sales.error === true ? 'Sales data unavailable.' : sales.error} />
+    </DashboardCard>;
+  }
+
+  const daily = (app && app.daily) || [];
+  const list = (app && app.list) || [];
+  const maxRev = Math.max(1, ...daily.map((d) => d.revenue || 0));
+
+  const chips = app ? (
+    <div className="ins-chips">
+      <span className="ins-chip"><b>{formatMoney(app.revenue || 0, cur)}</b> app total</span>
+      <span className="ins-chip"><b>{num(app.orders || 0)}</b> orders</span>
+      <span className="ins-chip"><b>{formatMoney(app.avgOrder || 0, cur)}</b> avg</span>
+    </div>
+  ) : null;
+
+  const shown = expanded ? list : list.slice(0, 8);
+
+  return (
+    <DashboardCard title="App sales" subtitle="Mobile app orders, by day" span="3" right={chips}>
+      {(!app || (daily.length === 0 && list.length === 0)) ? (
+        <EmptyState>No app orders in this period.</EmptyState>
+      ) : (
+        <div className="ins-appsales">
+          {daily.length > 0 && (
+            <div className="ins-appsales-days">
+              {[...daily].reverse().map((d) => (
+                <div key={d.day} className="ins-appsales-day">
+                  <span className="ins-appsales-date">{longDate(d.day)}</span>
+                  <span className="ins-appsales-bar">
+                    <span className="ins-appsales-fill" style={{ width: `${Math.round(((d.revenue || 0) / maxRev) * 100)}%` }} />
+                  </span>
+                  <span className="ins-appsales-val"><b>{formatMoney(d.revenue || 0, cur)}</b> · {num(d.orders || 0)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {list.length > 0 && (
+            <div className="ins-appsales-orders">
+              <div className="ins-appsales-orders-head">Each order ({num(list.length)})</div>
+              <ul className="ins-appsales-list">
+                {shown.map((o) => (
+                  <li key={o.id} className="ins-appsales-order">
+                    <span className="ins-appsales-order-main">
+                      <span className="ins-appsales-order-name" title={o.name}>{o.name}</span>
+                      <span className="ins-appsales-order-items">
+                        {(o.items || []).map((it, i) => `${it.qty}× ${it.name}${it.variation ? ` (${it.variation})` : ''}`).join(', ')}
+                      </span>
+                    </span>
+                    <span className="ins-appsales-order-meta">
+                      <span className="ins-appsales-order-amt">{formatMoney(o.total || 0, cur)}</span>
+                      <span className="ins-appsales-order-time">{dateTime(o.at)}</span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              {list.length > 8 && (
+                <button type="button" className="ins-viewall" onClick={() => setExpanded((v) => !v)}>
+                  {expanded ? 'Show less' : `View all (${num(list.length)})`}
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </DashboardCard>
+  );
+}
+
 function LoyaltyGrowthCard({ signups }) {
   if (signups && signups.error) {
     return <DashboardCard title="Loyalty growth" subtitle="New members over time">
@@ -416,6 +505,7 @@ function EngagementMetrics({ totals }) {
   const t = totals || {};
   const conv = t.visitors ? Math.round((t.purchases / t.visitors) * 100) : null;
   const cards = [
+    { label: 'Total visits', value: num(t.views), Icon: IcoEye },
     { label: 'Visitors', value: num(t.visitors), Icon: IcoUsers },
     { label: 'Product views', value: num(t.productViews), Icon: IcoEye },
     { label: 'Orders', value: num(t.purchases), Icon: IcoBag },
@@ -480,7 +570,7 @@ function VisitsOrdersChart({ daily }) {
             <g key={i}>
               <circle cx={x(i)} cy={yo(d.purchases || 0)} r="2.6" fill="var(--ins-card)" stroke="var(--ins-pos)" strokeWidth="1.8" />
               <rect x={x(i) - 10} y={pad.t} width="20" height={innerH} fill="transparent">
-                <title>{`${longDate(d.day)} — ${num(d.views || 0)} visit${d.views === 1 ? '' : 's'}, ${num(d.purchases || 0)} order${d.purchases === 1 ? '' : 's'}`}</title>
+                <title>{`${longDate(d.day)} — ${num(d.visitors || 0)} visitor${d.visitors === 1 ? '' : 's'}, ${num(d.views || 0)} visit${d.views === 1 ? '' : 's'}, ${num(d.purchases || 0)} order${d.purchases === 1 ? '' : 's'}, ${formatMoney(d.revenue || 0, 'AUD')}`}</title>
               </rect>
               {i % labelStep === 0 && (
                 <text x={x(i)} y={H - 10} textAnchor="middle" className="ins-axis">{shortDate(d.day)}</text>
@@ -613,6 +703,80 @@ function ExecSkeleton() {
   );
 }
 
+// ── App performance section (embedded on the Dashboard tab) ──────────────────
+// The same app-engagement data shown in Insights — engagement KPIs, the
+// visits & orders graph, checkout funnel, most viewed / most purchased and the
+// app sales breakdown — but WITHOUT the product heat map (that stays in
+// Insights only). Rendered on the admin Dashboard so the owner sees app
+// performance at a glance without switching tabs.
+export function AppPerformanceSection({ days, onDays, dashboard, analytics, refreshing, onRefresh }) {
+  const dashLoading = dashboard == null;
+  const sales = dashboard && !dashboard.error ? dashboard.sales : (dashboard && dashboard.error ? { error: true } : null);
+
+  const anaLoading = analytics == null;
+  const anaEmpty = analytics && analytics.empty;
+  const anaError = analytics && analytics.error;
+  const totals = analytics && !anaEmpty && !anaError ? analytics.totals : null;
+  const anaDaily = analytics && !anaEmpty && !anaError ? analytics.daily : null;
+
+  return (
+    <div className="ins-dash">
+      <div className="ins-section">
+        <div className="ins-section-head">
+          <div>
+            <h2 className="ins-h2">App performance</h2>
+            <p className="ins-lede-sm">Live app activity, orders and sales from your customers</p>
+          </div>
+          <div className="ins-head-controls">
+            {onDays && <DateRangeSelector days={days} onDays={onDays} />}
+            {onRefresh && (
+              <button type="button" className="ins-refresh" onClick={onRefresh} disabled={refreshing}
+                aria-label="Refresh data" title="Refresh">
+                <span className={refreshing ? 'ins-spin' : ''}><IcoRefresh size={18} /></span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {anaLoading && (
+          <div className="ins-grid">
+            <div className="ins-eng-grid ins-span-3">
+              {[0, 1, 2, 3, 4, 5, 6].map((i) => (
+                <div className="ins-metric" key={i}><Skeleton h={14} w="50%" /><Skeleton h={24} w="70%" style={{ marginTop: 10 }} /></div>
+              ))}
+            </div>
+          </div>
+        )}
+        {anaError && <ErrorState message="App analytics couldn’t load." onRetry={onRefresh} />}
+        {anaEmpty && <EmptyState>No app analytics yet — data appears as customers use the app.</EmptyState>}
+
+        {totals && (
+          <>
+            <EngagementMetrics totals={totals} />
+            <div className="ins-grid">
+              <VisitsOrdersChart daily={anaDaily} />
+            </div>
+            <div className="ins-grid ins-grid-2">
+              <CheckoutFunnel totals={totals} />
+              <div className="ins-grid ins-grid-2 ins-nested">
+                <ProductRankingCard title="Most viewed" items={analytics.topViewed} />
+                <ProductRankingCard title="Most purchased" items={analytics.topPurchased} />
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* App sales — daily value + each order. */}
+      <div className="ins-section">
+        {dashLoading
+          ? <div className="ins-grid"><DashboardCard span="3" title="App sales"><Skeleton h={160} r={12} /></DashboardCard></div>
+          : <div className="ins-grid"><AppSalesCard sales={sales} /></div>}
+      </div>
+    </div>
+  );
+}
+
 // ── Main component ───────────────────────────────────────────────────────────
 export default function Insights({ days, onDays, dashboard, analytics, customers, refreshing, onRefresh, lastSync }) {
   const dashLoading = dashboard == null;
@@ -684,6 +848,9 @@ export default function Insights({ days, onDays, dashboard, analytics, customers
         <div className="ins-section">
           <div className="ins-grid">
             <RevenuePerformanceChart sales={sales} />
+          </div>
+          <div className="ins-grid">
+            <AppSalesCard sales={sales} />
           </div>
         </div>
       )}

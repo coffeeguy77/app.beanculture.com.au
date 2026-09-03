@@ -12,6 +12,7 @@ const { getSettings, activeSeasonal, seasonalForPicker } = require('./lib/settin
 const cloudinary = require('./lib/cloudinary');
 const squareImages = require('./lib/squareImages');
 const coupons = require('./lib/coupons');
+const customTables = require('./lib/customTables');
 const COMP_COUPON_CODE = (process.env.COMP_COUPON_CODE || '').trim();
 const sales = require('./lib/sales');
 const db = require('./lib/db');
@@ -244,7 +245,11 @@ app.get('/api/loyalty', async (req, res) => {
   try {
     const phone = req.query.phone;
     if (!phone) return res.json({ active: false });
-    res.json(await loyalty.getCustomerLoyalty(phone));
+    const loy = await loyalty.getCustomerLoyalty(phone);
+    // Tell this signed-in customer which private custom table(s) are theirs —
+    // resolved server-side so the phone list is never exposed (see customTables).
+    loy.customTables = customTables.forPhone(phone);
+    res.json(loy);
   } catch (e) {
     res.json({ active: false, error: e.message });
   }

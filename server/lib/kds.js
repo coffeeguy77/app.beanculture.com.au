@@ -36,13 +36,24 @@ function kdsSettings() {
 function parseTicketMeta(order) {
   const tn = (order.ticket_name || '').trim();
   const note = (order.note || '').trim();
+  const md = order.metadata || {};
+  const appOrigin = /bean culture/i.test((order.source && order.source.name) || '');
   const dineIn = /dine-?in/i.test(tn) || /dine-?in/i.test(note);
   const tableM = tn.match(/^t\s*(\w+)/i) || note.match(/table\s*(\w+)/i);
-  const table = tableM ? tableM[1] : '';
-  let customerName = '';
-  const takeM = tn.match(/takeaway\s+(.+)/i);
-  if (takeM) customerName = takeM[1].trim();
+  // Named tables (e.g. "Shaun's Desk") aren't captured by the T<n> regex — the
+  // app stashes the raw table label in bc_booth, so fall back to that.
+  const table = tableM ? tableM[1] : (dineIn && md.bc_booth ? String(md.bc_booth).trim() : '');
   const fulfillment = (order.fulfillments || [])[0] || null;
+  const recipient = fulfillment && fulfillment.pickup_details && fulfillment.pickup_details.recipient;
+  // Ticket label, in priority order:
+  //  • app orders carry the buyer's own name in metadata (bc_name) — most reliable;
+  //  • Square POS orders show the cashier-typed name/ticket (the Square ticket
+  //    name, or the fulfillment recipient) rather than a random order id;
+  //  • legacy app takeaway tickets encoded it as "TAKEAWAY <name>".
+  let customerName = '';
+  if (md.bc_name) customerName = String(md.bc_name).trim();
+  else if (!appOrigin) customerName = tn || (recipient && recipient.display_name ? String(recipient.display_name).trim() : '');
+  else { const takeM = tn.match(/takeaway\s+(.+)/i); if (takeM) customerName = takeM[1].trim(); }
   return {
     dineIn,
     table,

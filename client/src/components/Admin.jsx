@@ -3,7 +3,7 @@ import QRCode from 'qrcode';
 import { SlotIcon } from './icons.jsx';
 import IconPicker from './IconPicker.jsx';
 import HoursEditor from './HoursEditor.jsx';
-import Insights from './Insights.jsx';
+import Insights, { AppPerformanceSection } from './Insights.jsx';
 import EffectBuilder from './EffectBuilder.jsx';
 import { formatMoney, api, imgUrl } from '../api.js';
 
@@ -127,13 +127,14 @@ const TABS = [
   { id: 'coupons', label: 'Coupons', Icon: BannerIcon },
   { id: 'push', label: 'Push', Icon: BannerIcon },
   { id: 'tables', label: 'Tables', Icon: QrIcon },
+  { id: 'customtables', label: 'Custom Tables', Icon: QrIcon },
   { id: 'theme', label: 'Theme', Icon: ThemeIcon2 },
 ];
 // Sidebar navigation, grouped. Purely a presentation grouping over the same
 // TABS/tab-id state — no change to what each tab renders or how it saves.
 const TAB_GROUPS = [
   { label: 'Overview', tabs: ['overview', 'insights'] },
-  { label: 'Orders & Service', tabs: ['reservations', 'kds', 'tables'] },
+  { label: 'Orders & Service', tabs: ['reservations', 'kds', 'tables', 'customtables'] },
   { label: 'Menu', tabs: ['menubuilder', 'productbuilder', 'combobuilder', 'availability'] },
   { label: 'Marketing', tabs: ['banners', 'coupons', 'push', 'payitforward', 'smartcampaigns'] },
   { label: 'Customers', tabs: ['users'] },
@@ -313,9 +314,10 @@ export default function Admin({ onExit }) {
     });
   }
 
-  // Load analytics when the Insights tab is opened / period changes.
+  // Load analytics when the Insights OR Dashboard tab is opened / period
+  // changes — the Dashboard now embeds the same app-performance data.
   useEffect(() => {
-    if (tab !== 'insights') return;
+    if (tab !== 'insights' && tab !== 'overview') return;
     reloadInsights();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, aDays]);
@@ -1557,6 +1559,13 @@ export default function Admin({ onExit }) {
   const updCoupon = (i, patch) => setCoupons(couponList.map((c, j) => (j === i ? { ...c, ...patch } : c)));
   const rmCoupon = (i) => setCoupons(couponList.filter((_, j) => j !== i));
 
+  // ---- custom tables (private phone-gated quick-pick tables for regulars) ----
+  const customTableList = s?.customTables || [];
+  const setCustomTables = (arr) => set({ customTables: arr });
+  const addCustomTable = () => setCustomTables([...customTableList, { phone: '', label: '', coupon: '' }]);
+  const updCustomTable = (i, patch) => setCustomTables(customTableList.map((t, j) => (j === i ? { ...t, ...patch } : t)));
+  const rmCustomTable = (i) => setCustomTables(customTableList.filter((_, j) => j !== i));
+
   // ---- hero / banners ----
   const hero = s?.hero || [];
   const setHero = (arr) => set({ hero: arr });
@@ -1837,6 +1846,12 @@ export default function Admin({ onExit }) {
                   </div>
 
                 </div>
+
+                {/* App performance — the same app data as Insights (minus the
+                    product heat map), surfaced here for an at-a-glance view. */}
+                <AppPerformanceSection days={aDays} onDays={setADays} dashboard={dashboard}
+                  analytics={analytics} refreshing={insRefreshing} onRefresh={reloadInsights} />
+
                 {!data.dbEnabled && (
                   <div className="card" style={card}>
                     <div className="group-title" style={{ color: 'var(--admin-danger)' }}>⚠ Database off</div>
@@ -4600,6 +4615,44 @@ export default function Admin({ onExit }) {
                 ))}
                 <button className="btn ghost full" style={{ marginTop: 4 }} onClick={addCoupon}>+ Add coupon</button>
               </div>
+            )}
+
+            {/* ───────── CUSTOM TABLES (private phone-gated quick-pick tables) ───────── */}
+            {tab === 'customtables' && (
+              <>
+                <div className="admin-page-head">
+                  <h1 className="admin-page-title">Custom Tables</h1>
+                  <p className="admin-page-desc">Private quick-pick tables for regulars. Each one shows in the app <strong>only</strong> for the customer whose mobile number you enter here — no one else sees it. Give a regular something custom (a named desk, a kerbside spot like “AUDI” so staff know to bring it to her car), and optionally auto-apply a coupon when they choose it.</p>
+                </div>
+                <div className="card" style={card}>
+                  <div className="group-title">Custom tables</div>
+                  <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 0 }}>Mobile number identifies the customer (they must be signed in with it). Label is what appears on the app button and on the kitchen ticket. Coupon is optional — type a code (e.g. <strong>COFFEEGUY77</strong> for a free order) to apply it automatically when they pick the table. Remember to press <strong>Save changes</strong>.</p>
+                  {customTableList.length === 0 && <p className="muted" style={{ fontSize: 'var(--fs-base)' }}>No custom tables yet — add one below.</p>}
+                  {customTableList.map((t, i) => (
+                    <div key={i} style={{ border: '1px solid var(--line)', borderRadius: 12, padding: 12, marginBottom: 10 }}>
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                        <label style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: '1 1 150px', minWidth: 0 }}>
+                          <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>Mobile number</span>
+                          <input inputMode="tel" value={t.phone || ''} onChange={(e) => updCustomTable(i, { phone: e.target.value })} placeholder="0412 345 678"
+                            style={{ padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 10 }} />
+                        </label>
+                        <label style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: '1 1 150px', minWidth: 0 }}>
+                          <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>Table label</span>
+                          <input value={t.label || ''} onChange={(e) => updCustomTable(i, { label: e.target.value.slice(0, 40) })} placeholder="e.g. AUDI"
+                            style={{ padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 10, fontWeight: 700 }} />
+                        </label>
+                        <label style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: '1 1 130px', minWidth: 0 }}>
+                          <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>Coupon (optional)</span>
+                          <input value={t.coupon || ''} onChange={(e) => updCustomTable(i, { coupon: e.target.value.toUpperCase().replace(/\s+/g, '') })} placeholder="e.g. COFFEEGUY77"
+                            style={{ padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 10, letterSpacing: 0.5 }} />
+                        </label>
+                        <button className="link" style={{ color: '#c0392b', alignSelf: 'flex-end', paddingBottom: 8 }} onClick={() => rmCustomTable(i)}>Remove</button>
+                      </div>
+                    </div>
+                  ))}
+                  <button className="btn ghost full" style={{ marginTop: 4 }} onClick={addCustomTable}>+ Add custom table</button>
+                </div>
+              </>
             )}
 
             {/* ───────── PUSH (broadcast SMS / email) ───────── */}

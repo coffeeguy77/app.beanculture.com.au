@@ -75,6 +75,21 @@ async function createOrder({ cart, dineIn, table, name, coupon, customerId, pick
   const isComp = isTestComp || !!free || allFree;
   const partialComp = !isComp && freeIdx.size > 0; // some free lines, some paid
 
+  // Will this order bill $0? A comp always does; so does an admin coupon that is
+  // a "comp" type or a 100%-off percent. A $0 order must NOT be held for payment
+  // (there is nothing to pay), otherwise it would sit hidden from the kitchen
+  // waiting for a card charge that never comes — that is why Shaun's Desk (auto
+  // COMP_COUPON_CODE) orders never appeared. Held is only for real card charges.
+  let couponIsFree = false;
+  if (!isComp && coupon) {
+    const c = coupons.find(coupon);
+    if (c) {
+      const type = c.type || 'percent';
+      couponIsFree = type === 'comp' || (type !== 'amount' && (Number(c.value) || 0) >= 100);
+    }
+  }
+  const willBeFree = isComp || couponIsFree;
+
   // Every line item gets a stable uid so a Pay It Forward voucher's
   // LINE_ITEM-scope discount can be attached to exactly the eligible lines
   // (never the whole order) -- see the pifReservation block below. The uid is
@@ -127,15 +142,20 @@ async function createOrder({ cart, dineIn, table, name, coupon, customerId, pick
   // shows only its own orders even when several app stores share ONE Square
   // location. bc_event isolates an event (for the stats page too); bc_free/
   // bc_booth mark complimentary ones for the "who got a free coffee" report.
-  if (appLocationId || eventId || holdForPayment || ((isComp || partialComp) && table)) {
+  if (appLocationId || eventId || holdForPayment || name || ((isComp || partialComp) && table)) {
     order.metadata = { ...(order.metadata || {}) };
     if (appLocationId) order.metadata.bc_store = String(appLocationId).slice(0, 60);
     if (eventId) order.metadata.bc_event = String(eventId).slice(0, 60);
     if (isComp || partialComp) order.metadata.bc_free = 'event';
     if (table) order.metadata.bc_booth = String(table).slice(0, 60);
+    // The buyer's own name from app checkout, so the KDS can show a real name
+    // instead of a random order code (parseTicketMeta reads bc_name first).
+    if (name) order.metadata.bc_name = String(name).trim().slice(0, 60);
     // Awaiting online payment → hidden from the kitchen screen until /api/pay
-    // releases it. Prevents a declined/abandoned checkout being cooked.
-    if (holdForPayment) order.metadata.bc_hold = '1';
+    // releases it. Prevents a declined/abandoned checkout being cooked. A $0
+    // order is never held: there is no card charge to wait on, so holding it
+    // would strand it off the kitchen screen (the Shaun's Desk comp bug).
+    if (holdForPayment && !willBeFree) order.metadata.bc_hold = '1';
   }
 
   // A Pay It Forward voucher takes priority over (never stacks with) a combo

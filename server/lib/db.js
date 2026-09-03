@@ -374,7 +374,9 @@ async function getAnalytics(days = 30) {
        FROM analytics_events WHERE ts >= $SINCE`),
     q(`SELECT to_char(date_trunc('day', ts), 'YYYY-MM-DD') AS day,
         count(*) FILTER (WHERE type='view') AS views,
-        count(*) FILTER (WHERE type='purchase') AS purchases
+        count(DISTINCT session) FILTER (WHERE type='view') AS visitors,
+        count(*) FILTER (WHERE type='purchase') AS purchases,
+        coalesce(sum(amount) FILTER (WHERE type='purchase'),0) AS revenue
        FROM analytics_events WHERE ts >= $SINCE GROUP BY 1 ORDER BY 1`),
     q(`SELECT ref, count(*) AS n FROM analytics_events WHERE type='product_view' AND ts >= $SINCE AND ref IS NOT NULL GROUP BY ref ORDER BY n DESC LIMIT 8`),
     q(`SELECT ref, sum(qty) AS n FROM analytics_events WHERE type='purchase_item' AND ts >= $SINCE AND ref IS NOT NULL GROUP BY ref ORDER BY n DESC LIMIT 8`),
@@ -398,7 +400,7 @@ async function getAnalytics(days = 30) {
       addCart: num(t.add_cart), checkouts: num(t.checkouts), purchases: num(t.purchases),
       revenue: num(t.revenue), contactClicks: num(t.contact_clicks),
     },
-    daily: daily.rows.map((r) => ({ day: r.day, views: num(r.views), purchases: num(r.purchases) })),
+    daily: daily.rows.map((r) => ({ day: r.day, views: num(r.views), visitors: num(r.visitors), purchases: num(r.purchases), revenue: num(r.revenue) })),
     topViewed: topView.rows.map((r) => ({ name: r.ref, n: num(r.n) })),
     topPurchased: topBuy.rows.map((r) => ({ name: r.ref, n: num(r.n) })),
     contact: contact.rows.map((r) => ({ type: r.type, n: num(r.n) })),

@@ -174,20 +174,18 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
     return () => { live = false; clearTimeout(t); };
   }, [coupon]);
 
-  // The owner's private "Shaun's Desk" table rings up free automatically: apply
-  // the COFFEEGUY77 comp code whenever that table is selected, and clear it if
-  // the table changes (without clobbering a coupon typed by hand). Gated on the
-  // owner's own phone too — the table option itself only ever shows for it.
-  const ownerAcct = (() => {
-    let d = (user?.phone || '').replace(/\D/g, '');
-    if (d.startsWith('61')) d = '0' + d.slice(2);
-    if (d.length === 9 && d[0] === '4') d = '0' + d;
-    return d === '0414631463';
-  })();
+  // Custom Tables: a private table can carry a coupon that rings up automatically
+  // when the customer picks it (e.g. the owner's "Shaun's Desk", or a regular's
+  // "AUDI"). Apply that table's coupon on selection and clear it again when they
+  // move off the table — without clobbering a coupon they typed by hand. The
+  // available tables are resolved server-side per signed-in phone (loyalty).
+  const myCustomTables = loyalty?.customTables || [];
+  const autoCoupon = (myCustomTables.find((t) => t && t.label === table) || {}).coupon || '';
+  const autoCouponRef = useRef('');
   useEffect(() => {
-    if (ownerAcct && table === "Shaun's Desk") setCoupon('COFFEEGUY77');
-    else setCoupon((c) => (c === 'COFFEEGUY77' ? '' : c));
-  }, [table, ownerAcct]);
+    if (autoCoupon) { setCoupon(autoCoupon); autoCouponRef.current = autoCoupon; }
+    else if (autoCouponRef.current) { setCoupon((c) => (c === autoCouponRef.current ? '' : c)); autoCouponRef.current = ''; }
+  }, [table, autoCoupon]);
   const couponValid = !!couponInfo?.valid;
   const discountedTotal = couponValid
     ? (couponInfo.comp ? 0
@@ -246,7 +244,9 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
 
   // Loyalty + saved cards for a signed-in user.
   useEffect(() => {
-    if (user?.phone) api.getLoyalty(user.phone).then((l) => { if (l && l.active) setLoyalty(l); }).catch(() => {});
+    // Keep the loyalty payload if the customer is a member OR has any private
+    // custom table(s) — a regular with a custom table needn't be a loyalty member.
+    if (user?.phone) api.getLoyalty(user.phone).then((l) => { if (l && (l.active || (l.customTables && l.customTables.length))) setLoyalty(l); }).catch(() => {});
     if (user?.customerId) {
       api.getCards(user.customerId).then((d) => {
         const list = d.cards || [];
@@ -518,7 +518,7 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
           </label>
         )}
         {dineIn === true && !bigPill && (
-          <TableEntry lock={tableLock} table={table} setTable={setTable} onUnlock={onUnlockTable} onScanned={onScanTable} user={user} />
+          <TableEntry lock={tableLock} table={table} setTable={setTable} onUnlock={onUnlockTable} onScanned={onScanTable} customTables={loyalty?.customTables} />
         )}
       </div>
 
