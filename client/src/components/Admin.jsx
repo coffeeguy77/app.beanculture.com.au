@@ -125,7 +125,7 @@ const TABS = [
   { id: 'banners', label: 'Banners', Icon: BannerIcon },
   { id: 'users', label: 'Users', Icon: InsightsIcon },
   { id: 'coupons', label: 'Coupons', Icon: BannerIcon },
-  { id: 'push', label: 'Push', Icon: BannerIcon },
+  { id: 'push', label: 'SMS Advertising', Icon: BannerIcon },
   { id: 'tables', label: 'Tables', Icon: QrIcon },
   { id: 'customtables', label: 'Custom Tables', Icon: QrIcon },
   { id: 'theme', label: 'Theme', Icon: ThemeIcon2 },
@@ -4741,7 +4741,7 @@ export default function Admin({ onExit }) {
             )}
             {tab === 'push' && (
               <div className="card" style={card}>
-                <div className="group-title">Push · message your customers</div>
+                <div className="group-title">SMS Advertising · message your customers</div>
                 <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 0 }}>
                   Send a message to everyone in your Square loyalty program. This web app can’t push to phone lock-screens (that needs a native app), so messages go out by SMS or email. Only message customers who’ve opted in.
                 </p>
