@@ -246,6 +246,7 @@ export default function Admin({ onExit }) {
   const [qrBg, setQrBg] = useState('#ffffff');
   const [qrSize, setQrSize] = useState(190);
   const [analytics, setAnalytics] = useState(null);
+  const [kdsEditLoc, setKdsEditLoc] = useState(''); // which location's Kitchen Screen is being configured ('' = default/all)
   const [dashboard, setDashboard] = useState(null); // real sales + signups
   const [aDays, setADays] = useState(30);
   const [insCustomers, setInsCustomers] = useState(null); // loyalty members for Top customers
@@ -1188,10 +1189,35 @@ export default function Admin({ onExit }) {
   ].filter(Boolean))];
 
   // ---- Kitchen Screen (KDS) config ----
-  const kdsCfg = s?.kds || {};
+  // Per-location stations: the default config lives in settings.kds; each
+  // location can override it in settings.kdsByLocation[id]. Editing while a
+  // location is selected writes (and first seeds) that location's own config, so
+  // the default (HQ) is never touched.
+  const kdsDefault = s?.kds || {};
+  const kdsByLoc = s?.kdsByLocation || {};
+  const kdsLocList = Array.isArray(s?.locations) ? s.locations.filter((l) => l && l.id) : [];
+  const kdsMultiLoc = kdsLocList.length > 1;
+  const kdsHasOverride = !!(kdsEditLoc && kdsByLoc[kdsEditLoc]);
+  // The config currently being viewed/edited: a location's own override, else
+  // the shared default.
+  const kdsCfg = kdsEditLoc ? (kdsByLoc[kdsEditLoc] || kdsDefault) : kdsDefault;
   const kdsZones = Array.isArray(kdsCfg.zones) ? kdsCfg.zones : [];
-  const setKds = (patch) => set({ kds: { ...kdsCfg, ...patch } });
+  const setKds = (patch) => {
+    if (kdsEditLoc) {
+      // Seed a new override from whatever this location currently shows (the
+      // default) so nothing is lost, then apply the change.
+      const base = kdsByLoc[kdsEditLoc] || kdsDefault;
+      set({ kdsByLocation: { ...kdsByLoc, [kdsEditLoc]: { ...base, ...patch } } });
+    } else {
+      set({ kds: { ...kdsDefault, ...patch } });
+    }
+  };
   const setKdsZones = (list) => setKds({ zones: list });
+  const resetKdsLocation = () => {
+    if (!kdsEditLoc) return;
+    const next = { ...kdsByLoc }; delete next[kdsEditLoc];
+    set({ kdsByLocation: next });
+  };
   const addKdsZone = () => setKdsZones([...kdsZones, { id: 'z_' + Math.random().toString(36).slice(2, 8), name: 'New station', categories: [] }]);
   const updateKdsZone = (id, patch) => setKdsZones(kdsZones.map((z) => (z.id === id ? { ...z, ...patch } : z)));
   const removeKdsZone = (id) => setKdsZones(kdsZones.filter((z) => z.id !== id));
@@ -3394,8 +3420,31 @@ export default function Admin({ onExit }) {
                   </div>
                 </div>
 
+                {kdsMultiLoc && (
+                  <div className="card" style={card}>
+                    <div className="group-title">Which location&rsquo;s screen?</div>
+                    <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 0 }}>Each location can run its own stations and display settings. Pick a location to set it up &mdash; the <strong>Default</strong> is used by any location you haven&rsquo;t customised, so your existing screen keeps working untouched.</p>
+                    <label className="field" style={{ maxWidth: 360 }}>
+                      <span>Configuring</span>
+                      <select value={kdsEditLoc} onChange={(e) => setKdsEditLoc(e.target.value)}>
+                        <option value="">Default (all locations)</option>
+                        {kdsLocList.map((l) => (
+                          <option key={l.id} value={l.id}>{l.name || l.id}{kdsByLoc[l.id] ? ' — custom' : ' — using default'}</option>
+                        ))}
+                      </select>
+                    </label>
+                    {kdsEditLoc && (
+                      <p className="muted" style={{ fontSize: 'var(--fs-sm)', margin: '8px 0 0' }}>
+                        {kdsHasOverride
+                          ? <>This location has its own custom stations. <button type="button" className="link" style={{ padding: 0, color: 'var(--admin-danger)' }} onClick={resetKdsLocation}>Remove custom setup &amp; use the default</button></>
+                          : <>This location is using the <strong>Default</strong> stations. Editing below will start a custom screen just for it (the default stays as-is).</>}
+                      </p>
+                    )}
+                  </div>
+                )}
+
                 <div className="card" style={card}>
-                  <div className="group-title">Stations</div>
+                  <div className="group-title">Stations{kdsMultiLoc ? ` · ${kdsEditLoc ? (kdsLocList.find((l) => l.id === kdsEditLoc)?.name || kdsEditLoc) : 'Default'}` : ''}</div>
                   <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 0 }}>Each station shows only its categories&rsquo; items &mdash; so the barista screen shows drinks and the kitchen screen shows food, even on one shared order. An <strong>All orders</strong> view (everything) always exists, so you don&rsquo;t have to set stations up to get started. Remember to press <strong>Save changes</strong>.</p>
                   {kdsZones.length === 0 && <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>No stations yet &mdash; the screen will show a single &ldquo;All orders&rdquo; view until you add some.</p>}
                   {kdsZones.map((z) => (

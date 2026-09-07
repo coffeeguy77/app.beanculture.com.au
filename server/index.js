@@ -1483,7 +1483,9 @@ app.post('/api/pos/terminal/disconnect', async (req, res) => {
 
 app.get('/api/admin/kds/config', (req, res) => {
   if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
-  const cfg = kds.kdsSettings();
+  // The screen may ask for a specific location's stations (per-location KDS);
+  // default to the shared config when none is given.
+  const cfg = kds.kdsSettings(req.query.location);
   res.json({ ...cfg, allZone: kds.ALL_ZONE, dbEnabled: db.enabled, locations: locations.publicList() });
 });
 
@@ -1496,7 +1498,7 @@ app.get('/api/admin/kds/tickets', async (req, res) => {
     // chosen screen: an event screen shows only that event's tickets, and a
     // café/pop-up screen never shows event tickets (they belong to the booth).
     const loc = locations.resolve(req.query.location);
-    const data = await kds.fetchTickets(locations.squareIdFor(req.query.location), loc);
+    const data = await kds.fetchTickets(locations.squareIdFor(req.query.location), loc, req.query.location);
     res.json(data);
   } catch (e) {
     res.status(502).json({ error: e.message });

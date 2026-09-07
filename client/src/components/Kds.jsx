@@ -59,6 +59,9 @@ export default function Kds({ onExit, embedded }) {
   const firstLoad = useRef(true);
 
   const zones = useMemo(() => [{ id: ALL, name: 'All orders' }, ...((cfg && cfg.zones) || [])], [cfg]);
+  // If the chosen station doesn't exist at the newly-selected location, fall back
+  // to All orders so the board never lands on an empty, non-existent station.
+  useEffect(() => { if (zone !== ALL && !zones.some((z) => z.id === zone)) setZone(ALL); /* eslint-disable-next-line */ }, [zones]);
   const soundOn = cfg ? cfg.sound !== false && !muted : false;
 
   // The stations (non-All lanes) an order actually routes to.
@@ -104,14 +107,15 @@ export default function Kds({ onExit, embedded }) {
   const allDayMode = layout.allDay || 'hide';
   const setLayoutKey = (k, v) => setLayout((L) => ({ ...L, [k]: v }));
 
-  async function loadConfig(p) {
-    const r = await fetch(`/api/admin/kds/config?pass=${encodeURIComponent(p)}`);
+  async function loadConfig(p, loc = kdsLoc) {
+    // Ask for the chosen location's stations — each location can run its own.
+    const r = await fetch(`/api/admin/kds/config?pass=${encodeURIComponent(p)}${loc ? `&location=${encodeURIComponent(loc)}` : ''}`);
     if (r.status === 401) { setNeedPass(true); return false; }
     const d = await r.json();
     setCfg(d); setNeedPass(false);
     // Bind this screen to a store (first one by default) when multi-location.
     const locs = d.locations || [];
-    if (locs.length && !locs.some((l) => l.id === kdsLoc)) { setKdsLoc(locs[0].id); }
+    if (locs.length && !locs.some((l) => l.id === loc)) { setKdsLoc(locs[0].id); }
     try { localStorage.setItem('bc-admin-pass', btoa(p)); } catch {}
     return true;
   }
@@ -157,7 +161,7 @@ export default function Kds({ onExit, embedded }) {
   }, [needPass, cfg, pass]);
 
   useEffect(() => { try { localStorage.setItem('bc-kds-zone', zone); } catch {} }, [zone]);
-  useEffect(() => { try { localStorage.setItem('bc-kds-location', kdsLoc); } catch {} if (cfg) loadTickets(); /* eslint-disable-next-line */ }, [kdsLoc]);
+  useEffect(() => { try { localStorage.setItem('bc-kds-location', kdsLoc); } catch {} if (cfg) loadConfig(pass, kdsLoc).then(() => loadTickets()); /* eslint-disable-next-line */ }, [kdsLoc]);
   useEffect(() => { try { localStorage.setItem('bc-kds-muted', muted ? '1' : '0'); } catch {} }, [muted]);
   useEffect(() => { try { localStorage.setItem(LAYOUT_KEY, JSON.stringify(layout)); } catch {} }, [layout]);
 

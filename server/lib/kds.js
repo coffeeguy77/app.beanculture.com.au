@@ -19,8 +19,14 @@ const { getSettings } = require('./settings');
 
 const ALL_ZONE = '__all__';
 
-function kdsSettings() {
-  const s = getSettings().kds || {};
+function kdsSettings(locationId) {
+  // Per-location override wins; otherwise the shared default config. A location
+  // is only "customised" once it has its own entry with stations — until then it
+  // inherits the default (which is the original single-screen HQ setup), so no
+  // existing configuration is ever lost when a second site is added.
+  const all = getSettings();
+  const override = locationId && all.kdsByLocation && all.kdsByLocation[locationId];
+  const s = (override && typeof override === 'object' ? override : (all.kds || {}));
   return {
     zones: Array.isArray(s.zones) ? s.zones.filter((z) => z && z.id) : [],
     lookbackHours: Math.max(1, Math.min(48, Number(s.lookbackHours) || 8)),
@@ -110,8 +116,8 @@ function buildTickets(orders, varCat, states, cfg, now = Date.now()) {
   });
 }
 
-async function fetchTickets(squareLocationId, loc) {
-  const cfg = kdsSettings();
+async function fetchTickets(squareLocationId, loc, locationId) {
+  const cfg = kdsSettings(locationId);
   const startAt = new Date(Date.now() - cfg.lookbackHours * 3600 * 1000).toISOString();
   const data = await squareFetch('/v2/orders/search', {
     method: 'POST',

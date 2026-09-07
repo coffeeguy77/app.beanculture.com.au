@@ -374,6 +374,12 @@ const DEFAULTS = {
   //    SQUARE_LOCATION_ID). Each: { id, name, squareLocationId, address, active,
   //    hiddenItemIds:[], type, freeCategories:[], hidden }. See server/lib/locations.js.
   locations: [],
+  // Per-location Kitchen Screen overrides, keyed by location id — each value is a
+  // full KDS config ({ zones, amberMin, redMin, lookbackHours, sound,
+  // showPrepStep }). A location WITHOUT an entry here uses the shared `kds`
+  // config below (the default). This lets each site (e.g. Mitchell HQ vs the
+  // Tulip Farm) run its own stations while sharing one Square account.
+  kdsByLocation: {},
   // The store page every Event borrows by default (so events point customers to
   // a real cafe afterwards — e.g. the Mitchell Roastery). A location id.
   eventDefaultStorePageLocId: '',
