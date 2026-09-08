@@ -707,8 +707,21 @@ function TerminalSetup({ pass, cfg, locationId, curTerm, onClose, onSelected }) 
 
   async function startPair() {
     setErr(''); setMsg('');
-    try { const p = await api.posTerminalPair(pass, name); setPairing({ id: p.id, code: p.code, status: p.status }); }
+    // Pair to THIS store's location so the reader's checkouts match the order
+    // location (avoids the INVALID_LOCATION payment error).
+    try { const p = await api.posTerminalPair(pass, name, locationId); setPairing({ id: p.id, code: p.code, status: p.status }); }
     catch (e) { setErr(e.message); }
+  }
+
+  async function removeDevice(deviceId, dName) {
+    if (!window.confirm(`Remove "${dName || 'this reader'}" from the list? It will stop showing here. (Re-pair it any time to bring it back.)`)) return;
+    setErr(''); setMsg('');
+    try {
+      await api.posTerminalRemove(pass, deviceId);
+      if (current === deviceId) { setCurrent(''); onSelected && onSelected('', ''); }
+      setMsg('Reader removed.');
+      loadDevices();
+    } catch (e) { setErr(e.message); }
   }
 
   // Poll the device code until the Terminal is paired, then auto-select it.
@@ -767,13 +780,21 @@ function TerminalSetup({ pass, cfg, locationId, curTerm, onClose, onSelected }) 
           <div className="pos-setup-list">
             <div className="pos-setup-label">Paired readers</div>
             {devices.map((d) => (
-              <button key={d.id} className={`pos-setup-device${current === d.id ? ' on' : ''}`} onClick={() => select(d.id, d.name)}>
-                <span><b>{d.name}</b>{d.model ? ` · ${d.model}` : ''}</span>
-                <span className="pos-setup-dstatus">{current === d.id ? 'In use' : d.status || 'Paired'}</span>
-              </button>
+              <div key={d.id} className={`pos-setup-device${current === d.id ? ' on' : ''}`} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <button style={{ flex: 1, background: 'none', border: 'none', textAlign: 'left', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, padding: 0, color: 'inherit', font: 'inherit' }} onClick={() => select(d.id, d.name)}>
+                  <span><b>{d.name}</b>{d.model ? ` · ${d.model}` : ''}</span>
+                  <span className="pos-setup-dstatus">{current === d.id ? 'In use' : ((d.status || '').toUpperCase() === 'OFFLINE' ? 'Offline' : (d.status || 'Paired'))}</span>
+                </button>
+                <button title="Remove this reader from the list" aria-label="Remove reader" onClick={() => removeDevice(d.id, d.name)}
+                  style={{ flex: '0 0 auto', border: '1px solid var(--pos-line, #d9c9cf)', background: 'transparent', color: '#c0392b', borderRadius: 8, width: 30, height: 30, cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>✕</button>
+              </div>
             ))}
           </div>
         )}
+
+        <div className="pos-setup-warn" style={{ margin: '10px 0', padding: '10px 12px', border: '1px solid #e6b800', background: '#fff8e1', borderRadius: 10, fontSize: 13, color: '#6b5300' }}>
+          ⚠ <b>Reader compatibility:</b> The 1st-generation Square Terminal (V1) is <b>not</b> compatible with the Square Terminal API and cannot take card payments here — you need a <b>V1.2 Square Terminal</b>. If a reader stays “Offline” or a card payment fails, it’s likely a 1st-gen device — remove it with the ✕ and pair your V1.2.
+        </div>
 
         <div className="pos-setup-pair">
           <div className="pos-setup-label">Pair a new Square Terminal</div>
