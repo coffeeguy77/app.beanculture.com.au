@@ -11,7 +11,7 @@
 const { squareFetch, LOCATION_ID, idem } = require('./squareClient');
 
 // ── Pairing ────────────────────────────────────────────────────────────────
-async function createDeviceCode(name) {
+async function createDeviceCode(name, squareLocationId) {
   const data = await squareFetch('/v2/devices/codes', {
     method: 'POST',
     body: {
@@ -19,7 +19,10 @@ async function createDeviceCode(name) {
       device_code: {
         name: (name || 'Bean Culture POS').slice(0, 50),
         product_type: 'TERMINAL_API',
-        location_id: LOCATION_ID,
+        // Pair the reader to the SAME Square location its orders are created at.
+        // A mismatch makes every checkout fail with INVALID_LOCATION ("the
+        // device's location must match the order's location").
+        location_id: squareLocationId || LOCATION_ID,
       },
     },
   });
