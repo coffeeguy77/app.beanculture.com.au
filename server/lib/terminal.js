@@ -57,7 +57,11 @@ async function createCheckout({ amountMoney, deviceId, orderId, referenceId, not
     },
     deadline_duration: 'PT5M', // customer has 5 minutes to tap/insert
   };
-  if (orderId) { checkout.order_id = orderId; checkout.show_itemized_cart = true; }
+  // Associate the payment with our Square order so it reconciles. (We used to
+  // also set checkout.show_itemized_cart, but Square rejects that field —
+  // "unrecognized" — which failed the whole checkout with a 502. The order_id
+  // link is what matters for reconciliation.)
+  if (orderId) { checkout.order_id = orderId; }
   console.log('[terminal] createCheckout →', JSON.stringify({ deviceId, orderId, amount: amountMoney && amountMoney.amount }));
   const data = await squareFetch('/v2/terminals/checkouts', {
     method: 'POST',
