@@ -1422,7 +1422,10 @@ app.post('/api/pos/checkout/:id/cancel', async (req, res) => {
 app.post('/api/pos/terminal/pair', async (req, res) => {
   if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
   try {
-    const dc = await terminal.createDeviceCode((req.body && req.body.name) || (getSettings().pos || {}).deviceName);
+    // Pair the reader to this POS location's Square location so its checkouts
+    // match the order location (otherwise → INVALID_LOCATION on every payment).
+    const squareLocationId = locations.squareIdFor(req.body && req.body.locationId);
+    const dc = await terminal.createDeviceCode((req.body && req.body.name) || (getSettings().pos || {}).deviceName, squareLocationId);
     res.json({ id: dc.id, code: dc.code, status: dc.status, deviceId: dc.device_id || '' });
   } catch (e) { res.status(502).json({ error: e.message }); }
 });
@@ -1436,11 +1439,40 @@ app.get('/api/pos/terminal/pair/:id', async (req, res) => {
 app.get('/api/pos/terminal/devices', async (req, res) => {
   if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
   try {
-    const devices = await terminal.listDevices();
-    const current = (getSettings().pos || {}).terminalDeviceId || '';
-    console.log('[terminal] devices', JSON.stringify({ current, devices: devices.map((d) => ({ id: d.id, name: d.name, status: d.status })) }));
+    const pos = getSettings().pos || {};
+    // Readers the owner has removed stay hidden from the list (Square has no API
+    // to delete a device, so we hide it our side — incl. old/offline ones).
+    const hidden = new Set(Array.isArray(pos.hiddenDevices) ? pos.hiddenDevices : []);
+    const all = await terminal.listDevices();
+    const devices = all.filter((d) => !hidden.has(d.id));
+    const current = pos.terminalDeviceId || '';
+    console.log('[terminal] devices', JSON.stringify({ current, hidden: [...hidden], devices: devices.map((d) => ({ id: d.id, name: d.name, status: d.status })) }));
     res.json({ devices, current });
   } catch (e) { res.status(502).json({ error: e.message }); }
+});
+// Permanently hide a reader from this app (Square can't delete devices via API).
+// Also clears it from any store's selection so the POS stops using it.
+app.post('/api/pos/terminal/remove', async (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  if (!db.enabled) return res.status(400).json({ error: 'A database is required to remove a reader.' });
+  try {
+    const { deviceId } = req.body || {};
+    if (!deviceId) return res.status(400).json({ error: 'Missing device id' });
+    const ov = db.getOverrides() || {};
+    ov.pos = ov.pos || {};
+    const hidden = new Set(Array.isArray(ov.pos.hiddenDevices) ? ov.pos.hiddenDevices : []);
+    hidden.add(String(deviceId));
+    ov.pos.hiddenDevices = [...hidden];
+    // Drop it from the default selection and any per-store selection.
+    if (ov.pos.terminalDeviceId === deviceId) { ov.pos.terminalDeviceId = ''; ov.pos.terminalName = ''; }
+    if (ov.pos.terminalByLocation) {
+      const m = { ...ov.pos.terminalByLocation };
+      for (const k of Object.keys(m)) if (m[k] && m[k].deviceId === deviceId) delete m[k];
+      ov.pos.terminalByLocation = m;
+    }
+    await db.saveOverrides(ov);
+    res.json({ ok: true });
+  } catch (e) { res.status(400).json({ error: e.message }); }
 });
 // Assign the reader this venue uses for card payments (persists to settings).
 app.post('/api/pos/terminal/select', async (req, res) => {
@@ -1451,6 +1483,10 @@ app.post('/api/pos/terminal/select', async (req, res) => {
     if (!deviceId) return res.status(400).json({ error: 'Missing device id' });
     const ov = db.getOverrides() || {};
     ov.pos = ov.pos || {};
+    // Selecting a reader un-hides it (it's clearly wanted again).
+    if (Array.isArray(ov.pos.hiddenDevices) && ov.pos.hiddenDevices.includes(String(deviceId))) {
+      ov.pos.hiddenDevices = ov.pos.hiddenDevices.filter((x) => x !== String(deviceId));
+    }
     if (locationId) {
       // Per-store reader (multi-location): this store's POS uses this terminal.
       ov.pos.terminalByLocation = { ...(ov.pos.terminalByLocation || {}), [locationId]: { deviceId: String(deviceId), name: String(name || '').slice(0, 60) } };
