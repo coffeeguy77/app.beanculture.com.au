@@ -1306,6 +1306,11 @@ app.post('/api/pos/order', async (req, res) => {
       freeCategories: posFreeCategories,
       eventId: posEvLoc && posEvLoc.type === 'event' ? posEvLoc.id : undefined,
       appLocationId: posEvLoc ? posEvLoc.id : undefined,
+      // Card orders are held OFF the kitchen screen until the Terminal payment
+      // completes — so a cancelled/declined card checkout never reaches the
+      // kitchen (same as app orders). Cash/unpaid are intentional sends and show
+      // straight away. Released in reconcileCheckout when the payment succeeds.
+      holdForPayment: tender === 'card',
     });
     const amount = order.total_money ? order.total_money.amount : 0;
     const currency = (order.total_money && order.total_money.currency) || sq.CURRENCY;
@@ -1380,6 +1385,10 @@ async function reconcileCheckout(id, checkoutObj, fallbackOrderId) {
   if (phase === 'paid') {
     await db.posPaymentSetStatus(id, 'paid', paymentId).catch(() => {});
     if (orderId) {
+      // Payment went through → release the KDS hold so the ticket appears now
+      // (the order was held off-screen while the card was being taken).
+      await db.kdsMarkPaid(orderId).catch(() => {});
+      await orders.releaseHold(orderId).catch(() => {});
       try {
         await db.posRecordOrder({
           squareOrderId: orderId, squarePaymentId: paymentId,
