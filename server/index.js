@@ -1317,8 +1317,99 @@ app.get('/api/pos/config', (req, res) => {
     terminalDeviceId: p.terminalDeviceId || '',
     terminalName: p.terminalName || '',
     terminalByLocation: p.terminalByLocation || {},
+    hasManagerPin: !!p.managerPin,   // refunds require a manager PIN; is one set?
     dbEnabled: db.enabled,
   });
+});
+
+// Set or change the manager PIN that gates refunds. First-time set is open (an
+// unconfigured till during setup); changing an existing PIN requires the current
+// one, so a staff member with only the POS passcode can't quietly reset it.
+app.post('/api/pos/manager-pin', async (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  if (!db.enabled) return res.status(400).json({ error: 'A database is required to set the manager PIN.' });
+  try {
+    const { pin, currentPin } = req.body || {};
+    const next = String(pin || '').trim();
+    if (!/^\d{4,8}$/.test(next)) return res.status(400).json({ error: 'PIN must be 4–8 digits.' });
+    const existing = (getSettings().pos || {}).managerPin || '';
+    if (existing && String(currentPin || '').trim() !== existing) return res.status(403).json({ error: 'Current manager PIN is incorrect.' });
+    const ov = db.getOverrides() || {};
+    ov.pos = ov.pos || {};
+    ov.pos.managerPin = next;
+    await db.saveOverrides(ov);
+    res.json({ ok: true });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+// Recent paid orders for this store, for the refund picker — items, totals, how
+// much is still refundable, and the payment id each refund goes against.
+app.get('/api/pos/recent-orders', async (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const squareLocationId = locations.squareIdFor(req.query.location);
+    const startAt = new Date(Date.now() - 3 * 86400000).toISOString();
+    const data = await sq.squareFetch('/v2/orders/search', {
+      method: 'POST',
+      body: {
+        location_ids: [squareLocationId],
+        query: {
+          filter: { date_time_filter: { created_at: { start_at: startAt } }, state_filter: { states: ['COMPLETED', 'OPEN'] } },
+          sort: { sort_field: 'CREATED_AT', sort_order: 'DESC' },
+        },
+        limit: 40,
+      },
+    });
+    const out = [];
+    for (const o of (data.orders || [])) {
+      const tenders = o.tenders || [];
+      if (!tenders.length) continue;   // nothing captured → nothing to refund
+      const total = (o.total_money && o.total_money.amount) || 0;
+      const refunded = (o.refunds || []).filter((r) => (r.status || '').toUpperCase() !== 'REJECTED').reduce((s, r) => s + ((r.amount_money && r.amount_money.amount) || 0), 0);
+      if (total - refunded <= 0) continue;
+      out.push({
+        orderId: o.id,
+        createdAt: o.created_at,
+        source: (o.source && o.source.name) || 'Square',
+        total, refunded, currency: (o.total_money && o.total_money.currency) || sq.CURRENCY,
+        paymentId: tenders[0].payment_id || tenders[0].id || '',
+        tender: (tenders[0].type || '').toLowerCase(),
+        name: (o.metadata && o.metadata.bc_name) || o.ticket_name || '',
+        items: (o.line_items || []).map((li) => ({
+          name: li.name || 'Item',
+          variation: li.variation_name || '',
+          quantity: li.quantity || '1',
+          amount: (li.total_money && li.total_money.amount) || 0,
+        })),
+      });
+    }
+    res.json({ orders: out, currency: sq.CURRENCY });
+  } catch (e) { res.status(502).json({ error: e.message }); }
+});
+
+// Issue a refund against a payment (partial or full). Square refunds by AMOUNT,
+// so an item-level refund is just the sum of the chosen lines. Manager-PIN gated.
+app.post('/api/pos/refund', async (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const { paymentId, amount, reason, managerPin } = req.body || {};
+    const pin = (getSettings().pos || {}).managerPin || '';
+    if (!pin) return res.status(400).json({ error: 'Set a manager PIN in POS Settings before issuing refunds.' });
+    if (String(managerPin || '').trim() !== pin) return res.status(403).json({ error: 'Incorrect manager PIN.' });
+    const amt = Math.round(Number(amount) || 0);
+    if (!paymentId) return res.status(400).json({ error: 'Missing payment reference.' });
+    if (!(amt > 0)) return res.status(400).json({ error: 'Refund amount must be greater than zero.' });
+    const refund = await sq.squareFetch('/v2/refunds', {
+      method: 'POST',
+      body: {
+        idempotency_key: require('crypto').randomUUID(),
+        payment_id: paymentId,
+        amount_money: { amount: amt, currency: sq.CURRENCY },
+        reason: String(reason || 'POS refund').slice(0, 192),
+      },
+    });
+    res.json({ ok: true, refund: refund.refund || refund });
+  } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
 app.post('/api/pos/order', async (req, res) => {

@@ -545,6 +545,7 @@ export default function Pos({ onExit }) {
             cfg={cfg} posLoc={posLoc} multiStore={multiStore} curTerm={curTerm}
             theme={theme} onTheme={setTheme}
             idleSec={kdsIdleSec != null ? kdsIdleSec : (cfg && cfg.kdsIdleSec != null ? cfg.kdsIdleSec : 60)} onIdle={setKdsIdleSec}
+            pass={pass}
             onSwitchStore={switchStore} onOpenTerminal={() => { setShowSettings(false); setShowSetup(true); }}
             onExit={onExit} onClose={() => setShowSettings(false)} />
         )}
@@ -749,6 +750,7 @@ export default function Pos({ onExit }) {
           cfg={cfg} posLoc={posLoc} multiStore={multiStore} curTerm={curTerm}
           theme={theme} onTheme={setTheme}
           idleSec={kdsIdleSec != null ? kdsIdleSec : (cfg && cfg.kdsIdleSec != null ? cfg.kdsIdleSec : 60)} onIdle={setKdsIdleSec}
+          pass={pass}
           onSwitchStore={switchStore} onOpenTerminal={() => { setShowSettings(false); setShowSetup(true); }}
           onExit={onExit} onClose={() => setShowSettings(false)} />
       )}
@@ -828,8 +830,127 @@ function PosStorePulse({ posLoc, storeName }) {
   );
 }
 
-function SettingsSheet({ cfg, posLoc, multiStore, curTerm, theme, onTheme, idleSec, onIdle, onSwitchStore, onOpenTerminal, onExit, onClose }) {
+// Refunds — manager-PIN gated. Pick a recent paid order, tick the item(s) to
+// refund (partial) or type a custom amount, enter the PIN, confirm. Square
+// refunds by amount against the order's payment. First-time use sets the PIN.
+function RefundModal({ pass, posLoc, hasPin, currency, onPinSet, onClose }) {
+  const [orders, setOrders] = useState(null);
+  const [err, setErr] = useState('');
+  const [sel, setSel] = useState(null);          // the chosen order
+  const [ticked, setTicked] = useState(new Set());
+  const [custom, setCustom] = useState('');       // dollars, optional override
+  const [pin, setPin] = useState('');
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(null);
+  // First-time PIN setup
+  const [havePin, setHavePin] = useState(hasPin);
+  const [newPin, setNewPin] = useState('');
+  const [curPin, setCurPin] = useState('');
+
+  useEffect(() => {
+    if (!havePin) return;
+    let alive = true;
+    api.posRecentOrders(pass, posLoc).then((d) => { if (alive) setOrders(d.orders || []); }).catch((e) => { if (alive) setErr(e.message); });
+    return () => { alive = false; };
+  }, [havePin, pass, posLoc]);
+
+  const refundable = sel ? Math.max(0, sel.total - sel.refunded) : 0;
+  const tickedTotal = sel ? sel.items.reduce((s, it, i) => s + (ticked.has(i) ? it.amount : 0), 0) : 0;
+  const customCents = Math.round((parseFloat(custom) || 0) * 100);
+  const amount = Math.min(refundable, customCents > 0 ? customCents : tickedTotal);
+
+  async function savePin() {
+    setErr('');
+    try { await api.posSetManagerPin(pass, newPin.trim(), curPin.trim()); setHavePin(true); onPinSet && onPinSet(); }
+    catch (e) { setErr(e.message); }
+  }
+  async function doRefund() {
+    if (!sel || !(amount > 0) || busy) return;
+    setBusy(true); setErr('');
+    try {
+      await api.posRefund(pass, { orderId: sel.orderId, paymentId: sel.paymentId, amount, reason: reason.trim(), managerPin: pin.trim() });
+      setDone({ amount });
+      // Refresh the list so the refunded amount shows next time.
+      api.posRecentOrders(pass, posLoc).then((d) => setOrders(d.orders || [])).catch(() => {});
+    } catch (e) { setErr(e.message); }
+    finally { setBusy(false); }
+  }
+
+  const title = <div className="pos-tender-title">Refund</div>;
+
+  return (
+    <div className="pos-scrim" onClick={(e) => { e.stopPropagation(); onClose(); }} style={{ zIndex: 80 }}>
+      <div className="pos-settings" onClick={(e) => e.stopPropagation()}>
+        <div className="pos-settings-head">{title}<button className="pos-icon" title="Close" onClick={onClose}><IcoX /></button></div>
+
+        {!havePin ? (
+          <div className="pos-set-block">
+            <div className="pos-set-label">Set a manager PIN</div>
+            <p className="pos-set-hint">A 4–8 digit PIN is required to approve refunds. Set it once here.</p>
+            <input className="pos-set-select" inputMode="numeric" placeholder="New PIN" value={newPin} onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ''))} />
+            {hasPin && <input className="pos-set-select" style={{ marginTop: 8 }} inputMode="numeric" placeholder="Current PIN" value={curPin} onChange={(e) => setCurPin(e.target.value.replace(/\D/g, ''))} />}
+            {err && <div className="pos-err">{err}</div>}
+            <button className="pos-btn primary big" style={{ width: '100%', marginTop: 12 }} disabled={newPin.length < 4} onClick={savePin}>Save PIN</button>
+          </div>
+        ) : done ? (
+          <div className="pos-set-block" style={{ textAlign: 'center' }}>
+            <div className="pos-success-tick" style={{ margin: '6px auto' }}>✓</div>
+            <div className="pos-success-title">Refunded {formatMoney(done.amount, currency)}</div>
+            <p className="pos-set-hint">The refund has been sent to Square. It returns to the customer’s original payment.</p>
+            <button className="pos-btn primary big" style={{ width: '100%' }} onClick={onClose}>Done</button>
+          </div>
+        ) : !sel ? (
+          <div className="pos-set-block">
+            <div className="pos-set-label">Pick the order to refund</div>
+            {err && <div className="pos-err">{err}</div>}
+            {!orders && !err && <p className="pos-set-hint">Loading recent orders…</p>}
+            {orders && orders.length === 0 && <p className="pos-set-hint">No refundable orders in the last 3 days.</p>}
+            <div className="pos-refund-list">
+              {(orders || []).map((o) => (
+                <button key={o.orderId} type="button" className="pos-refund-order" onClick={() => { setSel(o); setTicked(new Set()); setCustom(''); }}>
+                  <span className="pos-refund-order-main">
+                    <b>{o.name || `#${o.orderId.slice(-4).toUpperCase()}`}</b>
+                    <span className="muted">{new Date(o.createdAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} · {o.items.length} item{o.items.length === 1 ? '' : 's'}{o.refunded ? ` · ${formatMoney(o.refunded, o.currency)} refunded` : ''}</span>
+                  </span>
+                  <span className="pos-refund-order-amt">{formatMoney(o.total, o.currency)}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="pos-set-block">
+            <button className="pos-link" onClick={() => setSel(null)}>← Back to orders</button>
+            <div className="pos-set-label" style={{ marginTop: 8 }}>Tick items to refund{refundable !== sel.total ? ` · ${formatMoney(refundable, currency)} left` : ''}</div>
+            <div className="pos-refund-items">
+              {sel.items.map((it, i) => (
+                <label key={i} className="pos-refund-item">
+                  <input type="checkbox" checked={ticked.has(i)} disabled={!!custom} onChange={() => setTicked((s) => { const n = new Set(s); n.has(i) ? n.delete(i) : n.add(i); return n; })} />
+                  <span className="pos-refund-item-name">{it.quantity}× {it.name}{it.variation ? ` · ${it.variation}` : ''}</span>
+                  <span className="pos-refund-item-amt">{formatMoney(it.amount, currency)}</span>
+                </label>
+              ))}
+            </div>
+            <div className="pos-set-label" style={{ marginTop: 10 }}>Or a custom amount</div>
+            <input className="pos-set-select" inputMode="decimal" placeholder="0.00" value={custom} onChange={(e) => setCustom(e.target.value.replace(/[^\d.]/g, ''))} />
+            <input className="pos-set-select" style={{ marginTop: 8 }} placeholder="Reason (optional)" value={reason} onChange={(e) => setReason(e.target.value)} />
+            <div className="pos-set-label" style={{ marginTop: 10 }}>Manager PIN</div>
+            <input className="pos-set-select" inputMode="numeric" type="password" placeholder="PIN" value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))} />
+            {err && <div className="pos-err">{err}</div>}
+            <button className="pos-btn primary big" style={{ width: '100%', marginTop: 12 }} disabled={busy || !(amount > 0) || pin.length < 4} onClick={doRefund}>
+              {busy ? 'Refunding…' : `Refund ${formatMoney(amount, currency)}`}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function SettingsSheet({ cfg, posLoc, multiStore, curTerm, theme, onTheme, idleSec, onIdle, pass, onSwitchStore, onOpenTerminal, onExit, onClose }) {
   const idleOpts = [{ v: 0, t: 'Never' }, { v: 30, t: '30s' }, { v: 60, t: '60s' }, { v: 120, t: '2 min' }, { v: 300, t: '5 min' }];
+  const [showRefund, setShowRefund] = useState(false);
+  const [hasPin, setHasPin] = useState(!!cfg.hasManagerPin);
   const storeName = (cfg.locations || []).find((l) => l.id === posLoc)?.name || '';
   const termOn = !!(curTerm && curTerm.deviceId);
   return (
@@ -891,12 +1012,26 @@ function SettingsSheet({ cfg, posLoc, multiStore, curTerm, theme, onTheme, idleS
         </div>
 
         <div className="pos-set-block">
+          <div className="pos-set-label">Refunds</div>
+          <p className="pos-set-hint">{hasPin ? 'Refund an item or a custom amount from a recent order. A manager PIN is required.' : 'Set a manager PIN, then refund items or custom amounts from recent orders.'}</p>
+          <div className="pos-set-row">
+            <span className="pos-set-status">{hasPin ? 'Manager PIN set' : 'No manager PIN yet'}</span>
+            <button className="pos-btn primary" onClick={() => setShowRefund(true)}>{hasPin ? 'Issue a refund' : 'Set up refunds'}</button>
+          </div>
+        </div>
+
+        <div className="pos-set-block">
           <div className="pos-set-label">Signed in</div>
           <div className="pos-set-row"><span className="pos-set-status">{cfg.staff || 'Staff'}</span></div>
         </div>
 
         <button className="pos-btn ghost big pos-set-exit" onClick={onExit}>Exit POS</button>
       </div>
+
+      {showRefund && (
+        <RefundModal pass={pass} posLoc={posLoc} hasPin={hasPin} currency={cfg.currency || 'AUD'}
+          onPinSet={() => setHasPin(true)} onClose={() => setShowRefund(false)} />
+      )}
     </div>
   );
 }
