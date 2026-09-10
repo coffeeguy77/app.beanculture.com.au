@@ -3545,7 +3545,7 @@ body:has(.store-shell) { background: var(--bc-canvas-deep, #160f12); }
 
 /* Body layout */
 .pos-body { flex: 1; display: flex; min-height: 0; }
-.pos-rail { width: 188px; flex: none; background: linear-gradient(180deg,#4a1327,#2f0a19); padding: 12px 10px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+.pos-rail { width: 188px; flex: none; background: linear-gradient(180deg, color-mix(in srgb, var(--pos-header) 90%, #000), color-mix(in srgb, var(--pos-header) 60%, #000)); padding: 12px 10px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
 .pos-rail.return { width: 132px; }
 .pos-rail-back { text-align: left; border: 1px solid rgba(255,255,255,.18); background: rgba(255,255,255,.06); color: #fff; border-radius: 12px; padding: 14px 12px; font: inherit; font-weight: 700; cursor: pointer; }
 .pos-cat { text-align: left; border: 1px solid transparent; background: rgba(255,255,255,.04); color: rgba(255,255,255,.82); border-radius: 12px; padding: 15px 14px; font: inherit; font-weight: 700; font-size: 15px; cursor: pointer; }
@@ -3625,7 +3625,7 @@ body:has(.store-shell) { background: var(--bc-canvas-deep, #160f12); }
 .pos-grp { margin-bottom: 20px; break-inside: avoid; }
 .pos-grp-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
 .pos-grp-name { font-weight: 700; font-size: 16px; }
-.pos-grp-req { font-size: 11px; font-weight: 800; letter-spacing: .04em; color: var(--pos-red); text-transform: uppercase; }
+.pos-grp-req { font-size: 11px; font-weight: 800; letter-spacing: .04em; color: var(--pos-accent); text-transform: uppercase; }
 .pos-grp-hint { font-size: 12px; color: var(--pos-muted); }
 .pos-grp.unmet .pos-grp-name { color: var(--pos-red); }
 .pos-opt-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
@@ -3647,6 +3647,20 @@ body:has(.store-shell) { background: var(--bc-canvas-deep, #160f12); }
 .pos-kds-note { color: #9aa6b2; font-size: 13px; }
 .pos-kds-host { flex: 1; min-height: 0; position: relative; display: flex; }
 .kds-root.kds-embedded { position: relative; inset: auto; z-index: auto; height: 100%; width: 100%; min-height: 0; }
+
+/* ── Sync the embedded KDS to the chosen POS colour scheme. The board stays dark
+      for kitchen legibility, but its top bar takes the POS header colour and its
+      brand-accent bits (active station, dine-in badge, action/segment buttons)
+      take the theme accent — so the POS and the kitchen screen read as one set.
+      Status colours (live green, urgency amber/red, bump green) stay semantic. ── */
+.pos-root .kds-embedded .kds-top { background: linear-gradient(90deg, var(--pos-header), var(--pos-header2)); border-bottom-color: rgba(255,255,255,.14); }
+.pos-root .kds-embedded .kds-top .kds-icon { background: rgba(255,255,255,.08); border-color: rgba(255,255,255,.28); color: #fff; }
+.pos-root .kds-embedded .kds-top .kds-icon.on { background: var(--pos-accent2); border-color: var(--pos-accent2); }
+.pos-root .kds-embedded .kds-zone { background: rgba(255,255,255,.08); border-color: rgba(255,255,255,.22); color: rgba(255,255,255,.88); }
+.pos-root .kds-embedded .kds-zone.on { background: var(--pos-accent2); border-color: var(--pos-accent2); color: #fff; }
+.pos-root .kds-embedded .kds-badge.dinein { background: var(--pos-accent2); }
+.pos-root .kds-embedded .kds-btn.primary { background: var(--pos-accent2); }
+.pos-root .kds-embedded .kds-seg-btn.on { background: var(--pos-accent2); }
 
 /* Overlays */
 .pos-scrim { position: fixed; inset: 0; z-index: 70; background: rgba(20,6,12,.5); display: grid; place-items: center; }

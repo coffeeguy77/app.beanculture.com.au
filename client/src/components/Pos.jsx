@@ -37,12 +37,7 @@ function ConfigWorkspace({ item, currency, initial, onCancel, onCommit }) {
   } = useItemConfig(item, initial);
   const [showNote, setShowNote] = useState(!!(initial && initial.note));
 
-  // Compact sticky anchors: 1 Size · 2 Milk · … so staff can jump to any group.
   const groups = item.modifierGroups || [];
-  const anchors = [];
-  let n = 0;
-  if ((item.variations || []).length > 1) { n += 1; anchors.push({ n, name: 'Size', id: 'sz' }); }
-  for (const g of groups) { n += 1; anchors.push({ n, name: g.name, id: g.id }); }
 
   return (
     <div className="pos-cfg">
@@ -50,14 +45,6 @@ function ConfigWorkspace({ item, currency, initial, onCancel, onCommit }) {
         <div>
           <div className="pos-cfg-name">{item.name}</div>
           <div className="pos-cfg-base">{item.category || ''}{item.category ? ' · ' : ''}from {formatMoney(Math.min(...item.variations.map((v) => v.price ?? Infinity)), currency)}</div>
-        </div>
-        <div className="pos-cfg-anchors">
-          {anchors.map((a) => (
-            <a key={a.id} href={`#pcg-${a.id}`} className="pos-anchor"
-              onClick={(e) => { e.preventDefault(); document.getElementById(`pcg-${a.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }}>
-              <b>{a.n}</b> {a.name}
-            </a>
-          ))}
         </div>
       </div>
 
