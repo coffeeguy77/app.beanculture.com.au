@@ -200,36 +200,39 @@ app.get('/api/menu', async (req, res) => {
       // appear where a store's event menu explicitly names them (above).
       menu = { ...menu, categories: menu.categories.filter((c) => !c.eventOnly) };
     }
-    // Takeaway-only store → lock the per-product "cup / service" choice to
-    // takeaway. Driven purely by this store's Order-types setting (admin/stores):
-    // when Dine-in is off and Takeaway on, strip the dine-in options (Dine In,
-    // Have Here, For here, Eat in) from any cup/service modifier group — the
-    // Takeaway / BYO Cup / Keep Cup options (all takeaway-compatible) stay. One
-    // rule covers every product automatically, and both the app and the POS read
-    // this same feed, so the counter and the customer see the same locked choice.
+    // Takeaway-only store → the per-product "cup / service" choice is not a
+    // decision to make: hide it entirely and lock it to Takeaway. Driven purely
+    // by this store's Order-types setting (admin/stores): when Dine-in is off and
+    // Takeaway on, any cup/service modifier group (one that offers a Takeaway /
+    // BYO / Keep Cup option) is DROPPED from the product, and its Takeaway option
+    // is added to the item's locked modifiers so every order is still stamped
+    // "Takeaway" without anyone choosing it. So a coffee is just Size + Coffee
+    // Style; milk and extras stay optional. One rule, every product, applied to
+    // both the app and the POS (shared feed).
     if (Array.isArray(menu.categories)) {
       const ful = locations.fulfilmentFor(locations.resolve(loc));
       if (ful.takeaway && !ful.dineIn) {
-        const isDineInOpt = (n) => /^\s*(dine[\s-]*in|have\s*here|for\s*here|eat[\s-]*in|sit[\s-]*in)\b/i.test(String(n || ''));
-        const lockGroups = (mgs) => (mgs || []).map((g) => {
-          const mods = g.modifiers || [];
-          // Only touch genuine service/cup groups (ones that offer a takeaway /
-          // BYO / keep-cup option) so ordinary groups — milk, sugar, syrups — are
-          // never altered by the name match.
-          const isService = mods.some((m) => /take\s*away|byo|keep\s*cup/i.test(m.name || ''));
-          if (!isService) return g;
-          const kept = mods.filter((m) => !isDineInOpt(m.name));
-          return kept.length === mods.length ? g : { ...g, modifiers: kept, min: Math.min(g.min || 0, kept.length) };
-        });
+        const isServiceGroup = (mods) => (mods || []).some((m) => /take\s*away|byo|keep\s*cup/i.test(m.name || ''));
+        const isTakeaway = (n) => /take\s*away/i.test(String(n || ''));
+        const lockItem = (it) => {
+          if (!Array.isArray(it.modifierGroups) || !it.modifierGroups.length) return it;
+          let changed = false;
+          const lockIds = [...(it.lockedModifierIds || [])];
+          const lockNames = [...(it.lockedModifierNames || [])];
+          const kept = [];
+          for (const g of it.modifierGroups) {
+            if (!isServiceGroup(g.modifiers)) { kept.push(g); continue; }
+            // Drop this cup/service group; lock its Takeaway option so the order
+            // still carries the takeaway cup (barista/receipt), no UI needed.
+            const ta = (g.modifiers || []).find((m) => isTakeaway(m.name));
+            if (ta && !lockIds.includes(ta.id)) { lockIds.push(ta.id); lockNames.push(ta.name); }
+            changed = true;
+          }
+          return changed ? { ...it, modifierGroups: kept, lockedModifierIds: lockIds, lockedModifierNames: lockNames } : it;
+        };
         menu = {
           ...menu,
-          categories: menu.categories.map((c) => ({
-            ...c,
-            items: (c.items || []).map((it) => {
-              if (!Array.isArray(it.modifierGroups) || !it.modifierGroups.length) return it;
-              return { ...it, modifierGroups: lockGroups(it.modifierGroups) };
-            }),
-          })),
+          categories: menu.categories.map((c) => ({ ...c, items: (c.items || []).map(lockItem) })),
         };
       }
     }
