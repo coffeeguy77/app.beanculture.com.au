@@ -3438,11 +3438,45 @@ body:has(.store-shell) { background: var(--bc-canvas-deep, #160f12); }
   background: var(--pos-bg); color: var(--pos-ink);
   font-family: 'DM Sans', system-ui, sans-serif; overflow: hidden;
 }
+/* ── Selectable colour schemes. The base .pos-root above is Plum (default); each
+      block below re-maps the same variables so the whole POS chrome recolours
+      from one data-theme attribute. Accents are kept dark enough for white
+      button text; --pos-green / --pos-red stay semantic. ── */
+.pos-root[data-theme="rose"] {
+  --pos-header: #7a1f45; --pos-header2: #b02a68;
+  --pos-bg: #fbf1f4; --pos-surface: #ffffff; --pos-surface2: #fdf6f8;
+  --pos-ink: #3a1526; --pos-muted: #9c828c; --pos-line: #f0dde4;
+  --pos-accent: #c2185b; --pos-accent2: #d6266e; --pos-on-bg: #fce4ec; --pos-on-bd: #e888ac;
+}
+.pos-root[data-theme="ocean"] {
+  --pos-header: #12395e; --pos-header2: #1c5f92;
+  --pos-bg: #eef3f8; --pos-surface: #ffffff; --pos-surface2: #f5f9fc;
+  --pos-ink: #12283a; --pos-muted: #78889a; --pos-line: #dbe6f0;
+  --pos-accent: #1565c0; --pos-accent2: #1976d2; --pos-on-bg: #e3f0fb; --pos-on-bd: #7fb0e0;
+}
+.pos-root[data-theme="forest"] {
+  --pos-header: #14432b; --pos-header2: #1f6b43;
+  --pos-bg: #eef4ee; --pos-surface: #ffffff; --pos-surface2: #f5faf6;
+  --pos-ink: #123024; --pos-muted: #7c8c80; --pos-line: #dbe8de;
+  --pos-accent: #276b39; --pos-accent2: #2f7d43; --pos-on-bg: #e2f2e7; --pos-on-bd: #85c39a;
+}
+.pos-root[data-theme="mocha"] {
+  --pos-header: #3a2519; --pos-header2: #5a3a26;
+  --pos-bg: #f6f1ea; --pos-surface: #ffffff; --pos-surface2: #faf6f0;
+  --pos-ink: #2e2016; --pos-muted: #8c7d6e; --pos-line: #e8ddcf;
+  --pos-accent: #7c4a24; --pos-accent2: #94592d; --pos-on-bg: #f1e4d5; --pos-on-bd: #c39a6f;
+}
+.pos-root[data-theme="slate"] {
+  --pos-header: #23292f; --pos-header2: #3b4650;
+  --pos-bg: #f1f3f5; --pos-surface: #ffffff; --pos-surface2: #f7f9fa;
+  --pos-ink: #1f272e; --pos-muted: #7a828a; --pos-line: #dde2e7;
+  --pos-accent: #37474f; --pos-accent2: #455a64; --pos-on-bg: #e7ebee; --pos-on-bd: #90a4ae;
+}
 .pos-center { align-items: center; justify-content: center; }
 .pos-spinner { width: 40px; height: 40px; border-radius: 50%; border: 4px solid #e6dcd0; border-top-color: var(--pos-accent); animation: kds-spin .8s linear infinite; }
 
 /* Login */
-.pos-login { align-items: center; justify-content: center; background: linear-gradient(160deg,#3d0e20,#1c0611); color:#fff; }
+.pos-login { align-items: center; justify-content: center; background: linear-gradient(160deg,var(--pos-header2),var(--pos-header)); color:#fff; }
 .pos-login-card { background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.14); border-radius: 20px; padding: 34px; width: min(92vw,380px); text-align: center; }
 .pos-login-title { font-family: 'Fraunces', Georgia, serif; font-size: 26px; font-weight: 700; letter-spacing: .04em; }
 .pos-login-card p { color: rgba(255,255,255,.7); margin: 6px 0 18px; }
@@ -3489,6 +3523,25 @@ body:has(.store-shell) { background: var(--bc-canvas-deep, #160f12); }
 .pos-set-status { font-size: 14px; font-weight: 700; color: var(--pos-muted); }
 .pos-set-status.on { color: var(--pos-green); }
 .pos-set-exit { width: 100%; margin-top: 16px; }
+
+/* Colour-scheme picker swatches */
+.pos-swatches { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 12px; }
+.pos-swatch { position: relative; display: flex; flex-direction: column; align-items: center; gap: 8px;
+  padding: 14px 8px 10px; border: 2px solid var(--pos-line); border-radius: 14px; background: var(--pos-surface);
+  cursor: pointer; font: inherit; color: var(--pos-ink); transition: border-color .12s, transform .05s; }
+.pos-swatch:hover { transform: translateY(-1px); }
+.pos-swatch.on { border-color: var(--pos-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--pos-accent) 18%, transparent); }
+.pos-swatch-dot { width: 34px; height: 34px; border-radius: 50%; box-shadow: inset 0 0 0 2px rgba(255,255,255,.45); }
+.pos-swatch-name { font-size: 13px; font-weight: 700; }
+.pos-swatch-tick { position: absolute; top: 6px; right: 8px; font-size: 12px; font-weight: 800; color: var(--pos-accent); }
+/* Preview gradients — fixed per theme so each swatch shows its own colours
+   regardless of the currently-active scheme (header → accent). */
+.pos-swatch.sw-plum   .pos-swatch-dot { background: linear-gradient(135deg,#3d0e20,#8a2a4c); }
+.pos-swatch.sw-rose   .pos-swatch-dot { background: linear-gradient(135deg,#7a1f45,#d6266e); }
+.pos-swatch.sw-ocean  .pos-swatch-dot { background: linear-gradient(135deg,#12395e,#1976d2); }
+.pos-swatch.sw-forest .pos-swatch-dot { background: linear-gradient(135deg,#14432b,#2f7d43); }
+.pos-swatch.sw-mocha  .pos-swatch-dot { background: linear-gradient(135deg,#3a2519,#94592d); }
+.pos-swatch.sw-slate  .pos-swatch-dot { background: linear-gradient(135deg,#23292f,#455a64); }
 
 /* Body layout */
 .pos-body { flex: 1; display: flex; min-height: 0; }
