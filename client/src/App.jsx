@@ -19,6 +19,7 @@ import Admin from './components/Admin.jsx';
 import Kds from './components/Kds.jsx';
 import Pos from './components/Pos.jsx';
 import LiveOrderStatus from './components/LiveOrderStatus.jsx';
+import ActiveOrderTracker, { saveActiveOrder } from './components/ActiveOrderTracker.jsx';
 import PayItForward from './components/PayItForward.jsx';
 import GiftClaim from './components/GiftClaim.jsx';
 import Logo from './components/Logo.jsx';
@@ -840,6 +841,12 @@ export default function App() {
   }, [config, cart.length]);
   function onPaid(payment, order, meta) {
     trackPurchase(order);
+    // Remember it as the active order so the live tracker follows the customer
+    // around the app (and back after a reload), not just on this screen. Skip
+    // scheduled pre-orders — those aren't "being made now".
+    if (order && (order.orderId || order.id) && !(meta && meta.pickupAt)) {
+      saveActiveOrder({ orderId: order.orderId || order.id, dineIn, table });
+    }
     setCompleted({ payment, order, meta: meta || {} });
     setCart([]);
     setView('done');
@@ -1334,6 +1341,7 @@ export default function App() {
           ? 'none'
           : `${Number(config.siteMaxWidth) || 1920}px`,
       }}>
+      <ActiveOrderTracker paused={view === 'done' || view === 'checkout' || view === 'admin'} />
       {resolvedEffectPreset && (
         <EffectOverlay
           preset={resolvedEffectPreset}

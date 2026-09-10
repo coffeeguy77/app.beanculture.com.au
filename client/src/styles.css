@@ -922,6 +922,17 @@ img { max-width: 100%; }
 .live-status-now b { display: block; font-size: 16px; color: var(--t-ink, #2a1620); }
 .live-status.status-ready .live-status-now b { color: #1c6b3f; }
 .live-status-sub { font-size: 13px; color: var(--t-ink-soft, #8a7a80); }
+
+/* Persistent "your order" toast that follows the customer around the app */
+.active-order-bar { position: fixed; top: calc(8px + env(safe-area-inset-top, 0px)); left: 12px; right: 12px; margin: 0 auto; max-width: 460px; z-index: 1300;
+  display: flex; align-items: center; gap: 12px; padding: 11px 14px; border-radius: 14px; background: #2a1620; color: #fff; box-shadow: 0 10px 34px rgba(0,0,0,.32); }
+.active-order-bar.status-ready { background: #2e7d51; animation: aob-pulse 1.5s ease-in-out infinite; }
+.active-order-emoji { font-size: 26px; line-height: 1; flex: none; }
+.active-order-txt { display: flex; flex-direction: column; line-height: 1.2; flex: 1; min-width: 0; }
+.active-order-txt b { font-size: 11px; font-weight: 700; opacity: .75; text-transform: uppercase; letter-spacing: .04em; }
+.active-order-txt span { font-size: 15px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.active-order-x { background: rgba(255,255,255,.16); border: none; color: #fff; width: 30px; height: 30px; border-radius: 50%; font-size: 14px; cursor: pointer; flex: none; }
+@keyframes aob-pulse { 0%, 100% { box-shadow: 0 8px 26px rgba(46,125,81,.45); } 50% { box-shadow: 0 10px 40px rgba(46,125,81,.85); } }
 .empty { padding: 48px 16px; text-align: center; color: var(--muted); }
 .card { background: var(--surface); border-radius: var(--radius); padding: 20px; box-shadow: var(--shadow-sm); }
 
