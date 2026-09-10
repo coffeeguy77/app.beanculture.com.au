@@ -3330,8 +3330,10 @@ body:has(.store-shell) { background: var(--bc-canvas-deep, #160f12); }
 .kds-btn { flex: 1; border: none; border-radius: 11px; padding: 14px; font-size: 16px; font-weight: 800; cursor: pointer; font-family: inherit; }
 .kds-btn.primary { background: #2b6cb0; color: #fff; }
 .kds-btn.start { background: #33404b; color: #eef2f6; flex: 0 0 40%; }
+.kds-btn.ready { background: #d9a300; color: #241c00; flex: 0 0 42%; }
+.kds-btn.ready.on { background: #7a6200; color: #fff6d6; }
 .kds-btn.bump { background: #35b37e; color: #06231a; }
-.kds-btn.bump:active, .kds-btn.start:active { transform: scale(.98); }
+.kds-btn.bump:active, .kds-btn.start:active, .kds-btn.ready:active { transform: scale(.98); }
 
 /* Recall strip */
 .kds-recall { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 16px; background: #0e1216; border-top: 1px solid #222a32; }
