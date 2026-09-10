@@ -13,12 +13,26 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 const ALL = '__all__';
 const LAYOUT_KEY = 'bc-kds-layout';
 
-// Short WebAudio chime for new tickets — no asset needed.
-function chime() {
+// Short WebAudio chime for new tickets — no asset needed. Uses ONE shared
+// AudioContext and resumes it (browsers suspend audio until a gesture, which is
+// why the bell often stayed silent); an unlock listener primes it on first tap.
+let _kdsAC = null;
+function kdsAudio() {
   try {
     const AC = window.AudioContext || window.webkitAudioContext;
-    if (!AC) return;
-    const ac = new AC();
+    if (!AC) return null;
+    if (!_kdsAC) _kdsAC = new AC();
+    if (_kdsAC.state === 'suspended') _kdsAC.resume().catch(() => {});
+    return _kdsAC;
+  } catch { return null; }
+}
+if (typeof window !== 'undefined') {
+  const unlock = () => kdsAudio();
+  ['pointerdown', 'keydown', 'touchstart'].forEach((e) => window.addEventListener(e, unlock, { passive: true, once: false }));
+}
+function chime() {
+  try {
+    const ac = kdsAudio(); if (!ac) return;
     const o = ac.createOscillator();
     const g = ac.createGain();
     o.connect(g); g.connect(ac.destination);
@@ -27,7 +41,6 @@ function chime() {
     g.gain.exponentialRampToValueAtTime(0.3, ac.currentTime + 0.02);
     g.gain.exponentialRampToValueAtTime(0.0001, ac.currentTime + 0.45);
     o.start(); o.stop(ac.currentTime + 0.47);
-    setTimeout(() => { try { ac.close(); } catch {} }, 800);
   } catch {}
 }
 
@@ -51,7 +64,7 @@ const IcoBell = () => <Ico><path d="M6 8a6 6 0 0 1 12 0c0 7 3 8 3 8H3s3-1 3-8" /
 const IcoBellOff = () => <Ico><path d="M18.6 14A18 18 0 0 1 18 8" /><path d="M6 8a6 6 0 0 1 9.3-5" /><path d="M6 8c0 7-3 8-3 8h13" /><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" /><line x1="3" y1="3" x2="21" y2="21" /></Ico>;
 const IcoRefresh = () => <Ico><path d="M21 12a9 9 0 1 1-2.64-6.36" /><path d="M21 3v6h-6" /></Ico>;
 
-export default function Kds({ onExit, embedded, location }) {
+export default function Kds({ onExit, embedded, location, onControls }) {
   const [pass, setPass] = useState(() => { try { return atob(localStorage.getItem('bc-admin-pass') || '') || ''; } catch { return ''; } });
   const [passInput, setPassInput] = useState('');
   const [needPass, setNeedPass] = useState(false);
@@ -74,6 +87,8 @@ export default function Kds({ onExit, embedded, location }) {
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const seenRef = useRef(new Set());
   const firstLoad = useRef(true);
+  const bumpAllRef = useRef();
+  const loadTicketsRef = useRef();
 
   // Station tabs. With a SINGLE station there's no point in "All orders" + the
   // station name: show one tab named after the station. It's still the All lane
@@ -303,6 +318,23 @@ export default function Kds({ onExit, embedded, location }) {
   const standalone = typeof window !== 'undefined' &&
     (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone);
 
+  // When embedded in the POS, hand the control state up so the POS renders one
+  // compact header (live · Bump all · layout · bell · refresh on the cog row).
+  // Handlers go through refs so the parent always calls the current closures.
+  bumpAllRef.current = bumpAll;
+  loadTicketsRef.current = () => loadTickets();
+  useEffect(() => {
+    if (!embedded || typeof onControls !== 'function') return;
+    onControls({
+      live, activeCount: active.length, soundOn, showLayout, singleStation,
+      bumpAll: () => bumpAllRef.current && bumpAllRef.current(),
+      toggleLayout: () => setShowLayout((v) => !v),
+      toggleMute: () => setMuted((mm) => !mm),
+      refresh: () => loadTicketsRef.current && loadTicketsRef.current(),
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [embedded, live, active.length, soundOn, showLayout, singleStation]);
+
   // ── Passcode gate ──
   if (needPass) {
     return (
@@ -340,32 +372,40 @@ export default function Kds({ onExit, embedded, location }) {
 
   return (
     <div className={rootClass}>
-      <header className="kds-top">
-        <div className="kds-zones">
-          {zones.map((z) => {
-            const count = tickets.filter((t) => t.zoneItems[z.id] && statusIn(t, z.id) !== 'done').length;
-            return (
-              <button key={z.id} className={`kds-zone${zone === z.id ? ' on' : ''}`} onClick={() => setZone(z.id)}>
-                {z.name}{count ? <span className="kds-zone-count">{count}</span> : null}
+      {/* Header: standalone /kds shows the full bar. Embedded in the POS, the
+          right-hand controls move up to the POS header (one compact bar), so
+          here we only need the station tabs — and with a single station even
+          those are dropped (nothing to choose). */}
+      {(!embedded || !singleStation) && (
+        <header className="kds-top">
+          <div className="kds-zones">
+            {zones.map((z) => {
+              const count = tickets.filter((t) => t.zoneItems[z.id] && statusIn(t, z.id) !== 'done').length;
+              return (
+                <button key={z.id} className={`kds-zone${zone === z.id ? ' on' : ''}`} onClick={() => setZone(z.id)}>
+                  {z.name}{count ? <span className="kds-zone-count">{count}</span> : null}
+                </button>
+              );
+            })}
+          </div>
+          {!embedded && (
+            <div className="kds-top-right">
+              {(cfg.locations || []).length > 1 && (
+                <select className="kds-locsel" value={kdsLoc} onChange={(e) => setKdsLoc(e.target.value)} title="Store">
+                  {cfg.locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+                </select>
+              )}
+              <span className={`kds-live${live ? ' on' : ''}`} title={live ? 'Live' : 'Reconnecting…'}>{live ? '● Live' : '○ Polling'}</span>
+              <button className="kds-bumpall" title="Bump every open ticket in this station" disabled={!active.length} onClick={bumpAll}>
+                Bump all{active.length ? ` (${active.length})` : ''}
               </button>
-            );
-          })}
-        </div>
-        <div className="kds-top-right">
-          {!embedded && (cfg.locations || []).length > 1 && (
-            <select className="kds-locsel" value={kdsLoc} onChange={(e) => setKdsLoc(e.target.value)} title="Store">
-              {cfg.locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
-            </select>
+              <button className={`kds-icon${showLayout ? ' on' : ''}`} title="Layout" onClick={() => setShowLayout((v) => !v)}><IcoGrid /></button>
+              <button className="kds-icon" title={soundOn ? 'Mute new-order sound' : 'Unmute'} onClick={() => setMuted((m) => !m)}>{soundOn ? <IcoBell /> : <IcoBellOff />}</button>
+              <button className="kds-icon" title="Refresh" onClick={() => loadTickets()}><IcoRefresh /></button>
+            </div>
           )}
-          <span className={`kds-live${live ? ' on' : ''}`} title={live ? 'Live' : 'Reconnecting…'}>{live ? '● Live' : '○ Polling'}</span>
-          <button className="kds-bumpall" title="Bump every open ticket in this station" disabled={!active.length} onClick={bumpAll}>
-            Bump all{active.length ? ` (${active.length})` : ''}
-          </button>
-          <button className={`kds-icon${showLayout ? ' on' : ''}`} title="Layout" onClick={() => setShowLayout((v) => !v)}><IcoGrid /></button>
-          <button className="kds-icon" title={soundOn ? 'Mute new-order sound' : 'Unmute'} onClick={() => setMuted((m) => !m)}>{soundOn ? <IcoBell /> : <IcoBellOff />}</button>
-          <button className="kds-icon" title="Refresh" onClick={() => loadTickets()}><IcoRefresh /></button>
-        </div>
-      </header>
+        </header>
+      )}
 
       {showLayout && (
         <>

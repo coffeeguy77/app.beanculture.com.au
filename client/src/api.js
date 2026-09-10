@@ -14,6 +14,7 @@ export const api = {
   getHistory: (customerId) => req(`/api/history?customerId=${encodeURIComponent(customerId)}`),
   createOrder: (payload) => req('/api/orders', { method: 'POST', body: JSON.stringify(payload) }),
   cancelOrder: (orderId) => req(`/api/orders/${encodeURIComponent(orderId)}/cancel`, { method: 'POST' }),
+  orderStatus: (orderId) => req(`/api/order-status?orderId=${encodeURIComponent(orderId || '')}`),
   pay: (payload) => req('/api/pay', { method: 'POST', body: JSON.stringify(payload) }),
   adminOverview: (pass) => req(`/api/admin/overview?pass=${encodeURIComponent(pass || '')}`),
   // Saved cards (card-on-file)

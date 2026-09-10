@@ -903,6 +903,25 @@ img { max-width: 100%; }
 .spinner { width: 34px; height: 34px; border: 3px solid var(--line); border-top-color: var(--brand); border-radius: 50%; animation: spin 0.8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .tick { width: 66px; height: 66px; border-radius: 50%; background: #2e7d51; color: #fff; font-size: 34px; display: grid; place-items: center; margin: 0 auto; }
+
+/* Live order tracker on the post-order screen */
+.live-status { margin: 16px 0 4px; text-align: left; border: 1px solid var(--t-line, #e6dcd0); border-radius: 16px; padding: 14px 16px; background: var(--t-surface, #fff); }
+.live-status.status-ready { border-color: #2e7d51; background: color-mix(in srgb, #2e7d51 8%, #fff); }
+.live-status.done { display: flex; align-items: center; gap: 10px; }
+.live-status-steps { display: flex; align-items: center; gap: 6px; margin-bottom: 12px; }
+.live-step { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; position: relative; }
+.live-step:not(:last-child)::after { content: ''; position: absolute; top: 7px; left: 50%; width: 100%; height: 2px; background: var(--t-line, #e6dcd0); z-index: 0; }
+.live-step.on:not(:last-child)::after { background: #2e7d51; }
+.live-step-dot { width: 16px; height: 16px; border-radius: 50%; background: var(--t-line, #e6dcd0); z-index: 1; }
+.live-step.on .live-step-dot { background: #2e7d51; }
+.live-step.cur .live-step-dot { box-shadow: 0 0 0 4px color-mix(in srgb, #2e7d51 24%, transparent); }
+.live-step-label { font-size: 11px; font-weight: 700; color: var(--t-ink-soft, #8a7a80); }
+.live-step.on .live-step-label { color: var(--t-ink, #2a1620); }
+.live-status-now { display: flex; align-items: center; gap: 12px; }
+.live-status-emoji { font-size: 30px; line-height: 1; }
+.live-status-now b { display: block; font-size: 16px; color: var(--t-ink, #2a1620); }
+.live-status.status-ready .live-status-now b { color: #1c6b3f; }
+.live-status-sub { font-size: 13px; color: var(--t-ink-soft, #8a7a80); }
 .empty { padding: 48px 16px; text-align: center; color: var(--muted); }
 .card { background: var(--surface); border-radius: var(--radius); padding: 20px; box-shadow: var(--shadow-sm); }
 
@@ -3520,6 +3539,12 @@ body:has(.store-shell) { background: var(--bc-canvas-deep, #160f12); }
 .pos-seg-badge { font-size: 11px; font-weight: 800; background: var(--pos-accent); color: #fff; border-radius: 999px; padding: 1px 7px; }
 .pos-seg.on .pos-seg-badge { background: var(--pos-on-bg); color: var(--pos-accent); }
 .pos-header-right { display: flex; align-items: center; gap: 14px; font-size: 13px; }
+/* KDS controls hoisted onto the POS header (one bar) */
+.pos-kdsctl { display: inline-flex; align-items: center; gap: 10px; }
+.pos-kds-bumpall { height: 34px; padding: 0 12px; border-radius: 9px; border: 1px solid #2f7d55; background: #2f7d55; color: #fff; font: inherit; font-weight: 800; font-size: 13px; cursor: pointer; white-space: nowrap; }
+.pos-kds-bumpall:disabled { opacity: .4; cursor: default; }
+.pos-kdsctl .kds-live { color: rgba(255,255,255,.7); }
+.pos-kdsctl .kds-live.on { color: #7fe0a6; }
 .pos-term { color: #e9b949; font-weight: 600; }
 .pos-staff { color: rgba(255,255,255,.85); font-weight: 600; }
 .pos-locsel { background: rgba(0,0,0,.28); color: #fff; border: 1px solid rgba(255,255,255,.2); border-radius: 9px; padding: 6px 10px; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; max-width: 160px; }

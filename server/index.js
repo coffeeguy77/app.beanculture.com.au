@@ -245,6 +245,28 @@ app.get('/api/menu', async (req, res) => {
   }
 });
 
+// Live order status for the customer app — the KDS drives it, no SMS needed.
+// 'new' (received) → 'preparing' → 'ready' (collect) → 'done' (bumped/collected).
+// Public + cheap (one indexed lookup); returns 'new' for anything unknown.
+app.get('/api/order-status', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  const orderId = String(req.query.orderId || req.query.id || '').trim();
+  if (!orderId) return res.status(400).json({ error: 'Missing orderId' });
+  try {
+    const states = await db.kdsGetStates([orderId]).catch(() => ({}));
+    const zones = states[orderId] || {};
+    const SYNTH = new Set(['__paid__', '__notified__']);   // internal markers, not kitchen state
+    const st = Object.entries(zones).filter(([z]) => !SYNTH.has(z)).map(([, v]) => (v && v.status) || 'new');
+    let status = 'new';
+    if (st.length) {
+      if (st.some((s) => s === 'ready')) status = 'ready';
+      else if (st.every((s) => s === 'done')) status = 'done';
+      else if (st.some((s) => s === 'preparing')) status = 'preparing';
+    }
+    res.json({ orderId, status });
+  } catch { res.json({ orderId, status: 'new' }); }
+});
+
 // Per-store open/closed status + that store's current weather. The customer app
 // calls this whenever the chosen store changes, so the closed banner, reopen
 // countdown and temperature chip all reflect the selected location.

@@ -18,6 +18,7 @@ import ThemePicker from './components/ThemePicker.jsx';
 import Admin from './components/Admin.jsx';
 import Kds from './components/Kds.jsx';
 import Pos from './components/Pos.jsx';
+import LiveOrderStatus from './components/LiveOrderStatus.jsx';
 import PayItForward from './components/PayItForward.jsx';
 import GiftClaim from './components/GiftClaim.jsx';
 import Logo from './components/Logo.jsx';
@@ -1015,7 +1016,10 @@ export default function App() {
             {order.ticketName && <p className="muted">Ticket: {order.ticketName}</p>}
             {pickupAt
               ? <p>Ready {pickupAt.toLocaleString('en-AU', { weekday: 'short', hour: 'numeric', minute: '2-digit', day: 'numeric', month: 'short' })}{dineIn ? ` · table ${table}` : ''}.</p>
-              : <p>{dineIn ? `We’ll bring it to table ${table}.` : `Thanks ${name || ''} — we’ll call your name.`}</p>}
+              : <p>{dineIn ? `We’ll bring it to table ${table}.` : `Thanks ${name || ''} — we’ll let you know when it’s ready.`}</p>}
+            {!pickupAt && (order.orderId || order.id) && (
+              <LiveOrderStatus orderId={order.orderId || order.id} dineIn={dineIn} table={table} />
+            )}
             {payment.comped && <p className="muted">No card charged.</p>}
             {payment.receiptUrl && (
               <a className="link" href={payment.receiptUrl} target="_blank" rel="noreferrer">View receipt</a>

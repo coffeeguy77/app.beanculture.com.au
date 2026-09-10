@@ -38,10 +38,27 @@ const Ico = ({ children, size = 22 }) => (
 );
 const IcoGear = () => <Ico><circle cx="12" cy="12" r="3.2" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></Ico>;
 const IcoX = () => <Ico><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></Ico>;
+const IcoGrid = () => <Ico><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></Ico>;
+const IcoBell = () => <Ico><path d="M6 8a6 6 0 0 1 12 0c0 7 3 8 3 8H3s3-1 3-8" /><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" /></Ico>;
+const IcoBellOff = () => <Ico><path d="M18.6 14A18 18 0 0 1 18 8" /><path d="M6 8a6 6 0 0 1 9.3-5" /><path d="M6 8c0 7-3 8-3 8h13" /><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" /><line x1="3" y1="3" x2="21" y2="21" /></Ico>;
+const IcoRefresh = () => <Ico><path d="M21 12a9 9 0 1 1-2.64-6.36" /><path d="M21 3v6h-6" /></Ico>;
 
 // Cafe timezone — Canberra (same offset as Australia/Sydney). All POS order
 // timestamps are shown in this zone so the till reads local time regardless of
 // the tablet's own clock/region.
+// One shared AudioContext, resumed on demand. Browsers start it "suspended"
+// until a user gesture, which is why new-order chimes often stayed silent —
+// resuming it (and unlocking on first interaction) makes the bell reliable.
+let _audioCtx = null;
+function audioCtx() {
+  try {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return null;
+    if (!_audioCtx) _audioCtx = new AC();
+    if (_audioCtx.state === 'suspended') _audioCtx.resume().catch(() => {});
+    return _audioCtx;
+  } catch { return null; }
+}
 const CAFE_TZ = 'Australia/Sydney';
 const fmtDateTime = (iso) => { try { return new Date(iso).toLocaleString('en-AU', { timeZone: CAFE_TZ, weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }); } catch { return ''; } };
 const fmtTime = (iso) => { try { return new Date(iso).toLocaleTimeString('en-AU', { timeZone: CAFE_TZ, hour: 'numeric', minute: '2-digit' }); } catch { return ''; } };
@@ -167,6 +184,7 @@ export default function Pos({ onExit }) {
   const [cardPay, setCardPay] = useState(() => { try { return JSON.parse(localStorage.getItem('bc-pos-active-checkout') || 'null'); } catch { return null; } });
   const [showSetup, setShowSetup] = useState(false);    // card-terminal pairing modal
   const [showSettings, setShowSettings] = useState(false); // the ⚙ settings sheet
+  const [kdsControls, setKdsControls] = useState(null);    // controls surfaced by the embedded KDS
   const [posLoc, setPosLoc] = useState(() => { try { return localStorage.getItem('bc-pos-location') || ''; } catch { return ''; } });
   const [theme, setTheme] = useState(() => { try { return localStorage.getItem(THEME_KEY) || 'plum'; } catch { return 'plum'; } });
   // Idle-return timer (per device): seconds of no interaction on the register
@@ -244,7 +262,7 @@ export default function Pos({ onExit }) {
 
   // Any interaction anywhere on the POS resets the idle clock.
   useEffect(() => {
-    const bump = () => { lastActivityRef.current = Date.now(); };
+    const bump = () => { lastActivityRef.current = Date.now(); audioCtx(); /* unlock audio on first gesture */ };
     const evs = ['pointerdown', 'keydown', 'touchstart', 'wheel'];
     evs.forEach((e) => window.addEventListener(e, bump, { passive: true }));
     return () => evs.forEach((e) => window.removeEventListener(e, bump));
@@ -258,8 +276,7 @@ export default function Pos({ onExit }) {
   // Short double chime so staff hear a new app order across the counter.
   function posChime() {
     try {
-      const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
-      const ac = new AC();
+      const ac = audioCtx(); if (!ac) return;
       [0, 0.18].forEach((t0, i) => {
         const o = ac.createOscillator(); const g = ac.createGain();
         o.connect(g); g.connect(ac.destination);
@@ -270,7 +287,6 @@ export default function Pos({ onExit }) {
         g.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
         o.start(t); o.stop(t + 0.18);
       });
-      setTimeout(() => { try { ac.close(); } catch {} }, 800);
     } catch {}
   }
 
@@ -535,6 +551,17 @@ export default function Pos({ onExit }) {
           onClick={() => { setConfiguring(null); setMode('kitchen'); }}>KDS</button>
       </div>
       <div className="pos-header-right">
+        {mode === 'kitchen' && kdsControls && (
+          <div className="pos-kdsctl">
+            <span className={`kds-live${kdsControls.live ? ' on' : ''}`}>{kdsControls.live ? '● Live' : '○ Polling'}</span>
+            <button className="pos-kds-bumpall" disabled={!kdsControls.activeCount} onClick={kdsControls.bumpAll}>
+              Bump all{kdsControls.activeCount ? ` (${kdsControls.activeCount})` : ''}
+            </button>
+            <button className={`pos-icon${kdsControls.showLayout ? ' on' : ''}`} title="Layout" onClick={kdsControls.toggleLayout}><IcoGrid /></button>
+            <button className="pos-icon" title={kdsControls.soundOn ? 'Mute new-order sound' : 'Unmute'} onClick={kdsControls.toggleMute}>{kdsControls.soundOn ? <IcoBell /> : <IcoBellOff />}</button>
+            <button className="pos-icon" title="Refresh" onClick={kdsControls.refresh}><IcoRefresh /></button>
+          </div>
+        )}
         <button className="pos-icon" title="Settings" onClick={() => setShowSettings(true)}><IcoGear /></button>
       </div>
     </header>
@@ -547,7 +574,7 @@ export default function Pos({ onExit }) {
     return (
       <div className="pos-root" data-theme={theme}>
         {header}
-        <div className="pos-kds-host"><Kds embedded location={posLoc} onExit={() => setMode('register')} /></div>
+        <div className="pos-kds-host"><Kds embedded location={posLoc} onControls={setKdsControls} onExit={() => setMode('register')} /></div>
         {showSettings && (
           <SettingsSheet
             cfg={cfg} posLoc={posLoc} multiStore={multiStore} curTerm={curTerm}
