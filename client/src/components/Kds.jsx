@@ -409,8 +409,12 @@ export default function Kds({ onExit, embedded }) {
                 ))}
               </ul>
               <div className="kds-card-foot">
-                {cfg.showPrepStep && st === 'new' && (
-                  <button className="kds-btn start" onClick={() => bump(t.orderId, 'preparing')}>Start</button>
+                {/* Ready → notifies the app customer their order is ready to
+                    collect (app orders only). Then Bump clears the ticket. */}
+                {t.appOrigin && (
+                  <button className={`kds-btn ready${st === 'ready' ? ' on' : ''}`} onClick={() => bump(t.orderId, 'ready')}>
+                    {st === 'ready' ? 'Ready ✓' : '🔔 Ready'}
+                  </button>
                 )}
                 <button className="kds-btn bump" onClick={() => bump(t.orderId, 'done')}>Bump ✓</button>
               </div>

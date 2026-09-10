@@ -247,6 +247,7 @@ export default function Admin({ onExit }) {
   const [qrSize, setQrSize] = useState(190);
   const [analytics, setAnalytics] = useState(null);
   const [kdsEditLoc, setKdsEditLoc] = useState(''); // which location's Kitchen Screen is being configured ('' = default/all)
+  const [kdsProdFilter, setKdsProdFilter] = useState({}); // per-station product search text {zoneId: text}
   const [dashboard, setDashboard] = useState(null); // real sales + signups
   const [aDays, setADays] = useState(30);
   const [insCustomers, setInsCustomers] = useState(null); // loyalty members for Top customers
@@ -1225,6 +1226,13 @@ export default function Admin({ onExit }) {
     const z = kdsZones.find((x) => x.id === id); if (!z) return;
     const cats = Array.isArray(z.categories) ? z.categories : [];
     updateKdsZone(id, { categories: cats.includes(name) ? cats.filter((c) => c !== name) : [...cats, name] });
+  };
+  // Per-product assignment: route a specific product to this station (by name),
+  // so items in the same category can be split across Kitchen and FOH.
+  const toggleKdsZoneItem = (id, name) => {
+    const z = kdsZones.find((x) => x.id === id); if (!z) return;
+    const its = Array.isArray(z.items) ? z.items : [];
+    updateKdsZone(id, { items: its.includes(name) ? its.filter((c) => c !== name) : [...its, name] });
   };
   // A station routes an order by the item's SQUARE category (that's what a live
   // order line actually carries), so the picker must offer the real Square
@@ -3474,6 +3482,29 @@ export default function Admin({ onExit }) {
                               ))}
                             </div>
                           </>
+                        )}
+                        {/* Per-product assignment — split items in the same category
+                            across stations (e.g. some Lunch to Kitchen, some to FOH). */}
+                        <div className="muted" style={{ fontSize: 'var(--fs-xs)', margin: '12px 0 4px' }}>Specific products on this station (optional — overrides categories for these items)</div>
+                        {(z.items || []).length > 0 && (
+                          <div className="avail-chipwrap" style={{ marginBottom: 6 }}>
+                            {(z.items || []).map((nm) => (
+                              <button key={'sel:' + nm} type="button" className="chip on" onClick={() => toggleKdsZoneItem(z.id, nm)}>✓ {nm}</button>
+                            ))}
+                          </div>
+                        )}
+                        <input value={kdsProdFilter[z.id] || ''} onChange={(e) => setKdsProdFilter((f) => ({ ...f, [z.id]: e.target.value }))}
+                          placeholder="Search products to add…" style={{ width: '100%', padding: '7px 10px', border: '1px solid var(--line)', borderRadius: 8, fontSize: 'var(--fs-sm)', boxSizing: 'border-box' }} />
+                        {(kdsProdFilter[z.id] || '').trim().length >= 1 && (
+                          <div className="avail-chipwrap" style={{ maxHeight: 160, overflowY: 'auto', marginTop: 6 }}>
+                            {[...new Set(allProducts.map((p) => p.name).filter(Boolean))]
+                              .filter((nm) => nm.toLowerCase().includes((kdsProdFilter[z.id] || '').trim().toLowerCase()) && !(z.items || []).includes(nm))
+                              .slice(0, 40)
+                              .map((nm) => (
+                                <button key={'add:' + nm} type="button" className="chip" onClick={() => toggleKdsZoneItem(z.id, nm)}>+ {nm}</button>
+                              ))}
+                            {allProducts.length === 0 && <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>Loading products…</span>}
+                          </div>
                         )}
                       </div>
                     </div>
