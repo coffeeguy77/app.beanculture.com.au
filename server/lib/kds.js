@@ -44,11 +44,19 @@ function parseTicketMeta(order) {
   const note = (order.note || '').trim();
   const md = order.metadata || {};
   const appOrigin = /bean culture/i.test((order.source && order.source.name) || '');
-  const dineIn = /dine-?in/i.test(tn) || /dine-?in/i.test(note);
-  const tableM = tn.match(/^t\s*(\w+)/i) || note.match(/table\s*(\w+)/i);
-  // Named tables (e.g. "Shaun's Desk") aren't captured by the T<n> regex — the
-  // app stashes the raw table label in bc_booth, so fall back to that.
-  const table = tableM ? tableM[1] : (dineIn && md.bc_booth ? String(md.bc_booth).trim() : '');
+  // Dine-in: trust the explicit metadata flag first (set at order creation);
+  // only fall back to text-parsing for legacy/POS orders that lack it.
+  const dineIn = md.bc_dinein === '1' ? true
+    : md.bc_dinein === '0' ? false
+    : (/dine-?in/i.test(tn) || /dine-?in/i.test(note));
+  // Table only matters for dine-in. Prefer the raw label stashed in bc_booth
+  // (covers named tables like "Shaun's Desk"); the T<n> regex requires DIGITS so
+  // it can't wrongly grab "AKEAWAY" out of "TAKEAWAY".
+  let table = '';
+  if (dineIn) {
+    if (md.bc_booth) table = String(md.bc_booth).trim();
+    else { const tableM = tn.match(/^t\s*(\d+)/i) || note.match(/table\s*(\w+)/i); if (tableM) table = tableM[1]; }
+  }
   const fulfillment = (order.fulfillments || [])[0] || null;
   const recipient = fulfillment && fulfillment.pickup_details && fulfillment.pickup_details.recipient;
   // Ticket label, in priority order:
@@ -86,11 +94,18 @@ function buildTickets(orders, varCat, states, cfg, now = Date.now()) {
       categories: (varCat && varCat[li.catalog_object_id]) || [],
     }));
 
-    // Route line items to zones. The All lane always gets everything.
+    // Route line items to zones. The All lane always gets everything. A line
+    // goes to a station if its CATEGORY is on that station OR the specific
+    // PRODUCT is assigned to it (z.items — by product name). Per-product
+    // assignment lets breakfast/lunch be split across Kitchen and FOH even when
+    // the items share a category.
     const zoneItems = { [ALL_ZONE]: items };
     for (const z of zones) {
       const zcats = (z.categories || []).map((c) => String(c).toLowerCase());
-      const mine = items.filter((it) => it.categories.some((c) => zcats.includes(String(c).toLowerCase())));
+      const zitems = new Set((z.items || []).map((n) => String(n).trim().toLowerCase()));
+      const mine = items.filter((it) =>
+        it.categories.some((c) => zcats.includes(String(c).toLowerCase())) ||
+        zitems.has(String(it.name || '').trim().toLowerCase()));
       if (mine.length) zoneItems[z.id] = mine;
     }
 

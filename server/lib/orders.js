@@ -149,12 +149,16 @@ async function createOrder({ cart, dineIn, table, name, coupon, couponContext, c
   // shows only its own orders even when several app stores share ONE Square
   // location. bc_event isolates an event (for the stats page too); bc_free/
   // bc_booth mark complimentary ones for the "who got a free coffee" report.
-  if (appLocationId || eventId || holdForPayment || name || ((isComp || partialComp) && table)) {
+  if (appLocationId || eventId || holdForPayment || name || dineIn || ((isComp || partialComp) && table)) {
     order.metadata = { ...(order.metadata || {}) };
     if (appLocationId) order.metadata.bc_store = String(appLocationId).slice(0, 60);
     if (eventId) order.metadata.bc_event = String(eventId).slice(0, 60);
     if (isComp || partialComp) order.metadata.bc_free = 'event';
     if (table) order.metadata.bc_booth = String(table).slice(0, 60);
+    // Dine-in vs takeaway, stored EXPLICITLY (not parsed from the ticket text)
+    // so the kitchen screen always reads it right — this is what makes a table
+    // order show as "Dine-in · <table>" instead of Takeaway.
+    order.metadata.bc_dinein = dineIn ? '1' : '0';
     // The buyer's own name from app checkout, so the KDS can show a real name
     // instead of a random order code (parseTicketMeta reads bc_name first).
     if (name) order.metadata.bc_name = String(name).trim().slice(0, 60);
