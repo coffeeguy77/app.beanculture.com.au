@@ -40,13 +40,19 @@ function loadLayout() {
   catch { return { ...DEFAULT_LAYOUT }; }
 }
 
-export default function Kds({ onExit, embedded }) {
+export default function Kds({ onExit, embedded, location }) {
   const [pass, setPass] = useState(() => { try { return atob(localStorage.getItem('bc-admin-pass') || '') || ''; } catch { return ''; } });
   const [passInput, setPassInput] = useState('');
   const [needPass, setNeedPass] = useState(false);
   const [cfg, setCfg] = useState(null);
   const [zone, setZone] = useState(() => { try { return localStorage.getItem('bc-kds-zone') || ALL; } catch { return ALL; } });
-  const [kdsLoc, setKdsLoc] = useState(() => { try { return localStorage.getItem('bc-kds-location') || ''; } catch { return ''; } });
+  // When embedded inside the POS, the store is chosen once in the POS bar and
+  // passed down here — there is no second store selector on the KDS. Seed from
+  // that controlled location so the first load already targets the right store.
+  const [kdsLoc, setKdsLoc] = useState(() => {
+    if (embedded && location != null && location !== '') return location;
+    try { return localStorage.getItem('bc-kds-location') || ''; } catch { return ''; }
+  });
   const [tickets, setTickets] = useState([]);
   const [err, setErr] = useState('');
   const [now, setNow] = useState(Date.now());
@@ -141,6 +147,13 @@ export default function Kds({ onExit, embedded }) {
     loadConfig(pass).then((okk) => { if (okk) loadTickets(pass); });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Follow the POS-chosen store when embedded (single location selector lives in
+  // the POS settings). The kdsLoc-change effect below reloads config + tickets.
+  useEffect(() => {
+    if (embedded && location != null && location !== kdsLoc) setKdsLoc(location);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location, embedded]);
 
   // Live stream + safety poll + 1s age tick
   useEffect(() => {
@@ -318,7 +331,7 @@ export default function Kds({ onExit, embedded }) {
           })}
         </div>
         <div className="kds-top-right">
-          {(cfg.locations || []).length > 1 && (
+          {!embedded && (cfg.locations || []).length > 1 && (
             <select className="kds-locsel" value={kdsLoc} onChange={(e) => setKdsLoc(e.target.value)} title="Store">
               {cfg.locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
             </select>

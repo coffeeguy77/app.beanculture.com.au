@@ -3,6 +3,7 @@ import { api, formatMoney, imgUrl, comboDiscountFor } from '../api.js';
 import { useItemConfig, itemIsQuickAdd, buildQuickCartItem } from '../hooks/useItemConfig.js';
 import Kds from './Kds.jsx';
 import ComboModal from './ComboModal.jsx';
+import Logo from './Logo.jsx';
 
 // Kiosk POS + adaptive KDS (/pos). One authenticated staff screen that is a fast
 // counter register while a sale is being built and the live KDS the rest of the
@@ -147,7 +148,8 @@ export default function Pos({ onExit }) {
   const [busy, setBusy] = useState(false);
   const [success, setSuccess] = useState(null);    // { orderId, tender, change }
   const [cardPay, setCardPay] = useState(() => { try { return JSON.parse(localStorage.getItem('bc-pos-active-checkout') || 'null'); } catch { return null; } });
-  const [showSetup, setShowSetup] = useState(false);
+  const [showSetup, setShowSetup] = useState(false);    // card-terminal pairing modal
+  const [showSettings, setShowSettings] = useState(false); // the ⚙ settings sheet
   const [posLoc, setPosLoc] = useState(() => { try { return localStorage.getItem('bc-pos-location') || ''; } catch { return ''; } });
   const [cartOpen, setCartOpen] = useState(false); // mobile slide-over cart
   const returnTimer = useRef(null);
@@ -374,49 +376,56 @@ export default function Pos({ onExit }) {
   // The card reader for THIS store (per-location, else the default reader).
   const curTerm = (cfg.terminalByLocation && cfg.terminalByLocation[posLoc]) || { deviceId: cfg.terminalDeviceId, name: cfg.terminalName };
 
+  const activeStore = (cfg.locations || []).find((l) => l.id === posLoc);
+  const multiStore = (cfg.locations || []).length > 1;
+
+  // One task bar for the whole screen: brand · Register/KDS · Settings. The store
+  // picker, card terminal and exit all live behind the ⚙ settings sheet so there
+  // is a single location selector that drives both the register and the KDS.
   const header = (
     <header className="pos-header">
       {cfg.logoUrl
         ? <img className="pos-logo" src={imgUrl(cfg.logoUrl, 240)} alt={cfg.storeName || 'Bean Culture'} />
-        : <div className="pos-brand">BEAN CULTURE</div>}
-      <div className="pos-service">{dineIn ? 'Dine-in' : 'Takeaway'} · Now</div>
+        : <span className="pos-logo-mark"><Logo height={30} /></span>}
       <div className="pos-modeswitch">
         <button className={`pos-seg${mode === 'register' ? ' on' : ''}`}
           disabled={deviceMode === 'kds'}
-          onClick={() => setMode('register')}>Register</button>
-        <button className={`pos-seg${mode === 'kitchen' ? ' on' : ''}`}
-          onClick={() => { setConfiguring(null); setMode('kitchen'); }}>
-          Kitchen{cart.length ? <span className="pos-seg-badge">cart {cartCount(cart)}</span> : null}
+          onClick={() => { setConfiguring(null); setMode('register'); }}>
+          Register{cart.length ? <span className="pos-seg-badge">{cartCount(cart)}</span> : null}
         </button>
+        <button className={`pos-seg${mode === 'kitchen' ? ' on' : ''}`}
+          disabled={deviceMode === 'pos'}
+          onClick={() => { setConfiguring(null); setMode('kitchen'); }}>KDS</button>
       </div>
       <div className="pos-header-right">
-        {(cfg.locations || []).length > 1 && (
-          <select className="pos-locsel" value={posLoc} onChange={(e) => switchStore(e.target.value)} title="Store">
-            {cfg.locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
-          </select>
+        {multiStore && activeStore && (
+          <button className="pos-storepill" title="Change store" onClick={() => setShowSettings(true)}>
+            <span className="pos-storepill-dot">●</span>{activeStore.name}
+          </button>
         )}
-        <span className={`pos-term${curTerm.deviceId ? ' on' : ''}`} title="Card terminal">
-          ● {curTerm.deviceId ? (curTerm.name || 'Terminal ready') : 'No terminal'}
-        </span>
-        <span className="pos-staff">{cfg.staff || 'Staff'}</span>
-        <button className="pos-icon" title="POS setup" onClick={() => setShowSetup(true)}>⚙</button>
-        <button className="pos-icon" title="Exit POS" onClick={onExit}>✕</button>
+        <button className="pos-icon" title="Settings" onClick={() => setShowSettings(true)}>⚙</button>
       </div>
     </header>
   );
 
-  // ── Kitchen mode: the live KDS, hosted under the persistent POS header ──
+  // ── KDS mode: the live kitchen screen, hosted under the persistent POS header.
+  //    No second bar and no second store selector — the KDS follows the store
+  //    chosen in Settings, and "New order" is just the Register tab above. ──
   if (mode === 'kitchen') {
     return (
       <div className="pos-root">
         {header}
-        {deviceMode !== 'kds' && (
-          <div className="pos-kds-bar">
-            <button className="pos-btn primary big" onClick={() => setMode('register')}>+ New order</button>
-            {cart.length ? <span className="pos-kds-note">A parked cart of {cartCount(cart)} is waiting in Register.</span> : null}
-          </div>
+        <div className="pos-kds-host"><Kds embedded location={posLoc} onExit={() => setMode('register')} /></div>
+        {showSettings && (
+          <SettingsSheet
+            cfg={cfg} posLoc={posLoc} multiStore={multiStore} curTerm={curTerm}
+            onSwitchStore={switchStore} onOpenTerminal={() => { setShowSettings(false); setShowSetup(true); }}
+            onExit={onExit} onClose={() => setShowSettings(false)} />
         )}
-        <div className="pos-kds-host"><Kds embedded onExit={() => setMode('register')} /></div>
+        {showSetup && <TerminalSetup pass={pass} cfg={cfg} locationId={posLoc} curTerm={curTerm} onClose={() => setShowSetup(false)}
+          onSelected={(deviceId, name) => setCfg((c) => posLoc
+            ? ({ ...c, terminalByLocation: { ...(c.terminalByLocation || {}), [posLoc]: { deviceId, name } } })
+            : ({ ...c, terminalDeviceId: deviceId, terminalName: name }))} />}
       </div>
     );
   }
@@ -603,6 +612,14 @@ export default function Pos({ onExit }) {
         </div>
       )}
 
+      {/* Settings sheet — the single home for store, terminal and exit */}
+      {showSettings && (
+        <SettingsSheet
+          cfg={cfg} posLoc={posLoc} multiStore={multiStore} curTerm={curTerm}
+          onSwitchStore={switchStore} onOpenTerminal={() => { setShowSettings(false); setShowSetup(true); }}
+          onExit={onExit} onClose={() => setShowSettings(false)} />
+      )}
+
       {/* Terminal setup / pairing */}
       {showSetup && <TerminalSetup pass={pass} cfg={cfg} locationId={posLoc} curTerm={curTerm} onClose={() => setShowSetup(false)}
         onSelected={(deviceId, name) => setCfg((c) => posLoc
@@ -623,6 +640,52 @@ export default function Pos({ onExit }) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Settings sheet: the single home for the "major choices" — which store this
+//    screen is serving (one selector that drives both the register and the KDS),
+//    the card terminal, the signed-in staff, and exit. Opened from the ⚙ in the
+//    one top bar. ──
+function SettingsSheet({ cfg, posLoc, multiStore, curTerm, onSwitchStore, onOpenTerminal, onExit, onClose }) {
+  const storeName = (cfg.locations || []).find((l) => l.id === posLoc)?.name || '';
+  const termOn = !!(curTerm && curTerm.deviceId);
+  return (
+    <div className="pos-scrim" onClick={onClose}>
+      <div className="pos-settings" onClick={(e) => e.stopPropagation()}>
+        <div className="pos-settings-head">
+          <div className="pos-tender-title">Settings</div>
+          <button className="pos-icon" title="Close" onClick={onClose}>✕</button>
+        </div>
+
+        {multiStore && (
+          <div className="pos-set-block">
+            <div className="pos-set-label">Store</div>
+            <p className="pos-set-hint">The register and the kitchen screen both serve this store.</p>
+            <select className="pos-set-select" value={posLoc} onChange={(e) => onSwitchStore(e.target.value)}>
+              {(cfg.locations || []).map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+            </select>
+          </div>
+        )}
+
+        <div className="pos-set-block">
+          <div className="pos-set-label">Card terminal{storeName ? ` · ${storeName}` : ''}</div>
+          <div className="pos-set-row">
+            <span className={`pos-set-status${termOn ? ' on' : ''}`}>
+              ● {termOn ? (curTerm.name || 'Terminal ready') : 'No terminal paired'}
+            </span>
+            <button className="pos-btn primary" onClick={onOpenTerminal}>{termOn ? 'Manage' : 'Set up'}</button>
+          </div>
+        </div>
+
+        <div className="pos-set-block">
+          <div className="pos-set-label">Signed in</div>
+          <div className="pos-set-row"><span className="pos-set-status">{cfg.staff || 'Staff'}</span></div>
+        </div>
+
+        <button className="pos-btn ghost big pos-set-exit" onClick={onExit}>Exit POS</button>
+      </div>
     </div>
   );
 }

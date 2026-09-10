@@ -3466,7 +3466,29 @@ body:has(.store-shell) { background: var(--bc-canvas-deep, #160f12); }
 .pos-staff { color: rgba(255,255,255,.85); font-weight: 600; }
 .pos-locsel { background: rgba(0,0,0,.28); color: #fff; border: 1px solid rgba(255,255,255,.2); border-radius: 9px; padding: 6px 10px; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; max-width: 160px; }
 .pos-locsel option { color: #2a1620; }
-.pos-icon { width: 34px; height: 34px; border-radius: 9px; border: 1px solid rgba(255,255,255,.2); background: transparent; color: #fff; font-size: 16px; cursor: pointer; }
+.pos-icon { width: 34px; height: 34px; border-radius: 9px; border: 1px solid rgba(255,255,255,.2); background: transparent; color: #fff; font-size: 16px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+.pos-icon:hover { background: rgba(255,255,255,.1); }
+/* Proper Bean Culture wordmark, recoloured gold for the dark header */
+.pos-logo-mark { display: inline-flex; align-items: center; color: #e9b949; }
+/* Current-store pill in the one bar — a shortcut into Settings, not a 2nd selector */
+.pos-storepill { display: inline-flex; align-items: center; gap: 7px; font: inherit; font-size: 13px; font-weight: 700;
+  color: #fff; background: rgba(0,0,0,.28); border: 1px solid rgba(255,255,255,.2); border-radius: 999px; padding: 6px 14px; cursor: pointer; max-width: 200px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pos-storepill:hover { background: rgba(0,0,0,.4); }
+.pos-storepill-dot { color: #7fe0a6; font-size: 10px; }
+
+/* Settings sheet (⚙) — holds store, terminal, staff, exit */
+.pos-settings { background: var(--pos-surface); border-radius: 20px; padding: 22px; width: min(94vw, 440px); max-height: 88vh; overflow-y: auto; box-shadow: 0 30px 80px rgba(0,0,0,.4); }
+.pos-settings-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.pos-settings-head .pos-icon { border-color: var(--pos-line); color: var(--pos-muted); }
+.pos-settings-head .pos-icon:hover { background: var(--pos-surface2); }
+.pos-set-block { border: 1px solid var(--pos-line); background: var(--pos-surface2); border-radius: 14px; padding: 14px 16px; margin-top: 12px; }
+.pos-set-label { font-size: 12px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; color: var(--pos-muted); }
+.pos-set-hint { font-size: 13px; color: var(--pos-muted); margin: 4px 0 10px; }
+.pos-set-select { width: 100%; box-sizing: border-box; margin-top: 10px; padding: 12px 14px; font: inherit; font-size: 15px; font-weight: 700; color: var(--pos-ink); background: var(--pos-surface); border: 1.5px solid var(--pos-line); border-radius: 12px; cursor: pointer; }
+.pos-set-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 10px; }
+.pos-set-status { font-size: 14px; font-weight: 700; color: var(--pos-muted); }
+.pos-set-status.on { color: var(--pos-green); }
+.pos-set-exit { width: 100%; margin-top: 16px; }
 
 /* Body layout */
 .pos-body { flex: 1; display: flex; min-height: 0; }
