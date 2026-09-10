@@ -247,7 +247,8 @@ export default function Admin({ onExit }) {
   const [qrSize, setQrSize] = useState(190);
   const [analytics, setAnalytics] = useState(null);
   const [kdsEditLoc, setKdsEditLoc] = useState(''); // which location's Kitchen Screen is being configured ('' = default/all)
-  const [kdsProdFilter, setKdsProdFilter] = useState({}); // per-station product search text {zoneId: text}
+  const [kdsAdvanced, setKdsAdvanced] = useState({});   // per-station advanced mode {zoneId: bool}
+  const [kdsExpandCat, setKdsExpandCat] = useState({}); // which category is expanded per station {zoneId: catName}
   const [dashboard, setDashboard] = useState(null); // real sales + signups
   const [aDays, setADays] = useState(30);
   const [insCustomers, setInsCustomers] = useState(null); // loyalty members for Top customers
@@ -1227,12 +1228,21 @@ export default function Admin({ onExit }) {
     const cats = Array.isArray(z.categories) ? z.categories : [];
     updateKdsZone(id, { categories: cats.includes(name) ? cats.filter((c) => c !== name) : [...cats, name] });
   };
-  // Per-product assignment: route a specific product to this station (by name),
-  // so items in the same category can be split across Kitchen and FOH.
-  const toggleKdsZoneItem = (id, name) => {
+  // Advanced per-product: a station shows everything in its categories by
+  // default; unticking a product hides it from this station (adds to
+  // hiddenItems). Ticking it again removes it from the hidden list.
+  const isKdsItemHidden = (z, name) => Array.isArray(z.hiddenItems) && z.hiddenItems.includes(name);
+  const toggleKdsZoneHidden = (id, name) => {
     const z = kdsZones.find((x) => x.id === id); if (!z) return;
-    const its = Array.isArray(z.items) ? z.items : [];
-    updateKdsZone(id, { items: its.includes(name) ? its.filter((c) => c !== name) : [...its, name] });
+    const hid = Array.isArray(z.hiddenItems) ? z.hiddenItems : [];
+    updateKdsZone(id, { hiddenItems: hid.includes(name) ? hid.filter((c) => c !== name) : [...hid, name] });
+  };
+  // Products that belong to a given category, from the live catalog list.
+  const kdsProductsInCategory = (cat) => {
+    const c = String(cat || '').toLowerCase();
+    return allProducts
+      .filter((p) => (p.categories || (p.category ? [p.category] : [])).some((x) => String(x).toLowerCase() === c))
+      .map((p) => p.name).filter(Boolean);
   };
   // A station routes an order by the item's SQUARE category (that's what a live
   // order line actually carries), so the picker must offer the real Square
@@ -3483,27 +3493,46 @@ export default function Admin({ onExit }) {
                             </div>
                           </>
                         )}
-                        {/* Per-product assignment — split items in the same category
-                            across stations (e.g. some Lunch to Kitchen, some to FOH). */}
-                        <div className="muted" style={{ fontSize: 'var(--fs-xs)', margin: '12px 0 4px' }}>Specific products on this station (optional — overrides categories for these items)</div>
-                        {(z.items || []).length > 0 && (
-                          <div className="avail-chipwrap" style={{ marginBottom: 6 }}>
-                            {(z.items || []).map((nm) => (
-                              <button key={'sel:' + nm} type="button" className="chip on" onClick={() => toggleKdsZoneItem(z.id, nm)}>✓ {nm}</button>
-                            ))}
-                          </div>
-                        )}
-                        <input value={kdsProdFilter[z.id] || ''} onChange={(e) => setKdsProdFilter((f) => ({ ...f, [z.id]: e.target.value }))}
-                          placeholder="Search products to add…" style={{ width: '100%', padding: '7px 10px', border: '1px solid var(--line)', borderRadius: 8, fontSize: 'var(--fs-sm)', boxSizing: 'border-box' }} />
-                        {(kdsProdFilter[z.id] || '').trim().length >= 1 && (
-                          <div className="avail-chipwrap" style={{ maxHeight: 160, overflowY: 'auto', marginTop: 6 }}>
-                            {[...new Set(allProducts.map((p) => p.name).filter(Boolean))]
-                              .filter((nm) => nm.toLowerCase().includes((kdsProdFilter[z.id] || '').trim().toLowerCase()) && !(z.items || []).includes(nm))
-                              .slice(0, 40)
-                              .map((nm) => (
-                                <button key={'add:' + nm} type="button" className="chip" onClick={() => toggleKdsZoneItem(z.id, nm)}>+ {nm}</button>
-                              ))}
-                            {allProducts.length === 0 && <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>Loading products…</span>}
+                        {/* Advanced — fine-tune which PRODUCTS in this station's
+                            categories actually show here. Off by default: the
+                            station just gets everything in its categories. */}
+                        {(z.categories || []).length > 0 && (
+                          <div style={{ marginTop: 12, borderTop: '1px dashed var(--line)', paddingTop: 10 }}>
+                            <button type="button" className={`chip${kdsAdvanced[z.id] ? ' on' : ''}`} onClick={() => setKdsAdvanced((a) => ({ ...a, [z.id]: !a[z.id] }))}>
+                              {kdsAdvanced[z.id] ? '▾ Advanced (customising products)' : '▸ Advanced — pick individual products'}
+                            </button>
+                            {kdsAdvanced[z.id] && (
+                              <div style={{ marginTop: 8 }}>
+                                <p className="muted" style={{ fontSize: 'var(--fs-xs)', margin: '0 0 6px' }}>Click a category to open it, then untick any product you don&rsquo;t want on this station. Everything stays ticked (shown) unless you untick it.</p>
+                                {(z.categories || []).map((cat) => {
+                                  const open = kdsExpandCat[z.id] === cat;
+                                  const prods = open ? kdsProductsInCategory(cat) : [];
+                                  return (
+                                    <div key={'adv:' + cat} style={{ border: '1px solid var(--line)', borderRadius: 10, marginBottom: 6, overflow: 'hidden' }}>
+                                      <button type="button" onClick={() => setKdsExpandCat((e) => ({ ...e, [z.id]: open ? '' : cat }))}
+                                        style={{ width: '100%', textAlign: 'left', padding: '9px 12px', background: 'var(--admin-surface-2, #f7f2f4)', border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 'var(--fs-base)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <span>{open ? '▾' : '▸'} {cat}</span>
+                                        <span className="muted" style={{ fontSize: 'var(--fs-xs)', fontWeight: 400 }}>{(z.hiddenItems || []).filter((n) => kdsProductsInCategory(cat).includes(n)).length ? `${(z.hiddenItems || []).filter((n) => kdsProductsInCategory(cat).includes(n)).length} hidden` : 'all shown'}</span>
+                                      </button>
+                                      {open && (
+                                        <div style={{ padding: '8px 12px' }}>
+                                          {prods.length === 0 && <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>{allProducts.length === 0 ? 'Loading products…' : 'No products found in this category.'}</span>}
+                                          {prods.map((nm) => {
+                                            const hidden = isKdsItemHidden(z, nm);
+                                            return (
+                                              <label key={nm} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', cursor: 'pointer', opacity: hidden ? 0.5 : 1 }}>
+                                                <input type="checkbox" checked={!hidden} onChange={() => toggleKdsZoneHidden(z.id, nm)} />
+                                                <span style={{ fontSize: 'var(--fs-base)', textDecoration: hidden ? 'line-through' : 'none' }}>{nm}</span>
+                                              </label>
+                                            );
+                                          })}
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
