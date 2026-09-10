@@ -75,7 +75,17 @@ export default function Kds({ onExit, embedded, location }) {
   const seenRef = useRef(new Set());
   const firstLoad = useRef(true);
 
-  const zones = useMemo(() => [{ id: ALL, name: 'All orders' }, ...((cfg && cfg.zones) || [])], [cfg]);
+  // Station tabs. With a SINGLE station there's no point in "All orders" + the
+  // station name: show one tab named after the station. It's still the All lane
+  // underneath (so every order lands here even if a category wasn't routed —
+  // nothing is missed), just relabelled. A per-ticket "ALL" badge then flags any
+  // order carrying an item the station didn't match, so routing gaps get noticed.
+  const stationZones = useMemo(() => (cfg && cfg.zones) || [], [cfg]);
+  const singleStation = stationZones.length === 1;
+  const zones = useMemo(() => (
+    singleStation ? [{ id: ALL, name: stationZones[0].name }]
+      : [{ id: ALL, name: 'All orders' }, ...stationZones]
+  ), [singleStation, stationZones]);
   // If the chosen station doesn't exist at the newly-selected location, fall back
   // to All orders so the board never lands on an empty, non-existent station.
   useEffect(() => { if (zone !== ALL && !zones.some((z) => z.id === zone)) setZone(ALL); /* eslint-disable-next-line */ }, [zones]);
@@ -410,6 +420,11 @@ export default function Kds({ onExit, embedded, location }) {
           const lvl = levelOf(sec);
           const st = statusIn(t, zone);
           const items = t.zoneItems[zone] || [];
+          // Single-station catch-all: does this order carry an item the station's
+          // categories didn't match? If so it only showed because we catch every
+          // order — flag it so the routing gap can be fixed.
+          const stId = singleStation && stationZones[0] && stationZones[0].id;
+          const unrouted = stId && (t.zoneItems[ALL] || []).length > (t.zoneItems[stId] || []).length;
           return (
             <div key={t.orderId} className={`kds-card lvl-${lvl}${st === 'preparing' ? ' preparing' : ''}`}>
               <div className="kds-card-head">
@@ -417,6 +432,7 @@ export default function Kds({ onExit, embedded, location }) {
                   {label(t)}
                   {t.appOrigin && <span className="kds-badge origin">APP</span>}
                   {t.posOrigin && <span className="kds-badge pos">POS</span>}
+                  {unrouted && <span className="kds-badge unrouted" title="An item here didn’t match this station’s categories — check the station routing.">ALL</span>}
                   <span className={`kds-badge ${t.dineIn ? 'dinein' : 'takeaway'}`}>{t.dineIn ? (t.table ? (/^\d+$/.test(String(t.table).trim()) ? `T${t.table}` : t.table) : 'Dine-in') : 'Takeaway'}</span>
                 </div>
                 <div className={`kds-age lvl-${lvl}`}>{fmtAge(sec)}</div>

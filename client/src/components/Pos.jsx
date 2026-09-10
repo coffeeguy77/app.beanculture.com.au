@@ -397,7 +397,7 @@ export default function Pos({ onExit }) {
     returnTimer.current = setTimeout(() => { setSuccess(null); lastActivityRef.current = Date.now(); }, delay);
   }
 
-  async function submit(tenderType, cashGiven) {
+  async function submit(tenderType, cashGiven, reason) {
     if (!cart.length || busy) return;
     setBusy(true); setErr('');
     try {
@@ -412,6 +412,7 @@ export default function Pos({ onExit }) {
         locationId: posLoc || undefined,
         tender: tenderType,
         cashGiven: tenderType === 'cash' ? cashGiven : undefined,
+        reason: tenderType === 'unpaid' ? (reason || '').trim() : undefined,
       };
       const res = await api.posOrder(pass, payload);
       setTender(null);
@@ -487,6 +488,11 @@ export default function Pos({ onExit }) {
   // POS shows the Takeaway/Eat-in choice or locks to one.
   const storeFulfil = (((cfg.locations || []).find((l) => l.id === posLoc) || {}).fulfilment) || { dineIn: true, takeaway: true, reservations: true };
   const bothServices = storeFulfil.dineIn && storeFulfil.takeaway;
+  // Which payment methods this store offers (Settings → Payment methods).
+  const payMethods = (() => {
+    const m = (cfg.paymentsByLocation || {})[posLoc];
+    return { card: !m || m.card !== false, cash: !m || m.cash !== false, unpaid: !m || m.unpaid !== false };
+  })();
   const q = query.trim().toLowerCase();
   const activeItems = q
     ? cats.flatMap((c) => (c.items || []).map((it) => ({ ...it, category: c.category })))
@@ -522,11 +528,6 @@ export default function Pos({ onExit }) {
           onClick={() => { setConfiguring(null); setMode('kitchen'); }}>KDS</button>
       </div>
       <div className="pos-header-right">
-        {multiStore && activeStore && (
-          <button className="pos-storepill" title="Change store" onClick={() => setShowSettings(true)}>
-            <span className="pos-storepill-dot">●</span>{activeStore.name}
-          </button>
-        )}
         <button className="pos-icon" title="Settings" onClick={() => setShowSettings(true)}><IcoGear /></button>
       </div>
     </header>
@@ -714,8 +715,8 @@ export default function Pos({ onExit }) {
       {/* Tender overlay */}
       {tender && (
         <TenderOverlay tender={tender} setTender={setTender} total={total} currency={currency}
-          busy={busy} cardEnabled={!!curTerm.deviceId} cardSurchargePct={(cfg.surcharges && cfg.surcharges.card && cfg.surcharges.card.enabled) ? cfg.surcharges.card.percent : 0}
-          onCard={() => submit('card')} onCash={(given) => submit('cash', given)} onKitchen={() => submit('unpaid')} onClose={() => setTender(null)} />
+          busy={busy} methods={payMethods} cardEnabled={!!curTerm.deviceId} cardSurchargePct={(cfg.surcharges && cfg.surcharges.card && cfg.surcharges.card.enabled) ? cfg.surcharges.card.percent : 0}
+          onCard={() => submit('card')} onCash={(given) => submit('cash', given)} onKitchen={(reason) => submit('unpaid', undefined, reason)} onClose={() => setTender(null)} />
       )}
 
       {/* Card — Terminal waiting / result */}
@@ -947,10 +948,104 @@ function RefundModal({ pass, posLoc, hasPin, currency, onPinSet, onClose }) {
   );
 }
 
+// Cash-up / Today: tender totals (Card / Cash / Unpaid), a float you set to
+// balance the till, and a filterable order list you can drill into — including
+// the reason on any free/unpaid order.
+function CashUpModal({ pass, posLoc, currency, onClose }) {
+  const [data, setData] = useState(null);
+  const [err, setErr] = useState('');
+  const [filter, setFilter] = useState('all');
+  const [sel, setSel] = useState(null);
+  const floatKey = `bc-pos-float-${posLoc || 'main'}-${new Date().toISOString().slice(0, 10)}`;
+  const [floatStr, setFloatStr] = useState(() => { try { return localStorage.getItem(floatKey) || ''; } catch { return ''; } });
+  useEffect(() => { try { localStorage.setItem(floatKey, floatStr); } catch {} }, [floatKey, floatStr]);
+  useEffect(() => {
+    let alive = true;
+    api.posDay(pass, posLoc).then((d) => { if (alive) setData(d); }).catch((e) => { if (alive) setErr(e.message); });
+    return () => { alive = false; };
+  }, [pass, posLoc]);
+
+  const cur = (data && data.currency) || currency || 'AUD';
+  const t = data ? data.totals : null;
+  const floatCents = Math.round((parseFloat(floatStr) || 0) * 100);
+  const cashTake = t ? t.cash.v : 0;
+  const orders = data ? data.orders : [];
+  const shown = filter === 'all' ? orders : orders.filter((o) => o.tender === filter);
+  const chips = [['all', 'All'], ['card', 'Card'], ['cash', 'Cash'], ['unpaid', 'Unpaid']];
+
+  return (
+    <div className="pos-scrim" onClick={(e) => { e.stopPropagation(); onClose(); }} style={{ zIndex: 80 }}>
+      <div className="pos-settings" onClick={(e) => e.stopPropagation()}>
+        <div className="pos-settings-head"><div className="pos-tender-title">Cash-up · today</div><button className="pos-icon" onClick={onClose}><IcoX /></button></div>
+
+        {err && <div className="pos-err">{err}</div>}
+        {!data && !err && <p className="pos-set-hint">Loading today’s orders…</p>}
+
+        {sel ? (
+          <div className="pos-set-block">
+            <button className="pos-link" onClick={() => setSel(null)}>← Back</button>
+            <div className="pos-set-label" style={{ marginTop: 8 }}>{sel.name || `#${sel.orderId.slice(-4).toUpperCase()}`} · {sel.tender}</div>
+            <div className="pos-refund-items">
+              {sel.items.map((it, i) => (
+                <div key={i} className="pos-refund-item"><span className="pos-refund-item-name">{it.quantity}× {it.name}{it.variation ? ` · ${it.variation}` : ''}</span><span className="pos-refund-item-amt">{formatMoney(it.amount, cur)}</span></div>
+              ))}
+            </div>
+            <div className="pos-set-row"><span className="pos-set-status">Total</span><span className="pos-pulse-v">{formatMoney(sel.total, cur)}</span></div>
+            {sel.reason && <p className="pos-set-hint">Reason: <b>{sel.reason}</b></p>}
+            {sel.refunded > 0 && <p className="pos-set-hint">Refunded: {formatMoney(sel.refunded, cur)}</p>}
+          </div>
+        ) : data && (
+          <>
+            <div className="pos-pulse-grid" style={{ gridTemplateColumns: 'repeat(3,1fr)' }}>
+              <div className="pos-pulse-tile"><span className="pos-pulse-v">{formatMoney(t.card.v, cur)}</span><span className="pos-pulse-l">Card · {t.card.n}</span></div>
+              <div className="pos-pulse-tile"><span className="pos-pulse-v">{formatMoney(t.cash.v, cur)}</span><span className="pos-pulse-l">Cash · {t.cash.n}</span></div>
+              <div className="pos-pulse-tile"><span className="pos-pulse-v">{formatMoney(t.unpaid.v, cur)}</span><span className="pos-pulse-l">Unpaid · {t.unpaid.n}</span></div>
+            </div>
+
+            <div className="pos-set-block">
+              <div className="pos-set-label">Till float</div>
+              <p className="pos-set-hint">Set the cash you started the till with. At close, the till should hold the float plus cash takings.</p>
+              <input className="pos-set-select" inputMode="decimal" placeholder="Float, e.g. 200.00" value={floatStr} onChange={(e) => setFloatStr(e.target.value.replace(/[^\d.]/g, ''))} />
+              <div className="pos-set-row"><span className="pos-set-status">Cash takings</span><b>{formatMoney(cashTake, cur)}</b></div>
+              <div className="pos-set-row"><span className="pos-set-status">Till should hold</span><b className="pos-pulse-v">{formatMoney(floatCents + cashTake, cur)}</b></div>
+              <p className="pos-set-hint">Remove <b>{formatMoney(cashTake, cur)}</b> as takings; leave <b>{formatMoney(floatCents, cur)}</b> as the float.{t.refunds ? ` (${formatMoney(t.refunds, cur)} refunded today — deduct any cash refunds you paid out.)` : ''}</p>
+            </div>
+
+            <div className="pos-idle-opts">
+              {chips.map(([k, l]) => <button key={k} className={`pos-idle-opt${filter === k ? ' on' : ''}`} onClick={() => setFilter(k)}>{l}</button>)}
+            </div>
+            <div className="pos-refund-list" style={{ marginTop: 10 }}>
+              {shown.length === 0 && <p className="pos-set-hint">No orders.</p>}
+              {shown.map((o) => (
+                <button key={o.orderId} type="button" className="pos-refund-order" onClick={() => setSel(o)}>
+                  <span className="pos-refund-order-main">
+                    <b>{o.name || `#${o.orderId.slice(-4).toUpperCase()}`}{o.free ? ' · FREE' : ''}</b>
+                    <span className="muted">{new Date(o.createdAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} · {o.tender}{o.reason ? ` · ${o.reason}` : ''}</span>
+                  </span>
+                  <span className="pos-refund-order-amt">{formatMoney(o.total, cur)}</span>
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function SettingsSheet({ cfg, posLoc, multiStore, curTerm, theme, onTheme, idleSec, onIdle, pass, onSwitchStore, onOpenTerminal, onExit, onClose }) {
   const idleOpts = [{ v: 0, t: 'Never' }, { v: 30, t: '30s' }, { v: 60, t: '60s' }, { v: 120, t: '2 min' }, { v: 300, t: '5 min' }];
   const [showRefund, setShowRefund] = useState(false);
+  const [showCashUp, setShowCashUp] = useState(false);
   const [hasPin, setHasPin] = useState(!!cfg.hasManagerPin);
+  const [pm, setPm] = useState(() => { const x = (cfg.paymentsByLocation || {})[posLoc]; return { card: !x || x.card !== false, cash: !x || x.cash !== false, unpaid: !x || x.unpaid !== false }; });
+  const [pmErr, setPmErr] = useState('');
+  const togglePm = (k) => {
+    const next = { ...pm, [k]: !pm[k] };
+    if (!next.card && !next.cash && !next.unpaid) { setPmErr('Keep at least one method on.'); return; }
+    setPmErr(''); const prev = pm; setPm(next);
+    api.posSetPayments(pass, posLoc, next).catch((e) => { setPm(prev); setPmErr(e.message); });
+  };
   const storeName = (cfg.locations || []).find((l) => l.id === posLoc)?.name || '';
   const termOn = !!(curTerm && curTerm.deviceId);
   return (
@@ -1002,6 +1097,25 @@ function SettingsSheet({ cfg, posLoc, multiStore, curTerm, theme, onTheme, idleS
         <PosStorePulse posLoc={posLoc} storeName={storeName} />
 
         <div className="pos-set-block">
+          <div className="pos-set-label">Cash-up</div>
+          <div className="pos-set-row">
+            <span className="pos-set-status">Today’s takings, filter &amp; till balance</span>
+            <button className="pos-btn primary" onClick={() => setShowCashUp(true)}>Open cash-up</button>
+          </div>
+        </div>
+
+        <div className="pos-set-block">
+          <div className="pos-set-label">Payment methods{storeName ? ` · ${storeName}` : ''}</div>
+          <p className="pos-set-hint">Which ways this store takes payment at the counter.</p>
+          <div className="pos-idle-opts">
+            {[['card', 'Card — Terminal'], ['cash', 'Cash'], ['unpaid', 'Send to kitchen']].map(([k, label]) => (
+              <button key={k} type="button" className={`pos-idle-opt${pm[k] ? ' on' : ''}`} onClick={() => togglePm(k)}>{label}</button>
+            ))}
+          </div>
+          {pmErr && <div className="pos-err">{pmErr}</div>}
+        </div>
+
+        <div className="pos-set-block">
           <div className="pos-set-label">Card terminal{storeName ? ` · ${storeName}` : ''}</div>
           <div className="pos-set-row">
             <span className={`pos-set-status${termOn ? ' on' : ''}`}>
@@ -1020,11 +1134,6 @@ function SettingsSheet({ cfg, posLoc, multiStore, curTerm, theme, onTheme, idleS
           </div>
         </div>
 
-        <div className="pos-set-block">
-          <div className="pos-set-label">Signed in</div>
-          <div className="pos-set-row"><span className="pos-set-status">{cfg.staff || 'Staff'}</span></div>
-        </div>
-
         <button className="pos-btn ghost big pos-set-exit" onClick={onExit}>Exit POS</button>
       </div>
 
@@ -1032,13 +1141,18 @@ function SettingsSheet({ cfg, posLoc, multiStore, curTerm, theme, onTheme, idleS
         <RefundModal pass={pass} posLoc={posLoc} hasPin={hasPin} currency={cfg.currency || 'AUD'}
           onPinSet={() => setHasPin(true)} onClose={() => setShowRefund(false)} />
       )}
+      {showCashUp && (
+        <CashUpModal pass={pass} posLoc={posLoc} currency={cfg.currency || 'AUD'} onClose={() => setShowCashUp(false)} />
+      )}
     </div>
   );
 }
 
 // ── Tender: choose method, then cash keypad with change ──
-function TenderOverlay({ tender, setTender, total, currency, busy, cardEnabled, cardSurchargePct, onCard, onCash, onKitchen, onClose }) {
+function TenderOverlay({ tender, setTender, total, currency, busy, methods, cardEnabled, cardSurchargePct, onCard, onCash, onKitchen, onClose }) {
   const [given, setGiven] = useState(0);
+  const [reason, setReason] = useState('');
+  const m = methods || { card: true, cash: true, unpaid: true };
   const change = Math.max(0, given - total);
   // Suggested notes: exact, next round $ up, and common AUD notes above total.
   const roundUp = (n) => Math.ceil(total / (n * 100)) * n * 100;
@@ -1052,21 +1166,40 @@ function TenderOverlay({ tender, setTender, total, currency, busy, cardEnabled, 
           <>
             <div className="pos-tender-title">Take payment · {formatMoney(total, currency)}</div>
             <div className="pos-tender-methods">
-              <button className={`pos-tender-method${cardEnabled ? '' : ' disabled'}`} disabled={!cardEnabled || busy}
-                title={cardEnabled ? '' : 'Pair a Square Terminal in POS setup (⚙)'} onClick={onCard}>
-                <span className="pos-tender-m-name">Card — Terminal</span>
-                <span className="pos-tender-m-sub">{cardEnabled ? (cardSurchargePct > 0 ? `Tap, insert or swipe · +${cardSurchargePct}% surcharge` : 'Tap, insert or swipe') : 'No terminal paired'}</span>
-              </button>
-              <button className="pos-tender-method" onClick={() => setTender('cash')}>
-                <span className="pos-tender-m-name">Cash</span>
-                <span className="pos-tender-m-sub">Tender &amp; change</span>
-              </button>
-              <button className="pos-tender-method" disabled={busy} onClick={onKitchen}>
-                <span className="pos-tender-m-name">Send to kitchen</span>
-                <span className="pos-tender-m-sub">Unpaid open order</span>
-              </button>
+              {m.card && (
+                <button className={`pos-tender-method${cardEnabled ? '' : ' disabled'}`} disabled={!cardEnabled || busy}
+                  title={cardEnabled ? '' : 'Pair a Square Terminal in POS setup (⚙)'} onClick={onCard}>
+                  <span className="pos-tender-m-name">Card — Terminal</span>
+                  <span className="pos-tender-m-sub">{cardEnabled ? (cardSurchargePct > 0 ? `Tap, insert or swipe · +${cardSurchargePct}% surcharge` : 'Tap, insert or swipe') : 'No terminal paired'}</span>
+                </button>
+              )}
+              {m.cash && (
+                <button className="pos-tender-method" onClick={() => setTender('cash')}>
+                  <span className="pos-tender-m-name">Cash</span>
+                  <span className="pos-tender-m-sub">Tender &amp; change</span>
+                </button>
+              )}
+              {m.unpaid && (
+                <button className="pos-tender-method" disabled={busy} onClick={() => setTender('unpaid')}>
+                  <span className="pos-tender-m-name">Send to kitchen</span>
+                  <span className="pos-tender-m-sub">Unpaid / free — needs a reason</span>
+                </button>
+              )}
             </div>
             <button className="pos-link" onClick={onClose}>Cancel</button>
+          </>
+        )}
+        {tender === 'unpaid' && (
+          <>
+            <div className="pos-tender-title">Send to kitchen · unpaid</div>
+            <p className="pos-set-hint" style={{ margin: '0 0 10px' }}>This order won’t be charged. Note why so free coffees stay accountable (they still cost cup + materials).</p>
+            <input className="pos-set-select" autoFocus placeholder="Reason (e.g. staff coffee, remake, comp)" value={reason} onChange={(e) => setReason(e.target.value)} />
+            <div className="pos-tender-actions" style={{ marginTop: 12 }}>
+              <button className="pos-btn ghost" onClick={() => setTender('choose')}>Back</button>
+              <button className="pos-btn primary big" disabled={busy || !reason.trim()} onClick={() => onKitchen(reason.trim())}>
+                {busy ? 'Sending…' : 'Send to kitchen'}
+              </button>
+            </div>
           </>
         )}
         {tender === 'cash' && (

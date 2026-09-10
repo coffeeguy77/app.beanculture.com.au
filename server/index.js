@@ -1318,8 +1318,78 @@ app.get('/api/pos/config', (req, res) => {
     terminalName: p.terminalName || '',
     terminalByLocation: p.terminalByLocation || {},
     hasManagerPin: !!p.managerPin,   // refunds require a manager PIN; is one set?
+    paymentsByLocation: p.paymentsByLocation || {}, // per-store {card,cash,unpaid}
     dbEnabled: db.enabled,
   });
+});
+
+// Enable/disable the payment methods a store's POS offers (Card / Cash / Unpaid).
+app.post('/api/pos/payments', async (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  if (!db.enabled) return res.status(400).json({ error: 'A database is required to save payment methods.' });
+  try {
+    const { locationId, payments } = req.body || {};
+    if (!locationId) return res.status(400).json({ error: 'Missing store.' });
+    const p = payments || {};
+    const clean = { card: p.card !== false, cash: p.cash !== false, unpaid: p.unpaid !== false };
+    if (!clean.card && !clean.cash && !clean.unpaid) return res.status(400).json({ error: 'At least one payment method must stay on.' });
+    const ov = db.getOverrides() || {};
+    ov.pos = ov.pos || {};
+    ov.pos.paymentsByLocation = { ...(ov.pos.paymentsByLocation || {}), [locationId]: clean };
+    await db.saveOverrides(ov);
+    res.json({ ok: true, payments: clean });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+// Today's orders for the store, for the cash-up panel: tender, amount, refund,
+// items and (for unpaid/comp) the reason. The client tallies Card/Cash/Unpaid,
+// filters, and drills into an order.
+app.get('/api/pos/day', async (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const squareLocationId = locations.squareIdFor(req.query.location);
+    const tz = (getSettings().contact && getSettings().contact.timezone) || 'Australia/Sydney';
+    const today = dayInTz(new Date().toISOString(), tz);
+    const startAt = new Date(Date.now() - 26 * 3600 * 1000).toISOString(); // cover the whole local day
+    const data = await sq.squareFetch('/v2/orders/search', {
+      method: 'POST',
+      body: {
+        location_ids: [squareLocationId],
+        query: {
+          filter: { date_time_filter: { created_at: { start_at: startAt } }, state_filter: { states: ['COMPLETED', 'OPEN'] } },
+          sort: { sort_field: 'CREATED_AT', sort_order: 'DESC' },
+        },
+        limit: 200,
+      },
+    });
+    const orders = [];
+    for (const o of (data.orders || [])) {
+      if (o.state === 'CANCELED') continue;
+      if (dayInTz(o.created_at, tz) !== today) continue;   // only today (local)
+      const md = o.metadata || {};
+      const total = (o.total_money && o.total_money.amount) || 0;
+      const refunded = (o.refunds || []).filter((r) => (r.status || '').toUpperCase() !== 'REJECTED').reduce((s, r) => s + ((r.amount_money && r.amount_money.amount) || 0), 0);
+      const tenders = o.tenders || [];
+      // Classify: an OPEN order with no tender is an unpaid "send to kitchen".
+      let tender = 'unpaid';
+      if (tenders.length) {
+        const t0 = (tenders[0].type || '').toUpperCase();
+        tender = t0 === 'CASH' ? 'cash' : (t0 === 'CARD' || t0 === 'SQUARE_GIFT_CARD' || t0 === 'WALLET') ? 'card' : 'card';
+      }
+      orders.push({
+        orderId: o.id, createdAt: o.created_at,
+        tender, total, refunded,
+        source: (o.source && o.source.name) || 'Square',
+        name: md.bc_name || o.ticket_name || '',
+        reason: md.bc_reason || '',
+        free: total === 0 || md.bc_free === 'event',
+        items: (o.line_items || []).map((li) => ({ name: li.name || 'Item', variation: li.variation_name || '', quantity: li.quantity || '1', amount: (li.total_money && li.total_money.amount) || 0 })),
+      });
+    }
+    const tot = { card: { n: 0, v: 0 }, cash: { n: 0, v: 0 }, unpaid: { n: 0, v: 0 }, refunds: 0 };
+    for (const o of orders) { tot[o.tender].n += 1; tot[o.tender].v += o.total; tot.refunds += o.refunded; }
+    res.json({ date: today, currency: sq.CURRENCY, orders, totals: tot });
+  } catch (e) { res.status(502).json({ error: e.message }); }
 });
 
 // Set or change the manager PIN that gates refunds. First-time set is open (an
@@ -1415,7 +1485,7 @@ app.post('/api/pos/refund', async (req, res) => {
 app.post('/api/pos/order', async (req, res) => {
   if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
   try {
-    const { cart, dineIn, table, name, tender, cashGiven, locationId } = req.body || {};
+    const { cart, dineIn, table, name, tender, cashGiven, locationId, reason } = req.body || {};
     if (!Array.isArray(cart) || cart.length === 0) return res.status(400).json({ error: 'Cart is empty' });
     if (!['cash', 'unpaid', 'card'].includes(tender)) return res.status(400).json({ error: 'Unsupported tender' });
     const pos = getSettings().pos || {};
@@ -1436,6 +1506,7 @@ app.post('/api/pos/order', async (req, res) => {
       freeCategories: posFreeCategories,
       eventId: posEvLoc && posEvLoc.type === 'event' ? posEvLoc.id : undefined,
       appLocationId: posEvLoc ? posEvLoc.id : undefined,
+      reason: (tender === 'unpaid' || locations.isFree(locationId)) ? reason : undefined,
       // Card orders are held OFF the kitchen screen until the Terminal payment
       // completes — so a cancelled/declined card checkout never reaches the
       // kitchen (same as app orders). Cash/unpaid are intentional sends and show
@@ -1687,13 +1758,18 @@ app.get('/api/admin/kds/tickets', async (req, res) => {
 async function notifyOrderReady(orderId) {
   try {
     const order = await orders.getOrder(orderId);
-    if (!order || !order.customer_id) return;              // walk-in / no contact
-    const cust = await customers.get(order.customer_id);
-    if (!cust) return;
-    const phone = cust.phone_number || '';
-    const email = cust.email_address || '';
+    if (!order) return;
+    // Prefer the Square customer's contact; fall back to a phone/email captured
+    // on the order itself (bc_phone/bc_email) so a guest / walk-around-QR order
+    // that gave a number can still be told it's ready.
+    const md = order.metadata || {};
+    let cust = null;
+    if (order.customer_id) cust = await customers.get(order.customer_id).catch(() => null);
+    const phone = (cust && cust.phone_number) || md.bc_phone || '';
+    const email = (cust && cust.email_address) || md.bc_email || '';
+    if (!phone && !email) return;                          // no way to reach them
     const store = getSettings().storeName || 'Bean Culture';
-    const who = (order.metadata && order.metadata.bc_name) || cust.given_name || '';
+    const who = md.bc_name || (cust && cust.given_name) || '';
     const msg = `${who ? who + ', y' : 'Y'}our ${store} order is ready for collection ☕`;
     if (phone && notify.smsConfigured) { await notify.sendSMS(phone, msg); return; }
     if (email && notify.emailConfigured) { await notify.sendEmail(email, `Your ${store} order is ready`, msg); return; }

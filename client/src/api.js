@@ -92,6 +92,8 @@ export const api = {
   posRecentOrders: (pass, locationId) => req(`/api/pos/recent-orders?pass=${encodeURIComponent(pass || '')}${locationId ? `&location=${encodeURIComponent(locationId)}` : ''}`),
   posRefund: (pass, payload) => req(`/api/pos/refund?pass=${encodeURIComponent(pass || '')}`, { method: 'POST', body: JSON.stringify(payload) }),
   posSetManagerPin: (pass, pin, currentPin) => req(`/api/pos/manager-pin?pass=${encodeURIComponent(pass || '')}`, { method: 'POST', body: JSON.stringify({ pin, currentPin }) }),
+  posSetPayments: (pass, locationId, payments) => req(`/api/pos/payments?pass=${encodeURIComponent(pass || '')}`, { method: 'POST', body: JSON.stringify({ locationId, payments }) }),
+  posDay: (pass, locationId) => req(`/api/pos/day?pass=${encodeURIComponent(pass || '')}${locationId ? `&location=${encodeURIComponent(locationId)}` : ''}`),
 };
 
 // Serve Cloudinary images auto-format (WebP/AVIF), auto-quality and sized to the

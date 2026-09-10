@@ -37,7 +37,7 @@ function buildNote({ dineIn, table }) {
   return dineIn ? `DINE-IN · ${tableLabel(table) || '?'}` : 'TAKEAWAY';
 }
 
-async function createOrder({ cart, dineIn, table, name, coupon, couponContext, customerId, pickupAt, idempotencyKey, note: customerNote, pifVoucher, source, squareLocationId, cardPayment, free, freeCategories, shipping, eventId, appLocationId, src, holdForPayment }) {
+async function createOrder({ cart, dineIn, table, name, coupon, couponContext, customerId, pickupAt, idempotencyKey, note: customerNote, pifVoucher, source, squareLocationId, cardPayment, free, freeCategories, shipping, eventId, appLocationId, src, reason, holdForPayment }) {
   const LOC = squareLocationId || LOCATION_ID;
   if (!Array.isArray(cart) || cart.length === 0) throw new Error('Cart is empty');
   // Bake any per-combo locked modifiers into the combo lines before pricing, so
@@ -149,8 +149,11 @@ async function createOrder({ cart, dineIn, table, name, coupon, couponContext, c
   // shows only its own orders even when several app stores share ONE Square
   // location. bc_event isolates an event (for the stats page too); bc_free/
   // bc_booth mark complimentary ones for the "who got a free coffee" report.
-  if (appLocationId || eventId || holdForPayment || name || dineIn || src || ((isComp || partialComp) && table)) {
+  if (appLocationId || eventId || holdForPayment || name || dineIn || src || reason || ((isComp || partialComp) && table)) {
     order.metadata = { ...(order.metadata || {}) };
+    // Why an order was given away / left unpaid — surfaced on the cash-up screen
+    // so free coffees are accountable (they still cost cup + materials).
+    if (reason) order.metadata.bc_reason = String(reason).slice(0, 120);
     if (appLocationId) order.metadata.bc_store = String(appLocationId).slice(0, 60);
     if (eventId) order.metadata.bc_event = String(eventId).slice(0, 60);
     // How the customer arrived — 'qr' means the walk-around QR (store in the
