@@ -443,6 +443,10 @@ export default function Admin({ onExit }) {
     if (tab === 'smartcampaigns' && weatherStatus === null && !weatherBusy) loadWeather();
     if (tab === 'availability' && offeredIds === null) loadOfferedIds();
     if (tab === 'locations') { if (offeredIds === null) loadOfferedIds(); if (!sqLocations.length) loadSquareLocations(); }
+    // The KDS Advanced drill-down lists products by their menu SECTION, so it
+    // needs the offered menu (Breakfast/Lunch/Smoothies are sections, not Square
+    // categories — the raw product list can't resolve them).
+    if (tab === 'kds' && offeredIds === null) loadOfferedIds();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
   useEffect(() => {
@@ -1237,31 +1241,18 @@ export default function Admin({ onExit }) {
     const hid = Array.isArray(z.hiddenItems) ? z.hiddenItems : [];
     updateKdsZone(id, { hiddenItems: hid.includes(name) ? hid.filter((c) => c !== name) : [...hid, name] });
   };
-  // Products that belong to a given category OR app section. Coffee/Coffee Bags
-  // are real Square categories (found via allProducts). Breakfast/Lunch/Smoothies
-  // are Product-Builder sections (productSections) or preset sections, whose
-  // members live in settings — resolve those too, so the drill-down lists every
-  // item just like the storefront does.
+  // Products in a given menu SECTION, taken from the offered menu itself — the
+  // exact grouping the storefront shows (Coffee, Coffee Bags, Breakfast, Lunch,
+  // Smoothies …). The offered list tags each item with its section as .category,
+  // so this resolves app sections that aren't Square categories. Falls back to
+  // the raw Square product list only if the offered menu hasn't loaded.
   const kdsProductsInCategory = (cat) => {
     const c = String(cat || '').trim().toLowerCase();
-    const byId = new Map(allProducts.map((p) => [p.id, p.name]));
+    const src = (Array.isArray(offeredList) && offeredList.length) ? offeredList : allProducts;
     const out = [];
-    // Real Square category members
-    for (const p of allProducts) {
-      if ((p.categories || (p.category ? [p.category] : [])).some((x) => String(x).toLowerCase() === c)) out.push(p.name);
-    }
-    // Product-Builder section members (hand-picked real items)
-    for (const ps of productSections) {
-      if (String(ps.name || '').trim().toLowerCase() === c) {
-        for (const id of (ps.items || [])) { const nm = byId.get(id); if (nm) out.push(nm); }
-      }
-    }
-    // Preset section members (Product Builder tiles)
-    for (const p of (s?.presets || [])) {
-      if (String(p.section || '').trim().toLowerCase() === c) {
-        const nm = p.label || byId.get(p.sourceItemId);
-        if (nm) out.push(nm);
-      }
+    for (const p of src) {
+      const cats = p.category ? [p.category] : (p.categories || []);
+      if (cats.some((x) => String(x).toLowerCase() === c)) out.push(p.name);
     }
     return [...new Set(out.filter(Boolean))];
   };
