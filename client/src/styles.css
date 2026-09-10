@@ -3574,6 +3574,10 @@ body:has(.store-shell) { background: var(--bc-canvas-deep, #160f12); }
 .pos-fulfil-row { display: flex; gap: 8px; }
 .pos-chip { flex: 1; border: 1px solid var(--pos-line); background: var(--pos-surface2); color: var(--pos-ink); border-radius: 10px; padding: 10px; font: inherit; font-weight: 700; font-size: 14px; cursor: pointer; }
 .pos-chip.on { background: var(--pos-on-bg); border-color: var(--pos-on-bd); color: var(--pos-accent); }
+/* Single-service store: a static label instead of the Takeaway/Eat-in toggle */
+.pos-fulfil-solo { display: flex; align-items: baseline; gap: 8px; padding: 10px 12px; border-radius: 10px;
+  background: var(--pos-on-bg); border: 1px solid var(--pos-on-bd); color: var(--pos-accent); font-weight: 800; font-size: 14px; }
+.pos-fulfil-solo span { font-weight: 600; font-size: 12px; color: var(--pos-muted); text-transform: none; }
 .pos-name { flex: 1; min-width: 0; }
 .pos-table { width: 76px; }
 .pos-name, .pos-table { padding: 10px 12px; border: 1px solid var(--pos-line); border-radius: 10px; font: inherit; font-size: 14px; background: var(--pos-surface); }

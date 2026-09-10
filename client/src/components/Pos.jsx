@@ -207,6 +207,17 @@ export default function Pos({ onExit }) {
 
   useEffect(() => { try { localStorage.setItem(CART_KEY, JSON.stringify(cart)); } catch {} }, [cart]);
   useEffect(() => { try { localStorage.setItem(THEME_KEY, theme); } catch {} }, [theme]);
+
+  // Keep the order type valid for the selected store's Order-types setting
+  // (admin/stores). A takeaway-only store (e.g. Tulip Farm) can never sit on a
+  // stale "Eat in"; a dine-in-only store forces Eat in. Mirrors the customer app.
+  useEffect(() => {
+    const f = (((cfg && cfg.locations) || []).find((l) => l.id === posLoc) || {}).fulfilment;
+    if (!f) return;
+    if (dineIn && !f.dineIn) setDineIn(false);
+    else if (!dineIn && !f.takeaway && f.dineIn) setDineIn(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cfg, posLoc]);
   useEffect(() => () => { if (returnTimer.current) clearTimeout(returnTimer.current); }, []);
 
   // ── Cart operations (dedupe by key; decrement-to-zero removes) ──
@@ -376,6 +387,10 @@ export default function Pos({ onExit }) {
   if (!cfg || !menu) return <div className="pos-root pos-center" data-theme={theme}><div className="pos-spinner" /></div>;
 
   const cats = menu.categories || [];
+  // The selected store's offered order types (admin/stores). Drives whether the
+  // POS shows the Takeaway/Eat-in choice or locks to one.
+  const storeFulfil = (((cfg.locations || []).find((l) => l.id === posLoc) || {}).fulfilment) || { dineIn: true, takeaway: true, reservations: true };
+  const bothServices = storeFulfil.dineIn && storeFulfil.takeaway;
   const q = query.trim().toLowerCase();
   const activeItems = q
     ? cats.flatMap((c) => (c.items || []).map((it) => ({ ...it, category: c.category })))
@@ -508,10 +523,15 @@ export default function Pos({ onExit }) {
 
           {!configureMode && (
             <div className="pos-fulfil">
-              <div className="pos-fulfil-row">
-                <button className={`pos-chip${!dineIn ? ' on' : ''}`} onClick={() => setDineIn(false)}>Takeaway</button>
-                <button className={`pos-chip${dineIn ? ' on' : ''}`} onClick={() => setDineIn(true)}>Eat in</button>
-              </div>
+              {bothServices ? (
+                <div className="pos-fulfil-row">
+                  <button className={`pos-chip${!dineIn ? ' on' : ''}`} onClick={() => setDineIn(false)}>Takeaway</button>
+                  <button className={`pos-chip${dineIn ? ' on' : ''}`} onClick={() => setDineIn(true)}>Eat in</button>
+                </div>
+              ) : (
+                // This store only offers one service type — show it, don't ask.
+                <div className="pos-fulfil-solo">{dineIn ? 'Eat in' : 'Takeaway'}<span>{storeFulfil.dineIn ? 'dine-in only at this store' : 'takeaway only at this store'}</span></div>
+              )}
               <div className="pos-fulfil-row">
                 <input className="pos-name" placeholder={dineIn ? 'Name (optional)' : 'Customer name'} value={orderName} onChange={(e) => setOrderName(e.target.value)} />
                 {dineIn && <input className="pos-table" placeholder="Table" value={table} onChange={(e) => setTable(e.target.value)} />}
