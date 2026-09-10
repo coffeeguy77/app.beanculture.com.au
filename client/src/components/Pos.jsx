@@ -581,6 +581,7 @@ export default function Pos({ onExit }) {
             theme={theme} onTheme={setTheme}
             idleSec={kdsIdleSec != null ? kdsIdleSec : (cfg && cfg.kdsIdleSec != null ? cfg.kdsIdleSec : 60)} onIdle={setKdsIdleSec}
             pass={pass}
+            onPayments={(loc, next) => setCfg((c) => ({ ...c, paymentsByLocation: { ...(c.paymentsByLocation || {}), [loc]: next } }))}
             onSwitchStore={switchStore} onOpenTerminal={() => { setShowSettings(false); setShowSetup(true); }}
             onExit={onExit} onClose={() => setShowSettings(false)} />
         )}
@@ -786,6 +787,7 @@ export default function Pos({ onExit }) {
           theme={theme} onTheme={setTheme}
           idleSec={kdsIdleSec != null ? kdsIdleSec : (cfg && cfg.kdsIdleSec != null ? cfg.kdsIdleSec : 60)} onIdle={setKdsIdleSec}
           pass={pass}
+          onPayments={(loc, next) => setCfg((c) => ({ ...c, paymentsByLocation: { ...(c.paymentsByLocation || {}), [loc]: next } }))}
           onSwitchStore={switchStore} onOpenTerminal={() => { setShowSettings(false); setShowSetup(true); }}
           onExit={onExit} onClose={() => setShowSettings(false)} />
       )}
@@ -1080,7 +1082,7 @@ function CashUpModal({ pass, posLoc, currency, onClose }) {
   );
 }
 
-function SettingsSheet({ cfg, posLoc, multiStore, curTerm, theme, onTheme, idleSec, onIdle, pass, onSwitchStore, onOpenTerminal, onExit, onClose }) {
+function SettingsSheet({ cfg, posLoc, multiStore, curTerm, theme, onTheme, idleSec, onIdle, pass, onPayments, onSwitchStore, onOpenTerminal, onExit, onClose }) {
   const idleOpts = [{ v: 0, t: 'Never' }, { v: 30, t: '30s' }, { v: 60, t: '60s' }, { v: 120, t: '2 min' }, { v: 300, t: '5 min' }];
   const [showRefund, setShowRefund] = useState(false);
   const [showCashUp, setShowCashUp] = useState(false);
@@ -1091,7 +1093,8 @@ function SettingsSheet({ cfg, posLoc, multiStore, curTerm, theme, onTheme, idleS
     const next = { ...pm, [k]: !pm[k] };
     if (!next.card && !next.cash && !next.unpaid) { setPmErr('Keep at least one method on.'); return; }
     setPmErr(''); const prev = pm; setPm(next);
-    api.posSetPayments(pass, posLoc, next).catch((e) => { setPm(prev); setPmErr(e.message); });
+    onPayments && onPayments(posLoc, next);   // live-update the tender screen (no reload)
+    api.posSetPayments(pass, posLoc, next).catch((e) => { setPm(prev); setPmErr(e.message); onPayments && onPayments(posLoc, prev); });
   };
   const storeName = (cfg.locations || []).find((l) => l.id === posLoc)?.name || '';
   const termOn = !!(curTerm && curTerm.deviceId);

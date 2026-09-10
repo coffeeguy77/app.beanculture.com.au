@@ -4,8 +4,10 @@ import ScheduleWhen from './ScheduleWhen.jsx';
 
 export default function OrderTypeBar({ dineIn, setDineIn, table, setTable, lock, onUnlock, onScanned, when, setWhen, at, setAt, hours, onReserve, allowDineIn = true, allowTakeaway = true, dineInLabel = 'Dine in' }) {
   const storeOpen = hours?.open !== false;
-  // Stage 2 — scanned: prominent solid pill only, no toggle.
-  if (lock >= 2 && dineIn && table) {
+  // Stage 2 — scanned: prominent solid pill only, no toggle. But NEVER at a
+  // takeaway-only store: a scanned table/desk QR there must not force dine-in
+  // (the parent also flips dineIn→false), so fall through to the takeaway view.
+  if (lock >= 2 && dineIn && table && allowDineIn) {
     return (
       <section className="ordertype">
         <TableLockPill table={table} onUnlock={onUnlock} />

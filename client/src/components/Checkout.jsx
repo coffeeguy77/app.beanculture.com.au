@@ -195,7 +195,12 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
   // move off the table — without clobbering a coupon they typed by hand. The
   // available tables are resolved server-side per signed-in phone (loyalty).
   const myCustomTables = loyalty?.customTables || [];
-  const autoCoupon = (myCustomTables.find((t) => t && t.label === table) || {}).coupon || '';
+  // Prefer the coupon on the table they're actually seated at; otherwise, if this
+  // customer has ANY custom table with a coupon, apply it — so their personal
+  // code also comes through on takeaway (and any other) orders, not just at the
+  // desk. Server still validates it; they can type over it.
+  const autoCoupon = (myCustomTables.find((t) => t && t.label === table) || {}).coupon
+    || (myCustomTables.find((t) => t && t.coupon) || {}).coupon || '';
   const autoCouponRef = useRef('');
   useEffect(() => {
     if (autoCoupon) { setCoupon(autoCoupon); autoCouponRef.current = autoCoupon; }
@@ -619,7 +624,7 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
       )}
       {!eventMode && pifError && <p className="error-text">{pifError}</p>}
 
-      {!eventMode && when === 'asap' && (
+      {!eventMode && (
         hasCombo ? (
           <p className="muted" style={{ marginTop: 16, fontSize: 14 }}>Your combo discount is already applied — promo codes can't be combined with a combo deal.</p>
         ) : hasPif ? (
