@@ -787,6 +787,24 @@ async function getVariationCategoryMap() {
     if (o.is_deleted) continue;
     if (o.type === 'CATEGORY') catNames.set(o.id, cleanName(o.category_data?.name || ''));
   }
+  // App "sections" (Product Builder productSections + preset sections) group
+  // items under owner-named headings that are NOT Square categories (e.g.
+  // Breakfast, Lunch, Smoothies). The kitchen screen must route by these too, so
+  // tag every item with its section name(s) — itemId → [section]. Otherwise a
+  // "Lunch" station would never match a Lunch item (its Square category might be
+  // "Food"), and it lands in All Orders instead.
+  const settings = getSettings();
+  const itemSections = new Map(); // itemId -> Set(sectionName)
+  const addSec = (itemId, name) => { if (!itemId || !name) return; if (!itemSections.has(itemId)) itemSections.set(itemId, new Set()); itemSections.get(itemId).add(name); };
+  for (const ps of (settings.productSections || [])) {
+    const nm = String((ps && ps.name) || '').trim();
+    if (!nm || !Array.isArray(ps.items)) continue;
+    for (const id of ps.items) addSec(id, nm);
+  }
+  for (const p of (settings.presets || [])) {
+    const nm = String((p && p.section) || '').trim();
+    if (nm && p.sourceItemId) addSec(p.sourceItemId, nm);
+  }
   const map = {};
   for (const o of objects) {
     if (o.is_deleted || o.type !== 'ITEM') continue;
@@ -795,7 +813,8 @@ async function getVariationCategoryMap() {
     if (Array.isArray(d.categories)) for (const c of d.categories) if (c && c.id) catIds.push(c.id);
     if (d.reporting_category?.id) catIds.push(d.reporting_category.id);
     if (d.category_id) catIds.push(d.category_id);
-    const names = [...new Set(catIds.map((id) => catNames.get(id)).filter(Boolean))];
+    const secs = itemSections.has(o.id) ? [...itemSections.get(o.id)] : [];
+    const names = [...new Set([...catIds.map((id) => catNames.get(id)).filter(Boolean), ...secs])];
     for (const v of (d.variations || [])) if (v && v.id) map[v.id] = names;
   }
   varCatCache = { data: map, at: now };
