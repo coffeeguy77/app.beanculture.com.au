@@ -95,17 +95,20 @@ function buildTickets(orders, varCat, states, cfg, now = Date.now()) {
     }));
 
     // Route line items to zones. The All lane always gets everything. A line
-    // goes to a station if its CATEGORY is on that station OR the specific
-    // PRODUCT is assigned to it (z.items — by product name). Per-product
-    // assignment lets breakfast/lunch be split across Kitchen and FOH even when
-    // the items share a category.
+    // goes to a station if its CATEGORY is on that station (or the product is
+    // explicitly included via z.items), MINUS any products unticked for this
+    // station in Advanced mode (z.hiddenItems). That's how breakfast/lunch get
+    // split across Kitchen and FOH — same category, some items hidden per side.
     const zoneItems = { [ALL_ZONE]: items };
     for (const z of zones) {
       const zcats = (z.categories || []).map((c) => String(c).toLowerCase());
       const zitems = new Set((z.items || []).map((n) => String(n).trim().toLowerCase()));
-      const mine = items.filter((it) =>
-        it.categories.some((c) => zcats.includes(String(c).toLowerCase())) ||
-        zitems.has(String(it.name || '').trim().toLowerCase()));
+      const zhidden = new Set((z.hiddenItems || []).map((n) => String(n).trim().toLowerCase()));
+      const mine = items.filter((it) => {
+        const nm = String(it.name || '').trim().toLowerCase();
+        if (zhidden.has(nm)) return false;   // unticked for this station
+        return it.categories.some((c) => zcats.includes(String(c).toLowerCase())) || zitems.has(nm);
+      });
       if (mine.length) zoneItems[z.id] = mine;
     }
 
