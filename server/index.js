@@ -1935,8 +1935,26 @@ function dayInTz(iso, tz) {
 app.get('/api/admin/analytics/compare', async (req, res) => {
   if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
   try {
+    const tz = (getSettings().contact && getSettings().contact.timezone) || 'Australia/Sydney';
+    // range wins over days: today (local), week (Mon→now), or a rolling N days.
+    const range = String(req.query.range || '').toLowerCase();
     const days = Math.max(1, Math.min(90, parseInt(req.query.days, 10) || 7));
-    const startAt = new Date(Date.now() - days * 86400000).toISOString();
+    const todayStr = dayInTz(new Date().toISOString(), tz);
+    let mondayStr = todayStr;
+    if (range === 'week') {
+      const names = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+      const wd = names.indexOf(new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'short' }).format(new Date()));
+      const daysSinceMon = (wd + 6) % 7;
+      mondayStr = dayInTz(new Date(Date.now() - daysSinceMon * 86400000).toISOString(), tz);
+    }
+    // How far back to actually fetch, then filter precisely by local day.
+    const lookbackDays = range === 'today' ? 2 : range === 'week' ? 9 : days;
+    const startAt = new Date(Date.now() - lookbackDays * 86400000).toISOString();
+    const withinRange = (iso) => {
+      if (range === 'today') return dayInTz(iso, tz) === todayStr;
+      if (range === 'week') return dayInTz(iso, tz) >= mondayStr;   // YYYY-MM-DD sorts lexically
+      return true;   // rolling window already bounded by startAt
+    };
     const stores = locations.active();
     const out = [];
     for (const store of stores) {
@@ -1960,6 +1978,7 @@ app.get('/api/admin/analytics/compare', async (req, res) => {
           // gets orders that aren't an event's and aren't tagged to a different
           // store sharing its Square location (untagged POS/counter orders count).
           const md = o.metadata || {};
+          if (!withinRange(o.created_at)) continue;
           if (store.type === 'event') { if (md.bc_event !== store.id) continue; }
           else { if (md.bc_event) continue; if (md.bc_store && md.bc_store !== store.id) continue; }
           m.orders += 1;
@@ -1975,7 +1994,7 @@ app.get('/api/admin/analytics/compare', async (req, res) => {
       orders: t.orders + s.orders, revenue: t.revenue + s.revenue,
       app: t.app + s.app, pos: t.pos + s.pos, other: t.other + s.other, qr: t.qr + s.qr,
     }), { orders: 0, revenue: 0, app: 0, pos: 0, other: 0, qr: 0 });
-    res.json({ days, currency: sq.CURRENCY, stores: out, totals });
+    res.json({ days, range: range || null, currency: sq.CURRENCY, stores: out, totals });
   } catch (e) { res.status(502).json({ error: e.message }); }
 });
 

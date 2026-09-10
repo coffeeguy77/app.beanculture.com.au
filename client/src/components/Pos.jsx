@@ -39,6 +39,13 @@ const Ico = ({ children, size = 22 }) => (
 const IcoGear = () => <Ico><circle cx="12" cy="12" r="3.2" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></Ico>;
 const IcoX = () => <Ico><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></Ico>;
 
+// Cafe timezone — Canberra (same offset as Australia/Sydney). All POS order
+// timestamps are shown in this zone so the till reads local time regardless of
+// the tablet's own clock/region.
+const CAFE_TZ = 'Australia/Sydney';
+const fmtDateTime = (iso) => { try { return new Date(iso).toLocaleString('en-AU', { timeZone: CAFE_TZ, weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }); } catch { return ''; } };
+const fmtTime = (iso) => { try { return new Date(iso).toLocaleTimeString('en-AU', { timeZone: CAFE_TZ, hour: 'numeric', minute: '2-digit' }); } catch { return ''; } };
+
 // ── The configure workspace: the product grid is replaced by this while an item
 // is being built. Uses the shared hook so it matches the customer app exactly. ──
 function ConfigWorkspace({ item, currency, initial, onCancel, onCommit }) {
@@ -788,13 +795,20 @@ export default function Pos({ onExit }) {
 // Settings — reuses the same figures as the admin compare dashboard so a manager
 // can glance at trade without leaving the till.
 function PosStorePulse({ posLoc, storeName }) {
-  const [days, setDays] = useState(7);
+  const RANGES = [
+    { k: 'today', t: 'Today', q: 'range=today' },
+    { k: 'week', t: 'This week', q: 'range=week' },
+    { k: '7', t: '7 days', q: 'days=7' },
+    { k: '30', t: '30 days', q: 'days=30' },
+  ];
+  const [rk, setRk] = useState('today');
   const [row, setRow] = useState(null);
   const [err, setErr] = useState('');
   const pass = (() => { try { return atob(localStorage.getItem('bc-admin-pass') || '') || ''; } catch { return ''; } })();
   useEffect(() => {
     let alive = true; setRow(null); setErr('');
-    fetch(`/api/admin/analytics/compare?days=${days}&pass=${encodeURIComponent(pass)}`)
+    const q = (RANGES.find((r) => r.k === rk) || RANGES[0]).q;
+    fetch(`/api/admin/analytics/compare?${q}&pass=${encodeURIComponent(pass)}`)
       .then((r) => r.json())
       .then((d) => { if (!alive) return; if (d.error) { setErr(d.error); return; }
         const stores = d.stores || [];
@@ -804,7 +818,7 @@ function PosStorePulse({ posLoc, storeName }) {
       .catch(() => { if (alive) setErr('Could not load figures.'); });
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [days, posLoc]);
+  }, [rk, posLoc]);
   const tiles = row ? [
     { v: row.orders, l: 'Orders' },
     { v: formatMoney(row.revenue, row.cur), l: 'Revenue' },
@@ -816,7 +830,7 @@ function PosStorePulse({ posLoc, storeName }) {
     <div className="pos-set-block">
       <div className="pos-set-label">How we&rsquo;re traveling{storeName ? ` · ${storeName}` : ''}</div>
       <div className="pos-idle-opts" style={{ marginTop: 8 }}>
-        {[7, 30].map((d) => <button key={d} type="button" className={`pos-idle-opt${days === d ? ' on' : ''}`} onClick={() => setDays(d)}>{d} days</button>)}
+        {RANGES.map((r) => <button key={r.k} type="button" className={`pos-idle-opt${rk === r.k ? ' on' : ''}`} onClick={() => setRk(r.k)}>{r.t}</button>)}
       </div>
       {err && <p className="pos-set-hint">{err}</p>}
       {!row && !err && <p className="pos-set-hint">Loading…</p>}
@@ -870,8 +884,9 @@ function RefundModal({ pass, posLoc, hasPin, currency, onPinSet, onClose }) {
     if (!sel || !(amount > 0) || busy) return;
     setBusy(true); setErr('');
     try {
-      await api.posRefund(pass, { orderId: sel.orderId, paymentId: sel.paymentId, amount, reason: reason.trim(), managerPin: pin.trim() });
-      setDone({ amount });
+      const r = await api.posRefund(pass, { orderId: sel.orderId, paymentId: sel.paymentId, amount, reason: reason.trim(), managerPin: pin.trim() });
+      const rf = r.refund || {};
+      setDone({ amount, status: (rf.status || 'PENDING').toUpperCase(), id: rf.id || '' });
       // Refresh the list so the refunded amount shows next time.
       api.posRecentOrders(pass, posLoc).then((d) => setOrders(d.orders || [])).catch(() => {});
     } catch (e) { setErr(e.message); }
@@ -897,8 +912,13 @@ function RefundModal({ pass, posLoc, hasPin, currency, onPinSet, onClose }) {
         ) : done ? (
           <div className="pos-set-block" style={{ textAlign: 'center' }}>
             <div className="pos-success-tick" style={{ margin: '6px auto' }}>✓</div>
-            <div className="pos-success-title">Refunded {formatMoney(done.amount, currency)}</div>
-            <p className="pos-set-hint">The refund has been sent to Square. It returns to the customer’s original payment.</p>
+            <div className="pos-success-title">Refund {done.status === 'COMPLETED' ? 'complete' : 'submitted'} · {formatMoney(done.amount, currency)}</div>
+            <p className="pos-set-hint">
+              {done.status === 'COMPLETED'
+                ? 'Square has refunded this to the customer’s original payment.'
+                : 'Square accepted the refund and is processing it (status: PENDING). Card refunds usually settle within minutes; the customer’s Square refund receipt is sent once it completes.'}
+              {done.id ? ` Refund id ${done.id.slice(-8)}.` : ''}
+            </p>
             <button className="pos-btn primary big" style={{ width: '100%' }} onClick={onClose}>Done</button>
           </div>
         ) : !sel ? (
@@ -912,7 +932,7 @@ function RefundModal({ pass, posLoc, hasPin, currency, onPinSet, onClose }) {
                 <button key={o.orderId} type="button" className="pos-refund-order" onClick={() => { setSel(o); setTicked(new Set()); setCustom(''); }}>
                   <span className="pos-refund-order-main">
                     <b>{o.name || `#${o.orderId.slice(-4).toUpperCase()}`}</b>
-                    <span className="muted">{new Date(o.createdAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} · {o.items.length} item{o.items.length === 1 ? '' : 's'}{o.refunded ? ` · ${formatMoney(o.refunded, o.currency)} refunded` : ''}</span>
+                    <span className="muted">{fmtDateTime(o.createdAt)} · {o.items.length} item{o.items.length === 1 ? '' : 's'}{o.refunded ? ` · ${formatMoney(o.refunded, o.currency)} refunded` : ''}</span>
                   </span>
                   <span className="pos-refund-order-amt">{formatMoney(o.total, o.currency)}</span>
                 </button>
@@ -1020,7 +1040,7 @@ function CashUpModal({ pass, posLoc, currency, onClose }) {
                 <button key={o.orderId} type="button" className="pos-refund-order" onClick={() => setSel(o)}>
                   <span className="pos-refund-order-main">
                     <b>{o.name || `#${o.orderId.slice(-4).toUpperCase()}`}{o.free ? ' · FREE' : ''}</b>
-                    <span className="muted">{new Date(o.createdAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} · {o.tender}{o.reason ? ` · ${o.reason}` : ''}</span>
+                    <span className="muted">{fmtTime(o.createdAt)} · {o.tender}{o.reason ? ` · ${o.reason}` : ''}</span>
                   </span>
                   <span className="pos-refund-order-amt">{formatMoney(o.total, cur)}</span>
                 </button>

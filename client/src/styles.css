@@ -3308,7 +3308,7 @@ body:has(.store-shell) { background: var(--bc-canvas-deep, #160f12); }
 .kds-live { font-size: 13px; font-weight: 700; color: #8a97a4; padding: 6px 8px; }
 .kds-live.on { color: #7fd1a6; }
 .kds-icon { width: 44px; height: 44px; border-radius: 11px; border: 1px solid #333d47; background: #1e242b; color: #eef2f6; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; padding: 0; }
-.kds-icon svg { width: 24px; height: 24px; }
+.kds-icon svg { width: 24px; height: 24px; display: block; stroke: currentColor; }
 
 /* All-day bar */
 .kds-allday { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 8px 16px; background: #0e1216; border-bottom: 1px solid #222a32; font-size: 14px; }
@@ -3526,7 +3526,7 @@ body:has(.store-shell) { background: var(--bc-canvas-deep, #160f12); }
 .pos-locsel option { color: #2a1620; }
 .pos-icon { width: 34px; height: 34px; border-radius: 9px; border: 1px solid rgba(255,255,255,.2); background: transparent; color: #fff; font-size: 16px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
 .pos-icon:hover { background: rgba(255,255,255,.1); }
-.pos-icon svg { width: 20px; height: 20px; }
+.pos-icon svg { width: 20px; height: 20px; display: block; stroke: currentColor; }
 /* Proper Bean Culture wordmark, recoloured gold for the dark header */
 .pos-logo-mark { display: inline-flex; align-items: center; color: #e9b949; }
 /* Current-store pill in the one bar — a shortcut into Settings, not a 2nd selector */
