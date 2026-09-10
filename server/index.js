@@ -1551,18 +1551,48 @@ app.get('/api/admin/kds/tickets', async (req, res) => {
 });
 
 // Set a station's status for one ticket (new | preparing | done). Recall = 'new'.
+// Text/email an app customer that their order is ready to collect. Best-effort:
+// only fires for orders tied to a customer we can reach; failures are swallowed
+// so they never block the kitchen's bump.
+async function notifyOrderReady(orderId) {
+  try {
+    const order = await orders.getOrder(orderId);
+    if (!order || !order.customer_id) return;              // walk-in / no contact
+    const cust = await customers.get(order.customer_id);
+    if (!cust) return;
+    const phone = cust.phone_number || '';
+    const email = cust.email_address || '';
+    const store = getSettings().storeName || 'Bean Culture';
+    const who = (order.metadata && order.metadata.bc_name) || cust.given_name || '';
+    const msg = `${who ? who + ', y' : 'Y'}our ${store} order is ready for collection ☕`;
+    if (phone && notify.smsConfigured) { await notify.sendSMS(phone, msg); return; }
+    if (email && notify.emailConfigured) { await notify.sendEmail(email, `Your ${store} order is ready`, msg); return; }
+  } catch (e) { console.warn('[kds] ready-notify failed:', e.message); }
+}
+
 app.post('/api/admin/kds/bump', async (req, res) => {
   if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
   try {
     const { orderId, orderIds, zone, status } = req.body || {};
     if (!zone) return res.status(400).json({ error: 'Missing zone' });
-    if (!['new', 'preparing', 'done'].includes(status)) return res.status(400).json({ error: 'Bad status' });
+    if (!['new', 'preparing', 'ready', 'done'].includes(status)) return res.status(400).json({ error: 'Bad status' });
     // Bulk: bump every listed order in this station in one request (used by
     // "Bump all"). Falls back to the single-order form for the per-ticket button.
     const ids = Array.isArray(orderIds) ? orderIds.filter(Boolean) : (orderId ? [orderId] : []);
     if (!ids.length) return res.status(400).json({ error: 'Missing orderId(s)' });
     const rows = [];
     for (const id of ids) rows.push(await db.kdsSetStatus(id, zone, status));
+    // "Ready" → text/email the customer their order is ready for collection.
+    // Once per order (guarded by a synthetic '__notified__' marker), and only
+    // for app orders that carry a customer we can reach.
+    if (status === 'ready') {
+      const states = await db.kdsGetStates(ids).catch(() => ({}));
+      for (const id of ids) {
+        if (states[id] && states[id].__notified__) continue;
+        notifyOrderReady(id).catch(() => {});
+        await db.kdsSetStatus(id, '__notified__', 'ready').catch(() => {});
+      }
+    }
     kdsBroadcast('bump');
     res.json({ ok: true, count: rows.length, row: rows[0], rows });
   } catch (e) {
