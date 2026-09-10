@@ -1237,12 +1237,33 @@ export default function Admin({ onExit }) {
     const hid = Array.isArray(z.hiddenItems) ? z.hiddenItems : [];
     updateKdsZone(id, { hiddenItems: hid.includes(name) ? hid.filter((c) => c !== name) : [...hid, name] });
   };
-  // Products that belong to a given category, from the live catalog list.
+  // Products that belong to a given category OR app section. Coffee/Coffee Bags
+  // are real Square categories (found via allProducts). Breakfast/Lunch/Smoothies
+  // are Product-Builder sections (productSections) or preset sections, whose
+  // members live in settings — resolve those too, so the drill-down lists every
+  // item just like the storefront does.
   const kdsProductsInCategory = (cat) => {
-    const c = String(cat || '').toLowerCase();
-    return allProducts
-      .filter((p) => (p.categories || (p.category ? [p.category] : [])).some((x) => String(x).toLowerCase() === c))
-      .map((p) => p.name).filter(Boolean);
+    const c = String(cat || '').trim().toLowerCase();
+    const byId = new Map(allProducts.map((p) => [p.id, p.name]));
+    const out = [];
+    // Real Square category members
+    for (const p of allProducts) {
+      if ((p.categories || (p.category ? [p.category] : [])).some((x) => String(x).toLowerCase() === c)) out.push(p.name);
+    }
+    // Product-Builder section members (hand-picked real items)
+    for (const ps of productSections) {
+      if (String(ps.name || '').trim().toLowerCase() === c) {
+        for (const id of (ps.items || [])) { const nm = byId.get(id); if (nm) out.push(nm); }
+      }
+    }
+    // Preset section members (Product Builder tiles)
+    for (const p of (s?.presets || [])) {
+      if (String(p.section || '').trim().toLowerCase() === c) {
+        const nm = p.label || byId.get(p.sourceItemId);
+        if (nm) out.push(nm);
+      }
+    }
+    return [...new Set(out.filter(Boolean))];
   };
   // A station routes an order by the item's SQUARE category (that's what a live
   // order line actually carries), so the picker must offer the real Square
