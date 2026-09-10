@@ -13,6 +13,17 @@ import Logo from './Logo.jsx';
 // the same order path and appear on the KDS automatically.
 
 const CART_KEY = 'bc-pos-cart';
+const THEME_KEY = 'bc-pos-theme';
+// Selectable POS colour schemes. Each id maps to a .pos-root[data-theme] block in
+// styles.css; the swatch preview shows the header → accent gradient for that theme.
+const POS_THEMES = [
+  { id: 'plum', name: 'Plum' },
+  { id: 'rose', name: 'Pink' },
+  { id: 'ocean', name: 'Blue' },
+  { id: 'forest', name: 'Green' },
+  { id: 'mocha', name: 'Mocha' },
+  { id: 'slate', name: 'Slate' },
+];
 const cartTotal = (cart) => cart.reduce((s, c) => s + c.unitPrice * c.quantity, 0);
 const cartCount = (cart) => cart.reduce((s, c) => s + c.quantity, 0);
 
@@ -151,6 +162,7 @@ export default function Pos({ onExit }) {
   const [showSetup, setShowSetup] = useState(false);    // card-terminal pairing modal
   const [showSettings, setShowSettings] = useState(false); // the ⚙ settings sheet
   const [posLoc, setPosLoc] = useState(() => { try { return localStorage.getItem('bc-pos-location') || ''; } catch { return ''; } });
+  const [theme, setTheme] = useState(() => { try { return localStorage.getItem(THEME_KEY) || 'plum'; } catch { return 'plum'; } });
   const [cartOpen, setCartOpen] = useState(false); // mobile slide-over cart
   const returnTimer = useRef(null);
 
@@ -194,6 +206,7 @@ export default function Pos({ onExit }) {
   }, []);
 
   useEffect(() => { try { localStorage.setItem(CART_KEY, JSON.stringify(cart)); } catch {} }, [cart]);
+  useEffect(() => { try { localStorage.setItem(THEME_KEY, theme); } catch {} }, [theme]);
   useEffect(() => () => { if (returnTimer.current) clearTimeout(returnTimer.current); }, []);
 
   // ── Cart operations (dedupe by key; decrement-to-zero removes) ──
@@ -346,7 +359,7 @@ export default function Pos({ onExit }) {
   // ── Passcode gate ──
   if (needPass) {
     return (
-      <div className="pos-root pos-login">
+      <div className="pos-root pos-login" data-theme={theme}>
         <div className="pos-login-card">
           <div className="pos-login-title">Bean Culture POS</div>
           <p>Enter the staff passcode.</p>
@@ -360,7 +373,7 @@ export default function Pos({ onExit }) {
       </div>
     );
   }
-  if (!cfg || !menu) return <div className="pos-root pos-center"><div className="pos-spinner" /></div>;
+  if (!cfg || !menu) return <div className="pos-root pos-center" data-theme={theme}><div className="pos-spinner" /></div>;
 
   const cats = menu.categories || [];
   const q = query.trim().toLowerCase();
@@ -413,12 +426,13 @@ export default function Pos({ onExit }) {
   //    chosen in Settings, and "New order" is just the Register tab above. ──
   if (mode === 'kitchen') {
     return (
-      <div className="pos-root">
+      <div className="pos-root" data-theme={theme}>
         {header}
         <div className="pos-kds-host"><Kds embedded location={posLoc} onExit={() => setMode('register')} /></div>
         {showSettings && (
           <SettingsSheet
             cfg={cfg} posLoc={posLoc} multiStore={multiStore} curTerm={curTerm}
+            theme={theme} onTheme={setTheme}
             onSwitchStore={switchStore} onOpenTerminal={() => { setShowSettings(false); setShowSetup(true); }}
             onExit={onExit} onClose={() => setShowSettings(false)} />
         )}
@@ -432,7 +446,7 @@ export default function Pos({ onExit }) {
 
   // ── Register mode ──
   return (
-    <div className="pos-root">
+    <div className="pos-root" data-theme={theme}>
       {header}
       <div className={`pos-body${configureMode ? ' configuring' : ''}`}>
         {/* Left: category rail (browse) OR return rail (configure) */}
@@ -616,6 +630,7 @@ export default function Pos({ onExit }) {
       {showSettings && (
         <SettingsSheet
           cfg={cfg} posLoc={posLoc} multiStore={multiStore} curTerm={curTerm}
+          theme={theme} onTheme={setTheme}
           onSwitchStore={switchStore} onOpenTerminal={() => { setShowSettings(false); setShowSetup(true); }}
           onExit={onExit} onClose={() => setShowSettings(false)} />
       )}
@@ -648,7 +663,7 @@ export default function Pos({ onExit }) {
 //    screen is serving (one selector that drives both the register and the KDS),
 //    the card terminal, the signed-in staff, and exit. Opened from the ⚙ in the
 //    one top bar. ──
-function SettingsSheet({ cfg, posLoc, multiStore, curTerm, onSwitchStore, onOpenTerminal, onExit, onClose }) {
+function SettingsSheet({ cfg, posLoc, multiStore, curTerm, theme, onTheme, onSwitchStore, onOpenTerminal, onExit, onClose }) {
   const storeName = (cfg.locations || []).find((l) => l.id === posLoc)?.name || '';
   const termOn = !!(curTerm && curTerm.deviceId);
   return (
@@ -657,6 +672,22 @@ function SettingsSheet({ cfg, posLoc, multiStore, curTerm, onSwitchStore, onOpen
         <div className="pos-settings-head">
           <div className="pos-tender-title">Settings</div>
           <button className="pos-icon" title="Close" onClick={onClose}>✕</button>
+        </div>
+
+        <div className="pos-set-block">
+          <div className="pos-set-label">Colour scheme</div>
+          <p className="pos-set-hint">Sets the look of this screen. Saved on this device.</p>
+          <div className="pos-swatches">
+            {POS_THEMES.map((t) => (
+              <button key={t.id} type="button"
+                className={`pos-swatch sw-${t.id}${(theme || 'plum') === t.id ? ' on' : ''}`}
+                onClick={() => onTheme && onTheme(t.id)} title={t.name}>
+                <span className="pos-swatch-dot" />
+                <span className="pos-swatch-name">{t.name}</span>
+                {(theme || 'plum') === t.id && <span className="pos-swatch-tick">✓</span>}
+              </button>
+            ))}
+          </div>
         </div>
 
         {multiStore && (
