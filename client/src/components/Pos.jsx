@@ -14,6 +14,7 @@ import Logo from './Logo.jsx';
 
 const CART_KEY = 'bc-pos-cart';
 const THEME_KEY = 'bc-pos-theme';
+const IDLE_KEY = 'bc-pos-kds-idle';
 // Selectable POS colour schemes. Each id maps to a .pos-root[data-theme] block in
 // styles.css; the swatch preview shows the header → accent gradient for that theme.
 const POS_THEMES = [
@@ -150,6 +151,12 @@ export default function Pos({ onExit }) {
   const [showSettings, setShowSettings] = useState(false); // the ⚙ settings sheet
   const [posLoc, setPosLoc] = useState(() => { try { return localStorage.getItem('bc-pos-location') || ''; } catch { return ''; } });
   const [theme, setTheme] = useState(() => { try { return localStorage.getItem(THEME_KEY) || 'plum'; } catch { return 'plum'; } });
+  // Idle-return timer (per device): seconds of no interaction on the register
+  // before a combined POS+KDS screen flips back to the kitchen — but only when
+  // there are orders waiting, and never mid-order. 0 = never. Seeded from the
+  // server default the first time, then remembered on this device.
+  const [kdsIdleSec, setKdsIdleSec] = useState(() => { try { const v = localStorage.getItem(IDLE_KEY); return v == null ? null : Number(v); } catch { return null; } });
+  const lastActivityRef = useRef(Date.now());
   const [cartOpen, setCartOpen] = useState(false); // mobile slide-over cart
   const returnTimer = useRef(null);
 
@@ -194,6 +201,36 @@ export default function Pos({ onExit }) {
 
   useEffect(() => { try { localStorage.setItem(CART_KEY, JSON.stringify(cart)); } catch {} }, [cart]);
   useEffect(() => { try { localStorage.setItem(THEME_KEY, theme); } catch {} }, [theme]);
+  useEffect(() => { try { if (kdsIdleSec != null) localStorage.setItem(IDLE_KEY, String(kdsIdleSec)); } catch {} }, [kdsIdleSec]);
+
+  // Any interaction anywhere on the POS resets the idle clock.
+  useEffect(() => {
+    const bump = () => { lastActivityRef.current = Date.now(); };
+    const evs = ['pointerdown', 'keydown', 'touchstart', 'wheel'];
+    evs.forEach((e) => window.addEventListener(e, bump, { passive: true }));
+    return () => evs.forEach((e) => window.removeEventListener(e, bump));
+  }, []);
+
+  // Idle auto-return to the KDS. Only on a combined POS+KDS device, only from an
+  // idle register with an EMPTY cart and nothing mid-flow, and only when the
+  // kitchen actually has orders waiting — otherwise it stays on the register.
+  useEffect(() => {
+    const secs = kdsIdleSec != null ? kdsIdleSec : (cfg && Number(cfg.kdsIdleSec));
+    if (!(secs > 0) || (cfg?.mode || 'pos_kds') !== 'pos_kds') return;
+    const iv = setInterval(async () => {
+      if (mode !== 'register' || cart.length || configuring || combo || tender || cardPay || success || showSettings || showSetup) return;
+      if (Date.now() - lastActivityRef.current < secs * 1000) return;
+      try {
+        const r = await fetch(`/api/admin/kds/tickets?pass=${encodeURIComponent(pass)}${posLoc ? `&location=${encodeURIComponent(posLoc)}` : ''}`);
+        if (!r.ok) return;
+        const d = await r.json();
+        const waiting = (d.tickets || []).some((t) => Object.values(t.zoneStatus || {}).some((s) => s && s !== 'done'));
+        if (waiting) { setConfiguring(null); setMode('kitchen'); }
+      } catch {}
+    }, 5000);
+    return () => clearInterval(iv);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kdsIdleSec, cfg, mode, cart.length, configuring, combo, tender, cardPay, success, showSettings, showSetup, pass, posLoc]);
 
   // Keep the order type valid for the selected store's Order-types setting
   // (admin/stores). A takeaway-only store (e.g. Tulip Farm) can never sit on a
@@ -435,6 +472,7 @@ export default function Pos({ onExit }) {
           <SettingsSheet
             cfg={cfg} posLoc={posLoc} multiStore={multiStore} curTerm={curTerm}
             theme={theme} onTheme={setTheme}
+            idleSec={kdsIdleSec != null ? kdsIdleSec : (cfg && cfg.kdsIdleSec != null ? cfg.kdsIdleSec : 60)} onIdle={setKdsIdleSec}
             onSwitchStore={switchStore} onOpenTerminal={() => { setShowSettings(false); setShowSetup(true); }}
             onExit={onExit} onClose={() => setShowSettings(false)} />
         )}
@@ -638,6 +676,7 @@ export default function Pos({ onExit }) {
         <SettingsSheet
           cfg={cfg} posLoc={posLoc} multiStore={multiStore} curTerm={curTerm}
           theme={theme} onTheme={setTheme}
+          idleSec={kdsIdleSec != null ? kdsIdleSec : (cfg && cfg.kdsIdleSec != null ? cfg.kdsIdleSec : 60)} onIdle={setKdsIdleSec}
           onSwitchStore={switchStore} onOpenTerminal={() => { setShowSettings(false); setShowSetup(true); }}
           onExit={onExit} onClose={() => setShowSettings(false)} />
       )}
@@ -670,7 +709,8 @@ export default function Pos({ onExit }) {
 //    screen is serving (one selector that drives both the register and the KDS),
 //    the card terminal, the signed-in staff, and exit. Opened from the ⚙ in the
 //    one top bar. ──
-function SettingsSheet({ cfg, posLoc, multiStore, curTerm, theme, onTheme, onSwitchStore, onOpenTerminal, onExit, onClose }) {
+function SettingsSheet({ cfg, posLoc, multiStore, curTerm, theme, onTheme, idleSec, onIdle, onSwitchStore, onOpenTerminal, onExit, onClose }) {
+  const idleOpts = [{ v: 0, t: 'Never' }, { v: 30, t: '30s' }, { v: 60, t: '60s' }, { v: 120, t: '2 min' }, { v: 300, t: '5 min' }];
   const storeName = (cfg.locations || []).find((l) => l.id === posLoc)?.name || '';
   const termOn = !!(curTerm && curTerm.deviceId);
   return (
@@ -696,6 +736,18 @@ function SettingsSheet({ cfg, posLoc, multiStore, curTerm, theme, onTheme, onSwi
             ))}
           </div>
         </div>
+
+        {(cfg.mode || 'pos_kds') === 'pos_kds' && (
+          <div className="pos-set-block">
+            <div className="pos-set-label">Auto-return to kitchen</div>
+            <p className="pos-set-hint">After this long with no taps — and only if orders are waiting — the screen flips from the register to the kitchen. Never interrupts a sale in progress.</p>
+            <div className="pos-idle-opts">
+              {idleOpts.map((o) => (
+                <button key={o.v} type="button" className={`pos-idle-opt${Number(idleSec) === o.v ? ' on' : ''}`} onClick={() => onIdle && onIdle(o.v)}>{o.t}</button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {multiStore && (
           <div className="pos-set-block">

@@ -405,6 +405,7 @@ export default function Kds({ onExit, embedded, location }) {
                 <div className="kds-card-title">
                   {label(t)}
                   {t.appOrigin && <span className="kds-badge origin">APP</span>}
+                  {t.posOrigin && <span className="kds-badge pos">POS</span>}
                   <span className={`kds-badge ${t.dineIn ? 'dinein' : 'takeaway'}`}>{t.dineIn ? (t.table ? (/^\d+$/.test(String(t.table).trim()) ? `T${t.table}` : t.table) : 'Dine-in') : 'Takeaway'}</span>
                 </div>
                 <div className={`kds-age lvl-${lvl}`}>{fmtAge(sec)}</div>

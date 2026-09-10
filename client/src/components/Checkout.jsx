@@ -57,7 +57,7 @@ function dateStr(d) {
 }
 const WEEKDAYS = [['Mon', 1], ['Tue', 2], ['Wed', 3], ['Thu', 4], ['Fri', 5], ['Sat', 6], ['Sun', 0]];
 
-export default function Checkout({ config, location, cart, currency, onQty, onComboQty, onRemoveCombo, onEditCombo, dineIn, setDineIn, table, setTable, tableLock, onUnlockTable, onScanTable, name, setName, user, canOrder, preWhen, preAt, onPaid, onScheduled, onBack, pifVoucher, onClearPifVoucher, eventMode, wholeFree, isFreeCat, shippingFee, onEnrolled }) {
+export default function Checkout({ config, location, cart, currency, onQty, onComboQty, onRemoveCombo, onEditCombo, dineIn, setDineIn, table, setTable, tableLock, onUnlockTable, onScanTable, name, setName, user, canOrder, preWhen, preAt, onPaid, onScheduled, onBack, pifVoucher, onClearPifVoucher, eventMode, wholeFree, isFreeCat, shippingFee, onEnrolled, orderSrc }) {
   const [status, setStatus] = useState('init');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -364,6 +364,7 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
     const res = await api.createOrder({
       cart: cartPayload, dineIn, table, name, coupon, pickupAt, note,
       customerId: user?.customerId, locationId: location?.id,
+      src: orderSrc || undefined,   // 'qr' when the session began from a walk-around QR
       // At an event we send the phone so the server enrols the walk-up customer
       // (name + phone) into loyalty and stamps the order to their card.
       phone: eventMode ? phone.trim() : undefined,

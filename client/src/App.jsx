@@ -233,6 +233,12 @@ export default function App() {
   });
   const [showStorePicker, setShowStorePicker] = useState(false);
   const [loadErr, setLoadErr] = useState('');
+  // Arrived via the walk-around QR (?loc=<store> in the code): the store is
+  // fixed by the code, so we never show the store picker or a "change store"
+  // control, and orders from this session are tagged as QR usage for stats.
+  const [qrLocked] = useState(() => {
+    try { return !!new URLSearchParams(window.location.search).get('loc'); } catch { return false; }
+  });
 
   const [user, setUserState] = useState(getUser());
   const [view, setView] = useState('home'); // home | cart | checkout | done | account | admin
@@ -356,11 +362,11 @@ export default function App() {
     // is reached only by its ?loc= QR — it must never make the picker appear, and
     // arriving on one (locationId set) is a valid, already-chosen store.
     const visible = locs.filter((l) => !l.hidden);
-    if (visible.length > 1) {
+    if (visible.length > 1 && !qrLocked) {
       const chosen = locationId && locs.some((l) => l.id === locationId);
       if (!chosen) setShowStorePicker(true);
     }
-  }, [config, locationId]);
+  }, [config, locationId, qrLocked]);
 
   function chooseLocation(id) {
     setLocationId(id);
@@ -1032,6 +1038,7 @@ export default function App() {
       tableLock={tableLock} onUnlockTable={unlockTable} onScanTable={applyScannedTable}
       name={name} setName={setName} user={user} canOrder={canOrder}
       preWhen={preWhen} preAt={preAt}
+      orderSrc={qrLocked ? 'qr' : ''}
       onPaid={onPaid} onScheduled={onScheduledOrder} onBack={() => setView(wide ? 'home' : 'cart')}
       pifVoucher={pifVoucher} onClearPifVoucher={() => setPifVoucher(null)}
       eventMode={eventMode} wholeFree={wholeFree} isFreeCat={isFreeCat}
@@ -1401,7 +1408,7 @@ export default function App() {
         if (!(showChip || weatherChip) || !(view === 'home' || !isMobile)) return null;
         return (
           <div className="store-bar">
-            {showChip && (multi ? (
+            {showChip && (multi && !qrLocked ? (
               <button type="button" className="store-chip switchable" onClick={() => setShowStorePicker(true)} title="Change store">
                 <span className="store-chip-icon"><StoreIcon size={22} /></span>
                 <span className="store-chip-text">
@@ -1558,7 +1565,7 @@ export default function App() {
 
       {!wide && view === 'checkout' && checkoutEl}
 
-      {config && (config.locations || []).filter((l) => !l.hidden).length > 1 && showStorePicker && (
+      {config && !qrLocked && (config.locations || []).filter((l) => !l.hidden).length > 1 && showStorePicker && (
         <div className="backdrop store-picker-backdrop">
           <div className="sheet store-picker">
             <h2>Choose your store</h2>

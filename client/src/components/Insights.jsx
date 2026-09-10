@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { formatMoney } from '../api.js';
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -778,6 +778,92 @@ export function AppPerformanceSection({ days, onDays, dashboard, analytics, refr
 }
 
 // ── Main component ───────────────────────────────────────────────────────────
+// ── Compare stores: metrics down the side, stores across the top (rotated to
+//    save space with many stores), a Totals column, and per-row colour so the
+//    best store in each metric reads green and the weakest reads red. A focus
+//    dropdown narrows to one store while the Totals column still shows all. ──
+function StoreCompare({ days }) {
+  const [data, setData] = useState(null);
+  const [err, setErr] = useState('');
+  const [focus, setFocus] = useState('');
+  const pass = (() => { try { return atob(localStorage.getItem('bc-admin-pass') || '') || ''; } catch { return ''; } })();
+
+  useEffect(() => {
+    let alive = true;
+    setData(null); setErr('');
+    fetch(`/api/admin/analytics/compare?days=${days}&pass=${encodeURIComponent(pass)}`)
+      .then((r) => r.json())
+      .then((d) => { if (!alive) return; if (d.error) setErr(d.error); else setData(d); })
+      .catch(() => { if (alive) setErr('Could not load store comparison.'); });
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [days]);
+
+  const head = (
+    <div className="ins-section-head">
+      <h2 className="ins-h2">Compare stores</h2>
+      {data && (data.stores || []).length > 1 && (
+        <select className="cmp-focus" value={focus} onChange={(e) => setFocus(e.target.value)}>
+          <option value="">All stores</option>
+          {data.stores.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+        </select>
+      )}
+    </div>
+  );
+
+  if (err) return <div className="ins-section">{head}<div className="cmp-empty">{err}</div></div>;
+  if (!data) return <div className="ins-section">{head}<div className="cmp-empty">Loading…</div></div>;
+
+  const cur = data.currency || 'AUD';
+  const all = data.stores || [];
+  const stores = focus ? all.filter((s) => s.id === focus) : all;
+  const rows = [
+    { key: 'orders', label: 'Orders', fmt: (v) => num(v) },
+    { key: 'revenue', label: 'Revenue', fmt: (v) => formatMoney(v, cur) },
+    { key: 'app', label: 'App orders', fmt: (v) => num(v) },
+    { key: 'pos', label: 'POS orders', fmt: (v) => num(v) },
+    { key: 'qr', label: 'QR-code orders', fmt: (v) => num(v) },
+  ];
+
+  if (!all.length) return <div className="ins-section">{head}<div className="cmp-empty">No store data yet for this period.</div></div>;
+
+  return (
+    <div className="ins-section">
+      {head}
+      <div className="cmp-wrap">
+        <table className="cmp-table">
+          <thead>
+            <tr>
+              <th className="cmp-corner" />
+              {stores.map((s) => <th key={s.id} className="cmp-store"><span>{s.name}</span></th>)}
+              <th className="cmp-total-h"><span>Total</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => {
+              const vals = stores.map((s) => Number(s[r.key] || 0));
+              const max = Math.max(...vals), min = Math.min(...vals);
+              const colour = stores.length > 1 && max !== min;
+              return (
+                <tr key={r.key}>
+                  <th className="cmp-metric">{r.label}</th>
+                  {stores.map((s) => {
+                    const v = Number(s[r.key] || 0);
+                    const cls = colour ? (v === max ? ' cmp-best' : v === min ? ' cmp-worst' : '') : '';
+                    return <td key={s.id} className={`cmp-cell${cls}`}>{r.fmt(v)}</td>;
+                  })}
+                  <td className="cmp-total">{r.fmt(Number((data.totals || {})[r.key] || 0))}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <p className="cmp-note">Best in each row is green, lowest red. The Totals column always sums every store. Last {days} day{days === 1 ? '' : 's'}, completed orders.</p>
+    </div>
+  );
+}
+
 export default function Insights({ days, onDays, dashboard, analytics, customers, refreshing, onRefresh, lastSync }) {
   const dashLoading = dashboard == null;
   const dashFailed = dashboard && dashboard.error;
@@ -842,6 +928,9 @@ export default function Insights({ days, onDays, dashboard, analytics, customers
           </div>
         )}
       </div>
+
+      {/* ── Compare stores ── */}
+      <StoreCompare days={days} />
 
       {/* ── Sales performance ── */}
       {dashboard && !dashboard.error && (

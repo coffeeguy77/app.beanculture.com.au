@@ -19,6 +19,17 @@ const { getSettings } = require('./settings');
 
 const ALL_ZONE = '__all__';
 
+// Where an order came from, by its Square source name. 'Bean Culture POS' is the
+// counter POS; 'Bean Culture App' is a customer self-order (app / walk-around QR).
+// The POS name also contains "bean culture", so POS must be tested FIRST — that
+// was the bug where counter orders showed as APP on the board.
+function originOf(order) {
+  const name = String((order && order.source && order.source.name) || '');
+  if (/pos/i.test(name)) return 'pos';
+  if (/bean culture|app/i.test(name)) return 'app';
+  return 'other';
+}
+
 function kdsSettings(locationId) {
   // Per-location override wins; otherwise the shared default config. A location
   // is only "customised" once it has its own entry with stations — until then it
@@ -43,7 +54,7 @@ function parseTicketMeta(order) {
   const tn = (order.ticket_name || '').trim();
   const note = (order.note || '').trim();
   const md = order.metadata || {};
-  const appOrigin = /bean culture/i.test((order.source && order.source.name) || '');
+  const appOrigin = originOf(order) === 'app';
   // Dine-in: trust the explicit metadata flag first (set at order creation);
   // only fall back to text-parsing for legacy/POS orders that lack it.
   const dineIn = md.bc_dinein === '1' ? true
@@ -84,7 +95,9 @@ function buildTickets(orders, varCat, states, cfg, now = Date.now()) {
   const zones = Array.isArray(cfg.zones) ? cfg.zones.filter((z) => z && z.id) : [];
   return (orders || []).map((o) => {
     const meta = parseTicketMeta(o);
-    const appOrigin = /bean culture/i.test((o.source && o.source.name) || '');
+    const origin = originOf(o);
+    const appOrigin = origin === 'app';
+    const posOrigin = origin === 'pos';
     const items = (o.line_items || []).map((li) => ({
       name: li.name || 'Item',
       variation: li.variation_name || '',
@@ -121,6 +134,7 @@ function buildTickets(orders, varCat, states, cfg, now = Date.now()) {
       createdAt: o.created_at,
       ageSec: Math.max(0, Math.round((now - new Date(o.created_at).getTime()) / 1000)),
       appOrigin,
+      posOrigin,
       source: (o.source && o.source.name) || 'Square',
       ticketName: o.ticket_name || '',
       dineIn: meta.dineIn,

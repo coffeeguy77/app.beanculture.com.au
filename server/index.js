@@ -341,7 +341,7 @@ async function couponContextFor(customerId, couponObj) {
 // ---- Create an order (with optional loyalty redemption) ----
 app.post('/api/orders', async (req, res) => {
   try {
-    const { cart, dineIn, table, name, coupon, customerId, phone, pickupAt, note, loyalty: loy, pifVoucher, locationId, cardPayment, shipping: shipReq } = req.body || {};
+    const { cart, dineIn, table, name, coupon, customerId, phone, pickupAt, note, loyalty: loy, pifVoucher, locationId, cardPayment, shipping: shipReq, src } = req.body || {};
     const squareLocationId = locations.squareIdFor(locationId);
     if (!name || !String(name).trim()) {
       return res.status(400).json({ error: 'Name is required' });
@@ -394,7 +394,7 @@ app.post('/api/orders', async (req, res) => {
     // (released in /api/pay). A comp/$0 order is released moments later by its
     // zero-payment, so the only orders left hidden are ones that never paid.
     const couponContext = await couponContextFor(effectiveCustomerId, coupon ? coupons.find(coupon) : null);
-    const order = await orders.createOrder({ cart, dineIn: !!dineIn, table, name, coupon, couponContext, customerId: effectiveCustomerId, pickupAt, note, pifVoucher, squareLocationId, cardPayment: cardPayment !== false, free: freeOrder, freeCategories, shipping, eventId, appLocationId: evLoc ? evLoc.id : undefined, holdForPayment: true });
+    const order = await orders.createOrder({ cart, dineIn: !!dineIn, table, name, coupon, couponContext, customerId: effectiveCustomerId, pickupAt, note, pifVoucher, squareLocationId, cardPayment: cardPayment !== false, free: freeOrder, freeCategories, shipping, eventId, appLocationId: evLoc ? evLoc.id : undefined, src, holdForPayment: true });
 
     let rewardApplied = false;
     if (loy && loy.accountId && loy.tierId) {
@@ -1306,6 +1306,9 @@ app.get('/api/pos/config', (req, res) => {
     deviceName: p.deviceName || 'Front counter',
     mode: ['pos_kds', 'pos', 'kds'].includes(p.mode) ? p.mode : 'pos_kds',
     autoReturnSec: Number(p.autoReturnSec) >= 0 ? Number(p.autoReturnSec) : 3,
+    // Idle seconds before a combined POS+KDS device flips the register back to
+    // the kitchen screen — but only when there are orders waiting (0 = never).
+    kdsIdleSec: Number(p.kdsIdleSec) >= 0 ? Number(p.kdsIdleSec) : 60,
     staff: 'Staff',
     logoUrl: s.logoUrl || '',
     storeName: s.storeName || 'Bean Culture',
@@ -1759,6 +1762,56 @@ function dayInTz(iso, tz) {
   try { return new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(iso)); }
   catch { return String(iso).slice(0, 10); }
 }
+// Store comparison: one row of headline metrics per store over `days` —
+// order count, revenue, the app-vs-POS split and how many came in via the
+// walk-around QR (bc_src='qr'). Feeds the Insights "Compare stores" table.
+app.get('/api/admin/analytics/compare', async (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const days = Math.max(1, Math.min(90, parseInt(req.query.days, 10) || 7));
+    const startAt = new Date(Date.now() - days * 86400000).toISOString();
+    const stores = locations.active();
+    const out = [];
+    for (const store of stores) {
+      const m = { id: store.id, name: store.name, orders: 0, revenue: 0, app: 0, pos: 0, other: 0, qr: 0 };
+      let cursor; let pages = 0;
+      do {
+        const data = await sq.squareFetch('/v2/orders/search', {
+          method: 'POST',
+          body: {
+            location_ids: [store.squareLocationId], cursor,
+            query: {
+              filter: { date_time_filter: { created_at: { start_at: startAt } }, state_filter: { states: ['COMPLETED'] } },
+              sort: { sort_field: 'CREATED_AT', sort_order: 'DESC' },
+            },
+            limit: 500,
+          },
+        }).catch(() => ({}));
+        for (const o of (data.orders || [])) {
+          // Attribute each order to exactly one store — same rule as the KDS:
+          // an event store gets only its bc_event-tagged orders; a normal store
+          // gets orders that aren't an event's and aren't tagged to a different
+          // store sharing its Square location (untagged POS/counter orders count).
+          const md = o.metadata || {};
+          if (store.type === 'event') { if (md.bc_event !== store.id) continue; }
+          else { if (md.bc_event) continue; if (md.bc_store && md.bc_store !== store.id) continue; }
+          m.orders += 1;
+          m.revenue += (o.total_money && o.total_money.amount) || 0;
+          m[saleSource(o.source && o.source.name)] += 1;
+          if (o.metadata && o.metadata.bc_src === 'qr') m.qr += 1;
+        }
+        cursor = data.cursor; pages += 1;
+      } while (cursor && pages < 6);
+      out.push(m);
+    }
+    const totals = out.reduce((t, s) => ({
+      orders: t.orders + s.orders, revenue: t.revenue + s.revenue,
+      app: t.app + s.app, pos: t.pos + s.pos, other: t.other + s.other, qr: t.qr + s.qr,
+    }), { orders: 0, revenue: 0, app: 0, pos: 0, other: 0, qr: 0 });
+    res.json({ days, currency: sq.CURRENCY, stores: out, totals });
+  } catch (e) { res.status(502).json({ error: e.message }); }
+});
+
 app.get('/api/admin/analytics/sales', async (req, res) => {
   if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
   try {
