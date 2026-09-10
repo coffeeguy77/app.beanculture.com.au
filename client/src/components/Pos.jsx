@@ -15,6 +15,9 @@ import Logo from './Logo.jsx';
 const CART_KEY = 'bc-pos-cart';
 const THEME_KEY = 'bc-pos-theme';
 const IDLE_KEY = 'bc-pos-kds-idle';
+// Header colour per theme — also used to paint the mobile status bar (theme-color
+// meta) so it matches the POS instead of inheriting the storefront's colour.
+const POS_HEADER_HEX = { plum: '#3d0e20', rose: '#7a1f45', ocean: '#12395e', forest: '#14432b', mocha: '#3a2519', slate: '#23292f' };
 // Selectable POS colour schemes. Each id maps to a .pos-root[data-theme] block in
 // styles.css; the swatch preview shows the header → accent gradient for that theme.
 const POS_THEMES = [
@@ -27,6 +30,14 @@ const POS_THEMES = [
 ];
 const cartTotal = (cart) => cart.reduce((s, c) => s + c.unitPrice * c.quantity, 0);
 const cartCount = (cart) => cart.reduce((s, c) => s + c.quantity, 0);
+
+// Stroke-only icons (inherit colour via currentColor, fill/centre their button).
+const Ico = ({ children, size = 22 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{children}</svg>
+);
+const IcoGear = () => <Ico><circle cx="12" cy="12" r="3.2" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></Ico>;
+const IcoX = () => <Ico><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></Ico>;
 
 // ── The configure workspace: the product grid is replaced by this while an item
 // is being built. Uses the shared hook so it matches the customer app exactly. ──
@@ -157,6 +168,10 @@ export default function Pos({ onExit }) {
   // server default the first time, then remembered on this device.
   const [kdsIdleSec, setKdsIdleSec] = useState(() => { try { const v = localStorage.getItem(IDLE_KEY); return v == null ? null : Number(v); } catch { return null; } });
   const lastActivityRef = useRef(Date.now());
+  const seenAppRef = useRef(new Set());   // app-order ids already seen (no re-chime)
+  const firstPollRef = useRef(true);      // don't chime for orders already on screen at open
+  const modeRef = useRef('register');
+  const busyRef = useRef(false);
   const [cartOpen, setCartOpen] = useState(false); // mobile slide-over cart
   const returnTimer = useRef(null);
 
@@ -174,8 +189,10 @@ export default function Pos({ onExit }) {
       try { localStorage.setItem('bc-admin-pass', btoa(p)); } catch {}
       const cats = (m.categories || []);
       setActiveCat((prev) => prev || (cats[0] && cats[0].category) || null);
-      // Combined devices idle on the KDS; POS-only starts in register.
-      setMode((c.mode === 'kds') ? 'kitchen' : (c.mode === 'pos') ? 'register' : (cart.length ? 'register' : 'kitchen'));
+      // Start on the register (KDS-only devices excepted). The screen only moves
+      // to the KDS on its own when the register goes idle with orders waiting, or
+      // the moment a new app order arrives — never just because it's quiet.
+      setMode((c.mode === 'kds') ? 'kitchen' : 'register');
       return true;
     } catch (e) {
       if (/unauthor/i.test(e.message)) { setNeedPass(true); return false; }
@@ -203,6 +220,21 @@ export default function Pos({ onExit }) {
   useEffect(() => { try { localStorage.setItem(THEME_KEY, theme); } catch {} }, [theme]);
   useEffect(() => { try { if (kdsIdleSec != null) localStorage.setItem(IDLE_KEY, String(kdsIdleSec)); } catch {} }, [kdsIdleSec]);
 
+  // Paint the mobile status bar (theme-color meta) to match the POS theme, and
+  // restore whatever it was (the storefront colour) when the POS closes — this
+  // is what stops the leftover green bar behind the phone clock.
+  const origThemeColorRef = useRef(null);
+  useEffect(() => {
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (!meta) return;
+    if (origThemeColorRef.current === null) origThemeColorRef.current = meta.getAttribute('content') || '';
+    meta.setAttribute('content', POS_HEADER_HEX[theme] || POS_HEADER_HEX.plum);
+  }, [theme]);
+  useEffect(() => () => {
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta && origThemeColorRef.current !== null) meta.setAttribute('content', origThemeColorRef.current);
+  }, []);
+
   // Any interaction anywhere on the POS resets the idle clock.
   useEffect(() => {
     const bump = () => { lastActivityRef.current = Date.now(); };
@@ -211,26 +243,66 @@ export default function Pos({ onExit }) {
     return () => evs.forEach((e) => window.removeEventListener(e, bump));
   }, []);
 
-  // Idle auto-return to the KDS. Only on a combined POS+KDS device, only from an
-  // idle register with an EMPTY cart and nothing mid-flow, and only when the
-  // kitchen actually has orders waiting — otherwise it stays on the register.
+  // Keep refs current so the single poll below always sees live values without
+  // being torn down and recreated (which would re-seed the "seen orders" set).
+  modeRef.current = mode;
+  busyRef.current = !!(cart.length || configuring || combo || tender || cardPay || success || showSettings || showSetup);
+
+  // Short double chime so staff hear a new app order across the counter.
+  function posChime() {
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
+      const ac = new AC();
+      [0, 0.18].forEach((t0, i) => {
+        const o = ac.createOscillator(); const g = ac.createGain();
+        o.connect(g); g.connect(ac.destination);
+        o.type = 'sine'; o.frequency.value = i ? 1174 : 880;
+        const t = ac.currentTime + t0;
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(0.35, t + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
+        o.start(t); o.stop(t + 0.18);
+      });
+      setTimeout(() => { try { ac.close(); } catch {} }, 800);
+    } catch {}
+  }
+
+  // The one combined watcher for a POS+KDS device. Polls the board and does two
+  // things: (1) the moment a NEW app order lands it chimes and — unless the till
+  // is mid-order — opens the KDS so staff see it; (2) when the register has sat
+  // idle past the timer AND orders are waiting, it flips to the KDS. Never when
+  // an order is being built or paid. seenAppRef persists across renders so a
+  // given order only ever chimes once.
   useEffect(() => {
-    const secs = kdsIdleSec != null ? kdsIdleSec : (cfg && Number(cfg.kdsIdleSec));
-    if (!(secs > 0) || (cfg?.mode || 'pos_kds') !== 'pos_kds') return;
-    const iv = setInterval(async () => {
-      if (mode !== 'register' || cart.length || configuring || combo || tender || cardPay || success || showSettings || showSetup) return;
-      if (Date.now() - lastActivityRef.current < secs * 1000) return;
+    if ((cfg?.mode || 'pos_kds') !== 'pos_kds') return;
+    let alive = true;
+    const poll = async () => {
       try {
         const r = await fetch(`/api/admin/kds/tickets?pass=${encodeURIComponent(pass)}${posLoc ? `&location=${encodeURIComponent(posLoc)}` : ''}`);
-        if (!r.ok) return;
+        if (!alive || !r.ok) return;
         const d = await r.json();
-        const waiting = (d.tickets || []).some((t) => Object.values(t.zoneStatus || {}).some((s) => s && s !== 'done'));
-        if (waiting) { setConfiguring(null); setMode('kitchen'); }
+        const tickets = d.tickets || [];
+        const waiting = tickets.filter((t) => Object.values(t.zoneStatus || {}).some((s) => s && s !== 'done'));
+        const appWaiting = waiting.filter((t) => t.appOrigin);
+        const fresh = appWaiting.filter((t) => !seenAppRef.current.has(t.orderId));
+        appWaiting.forEach((t) => seenAppRef.current.add(t.orderId));
+        if (!firstPollRef.current && fresh.length && modeRef.current !== 'kitchen') {
+          posChime();
+          if (!busyRef.current) { setConfiguring(null); setMode('kitchen'); }
+        }
+        firstPollRef.current = false;
+        const secs = kdsIdleSec != null ? kdsIdleSec : (cfg && Number(cfg.kdsIdleSec));
+        if (secs > 0 && modeRef.current === 'register' && !busyRef.current
+          && Date.now() - lastActivityRef.current >= secs * 1000 && waiting.length) {
+          setConfiguring(null); setMode('kitchen');
+        }
       } catch {}
-    }, 5000);
-    return () => clearInterval(iv);
+    };
+    poll();
+    const iv = setInterval(poll, 6000);
+    return () => { alive = false; clearInterval(iv); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [kdsIdleSec, cfg, mode, cart.length, configuring, combo, tender, cardPay, success, showSettings, showSetup, pass, posLoc]);
+  }, [cfg, kdsIdleSec, pass, posLoc]);
 
   // Keep the order type valid for the selected store's Order-types setting
   // (admin/stores). A takeaway-only store (e.g. Tulip Farm) can never sit on a
@@ -318,11 +390,11 @@ export default function Pos({ onExit }) {
     setSuccess({ orderId, shortId, tender: tenderType, change });
     setCartOpen(false);
     clearCart();
+    // After a sale, clear the receipt and stay on the register — ready for the
+    // next customer. Moving to the KDS is left to the idle timer / app-order
+    // watcher, so a busy counter isn't bounced to the kitchen between sales.
     const delay = Math.max(1500, (cfg?.autoReturnSec || 3) * 1000);
-    returnTimer.current = setTimeout(() => {
-      setSuccess(null);
-      if (deviceMode === 'pos_kds') setMode('kitchen');
-    }, delay);
+    returnTimer.current = setTimeout(() => { setSuccess(null); lastActivityRef.current = Date.now(); }, delay);
   }
 
   async function submit(tenderType, cashGiven) {
@@ -455,7 +527,7 @@ export default function Pos({ onExit }) {
             <span className="pos-storepill-dot">●</span>{activeStore.name}
           </button>
         )}
-        <button className="pos-icon" title="Settings" onClick={() => setShowSettings(true)}>⚙</button>
+        <button className="pos-icon" title="Settings" onClick={() => setShowSettings(true)}><IcoGear /></button>
       </div>
     </header>
   );
@@ -689,7 +761,7 @@ export default function Pos({ onExit }) {
 
       {/* Success overlay */}
       {success && (
-        <div className="pos-scrim" onClick={() => { setSuccess(null); if (deviceMode === 'pos_kds') setMode('kitchen'); }}>
+        <div className="pos-scrim" onClick={() => { setSuccess(null); lastActivityRef.current = Date.now(); }}>
           <div className="pos-success" onClick={(e) => e.stopPropagation()}>
             <div className="pos-success-tick">✓</div>
             <div className="pos-success-title">{success.tender === 'unpaid' ? 'Sent to kitchen' : 'Payment complete'}</div>
@@ -697,7 +769,7 @@ export default function Pos({ onExit }) {
             {success.tender === 'cash' && success.change > 0 && (
               <div className="pos-success-change">Change due <b>{formatMoney(success.change, currency)}</b></div>
             )}
-            <button className="pos-btn primary big" onClick={() => { setSuccess(null); setMode(deviceMode === 'pos_kds' ? 'kitchen' : 'register'); }}>Done</button>
+            <button className="pos-btn primary big" onClick={() => { setSuccess(null); setMode('register'); lastActivityRef.current = Date.now(); }}>Done</button>
           </div>
         </div>
       )}
@@ -709,6 +781,53 @@ export default function Pos({ onExit }) {
 //    screen is serving (one selector that drives both the register and the KDS),
 //    the card terminal, the signed-in staff, and exit. Opened from the ⚙ in the
 //    one top bar. ──
+// A compact "how we're traveling" panel for the current store, inside POS
+// Settings — reuses the same figures as the admin compare dashboard so a manager
+// can glance at trade without leaving the till.
+function PosStorePulse({ posLoc, storeName }) {
+  const [days, setDays] = useState(7);
+  const [row, setRow] = useState(null);
+  const [err, setErr] = useState('');
+  const pass = (() => { try { return atob(localStorage.getItem('bc-admin-pass') || '') || ''; } catch { return ''; } })();
+  useEffect(() => {
+    let alive = true; setRow(null); setErr('');
+    fetch(`/api/admin/analytics/compare?days=${days}&pass=${encodeURIComponent(pass)}`)
+      .then((r) => r.json())
+      .then((d) => { if (!alive) return; if (d.error) { setErr(d.error); return; }
+        const stores = d.stores || [];
+        const mine = stores.find((s) => s.id === posLoc) || stores[0] || null;
+        setRow(mine ? { ...mine, cur: d.currency || 'AUD' } : null);
+      })
+      .catch(() => { if (alive) setErr('Could not load figures.'); });
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [days, posLoc]);
+  const tiles = row ? [
+    { v: row.orders, l: 'Orders' },
+    { v: formatMoney(row.revenue, row.cur), l: 'Revenue' },
+    { v: row.app, l: 'App' },
+    { v: row.pos, l: 'POS' },
+    { v: row.qr, l: 'QR' },
+  ] : [];
+  return (
+    <div className="pos-set-block">
+      <div className="pos-set-label">How we&rsquo;re traveling{storeName ? ` · ${storeName}` : ''}</div>
+      <div className="pos-idle-opts" style={{ marginTop: 8 }}>
+        {[7, 30].map((d) => <button key={d} type="button" className={`pos-idle-opt${days === d ? ' on' : ''}`} onClick={() => setDays(d)}>{d} days</button>)}
+      </div>
+      {err && <p className="pos-set-hint">{err}</p>}
+      {!row && !err && <p className="pos-set-hint">Loading…</p>}
+      {row && (
+        <div className="pos-pulse-grid">
+          {tiles.map((t) => (
+            <div key={t.l} className="pos-pulse-tile"><span className="pos-pulse-v">{t.v}</span><span className="pos-pulse-l">{t.l}</span></div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SettingsSheet({ cfg, posLoc, multiStore, curTerm, theme, onTheme, idleSec, onIdle, onSwitchStore, onOpenTerminal, onExit, onClose }) {
   const idleOpts = [{ v: 0, t: 'Never' }, { v: 30, t: '30s' }, { v: 60, t: '60s' }, { v: 120, t: '2 min' }, { v: 300, t: '5 min' }];
   const storeName = (cfg.locations || []).find((l) => l.id === posLoc)?.name || '';
@@ -718,7 +837,7 @@ function SettingsSheet({ cfg, posLoc, multiStore, curTerm, theme, onTheme, idleS
       <div className="pos-settings" onClick={(e) => e.stopPropagation()}>
         <div className="pos-settings-head">
           <div className="pos-tender-title">Settings</div>
-          <button className="pos-icon" title="Close" onClick={onClose}>✕</button>
+          <button className="pos-icon" title="Close" onClick={onClose}><IcoX /></button>
         </div>
 
         <div className="pos-set-block">
@@ -758,6 +877,8 @@ function SettingsSheet({ cfg, posLoc, multiStore, curTerm, theme, onTheme, idleS
             </select>
           </div>
         )}
+
+        <PosStorePulse posLoc={posLoc} storeName={storeName} />
 
         <div className="pos-set-block">
           <div className="pos-set-label">Card terminal{storeName ? ` · ${storeName}` : ''}</div>

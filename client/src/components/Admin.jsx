@@ -289,6 +289,14 @@ export default function Admin({ onExit }) {
   useEffect(() => {
     try { localStorage.setItem('bc-admin-theme', adminTheme); } catch {}
   }, [adminTheme]);
+  // Match the mobile status bar (theme-color meta) to the admin theme so it
+  // isn't left on the storefront colour (the "green bar" behind the clock).
+  useEffect(() => {
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (!meta) return;
+    const bg = { light: '#F5F6F8', 'dark-pink': '#171216', 'dark-blue': '#10161E', 'dark-green': '#101813', plum: '#160F1D' };
+    meta.setAttribute('content', bg[adminTheme] || '#F5F6F8');
+  }, [adminTheme]);
 
   // Switching backend sections should start you at the top of the new section,
   // not wherever you'd scrolled in the previous one. Reset both the page scroll
