@@ -124,7 +124,13 @@ async function redemptionCounts() {
 // Square customer record (name / phone / email / join date) plus loyalty stats
 // (points, lifetime earned, points redeemed, reward redemptions) — for the admin
 // "Users" view. Read-only.
+// Heavy call (paginates loyalty accounts + bulk-retrieves customers + redemption
+// counts), so its result is cached briefly. That keeps repeated admin/Insights
+// loads from re-hammering Square and tripping the per-method rate limit (429).
+let _loyaltyUsersCache = { at: 0, data: null };
 async function listLoyaltyUsers() {
+  const now = Date.now();
+  if (_loyaltyUsersCache.data && now - _loyaltyUsersCache.at < 120000) return _loyaltyUsersCache.data;
   const accounts = [];
   let cursor;
   do {
@@ -172,6 +178,7 @@ async function listLoyaltyUsers() {
     };
   });
   users.sort((a, b) => new Date(b.enrolledAt || 0) - new Date(a.enrolledAt || 0));
+  _loyaltyUsersCache = { at: Date.now(), data: users };
   return users;
 }
 

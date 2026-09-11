@@ -18,24 +18,33 @@ function assertConfigured() {
 
 async function squareFetch(path, { method = 'GET', body } = {}) {
   assertConfigured();
-  const res = await fetch(`${BASE_URL}${path}`, {
-    method,
-    headers: {
-      'Square-Version': SQUARE_VERSION,
-      Authorization: `Bearer ${ACCESS_TOKEN}`,
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-    },
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  const text = await res.text();
-  let json;
-  try {
-    json = text ? JSON.parse(text) : {};
-  } catch {
-    json = { raw: text };
-  }
-  if (!res.ok) {
+  // Retry ONLY on 429 (rate limit): a rate-limited request was never processed,
+  // so re-sending it is safe — and creates (orders/payments/refunds/checkouts)
+  // carry their own idempotency_key, so even those never double up. Honour
+  // Retry-After when Square sends it, else a short jittered backoff.
+  const MAX_ATTEMPTS = 4;
+  for (let attempt = 1; ; attempt++) {
+    const res = await fetch(`${BASE_URL}${path}`, {
+      method,
+      headers: {
+        'Square-Version': SQUARE_VERSION,
+        Authorization: `Bearer ${ACCESS_TOKEN}`,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    const text = await res.text();
+    let json;
+    try { json = text ? JSON.parse(text) : {}; } catch { json = { raw: text }; }
+    if (res.ok) return json;
+    if (res.status === 429 && attempt < MAX_ATTEMPTS) {
+      const ra = Number(res.headers.get('retry-after'));
+      const wait = ra > 0 ? Math.min(ra * 1000, 8000) : Math.min(4000, 400 * Math.pow(2, attempt - 1)) + Math.floor(Math.random() * 250);
+      console.warn(`[square] 429 rate-limited on ${method} ${path} — retry ${attempt}/${MAX_ATTEMPTS - 1} in ${wait}ms`);
+      await new Promise((r) => setTimeout(r, wait));
+      continue;
+    }
     const detail =
       json && json.errors
         ? json.errors.map((e) => `${e.category}/${e.code}: ${e.detail}`).join('; ')
@@ -45,7 +54,6 @@ async function squareFetch(path, { method = 'GET', body } = {}) {
     err.squareErrors = json.errors;
     throw err;
   }
-  return json;
 }
 
 function moneyToNumber(m) {
