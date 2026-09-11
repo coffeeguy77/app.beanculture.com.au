@@ -218,6 +218,18 @@ async function init(attempt = 1) {
     await pool.query('CREATE INDEX IF NOT EXISTS pos_payments_order ON pos_payments (square_order_id)');
     await pool.query('CREATE INDEX IF NOT EXISTS pos_payments_status ON pos_payments (status)');
 
+    // Versioned backups of the settings blob. Every save snapshots the PREVIOUS
+    // settings here before overwriting, so a bad/partial save can always be
+    // rolled back (this is the safety net behind the admin "Backups" panel).
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS app_settings_history (
+        id bigserial primary key,
+        data jsonb not null,
+        created_at timestamptz default now()
+      )
+    `);
+    await pool.query('CREATE INDEX IF NOT EXISTS app_settings_history_ts ON app_settings_history (created_at)');
+
     const r = await pool.query("SELECT data FROM app_settings WHERE id = 'main'");
     cache = (r.rows[0] && r.rows[0].data) || {};
     ready = true;
@@ -243,13 +255,74 @@ function getOverrides() {
   return cache || {};
 }
 
+// The parts of settings a data-loss rollback cares about (the hand-built config).
+// Frequent operational writes — sold-out toggles, availability — change none of
+// these, so they don't spawn a history snapshot and can't churn away the useful
+// versions. A snapshot is still taken whenever any of these actually changes.
+function _structuralFingerprint(s) {
+  const o = s || {};
+  return JSON.stringify({
+    presets: o.presets, presetSectionNav: o.presetSectionNav, combos: o.combos,
+    coupons: o.coupons, customTables: o.customTables, categories: o.categories,
+    menuSchedules: o.menuSchedules, kdsStations: o.kdsStations, locations: o.locations,
+  });
+}
+
 async function saveOverrides(obj) {
+  const prev = cache; // the version we are about to overwrite
   cache = obj || {};
   if (!pool) throw new Error('No database configured (DATABASE_URL missing)');
+  // Snapshot the PREVIOUS settings before overwriting, but only when the hand-built
+  // config actually changed — so a rollback point exists for every meaningful edit
+  // without operational churn (sold-out toggles etc.) evicting the useful versions.
+  // Best-effort + non-blocking: a history failure must never block the save.
+  try {
+    if (prev && typeof prev === 'object' && Object.keys(prev).length
+        && _structuralFingerprint(prev) !== _structuralFingerprint(cache)) {
+      await pool.query('INSERT INTO app_settings_history (data) VALUES ($1)', [prev]);
+      // Keep the most recent 100 structural snapshots; prune the rest.
+      await pool.query(
+        'DELETE FROM app_settings_history WHERE id NOT IN (SELECT id FROM app_settings_history ORDER BY id DESC LIMIT 100)'
+      );
+    }
+  } catch (e) { console.warn('[db] settings history snapshot failed:', e.message); }
   await pool.query(
     "INSERT INTO app_settings (id, data) VALUES ('main', $1) ON CONFLICT (id) DO UPDATE SET data = $1",
     [cache]
   );
+}
+
+// List recent settings snapshots (newest first) with light metadata so the admin
+// can see what each one contained before restoring — never the full blob.
+async function listSettingsBackups(limit = 40) {
+  if (!pool) return [];
+  const r = await pool.query(
+    'SELECT id, created_at, data FROM app_settings_history ORDER BY id DESC LIMIT $1',
+    [Math.min(Math.max(1, limit), 100)]
+  );
+  return r.rows.map((row) => {
+    const d = row.data || {};
+    const presets = Array.isArray(d.presets) ? d.presets : [];
+    const sections = [...new Set(presets.map((p) => (p && p.section ? String(p.section).trim() : '')).filter(Boolean))];
+    return {
+      id: String(row.id),
+      createdAt: row.created_at,
+      presetCount: presets.length,
+      sectionCount: sections.length,
+      couponCount: Array.isArray(d.coupons) ? d.coupons.length : 0,
+      bytes: JSON.stringify(d).length,
+    };
+  });
+}
+
+// Restore a snapshot as the live settings. The current live settings are snapshotted
+// first (by saveOverrides), so a restore is itself reversible.
+async function restoreSettingsBackup(id) {
+  if (!pool) throw new Error('No database configured');
+  const r = await pool.query('SELECT data FROM app_settings_history WHERE id = $1', [id]);
+  if (!r.rows[0]) throw new Error('Backup not found');
+  await saveOverrides(r.rows[0].data || {});
+  return r.rows[0].data || {};
 }
 
 // ---- Scheduled / recurring pre-orders ----
@@ -908,7 +981,7 @@ async function posPaymentByOrder(squareOrderId) {
 }
 
 module.exports = {
-  init, getOverrides, saveOverrides,
+  init, getOverrides, saveOverrides, listSettingsBackups, restoreSettingsBackup,
   kdsGetStates, kdsSetStatus, kdsMarkPaid, kdsGetPaid,
   posRecordOrder, posPaymentUpsert, posPaymentSetStatus, posPaymentGet, posPaymentByOrder,
   insertScheduled, listScheduledByCustomer, cancelScheduled, claimDue, updateScheduled,
