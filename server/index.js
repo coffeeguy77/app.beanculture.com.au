@@ -2108,7 +2108,10 @@ app.get('/api/admin/analytics/sales', async (req, res) => {
             location_ids: [store.squareLocationId],
             cursor,
             query: {
-              filter: { date_time_filter: { created_at: { start_at: startAt } }, state_filter: { states: ['COMPLETED'] } },
+              // Include OPEN as well as COMPLETED: app orders keep a PICKUP
+              // fulfilment and usually stay OPEN after payment, so a COMPLETED-only
+              // filter hides every app sale. We gate on "paid" below instead.
+              filter: { date_time_filter: { created_at: { start_at: startAt } }, state_filter: { states: ['COMPLETED', 'OPEN'] } },
               sort: { sort_field: 'CREATED_AT', sort_order: 'DESC' },
             },
             limit: 500,
@@ -2116,6 +2119,10 @@ app.get('/api/admin/analytics/sales', async (req, res) => {
         }).catch(() => ({}));
         for (const o of (data.orders || [])) {
           const amt = (o.total_money && o.total_money.amount) || 0;
+          // A real sale = paid: COMPLETED, or OPEN with a tender. Skips unpaid /
+          // abandoned app tickets (held, no tender) so they aren't counted.
+          const paid = o.state === 'COMPLETED' || (Array.isArray(o.tenders) && o.tenders.length > 0);
+          if (!paid || amt <= 0) continue;
           const src = saleSource(o.source && o.source.name);
           const d = dayInTz(o.created_at, tz);
           const row = byDay[d] || (byDay[d] = { app: 0, pos: 0, other: 0, total: 0 });
@@ -2128,6 +2135,73 @@ app.get('/api/admin/analytics/sales', async (req, res) => {
       out.push({ id: store.id, name: store.name, daily, totals });
     }
     res.json({ days, currency: sq.CURRENCY, stores: out });
+  } catch (e) { res.status(502).json({ error: e.message }); }
+});
+
+// ---- Admin: App sales report — every app (self-order) sale by day, plus the
+// best customer for the period. Period = days (1 = today … up to 366). App orders
+// are counted whether COMPLETED or paid-OPEN, so nothing is missed. ----
+app.get('/api/admin/analytics/app-sales', async (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const days = Math.max(1, Math.min(366, parseInt(req.query.days, 10) || 1));
+    const cacheKey = `appsales|${days}`;
+    const cached = analyticsCache(cacheKey, 60_000);
+    if (cached) return res.json(cached);
+    const tz = (getSettings().contact && getSettings().contact.timezone) || 'Australia/Sydney';
+    const startAt = new Date(Date.now() - days * 86400000).toISOString();
+    const stores = locations.active();
+    const byDay = {};              // date -> { total, count }
+    const byCust = new Map();      // customerId -> { total, count }
+    const recent = [];            // individual sales (trimmed later)
+    let total = 0, count = 0, guestTotal = 0, guestCount = 0;
+    for (const store of stores) {
+      let cursor; let pages = 0;
+      do {
+        const data = await sq.squareFetch('/v2/orders/search', {
+          method: 'POST',
+          body: {
+            location_ids: [store.squareLocationId], cursor,
+            query: { filter: { date_time_filter: { created_at: { start_at: startAt } }, state_filter: { states: ['COMPLETED', 'OPEN'] } }, sort: { sort_field: 'CREATED_AT', sort_order: 'DESC' } },
+            limit: 500,
+          },
+        }).catch(() => ({}));
+        for (const o of (data.orders || [])) {
+          if (saleSource(o.source && o.source.name) !== 'app') continue; // app self-order only
+          const amt = (o.total_money && o.total_money.amount) || 0;
+          const paid = o.state === 'COMPLETED' || (Array.isArray(o.tenders) && o.tenders.length > 0);
+          if (!paid || amt <= 0) continue;
+          const day = dayInTz(o.created_at, tz);
+          const r = byDay[day] || (byDay[day] = { total: 0, count: 0 });
+          r.total += amt; r.count += 1; total += amt; count += 1;
+          const cid = o.customer_id || null;
+          if (cid) { const c = byCust.get(cid) || { total: 0, count: 0 }; c.total += amt; c.count += 1; byCust.set(cid, c); }
+          else { guestTotal += amt; guestCount += 1; }
+          recent.push({ at: o.created_at, amount: amt, customerId: cid, store: store.name });
+        }
+        cursor = data.cursor; pages += 1;
+      } while (cursor && pages < 12);
+    }
+    const ranked = [...byCust.entries()].sort((a, b) => b[1].total - a[1].total);
+    const topIds = ranked.slice(0, 10).map(([id]) => id);
+    recent.sort((a, b) => new Date(b.at) - new Date(a.at));
+    const trimmed = recent.slice(0, 100);
+    const joinIds = [...new Set([...topIds, ...trimmed.map((r) => r.customerId).filter(Boolean)])];
+    const custMap = new Map();
+    for (let i = 0; i < joinIds.length; i += 100) {
+      try {
+        const d = await sq.squareFetch('/v2/customers/bulk-retrieve', { method: 'POST', body: { customer_ids: joinIds.slice(i, i + 100) } });
+        for (const [id, r] of Object.entries(d.responses || {})) if (r.customer) custMap.set(id, r.customer);
+      } catch { /* thinner names on a failed chunk */ }
+    }
+    const nameOf = (id) => { const c = id && custMap.get(id); return c ? ([c.given_name, c.family_name].filter(Boolean).join(' ').trim() || c.company_name || c.nickname || '') : ''; };
+    const phoneOf = (id) => { const c = id && custMap.get(id); return (c && c.phone_number) || ''; };
+    const topCustomers = ranked.slice(0, 10).map(([id, v]) => ({ name: nameOf(id) || 'Guest', phone: phoneOf(id), total: v.total, count: v.count }));
+    const daily = Object.keys(byDay).sort().map((date) => ({ date, ...byDay[date] }));
+    const sales = trimmed.map((r) => ({ at: r.at, amount: r.amount, store: r.store, name: r.customerId ? (nameOf(r.customerId) || 'Guest') : 'Guest', phone: r.customerId ? phoneOf(r.customerId) : '' }));
+    const payload = { days, currency: sq.CURRENCY, total, count, daily, topCustomers, best: topCustomers[0] || null, guestTotal, guestCount, sales };
+    analyticsCacheSet(cacheKey, payload);
+    res.json(payload);
   } catch (e) { res.status(502).json({ error: e.message }); }
 });
 
