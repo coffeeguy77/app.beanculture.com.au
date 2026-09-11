@@ -516,6 +516,17 @@ export default function Pos({ onExit }) {
     const m = (cfg.paymentsByLocation || {})[posLoc];
     return { card: !m || m.card !== false, cash: !m || m.cash !== false, unpaid: !m || m.unpaid !== false };
   })();
+  // Pressing Charge. If only ONE method is on, skip the method chooser entirely —
+  // card-only jumps straight to the Terminal (figure + tap), no extra step.
+  const startCharge = () => {
+    const enabled = ['card', 'cash', 'unpaid'].filter((k) => payMethods[k]);
+    if (enabled.length === 1) {
+      if (enabled[0] === 'card' && curTerm.deviceId) { submit('card'); return; }
+      if (enabled[0] === 'cash') { setTender('cash'); return; }
+      if (enabled[0] === 'unpaid') { setTender('unpaid'); return; }
+    }
+    setTender('choose');
+  };
   const q = query.trim().toLowerCase();
   const activeItems = q
     ? cats.flatMap((c) => (c.items || []).map((it) => ({ ...it, category: c.category })))
@@ -721,7 +732,7 @@ export default function Pos({ onExit }) {
             <div className="pos-total-row"><span>Total</span><span className="pos-total">{formatMoney(total, currency)}</span></div>
             <div className="pos-gst">GST included</div>
             {err && <div className="pos-err">{err}</div>}
-            <button className="pos-btn primary big pay" disabled={!cart.length || busy} onClick={() => setTender('choose')}>
+            <button className="pos-btn primary big pay" disabled={!cart.length || busy} onClick={startCharge}>
               Charge {formatMoney(total, currency)}
             </button>
           </div>
@@ -1289,7 +1300,12 @@ function TerminalSetup({ pass, cfg, locationId, curTerm, onClose, onSelected }) 
   const [pairing, setPairing] = useState(null); // { id, code, status }
   const [msg, setMsg] = useState('');
   const [err, setErr] = useState('');
+  const [showCart, setShowCart] = useState(cfg.terminalShowCart === true);
   const storeName = (cfg.locations || []).find((l) => l.id === locationId)?.name || '';
+  const toggleShowCart = (v) => {
+    setShowCart(v);
+    api.posSetTerminalOptions(pass, v).catch(() => setShowCart(!v));
+  };
 
   async function loadDevices() {
     try { const d = await api.posTerminalDevices(pass); setDevices(d.devices || []); }
@@ -1383,6 +1399,15 @@ function TerminalSetup({ pass, cfg, locationId, curTerm, onClose, onSelected }) 
             ))}
           </div>
         )}
+
+        <div className="pos-set-block" style={{ marginTop: 12 }}>
+          <div className="pos-set-label">Terminal checkout</div>
+          <label className="pos-set-row" style={{ cursor: 'pointer' }}>
+            <span className="pos-set-status">Show the order &amp; confirm screen on the terminal</span>
+            <input type="checkbox" checked={showCart} onChange={(e) => toggleShowCart(e.target.checked)} />
+          </label>
+          <p className="pos-set-hint">Off (default): pressing Charge sends the amount straight to the terminal — the customer just taps. On: the terminal shows the itemised order and a confirm step first.</p>
+        </div>
 
         <div className="pos-setup-warn" style={{ margin: '10px 0', padding: '10px 12px', border: '1px solid #e6b800', background: '#fff8e1', borderRadius: 10, fontSize: 13, color: '#6b5300' }}>
           ⚠ <b>Reader compatibility:</b> The 1st-generation Square Terminal (V1) is <b>not</b> compatible with the Square Terminal API and cannot take card payments here — you need a <b>V1.2 Square Terminal</b>. If a reader stays “Offline” or a card payment fails, it’s likely a 1st-gen device — remove it with the ✕ and pair your V1.2.
