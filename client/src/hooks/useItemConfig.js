@@ -47,6 +47,7 @@ export function buildQuickCartItem(item) {
   return {
     key: makeKey(item, variation.id, allIds, ''),
     itemId: item.presetSourceItemId || item.id,
+    presetId: item.isPreset ? item.id : undefined,   // lets the POS apply a location price override
     itemName: item.name,
     category: item.category || null,
     image: item.image || null,
@@ -140,6 +141,7 @@ export function useItemConfig(item, initial) {
     return {
       key: makeKey(item, variationId, allIds, note),
       itemId: item.presetSourceItemId || item.id,
+      presetId: item.isPreset ? item.id : undefined,   // lets the POS apply a location price override
       itemName: item.name,
       category: item.category || null,
       image: item.image || null,
