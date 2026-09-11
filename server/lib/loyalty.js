@@ -52,6 +52,87 @@ async function getAccountByPhone(phone) {
   }
 }
 
+// Look up a customer's loyalty account directly by their Square customer id
+// (used at payment time, where we know the customer but not always the phone).
+async function getAccountByCustomerId(customerId) {
+  if (!customerId) return null;
+  try {
+    const data = await squareFetch('/v2/loyalty/accounts/search', {
+      method: 'POST',
+      body: { query: { customer_ids: [customerId] }, limit: 1 },
+    });
+    const acct = (data.loyalty_accounts || [])[0];
+    return acct ? { id: acct.id, balance: acct.balance || 0, customerId: acct.customer_id } : null;
+  } catch { return null; }
+}
+
+// Accrue loyalty points for a PAID order, per the program's accrual rules. Square
+// computes the point total from the order itself — a custom checkout (Orders +
+// Payments API) must call this explicitly; unlike Square's own POS it does NOT
+// auto-accrue. Best-effort + idempotent (keyed by order) so a retry or a repeated
+// call never double-credits. Needs the order paid and accrual rules set in Square.
+async function accumulateForOrder({ accountId, customerId, phone, orderId, locationId }) {
+  try {
+    if (!orderId) return false;
+    let id = accountId;
+    if (!id && customerId) { const a = await getAccountByCustomerId(customerId); id = a && a.id; }
+    if (!id && phone) { const a = await getAccountByPhone(phone); id = a && a.id; }
+    if (!id) return false; // not a loyalty member (or not signed in) — nothing to accrue
+    await squareFetch(`/v2/loyalty/accounts/${id}/accumulate`, {
+      method: 'POST',
+      body: {
+        idempotency_key: `accrue-${orderId}`.slice(0, 128),
+        accumulate_points: { order_id: orderId },
+        ...(locationId ? { location_id: locationId } : {}),
+      },
+    });
+    return true;
+  } catch (e) { console.error('[loyalty] accumulate failed', e.message); return false; }
+}
+
+// Current balance + lifetime for one account (after an adjustment, to report back).
+async function getBalance(accountId) {
+  if (!accountId) return null;
+  try {
+    const data = await squareFetch(`/v2/loyalty/accounts/${accountId}`);
+    const a = data.loyalty_account;
+    return a ? { id: a.id, balance: a.balance || 0, lifetime: a.lifetime_points || 0, customerId: a.customer_id } : null;
+  } catch { return null; }
+}
+
+// Normalise a Square loyalty event into a compact history row.
+function mapLoyaltyEvent(e) {
+  const t = e.type || '';
+  let points = null, detail = '';
+  if (e.accumulate_points) { points = e.accumulate_points.points; detail = 'Earned on purchase'; }
+  else if (e.accumulate_promotion_points) { points = e.accumulate_promotion_points.points; detail = 'Promotion bonus'; }
+  else if (e.adjust_points) { points = e.adjust_points.points; detail = e.adjust_points.reason || 'Manual adjustment'; }
+  else if (e.redeem_reward) { points = null; detail = 'Redeemed a reward'; }
+  else if (e.expire_points) { points = -(e.expire_points.points || 0); detail = 'Points expired'; }
+  else if (e.create_reward) { points = e.create_reward.points ? -Math.abs(e.create_reward.points) : null; detail = 'Reward created'; }
+  else if (e.delete_reward) { points = e.delete_reward.points || null; detail = 'Reward cancelled (points returned)'; }
+  else { detail = t.replace(/_/g, ' ').toLowerCase(); }
+  return { id: e.id, type: t, points, at: e.created_at, detail };
+}
+
+// Full points ledger for one account (newest first) — every earn/redeem/adjust.
+async function accountHistory(accountId, limit = 50) {
+  if (!accountId) return [];
+  try {
+    const out = [];
+    let cursor; let pages = 0;
+    do {
+      const data = await squareFetch('/v2/loyalty/events/search', {
+        method: 'POST',
+        body: { query: { filter: { loyalty_account_filter: { loyalty_account_id: accountId } } }, limit: 30, ...(cursor ? { cursor } : {}) },
+      });
+      for (const e of (data.events || data.loyalty_events || [])) out.push(mapLoyaltyEvent(e));
+      cursor = data.cursor; pages++;
+    } while (cursor && out.length < limit && pages < 5);
+    return out.slice(0, limit);
+  } catch { return []; }
+}
+
 // Combined view for the app: balance + which tiers the customer can afford.
 async function getCustomerLoyalty(phone) {
   const [program, account] = await Promise.all([getProgram(), getAccountByPhone(phone)]);
@@ -246,4 +327,4 @@ async function adjustPoints({ accountId, points, reason }) {
   } catch (e) { console.error('[loyalty] adjust failed', e.message); return false; }
 }
 
-module.exports = { getProgram, getAccountByPhone, getCustomerLoyalty, createReward, deleteReward, listLoyaltyUsers, signupStats, enrollAccount, adjustPoints };
+module.exports = { getProgram, getAccountByPhone, getAccountByCustomerId, accumulateForOrder, getBalance, accountHistory, getCustomerLoyalty, createReward, deleteReward, listLoyaltyUsers, signupStats, enrollAccount, adjustPoints };

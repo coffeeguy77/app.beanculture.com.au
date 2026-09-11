@@ -80,4 +80,17 @@ async function setBirthday(id, input) {
   return birthdayToMMDD((data.customer || {}).birthday) || `${mm}-${dd}`;
 }
 
-module.exports = { findOrCreate, normalizePhone, get, getBirthday, setBirthday, birthdayToMMDD };
+// Update a Square customer's basic profile (name / email / phone). Only the
+// fields provided are changed. Used by the admin Users panel.
+async function updateProfile(id, { name, email, phone } = {}) {
+  if (!id) throw new Error('Missing customer id');
+  const body = {};
+  if (name != null) body.given_name = String(name).trim();
+  if (email != null) { const t = String(email).trim(); if (t) body.email_address = t; }
+  if (phone != null) { const e164 = normalizePhone(phone); if (String(phone).trim() && !e164) throw new Error('A valid phone number is required'); if (e164) body.phone_number = e164; }
+  if (!Object.keys(body).length) return await get(id);
+  const data = await squareFetch(`/v2/customers/${id}`, { method: 'PUT', body });
+  return data.customer || null;
+}
+
+module.exports = { findOrCreate, normalizePhone, get, getBirthday, setBirthday, birthdayToMMDD, updateProfile };
