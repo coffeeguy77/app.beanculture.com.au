@@ -483,8 +483,18 @@ async function getMenu(opts = {}) {
   if (includeSections) {
     const presetsBySection = new Map();
     const presetSourceIds = new Set();
+    // Group ("choose a sub-product") tiles bundle several member presets. Collect
+    // the group definitions + member ids so members are hidden as standalone tiles
+    // and instead surface inside their group. tileByPresetId lets each group embed
+    // its members' fully-built tiles (variations/options/prices) as sub-products.
+    const allPresetsList = getSettings().presets || [];
+    const groupDefs = allPresetsList.filter((g) => g && g.enabled !== false && g.group === true && Array.isArray(g.members) && g.members.length);
+    const memberIds = new Set();
+    for (const g of groupDefs) for (const mid of g.members) memberIds.add(mid);
+    const tileByPresetId = new Map();
     for (const p of getSettings().presets || []) {
       if (!p || p.enabled === false) continue;
+      if (p.group === true) continue; // group tiles are built after the loop, from their members
       // Custom (from-scratch) tile: not a Square catalog item. Its variations +
       // option groups + prices live on the preset itself. Rendered like any other
       // tile; ordered as ad-hoc priced lines (see orders.customLineFor).
@@ -519,9 +529,12 @@ async function getMenu(opts = {}) {
           presetSourceItemId: null,
           categoryName: p.categoryName || null,
         };
-        const cSec = String(p.section || '').trim() || 'Specials';
-        if (!presetsBySection.has(cSec)) presetsBySection.set(cSec, []);
-        presetsBySection.get(cSec).push(cTile);
+        tileByPresetId.set(p.id, cTile);
+        if (!memberIds.has(p.id)) {
+          const cSec = String(p.section || '').trim() || 'Specials';
+          if (!presetsBySection.has(cSec)) presetsBySection.set(cSec, []);
+          presetsBySection.get(cSec).push(cTile);
+        }
         continue;
       }
       const src = itemsById.get(p.sourceItemId);
@@ -589,9 +602,12 @@ async function getMenu(opts = {}) {
         isPreset: true,
         presetSourceItemId: p.sourceItemId,
       };
-      const secName = String(p.section || '').trim() || 'Specials';
-      if (!presetsBySection.has(secName)) presetsBySection.set(secName, []);
-      presetsBySection.get(secName).push(tile);
+      tileByPresetId.set(p.id, tile);
+      if (!memberIds.has(p.id)) {
+        const secName = String(p.section || '').trim() || 'Specials';
+        if (!presetsBySection.has(secName)) presetsBySection.set(secName, []);
+        presetsBySection.get(secName).push(tile);
+      }
 
       // Combo option view of this tile: same configured modifier groups + locked
       // add-ons + defaults, but with BASE variation prices (the combo bakes the
@@ -607,6 +623,31 @@ async function getMenu(opts = {}) {
       };
       comboOptionByPresetId.set(p.id, comboView);
       if (!comboOptionByItemId.has(p.sourceItemId)) comboOptionByItemId.set(p.sourceItemId, comboView);
+    }
+    // Build the group ("chooser") tiles from their members' fully-built tiles.
+    // Each sub-product is a complete tile, so the item sheet can run its normal
+    // size/options step on whichever sub-product the customer picks, and ordering
+    // uses that member's real Square variation (or ad-hoc line for a custom member).
+    for (const g of groupDefs) {
+      const subs = (g.members || []).map((mid) => tileByPresetId.get(mid)).filter(Boolean);
+      if (!subs.length) continue;
+      const prices = subs.flatMap((s) => (s.variations || []).map((v) => v.price || 0));
+      const gTile = {
+        id: 'group:' + g.id,
+        name: (g.name || '').trim() || 'Choose an option',
+        description: g.description || '',
+        image: g.image || (subs.find((s) => s.image) || {}).image || null,
+        soldOut: subs.every((s) => s.soldOut),
+        isPreset: true,
+        isGroup: true,
+        subProducts: subs,
+        fromPrice: prices.length ? Math.min(...prices) : 0,
+        variations: [],
+        modifierGroups: [],
+      };
+      const gSec = String(g.section || '').trim() || 'Specials';
+      if (!presetsBySection.has(gSec)) presetsBySection.set(gSec, []);
+      presetsBySection.get(gSec).push(gTile);
     }
     const sectionNav = getSettings().presetSectionNav || {};
     // A builder section shows on the storefront when its Top-menu or Footer
