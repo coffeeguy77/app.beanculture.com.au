@@ -1402,6 +1402,43 @@ app.post('/api/pos/terminal-options', async (req, res) => {
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
+// ---- Customer display: a second screen mirrors the POS's live order ----
+// The POS pushes its current cart here (keyed by a station code the display page
+// also uses); the display polls the state. In-memory + short-lived — it's a live
+// mirror, so there's nothing to persist.
+const posDisplays = new Map(); // station -> { at, data }
+app.post('/api/pos/display/push', (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  const { station, cart, total, name, dineIn, table, status } = req.body || {};
+  const key = String(station || 'main').slice(0, 60);
+  posDisplays.set(key, { at: Date.now(), data: {
+    cart: Array.isArray(cart) ? cart.slice(0, 100).map((c) => ({
+      name: String(c.name || 'Item').slice(0, 120),
+      variation: c.variation ? String(c.variation).slice(0, 80) : '',
+      options: Array.isArray(c.options) ? c.options.slice(0, 12).map((o) => String(o).slice(0, 60)) : [],
+      quantity: Number(c.quantity) || 1,
+      amount: Number(c.amount) || 0,
+    })) : [],
+    total: Number(total) || 0,
+    name: name ? String(name).slice(0, 60) : '',
+    dineIn: !!dineIn,
+    table: table ? String(table).slice(0, 40) : '',
+    status: ['building', 'paid', 'idle'].includes(status) ? status : 'building',
+    change: Number(req.body && req.body.change) || 0,
+  } });
+  if (posDisplays.size > 50) { const cutoff = Date.now() - 3600000; for (const [k, v] of posDisplays) if (v.at < cutoff) posDisplays.delete(k); }
+  res.json({ ok: true });
+});
+app.get('/api/pos/display/state', (req, res) => {
+  const key = String(req.query.station || 'main').slice(0, 60);
+  const hit = posDisplays.get(key);
+  const s = getSettings();
+  const storeName = s.storeName || 'Bean Culture';
+  const logo = (s.theme && (s.theme.logo || s.theme.logoUrl)) || (s.contact && s.contact.logo) || '';
+  const fresh = hit && (Date.now() - hit.at < 90000);
+  res.json({ storeName, logo, currency: sq.CURRENCY, ...(fresh ? hit.data : { cart: [], total: 0, name: '', status: 'idle', change: 0 }) });
+});
+
 // Enable/disable the payment methods a store's POS offers (Card / Cash / Unpaid).
 app.post('/api/pos/payments', async (req, res) => {
   if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
