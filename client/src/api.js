@@ -48,6 +48,8 @@ export const api = {
   // Admin: customers enrolled via Square loyalty
   adminCustomers: (pass) => req(`/api/admin/customers?pass=${encodeURIComponent(pass || '')}`),
   appSales: (pass, days) => req(`/api/admin/analytics/app-sales?days=${days}&pass=${encodeURIComponent(pass || '')}`),
+  posDisplayPush: (pass, payload) => req(`/api/pos/display/push?pass=${encodeURIComponent(pass || '')}`, { method: 'POST', body: JSON.stringify(payload) }),
+  posDisplayState: (station) => req(`/api/pos/display/state?station=${encodeURIComponent(station || 'main')}`),
   loyaltyAdjust: (pass, accountId, points, reason) => req(`/api/admin/loyalty/adjust?pass=${encodeURIComponent(pass || '')}`, { method: 'POST', body: JSON.stringify({ accountId, points, reason }) }),
   loyaltyEnroll: (pass, phone, name) => req(`/api/admin/loyalty/enroll?pass=${encodeURIComponent(pass || '')}`, { method: 'POST', body: JSON.stringify({ phone, name }) }),
   loyaltyHistory: (pass, accountId) => req(`/api/admin/loyalty/history?pass=${encodeURIComponent(pass || '')}&accountId=${encodeURIComponent(accountId || '')}`),

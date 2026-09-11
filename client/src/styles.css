@@ -3671,6 +3671,37 @@ body:has(.store-shell) { background: var(--bc-canvas-deep, #160f12); }
    (e.g. the Parliament bag) shows in full rather than being cut off. */
 .pos-grid.fit-contain .pos-tile-img { object-fit: contain; }
 
+/* ── Customer display (/display) — a second screen mirroring the POS order ── */
+.cd-root { position: fixed; inset: 0; background: var(--pos-bg, #14100f); color: var(--pos-ink, #fff);
+  display: flex; flex-direction: column; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; overflow: hidden; }
+.cd-head { flex: none; display: flex; align-items: center; justify-content: space-between; padding: 3vh 4vw 0; }
+.cd-store { font-family: 'Fraunces', Georgia, serif; font-size: clamp(24px, 4vw, 48px); font-weight: 700; color: var(--pos-accent, #d9a441); }
+.cd-logo { max-height: clamp(40px, 8vh, 96px); max-width: 60vw; object-fit: contain; }
+.cd-offline { font-size: 14px; color: var(--pos-muted, #9a8f8a); }
+.cd-center { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 1.5vh; padding: 4vw; }
+.cd-welcome { font-family: 'Fraunces', Georgia, serif; font-size: clamp(40px, 9vw, 120px); font-weight: 700; }
+.cd-welcome-sub { font-size: clamp(18px, 3vw, 36px); color: var(--pos-muted, #b7aca6); }
+.cd-thanks-tick { width: clamp(70px, 12vw, 140px); height: clamp(70px, 12vw, 140px); border-radius: 50%;
+  background: var(--pos-accent, #2e8b57); color: #fff; display: grid; place-items: center; font-size: clamp(40px, 7vw, 86px); font-weight: 800; }
+.cd-thanks { font-family: 'Fraunces', Georgia, serif; font-size: clamp(40px, 8vw, 100px); font-weight: 700; }
+.cd-thanks-sub { font-size: clamp(20px, 3.4vw, 44px); color: var(--pos-muted, #b7aca6); }
+.cd-change { font-size: clamp(24px, 4vw, 56px); font-weight: 800; color: var(--pos-accent, #d9a441); }
+.cd-order { flex: 1; display: flex; flex-direction: column; min-height: 0; padding: 2vh 4vw 3vh; }
+.cd-order-head { flex: none; display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+  font-size: clamp(18px, 2.6vw, 32px); color: var(--pos-muted, #b7aca6); padding-bottom: 1.4vh; border-bottom: 2px solid var(--pos-line, #3a302d); }
+.cd-order-name { font-weight: 700; color: var(--pos-ink, #fff); }
+.cd-items { flex: 1; overflow-y: auto; padding: 1vh 0; }
+.cd-item { display: flex; align-items: baseline; gap: 3vw; padding: 1.2vh 0; border-bottom: 1px solid var(--pos-line, #2a2320); font-size: clamp(20px, 3vw, 40px); }
+.cd-qty { flex: none; min-width: 2.6ch; font-weight: 800; color: var(--pos-accent, #d9a441); }
+.cd-item-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.cd-item-name { font-weight: 600; }
+.cd-item-opts { font-size: 0.62em; color: var(--pos-muted, #9a8f8a); }
+.cd-item-price { flex: none; font-weight: 700; }
+.cd-total { flex: none; display: flex; align-items: baseline; justify-content: space-between;
+  padding-top: 1.6vh; margin-top: 0.6vh; border-top: 3px solid var(--pos-line, #3a302d);
+  font-size: clamp(28px, 5vw, 64px); font-weight: 800; }
+.cd-total span:last-child { color: var(--pos-accent, #d9a441); }
+
 /* Cart panel */
 .pos-cart { width: 330px; flex: none; background: var(--pos-surface); border-left: 1px solid var(--pos-line); display: flex; flex-direction: column; min-height: 0; }
 .pos-cart.slim { width: 264px; }
