@@ -7,7 +7,7 @@ async function req(path, options = {}) {
 
 export const api = {
   getConfig: () => req('/api/config'),
-  getMenu: (location) => req(`/api/menu${location ? `?location=${encodeURIComponent(location)}` : ''}`),
+  getMenu: (location, pos) => req(`/api/menu?${location ? `location=${encodeURIComponent(location)}` : ''}${pos ? `${location ? '&' : ''}pos=1` : ''}`),
   getHours: (location) => req(`/api/hours${location ? `?location=${encodeURIComponent(location)}` : ''}`),
   auth: (phone, name) => req('/api/auth', { method: 'POST', body: JSON.stringify({ phone, name }) }),
   getLoyalty: (phone) => req(`/api/loyalty?phone=${encodeURIComponent(phone)}`),
