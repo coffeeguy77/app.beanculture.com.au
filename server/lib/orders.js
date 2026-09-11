@@ -27,6 +27,43 @@ function posOverrideFor(presetId, variationId, locationId) {
   } catch { return null; }
 }
 
+// Custom (from-scratch) product: a Product Builder tile that is NOT a Square
+// catalog item. It carries its own variations + option groups with prices in
+// settings. When ordered it becomes a fully ad-hoc Square line (name +
+// base_price_money) plus ad-hoc priced modifiers — all priced from settings,
+// never from the client. Returns the Square line, or null if it isn't custom.
+function customLineFor(ci, uid) {
+  try {
+    const id = String(ci.presetId || '').replace(/^preset:/, '');
+    if (!id) return null;
+    const s = getSettings();
+    const p = (s.presets || []).find((x) => x && x.id === id && x.custom === true);
+    if (!p) return null;
+    const variations = Array.isArray(p.variations) ? p.variations : [];
+    const v = variations.find((x) => x.id === ci.variationId) || variations[0];
+    if (!v) return null;
+    const selected = new Set(Array.isArray(ci.modifierIds) ? ci.modifierIds : []);
+    const modifiers = [];
+    for (const g of (Array.isArray(p.customGroups) ? p.customGroups : [])) {
+      for (const o of (Array.isArray(g.options) ? g.options : [])) {
+        if (selected.has(o.id)) {
+          modifiers.push({ name: String(o.name || 'Option').slice(0, 255), base_price_money: { amount: Math.max(0, Math.round(Number(o.price) || 0)), currency: CURRENCY } });
+        }
+      }
+    }
+    const label = [((p.name || '').trim() || 'Item')];
+    if (v.name && String(v.name).trim()) label.push(String(v.name).trim());
+    const li = {
+      uid,
+      name: label.join(' · ').slice(0, 255),
+      quantity: String(ci.quantity || 1),
+      base_price_money: { amount: Math.max(0, Math.round(Number(v.price) || 0)), currency: CURRENCY },
+    };
+    if (modifiers.length) li.modifiers = modifiers;
+    return li;
+  } catch { return null; }
+}
+
 const DINEIN_FULFILLMENT = (process.env.SQUARE_DINEIN_FULFILLMENT || 'PICKUP').toUpperCase();
 const COMP_COUPON_CODE = (process.env.COMP_COUPON_CODE || '').trim();
 
@@ -121,6 +158,12 @@ async function createOrder({ cart, dineIn, table, name, coupon, couponContext, c
   // (never the whole order) -- see the pifReservation block below. The uid is
   // just an array index; it only needs to be unique within this one order.
   const lineItems = cart.map((ci, i) => {
+    const uid = `li${i}`;
+    // Custom (from-scratch) item: fully ad-hoc line, priced from settings.
+    if (ci.custom === true) {
+      const cl = customLineFor(ci, uid);
+      if (cl) { if (ci.note) cl.note = String(ci.note).slice(0, 500); return cl; }
+    }
     // A POS-only-section preset with a price override at this location becomes an
     // ad-hoc Square line (name + base_price_money) so Square charges the override
     // instead of the catalog price. Modifiers keep their catalog ids so add-on

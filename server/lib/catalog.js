@@ -485,6 +485,45 @@ async function getMenu(opts = {}) {
     const presetSourceIds = new Set();
     for (const p of getSettings().presets || []) {
       if (!p || p.enabled === false) continue;
+      // Custom (from-scratch) tile: not a Square catalog item. Its variations +
+      // option groups + prices live on the preset itself. Rendered like any other
+      // tile; ordered as ad-hoc priced lines (see orders.customLineFor).
+      if (p.custom === true) {
+        const variations = (Array.isArray(p.variations) ? p.variations : [])
+          .map((v) => ({ id: v.id, name: v.name || '', price: Math.max(0, Math.round(Number(v.price) || 0)), soldOut: false }))
+          .filter((v) => v.id);
+        if (!variations.length) continue;
+        const cGroups = (Array.isArray(p.customGroups) ? p.customGroups : []).map((g) => ({
+          id: g.id,
+          name: g.name || '',
+          selectionType: g.selectionType === 'multi' ? 'MULTIPLE' : 'SINGLE',
+          min: Math.max(0, Number(g.min) || 0),
+          max: (g.max == null || g.max === '') ? null : Number(g.max),
+          modifiers: (Array.isArray(g.options) ? g.options : [])
+            .map((o) => ({ id: o.id, name: o.name || '', price: Math.max(0, Math.round(Number(o.price) || 0)) }))
+            .filter((o) => o.id),
+        })).filter((g) => g.modifiers.length);
+        const cTile = {
+          id: 'preset:' + p.id,
+          name: (p.name || '').trim() || variations[0].name || 'Item',
+          description: p.description || '',
+          image: p.image || null,
+          soldOut: false,
+          variations,
+          modifierGroups: cGroups,
+          lockedModifierIds: [],
+          lockedModifierNames: [],
+          defaults: {},
+          isPreset: true,
+          custom: true,
+          presetSourceItemId: null,
+          categoryName: p.categoryName || null,
+        };
+        const cSec = String(p.section || '').trim() || 'Specials';
+        if (!presetsBySection.has(cSec)) presetsBySection.set(cSec, []);
+        presetsBySection.get(cSec).push(cTile);
+        continue;
+      }
       const src = itemsById.get(p.sourceItemId);
       if (!src) continue;
       presetSourceIds.add(p.sourceItemId);
