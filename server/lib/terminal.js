@@ -48,7 +48,7 @@ async function listDevices() {
 // ── Checkout (payment) ───────────────────────────────────────────────────────
 // amountMoney: { amount, currency }; deviceId: paired reader; orderId associates
 // the resulting payment with our Square order so it reads as paid + reconciles.
-async function createCheckout({ amountMoney, deviceId, orderId, referenceId, note }) {
+async function createCheckout({ amountMoney, deviceId, orderId, referenceId, note, showItemizedCart }) {
   const checkout = {
     amount_money: amountMoney,
     reference_id: (referenceId || '').slice(0, 40) || undefined,
@@ -57,13 +57,16 @@ async function createCheckout({ amountMoney, deviceId, orderId, referenceId, not
       device_id: deviceId,
       skip_receipt_screen: false,
       collect_signature: false,
+      // The Terminal's "confirm & pay" itemisation screen. Defaults to TRUE in
+      // Square (only when an order is linked). Off by default here so pressing
+      // Charge jumps straight to the amount + tap prompt; a POS setting turns the
+      // customer-facing confirm screen back on. (Belongs in device_options — the
+      // old bug was setting it at the top level, which Square rejects.)
+      show_itemized_cart: showItemizedCart === true,
     },
     deadline_duration: 'PT5M', // customer has 5 minutes to tap/insert
   };
-  // Associate the payment with our Square order so it reconciles. (We used to
-  // also set checkout.show_itemized_cart, but Square rejects that field —
-  // "unrecognized" — which failed the whole checkout with a 502. The order_id
-  // link is what matters for reconciliation.)
+  // Associate the payment with our Square order so it reconciles.
   if (orderId) { checkout.order_id = orderId; }
   console.log('[terminal] createCheckout →', JSON.stringify({ deviceId, orderId, amount: amountMoney && amountMoney.amount }));
   const data = await squareFetch('/v2/terminals/checkouts', {
