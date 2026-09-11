@@ -2762,12 +2762,22 @@ export default function Admin({ onExit }) {
                                     <label key={vid} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--fs-sm)' }}>
                                       <span style={{ minWidth: 84 }}>{v.name || 'Price'}</span>
                                       <span>$</span>
-                                      <input inputMode="decimal" value={dollars} placeholder={((v.price || 0) / 100).toFixed(2)}
+                                      {/* Uncontrolled: let the user type "5.5" freely instead of reformatting to
+                                          "5.00" on every keystroke (which mangled the second decimal). Save as
+                                          they type; only tidy the shown value to 2dp on blur. */}
+                                      <input inputMode="decimal" defaultValue={dollars} placeholder={((v.price || 0) / 100).toFixed(2)}
                                         onChange={(e) => {
                                           const raw = e.target.value.replace(/[^\d.]/g, '');
                                           const next = { ...(p.posOverride || {}) };
-                                          if (raw === '') delete next[vid]; else next[vid] = Math.round(parseFloat(raw) * 100) || 0;
+                                          if (raw === '') { delete next[vid]; }
+                                          else { const n = Math.round(parseFloat(raw) * 100); if (Number.isFinite(n) && n > 0) next[vid] = n; else delete next[vid]; }
                                           updPreset(p.id, { posOverride: next });
+                                        }}
+                                        onBlur={(e) => {
+                                          const raw = e.target.value.replace(/[^\d.]/g, '');
+                                          if (raw === '') { e.target.value = ''; return; }
+                                          const n = Math.round(parseFloat(raw) * 100);
+                                          if (Number.isFinite(n) && n > 0) e.target.value = (n / 100).toFixed(2);
                                         }}
                                         style={{ width: 90, padding: '6px 8px', border: '1px solid var(--line)', borderRadius: 8 }} />
                                       <span className="muted">normal {formatMoney(v.price || 0, data?.currency)}</span>
