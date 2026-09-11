@@ -1346,8 +1346,22 @@ app.get('/api/pos/config', (req, res) => {
     terminalByLocation: p.terminalByLocation || {},
     hasManagerPin: !!p.managerPin,   // refunds require a manager PIN; is one set?
     paymentsByLocation: p.paymentsByLocation || {}, // per-store {card,cash,unpaid}
+    terminalShowCart: p.terminalShowCart === true,  // show the confirm/itemised screen on the Terminal
     dbEnabled: db.enabled,
   });
+});
+
+// Terminal options: show/hide the customer-facing itemised confirm screen.
+app.post('/api/pos/terminal-options', async (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  if (!db.enabled) return res.status(400).json({ error: 'A database is required to save this.' });
+  try {
+    const ov = db.getOverrides() || {};
+    ov.pos = ov.pos || {};
+    ov.pos.terminalShowCart = req.body && req.body.showItemizedCart === true;
+    await db.saveOverrides(ov);
+    res.json({ ok: true, terminalShowCart: ov.pos.terminalShowCart });
+  } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
 // Enable/disable the payment methods a store's POS offers (Card / Cash / Unpaid).
@@ -1555,6 +1569,7 @@ app.post('/api/pos/order', async (req, res) => {
           orderId: order.id,
           referenceId: order.id,
           note: `${pos.deviceName || 'POS'} · ${name || (dineIn ? 'Dine-in' : 'Takeaway')}`,
+          showItemizedCart: pos.terminalShowCart === true,
         });
         try { await db.posPaymentUpsert({ checkoutId: checkout.id, squareOrderId: order.id, deviceId: posTerminal.deviceId, amount, status: 'waiting' }); } catch {}
         return res.json({
