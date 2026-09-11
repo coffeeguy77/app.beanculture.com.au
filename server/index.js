@@ -510,7 +510,11 @@ app.post('/api/pay', async (req, res) => {
       if (!gc || !gc.gan) return res.status(402).json({ error: 'No balance available' });
       if (gc.balance < totalMoney.amount) return res.status(402).json({ error: 'Not enough balance — top up or pay by card.' });
       const payment = await giftcards.payWithGiftCard({ gan: gc.gan, orderId, amountMoney: totalMoney, customerId });
-      if (payment.status === 'COMPLETED' || payment.status === 'APPROVED') await release();
+      if (payment.status === 'COMPLETED' || payment.status === 'APPROVED') {
+        await release();
+        // Award loyalty points for this paid order (best-effort, never blocks pay).
+        loyalty.accumulateForOrder({ customerId, orderId, locationId: squareLocationId }).catch(() => {});
+      }
       return res.json({ status: payment.status, paymentId: payment.id, paidWithBalance: true });
     }
 
@@ -526,7 +530,13 @@ app.post('/api/pay', async (req, res) => {
     });
     // Only a completed/approved charge releases the order to the kitchen. A
     // declined charge leaves it held (hidden), so nothing unpaid gets cooked.
-    if (payment.status === 'COMPLETED' || payment.status === 'APPROVED') await release();
+    if (payment.status === 'COMPLETED' || payment.status === 'APPROVED') {
+      await release();
+      // Award loyalty points for this paid order. Square does NOT auto-accrue for
+      // custom (Orders+Payments API) checkouts — we must call accumulate. Best-
+      // effort + idempotent per order, and never blocks the payment response.
+      loyalty.accumulateForOrder({ customerId, orderId, locationId: squareLocationId }).catch(() => {});
+    }
     res.json({ status: payment.status, paymentId: payment.id, receiptUrl: payment.receipt_url });
   } catch (err) {
     console.error('payment error', err.message);
@@ -2373,6 +2383,61 @@ app.get('/api/admin/customers', async (req, res) => {
   } catch (e) {
     res.status(400).json({ error: e.message });
   }
+});
+
+// ---- Admin: manually adjust a member's loyalty points (Square-authoritative) ----
+// points can be positive (grant) or negative (deduct). reason shows in Square's
+// loyalty history. Returns the fresh balance so the Users list updates in place.
+app.post('/api/admin/loyalty/adjust', async (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const { accountId, points, reason } = req.body || {};
+    const n = Math.trunc(Number(points));
+    if (!accountId) return res.status(400).json({ error: 'Missing account' });
+    if (!Number.isFinite(n) || n === 0) return res.status(400).json({ error: 'Enter a non-zero whole number of points' });
+    const ok = await loyalty.adjustPoints({ accountId, points: n, reason: reason || (n > 0 ? 'Manual grant' : 'Manual deduction') });
+    if (!ok) return res.status(400).json({ error: 'Square rejected the adjustment (a deduction cannot exceed the current balance).' });
+    const bal = await loyalty.getBalance(accountId);
+    res.json({ ok: true, points: bal ? bal.balance : null, lifetimePoints: bal ? bal.lifetime : null });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+// ---- Admin: enrol a new loyalty member (name + phone) ----
+app.post('/api/admin/loyalty/enroll', async (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const { phone, name } = req.body || {};
+    if (!phone || !String(phone).trim()) return res.status(400).json({ error: 'Phone is required' });
+    const cust = await customers.findOrCreate({ phone, name });
+    const acct = await loyalty.enrollAccount({ phone: cust.phone, customerId: cust.customerId });
+    if (!acct) return res.status(400).json({ error: 'Loyalty program is not active, or enrolment failed.' });
+    res.json({ ok: true, user: {
+      id: acct.id, customerId: cust.customerId, name: cust.name || '', phone: cust.phone,
+      email: '', points: acct.balance || 0, lifetimePoints: acct.balance || 0, redeemedPoints: 0,
+      redemptions: 0, lastRedeemedAt: null, enrolledAt: new Date().toISOString(), existed: !!acct.existed,
+    } });
+  } catch (e) { res.status(400).json({ error: e.message || 'Could not enrol' }); }
+});
+
+// ---- Admin: one member's full points ledger ----
+app.get('/api/admin/loyalty/history', async (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const { accountId } = req.query;
+    if (!accountId) return res.status(400).json({ error: 'Missing account' });
+    res.json({ events: await loyalty.accountHistory(accountId, 50) });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+// ---- Admin: edit a member's Square profile (name / email / phone) ----
+app.post('/api/admin/loyalty/profile', async (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const { customerId, name, email, phone } = req.body || {};
+    if (!customerId) return res.status(400).json({ error: 'Missing customer' });
+    const c = await customers.updateProfile(customerId, { name, email, phone });
+    res.json({ ok: true, name: (c && c.given_name) || '', email: (c && c.email_address) || '', phone: (c && c.phone_number) || '' });
+  } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
 // ---- Admin: which broadcast channels are configured ----
