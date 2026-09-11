@@ -261,6 +261,9 @@ export default function Admin({ onExit }) {
   const [kdsExpandCat, setKdsExpandCat] = useState({}); // which category is expanded per station {zoneId: catName}
   const [dashboard, setDashboard] = useState(null); // real sales + signups
   const [aDays, setADays] = useState(30);
+  const [appSales, setAppSales] = useState(null);   // App sales report (Dashboard)
+  const [appSalesDays, setAppSalesDays] = useState(1); // 1=today, 7, 30, 90, 180, 365
+  const [appSalesBusy, setAppSalesBusy] = useState(false);
   const [insCustomers, setInsCustomers] = useState(null); // loyalty members for Top customers
   const [insRefreshing, setInsRefreshing] = useState(false);
   const [insSync, setInsSync] = useState(null); // Date of last successful insights load
@@ -477,6 +480,7 @@ export default function Admin({ onExit }) {
     if (tab === 'overview') {
       if (msgs === null) loadMessages();
       if (users === null && !usersBusy) loadUsers();
+      if (appSales === null && !appSalesBusy) loadAppSales();
     }
     // Opening the Reservations tab clears the "new" badge — everything
     // currently loaded counts as seen from this point on.
@@ -597,6 +601,12 @@ export default function Admin({ onExit }) {
       if (r.ok) setSalesData(d); else setSalesData({ error: d.error || 'Failed' });
     } catch (e) { setSalesData({ error: e.message }); }
     finally { setSalesBusy(false); }
+  }
+  async function loadAppSales(days = appSalesDays) {
+    setAppSalesBusy(true);
+    try { const d = await api.appSales(pass, days); setAppSales(d && d.error ? { error: d.error } : d); }
+    catch (e) { setAppSales({ error: e.message }); }
+    finally { setAppSalesBusy(false); }
   }
   // Event guest log ("who got a free coffee") — name, phone, booth, time.
   async function loadGuests(days = guestsDays, venue = guestVenue) {
@@ -1080,6 +1090,10 @@ export default function Admin({ onExit }) {
   const isDragOver = (list, index) => dragOver === `${list}:${index}`;
   // Presets displayed grouped by section; this order is also what drag reorders.
   const presetsSorted = [...presets].sort((a, b) => (a.section || '').localeCompare(b.section || ''));
+  // Which group each member belongs to (memberId -> group preset), for badges.
+  const groupOf = {};
+  for (const gp of presets) if (gp.group && Array.isArray(gp.members)) for (const mid of gp.members) groupOf[mid] = gp;
+  const presetName = (id) => { const x = presets.find((p) => p.id === id); return x ? (x.name || 'Untitled') : '(removed tile)'; };
   // Per-section top/footer nav inclusion (product-builder sections).
   const presetSectionNav = s?.presetSectionNav || {};
   // Functional so back-to-back nav edits (POS-only on, then locations, then banner)
@@ -1418,6 +1432,28 @@ export default function Admin({ onExit }) {
   const addCustomOption = (pid, gid) => mutCustom(pid, (p) => ({ ...p, customGroups: (p.customGroups || []).map((g) => (g.id === gid ? { ...g, options: [...(g.options || []), { id: coId(), name: '', price: 0 }] } : g)) }));
   const updCustomOption = (pid, gid, oid, patch) => mutCustom(pid, (p) => ({ ...p, customGroups: (p.customGroups || []).map((g) => (g.id === gid ? { ...g, options: (g.options || []).map((o) => (o.id === oid ? { ...o, ...patch } : o)) } : g)) }));
   const rmCustomOption = (pid, gid, oid) => mutCustom(pid, (p) => ({ ...p, customGroups: (p.customGroups || []).map((g) => (g.id === gid ? { ...g, options: (g.options || []).filter((o) => o.id !== oid) } : g)) }));
+
+  // ---- Group ("choose a sub-product") tiles: one tile that bundles several other
+  // tiles. Customer picks the sub-product (e.g. Parliament / Decaf), then its size.
+  // Members stay as their own tiles here (to edit) but are hidden as standalone
+  // tiles in the live menu — they only appear inside the group. ----
+  const addGroupFromSelection = (ids) => {
+    setPresets((list) => {
+      const chosen = ids.map((id) => list.find((p) => p.id === id)).filter(Boolean).filter((p) => !p.group);
+      if (chosen.length < 2) return list;
+      const section = chosen[0].section || 'Specials';
+      const anchor = list.findIndex((p) => p.id === chosen[0].id);
+      const gp = { id: newPresetId(), group: true, name: 'Choose an option', section, members: chosen.map((c) => c.id), image: null, showImages: true, enabled: true };
+      const arr = [...list];
+      arr.splice(Math.max(0, anchor), 0, gp);
+      return arr;
+    });
+    setCombineSel(new Set());
+  };
+  const mutGroup = (pid, fn) => setPresets((list) => list.map((p) => (p.id === pid ? fn(p) : p)));
+  const addGroupMember = (pid, memberId) => mutGroup(pid, (p) => ((p.members || []).includes(memberId) ? p : { ...p, members: [...(p.members || []), memberId] }));
+  const rmGroupMember = (pid, memberId) => mutGroup(pid, (p) => ({ ...p, members: (p.members || []).filter((m) => m !== memberId) }));
+  const moveGroupMember = (pid, memberId, dir) => mutGroup(pid, (p) => { const m = (p.members || []).slice(); const i = m.indexOf(memberId); const j = i + dir; if (i < 0 || j < 0 || j >= m.length) return p; [m[i], m[j]] = [m[j], m[i]]; return { ...p, members: m }; });
 
   const toggleCombineSel = (id) => setCombineSel((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   // Merge the given tiles (must share a source item) into one tile with a size toggle.
@@ -1987,6 +2023,83 @@ export default function Admin({ onExit }) {
                     <div className="stat-v">{users ? users.length : '—'}</div>
                     <div className="stat-l">Loyalty members</div>
                   </div>
+                </div>
+
+                {/* App sales — self-order sales by day + best customer for the period */}
+                <div className="card" style={{ marginBottom: 18 }}>
+                  <div className="group-title" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', margin: 0 }}>
+                    App sales
+                    <select value={appSalesDays} onChange={(e) => { const d = Number(e.target.value); setAppSalesDays(d); loadAppSales(d); }} style={{ marginLeft: 'auto', padding: '6px 8px', borderRadius: 10, border: '1px solid var(--line)' }}>
+                      <option value={1}>Today</option>
+                      <option value={7}>This week (7 days)</option>
+                      <option value={30}>This month (30 days)</option>
+                      <option value={90}>3 months</option>
+                      <option value={180}>6 months</option>
+                      <option value={365}>12 months</option>
+                    </select>
+                    <button type="button" className="btn ghost" style={{ padding: '6px 12px' }} disabled={appSalesBusy} onClick={() => loadAppSales()}>{appSalesBusy ? 'Loading…' : 'Refresh'}</button>
+                  </div>
+                  <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 4 }}>Every sale customers placed themselves in the app, over the period you pick. Live from Square.</p>
+                  {appSales && appSales.error && <p className="muted" style={{ color: 'var(--admin-danger,#c0392b)' }}>{appSales.error}</p>}
+                  {appSales === null && appSalesBusy && <p className="muted" style={{ fontSize: 'var(--fs-base)' }}>Loading…</p>}
+                  {appSales && !appSales.error && (() => {
+                    const money2 = (c) => new Intl.NumberFormat('en-AU', { style: 'currency', currency: appSales.currency || 'AUD' }).format((c || 0) / 100);
+                    const fmtDay = (d) => { try { return new Date(d + 'T00:00:00').toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short' }); } catch { return d; } };
+                    const best = appSales.best;
+                    return (
+                      <>
+                        <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', alignItems: 'baseline', margin: '4px 0 10px' }}>
+                          <div><div className="stat-v" style={{ fontSize: 24 }}>{money2(appSales.total)}</div><div className="stat-l">{appSales.count} app sale{appSales.count === 1 ? '' : 's'}</div></div>
+                          {best && <div><div className="stat-v" style={{ fontSize: 18 }}>🏆 {best.name}{best.phone ? <span className="muted" style={{ fontSize: 'var(--fs-sm)', fontWeight: 400 }}> · {best.phone}</span> : ''}</div><div className="stat-l">Best customer · {money2(best.total)} over {best.count} order{best.count === 1 ? '' : 's'}</div></div>}
+                        </div>
+                        {appSales.count === 0 && <p className="muted" style={{ fontSize: 'var(--fs-base)' }}>No app sales in this period.</p>}
+                        {appSales.daily && appSales.daily.length > 0 && (
+                          <details open>
+                            <summary style={{ cursor: 'pointer', fontSize: 'var(--fs-sm)', fontWeight: 700 }}>Sales by day</summary>
+                            <div className="loc-avail-list" style={{ maxHeight: 260, marginTop: 6 }}>
+                              {[...appSales.daily].reverse().map((d) => (
+                                <div key={d.date} style={{ display: 'flex', gap: 10, alignItems: 'baseline', fontSize: 'var(--fs-sm)', padding: '3px 0', borderTop: '1px solid var(--line)' }}>
+                                  <span style={{ minWidth: 130 }}>{fmtDay(d.date)}</span>
+                                  <span className="muted">{d.count} sale{d.count === 1 ? '' : 's'}</span>
+                                  <span style={{ marginLeft: 'auto', fontWeight: 700 }}>{money2(d.total)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </details>
+                        )}
+                        {appSales.topCustomers && appSales.topCustomers.length > 0 && (
+                          <details style={{ marginTop: 8 }}>
+                            <summary style={{ cursor: 'pointer', fontSize: 'var(--fs-sm)', fontWeight: 700 }}>Top customers</summary>
+                            <div className="loc-avail-list" style={{ maxHeight: 240, marginTop: 6 }}>
+                              {appSales.topCustomers.map((c, i) => (
+                                <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'baseline', fontSize: 'var(--fs-sm)', padding: '3px 0', borderTop: i ? '1px solid var(--line)' : 'none' }}>
+                                  <span style={{ minWidth: 20, fontWeight: 700 }}>{i + 1}</span>
+                                  <span style={{ fontWeight: 600 }}>{c.name}</span>
+                                  <span className="muted">{c.phone}</span>
+                                  <span className="muted">· {c.count} order{c.count === 1 ? '' : 's'}</span>
+                                  <span style={{ marginLeft: 'auto', fontWeight: 700 }}>{money2(c.total)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </details>
+                        )}
+                        {appSales.sales && appSales.sales.length > 0 && (
+                          <details style={{ marginTop: 8 }}>
+                            <summary style={{ cursor: 'pointer', fontSize: 'var(--fs-sm)', fontWeight: 700 }}>Recent app sales</summary>
+                            <div className="loc-avail-list" style={{ maxHeight: 300, marginTop: 6 }}>
+                              {appSales.sales.map((sle, i) => (
+                                <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'baseline', fontSize: 'var(--fs-sm)', padding: '3px 0', borderTop: i ? '1px solid var(--line)' : 'none' }}>
+                                  <span style={{ minWidth: 132 }}>{sle.at ? new Date(sle.at).toLocaleString('en-AU', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : ''}</span>
+                                  <span style={{ fontWeight: 600 }}>{sle.name}</span>
+                                  <span style={{ marginLeft: 'auto', fontWeight: 700 }}>{money2(sle.amount)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </details>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
 
                 <div className="admin-cmd-grid">
@@ -2788,6 +2901,7 @@ export default function Admin({ onExit }) {
                     let price = v ? (v.price || 0) : null;
                     // Custom items price from their own variations (lowest, "from $X").
                     if (p.custom) { const cps = (p.variations || []).map((x) => Number(x.price) || 0); price = cps.length ? Math.min(...cps) : null; }
+                    if (p.group) price = null; // a group's price comes from its members
                     if (cfg && price != null) {
                       for (const g of cfg.modifierGroups || []) {
                         const gc = p.groups?.[g.id] || {};
@@ -2809,8 +2923,12 @@ export default function Admin({ onExit }) {
                           </button>
                           <button type="button" className="link" title="Rename this section" onClick={() => renameSection(secName)} style={{ fontSize: 'var(--fs-sm)' }}>✏️ Rename</button>
                           {secSel.length >= 2 && (
-                            <button className="btn" disabled={!secCanCombine} title={secCanCombine ? 'Combine the selected tiles' : 'Selected tiles must be from the same product'}
+                            <button className="btn" disabled={!secCanCombine} title={secCanCombine ? 'Combine the selected tiles (same product → one size toggle)' : 'Combine needs tiles from the SAME product'}
                               onClick={() => combinePresets(secSel.map((x) => x.id))} style={{ padding: '5px 10px', fontSize: 'var(--fs-sm)', opacity: secCanCombine ? 1 : 0.5 }}>⛓ Combine ({secSel.length})</button>
+                          )}
+                          {secSel.length >= 2 && (
+                            <button className="btn" title="Bundle the selected tiles into ONE 'choose an option' tile (e.g. Coffee Bags → Parliament / Decaf → size). Works across different products."
+                              onClick={() => addGroupFromSelection(secSel.map((x) => x.id))} style={{ padding: '5px 10px', fontSize: 'var(--fs-sm)' }}>🧩 Group ({secSel.length})</button>
                           )}
                           <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 'var(--fs-sm)' }} title="Show this section in the top category bar">
                             <input type="checkbox" checked={presetSectionNav[secName]?.top === true} onChange={(e) => setSectionNav(secName, { top: e.target.checked })} /> Top menu
@@ -2894,14 +3012,16 @@ export default function Admin({ onExit }) {
                           <label style={{ ...row, flex: 1, minWidth: 0 }}>
                             <input type="checkbox" checked={p.enabled !== false} title="Available — untick to hide this tile when unavailable"
                               onChange={(e) => updPreset(p.id, { enabled: e.target.checked })} />
-                            <span title={p.custom ? 'Custom item' : 'Preset'} style={{ fontSize: 'var(--fs-lg)' }}>{p.custom ? '✨' : '🛠️'}</span>
-                            <input value={p.name || ''} onChange={(e) => updPreset(p.id, { name: e.target.value })} placeholder="Tile name (e.g. Egg & Bacon Roll – Rocket & Aioli)"
+                            <span title={p.group ? 'Group (chooser)' : p.custom ? 'Custom item' : 'Preset'} style={{ fontSize: 'var(--fs-lg)' }}>{p.group ? '🧩' : p.custom ? '✨' : '🛠️'}</span>
+                            <input value={p.name || ''} onChange={(e) => updPreset(p.id, { name: e.target.value })} placeholder={p.group ? 'Group tile name (e.g. Coffee Bags)' : 'Tile name (e.g. Egg & Bacon Roll – Rocket & Aioli)'}
                               style={{ fontWeight: 700, flex: 1, minWidth: 0, padding: '6px 8px', border: '1px solid var(--line)', borderRadius: 8 }} />
+                            {p.group && <span className="muted" style={{ fontSize: 'var(--fs-xs)', whiteSpace: 'nowrap' }}>· {(p.members || []).length} options</span>}
+                            {!p.group && groupOf[p.id] && <span title={`Shown inside the “${groupOf[p.id].name}” group — hidden as its own tile in the live menu`} style={{ fontSize: 'var(--fs-xs)', whiteSpace: 'nowrap', color: 'var(--accent)' }}>🧩 in {groupOf[p.id].name}</span>}
                             {isCombined(p) && <span className="muted" style={{ fontSize: 'var(--fs-xs)', whiteSpace: 'nowrap' }}>· {presetVids(p).length} sizes</span>}
                             {p.custom && (p.variations || []).length > 1 && <span className="muted" style={{ fontSize: 'var(--fs-xs)', whiteSpace: 'nowrap' }}>· {(p.variations || []).length} sizes</span>}
                             {price != null && <span className="muted" style={{ fontSize: 'var(--fs-sm)', whiteSpace: 'nowrap' }}>{(isCombined(p) || (p.custom && (p.variations || []).length > 1)) ? 'from ' : ''}{formatMoney(price, data?.currency)}</span>}
                           </label>
-                          {!p.custom && <button className="link" title="Select to combine (tick 2+ from the same product)" onClick={() => toggleCombineSel(p.id)} style={{ color: combineSel.has(p.id) ? 'var(--accent)' : 'var(--muted)', fontWeight: combineSel.has(p.id) ? 700 : 400 }}>⛓</button>}
+                          {!p.custom && !p.group && <button className="link" title="Select to combine or group (tick 2+)" onClick={() => toggleCombineSel(p.id)} style={{ color: combineSel.has(p.id) ? 'var(--accent)' : 'var(--muted)', fontWeight: combineSel.has(p.id) ? 700 : 400 }}>⛓</button>}
                           <button className="link" title="Duplicate preset" onClick={() => dupPreset(p.id)}>⧉</button>
                           <button className="link" onClick={() => setExpanded((x) => ({ ...x, [p.id]: !isOpen }))}>{isOpen ? '▲' : '▼'}</button>
                           <button className="link" disabled={deleteLock} style={{ color: '#c0392b', opacity: deleteLock ? 0.3 : 1 }}
@@ -3003,6 +3123,56 @@ export default function Admin({ onExit }) {
                                 </div>
                               </div>
                             )}
+                            {p.group && (
+                              <div style={{ display: 'grid', gap: 10 }}>
+                                <div style={{ fontWeight: 700, fontSize: 'var(--fs-sm)' }}>🧩 Group tile — the customer picks one option, then its size</div>
+                                <label style={{ display: 'grid', gap: 4 }}>
+                                  <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>Tile name</span>
+                                  <input value={p.name || ''} onChange={(e) => updPreset(p.id, { name: e.target.value })} placeholder="e.g. Coffee Bags"
+                                    style={{ padding: 8, borderRadius: 10, border: '1px solid var(--line)' }} />
+                                </label>
+                                <label style={{ display: 'grid', gap: 4, maxWidth: 240 }}>
+                                  <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>Show in section</span>
+                                  <input list={`gsec-${p.id}`} value={p.section || ''} onChange={(e) => updPreset(p.id, { section: e.target.value })} placeholder="e.g. Retail"
+                                    style={{ padding: 8, borderRadius: 10, border: '1px solid var(--line)' }} />
+                                  <datalist id={`gsec-${p.id}`}>{[...new Set(presets.map((x) => x.section).filter(Boolean))].map((n) => <option key={n} value={n} />)}</datalist>
+                                </label>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                                  {p.image
+                                    ? <img src={p.image} alt="" style={{ width: 44, height: 44, borderRadius: 8, objectFit: 'cover', flex: 'none' }} />
+                                    : <span style={{ width: 44, height: 44, borderRadius: 8, background: 'var(--brand-soft)', flex: 'none', display: 'grid', placeItems: 'center', fontSize: 'var(--fs-lg)' }}>🧩</span>}
+                                  <label className="btn ghost" style={{ padding: '5px 10px', fontSize: 'var(--fs-sm)', cursor: 'pointer' }}>
+                                    {p.image ? 'Replace image' : 'Add image (optional)'}
+                                    <input type="file" accept="image/*" style={{ display: 'none' }}
+                                      onChange={(e) => { const f = e.target.files[0]; if (f) uploadImage(f, (url) => updPreset(p.id, { image: url }), 'group'); e.target.value = ''; }} />
+                                  </label>
+                                  {p.image && <button type="button" className="link" style={{ color: '#c0392b' }} onClick={() => updPreset(p.id, { image: '' })}>Remove</button>}
+                                </div>
+                                <div style={{ display: 'grid', gap: 6, padding: '8px 10px', background: 'var(--admin-surface-soft, #f0f1f4)', borderRadius: 8 }}>
+                                  <span className="muted" style={{ fontSize: 'var(--fs-sm)', fontWeight: 700 }}>Options in this group (drag order with ↑↓ · edit each option’s name, sizes &amp; price on its own tile)</span>
+                                  {(p.members || []).length === 0 && <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>No options yet — add some below.</span>}
+                                  {(p.members || []).map((mid, idx, arr) => (
+                                    <div key={mid} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 'var(--fs-sm)', background: 'var(--admin-panel,#fff)', border: '1px solid var(--line)', borderRadius: 8, padding: '4px 8px' }}>
+                                      <button type="button" title="Up" disabled={idx === 0} onClick={() => moveGroupMember(p.id, mid, -1)} style={{ border: '1px solid var(--line)', borderRadius: 6, background: 'none', cursor: idx === 0 ? 'default' : 'pointer', opacity: idx === 0 ? 0.35 : 1, padding: '2px 6px' }}>↑</button>
+                                      <button type="button" title="Down" disabled={idx === arr.length - 1} onClick={() => moveGroupMember(p.id, mid, 1)} style={{ border: '1px solid var(--line)', borderRadius: 6, background: 'none', cursor: idx === arr.length - 1 ? 'default' : 'pointer', opacity: idx === arr.length - 1 ? 0.35 : 1, padding: '2px 6px' }}>↓</button>
+                                      <span style={{ flex: 1, fontWeight: 600 }}>{presetName(mid)}</span>
+                                      <button type="button" className="link" style={{ color: '#c0392b' }} onClick={() => rmGroupMember(p.id, mid)}>Remove</button>
+                                    </div>
+                                  ))}
+                                  {(() => {
+                                    const eligible = presets.filter((x) => !x.group && !(p.members || []).includes(x.id));
+                                    return (
+                                      <select value="" onChange={(e) => { if (e.target.value) addGroupMember(p.id, e.target.value); }}
+                                        style={{ padding: 8, borderRadius: 10, border: '1px solid var(--line)', maxWidth: 280 }}>
+                                        <option value="">+ Add an option (existing tile)…</option>
+                                        {eligible.map((x) => <option key={x.id} value={x.id}>{x.name || 'Untitled'}{x.section ? ` · ${x.section}` : ''}</option>)}
+                                      </select>
+                                    );
+                                  })()}
+                                </div>
+                                <span className="muted" style={{ fontSize: 'var(--fs-xs)' }}>Each option is one of your existing tiles (Parliament, Decaf…). Those tiles keep their own sizes, prices and options — and are hidden as standalone tiles in the live menu while they’re in a group.</span>
+                              </div>
+                            )}
                             {presetSectionNav[secName]?.pos?.on === true && cfg && (
                               <div style={{ display: 'grid', gap: 6, padding: '8px 10px', background: 'var(--admin-surface-soft, #f0f1f4)', borderRadius: 8 }}>
                                 <span className="muted" style={{ fontSize: 'var(--fs-sm)', fontWeight: 700 }}>POS price (overrides the normal price at this pop-up)</span>
@@ -3040,7 +3210,7 @@ export default function Admin({ onExit }) {
                                 <span className="muted" style={{ fontSize: 'var(--fs-xs)' }}>Leave blank to use the normal price. Only applies in the POS at the ticked stores.</span>
                               </div>
                             )}
-                            {!p.custom && (
+                            {!p.custom && !p.group && (
                             <div style={{ display: 'grid', gap: 4 }}>
                               <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>Source product</span>
                               {(() => {

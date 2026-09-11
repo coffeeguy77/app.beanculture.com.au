@@ -158,6 +158,52 @@ function ConfigWorkspace({ item, currency, initial, onCancel, onCommit }) {
   );
 }
 
+// A "group" tile (e.g. Coffee Bags → Parliament / Decaf / Single origin) is a
+// two-step build: first pick the sub-product, then configure it (size + options)
+// with the normal workspace. Each sub-product is a full item, so ordering is
+// identical to ordering that product directly.
+function ConfigOrGroup({ item, currency, initial, onCancel, onCommit }) {
+  const [subId, setSubId] = useState(null);
+  if (!item.isGroup || !Array.isArray(item.subProducts) || !item.subProducts.length) {
+    return <ConfigWorkspace item={item} currency={currency} initial={initial} onCancel={onCancel} onCommit={onCommit} />;
+  }
+  const sub = item.subProducts.find((s) => s.id === subId);
+  if (sub) {
+    // Configure the chosen sub-product. Cancel returns to the chooser.
+    return <ConfigWorkspace item={sub} currency={currency} initial={initial} onCancel={() => setSubId(null)} onCommit={onCommit} />;
+  }
+  return (
+    <div className="pos-cfg">
+      <div className="pos-cfg-head">
+        <div>
+          <div className="pos-cfg-name">{item.name}</div>
+          <div className="pos-cfg-base">Choose an option</div>
+        </div>
+      </div>
+      <div className="pos-cfg-body">
+        <section className="pos-grp">
+          <div className="pos-grp-head"><span className="pos-grp-name">Choose</span><span className="pos-grp-req">Required</span></div>
+          <div className="pos-opt-grid">
+            {item.subProducts.map((s) => {
+              const min = Math.min(...(s.variations || []).map((v) => v.price ?? Infinity));
+              const multi = (s.variations || []).length > 1;
+              return (
+                <button type="button" key={s.id} className={`pos-opt${s.soldOut ? ' sold' : ''}`} disabled={s.soldOut} onClick={() => setSubId(s.id)}>
+                  <span className="pos-opt-name">{s.name}{s.soldOut ? ' — Sold out' : ''}</span>
+                  <span className="pos-opt-price">{Number.isFinite(min) ? `${multi ? 'from ' : ''}${formatMoney(min, currency)}` : ''}</span>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+      </div>
+      <div className="pos-cfg-foot">
+        <button className="pos-btn ghost" onClick={onCancel}>Cancel</button>
+      </div>
+    </div>
+  );
+}
+
 export default function Pos({ onExit }) {
   const [pass, setPass] = useState(() => { try { return atob(localStorage.getItem('bc-admin-pass') || '') || ''; } catch { return ''; } });
   const [passInput, setPassInput] = useState('');
@@ -176,8 +222,12 @@ export default function Pos({ onExit }) {
   // product images/icons on the tiles. Persisted per device in localStorage.
   const [tileSize, setTileSize] = useState(() => { try { return localStorage.getItem('bc-pos-tilesize') || 'm'; } catch { return 'm'; } });
   const [tileImages, setTileImages] = useState(() => { try { return localStorage.getItem('bc-pos-tileimg') === '1'; } catch { return false; } });
+  const [tileShape, setTileShape] = useState(() => { try { return localStorage.getItem('bc-pos-tileshape') || 'square'; } catch { return 'square'; } }); // square | land | port
+  const [tileFit, setTileFit] = useState(() => { try { return localStorage.getItem('bc-pos-tilefit') || 'cover'; } catch { return 'cover'; } }); // cover (fill/crop) | contain (fit whole)
   const cycleTileSize = () => setTileSize((s) => { const n = s === 's' ? 'm' : s === 'm' ? 'l' : 's'; try { localStorage.setItem('bc-pos-tilesize', n); } catch {} return n; });
   const toggleTileImages = () => setTileImages((v) => { const n = !v; try { localStorage.setItem('bc-pos-tileimg', n ? '1' : '0'); } catch {} return n; });
+  const cycleTileShape = () => setTileShape((s) => { const order = ['square', 'land', 'port']; const n = order[(order.indexOf(s) + 1) % order.length]; try { localStorage.setItem('bc-pos-tileshape', n); } catch {} return n; });
+  const toggleTileFit = () => setTileFit((f) => { const n = f === 'cover' ? 'contain' : 'cover'; try { localStorage.setItem('bc-pos-tilefit', n); } catch {} return n; });
 
   const [cart, setCart] = useState(() => { try { return JSON.parse(localStorage.getItem(CART_KEY) || '[]') || []; } catch { return []; } });
   const [dineIn, setDineIn] = useState(false);
@@ -369,6 +419,7 @@ export default function Pos({ onExit }) {
   function pickProduct(item, catName) {
     const withCat = { ...item, category: item.category || catName };
     if (withCat.isCombo) { setCombo(withCat); return; }         // combos use ComboModal
+    if (withCat.isGroup) { setConfiguring({ item: withCat }); return; } // two-step chooser
     // POS: open the options sheet whenever the item has ANY options — a size
     // choice OR modifier options, even optional ones — so staff can add them
     // (e.g. syrups, extra shot). Only a truly optionless item is a one-tap add.
@@ -379,8 +430,16 @@ export default function Pos({ onExit }) {
     // Find the source menu item to re-open the same configure component.
     let found = null;
     for (const c of (menu.categories || [])) {
-      const it = (c.items || []).find((x) => (x.presetSourceItemId || x.id) === line.itemId || x.id === line.itemId);
-      if (it) { found = { ...it, category: it.category || c.category }; break; }
+      for (const x of (c.items || [])) {
+        if ((x.presetSourceItemId || x.id) === line.itemId || x.id === line.itemId) { found = { ...x, category: x.category || c.category }; break; }
+        // Grouped items aren't standalone tiles — look inside each group's
+        // sub-products so an edit reopens the exact sub-product that was ordered.
+        if (x.isGroup && Array.isArray(x.subProducts)) {
+          const sp = x.subProducts.find((s) => (s.presetSourceItemId || s.id) === line.itemId || s.id === line.itemId);
+          if (sp) { found = { ...sp, category: x.category || c.category }; break; }
+        }
+      }
+      if (found) break;
     }
     if (!found) return;
     setConfiguring({ item: found, initial: { variationId: line.variationId, modifierIds: line.modifierIds, note: line.note, quantity: line.quantity }, editKey: line.key });
@@ -634,7 +693,7 @@ export default function Pos({ onExit }) {
 
         {/* Centre: product grid (browse) OR configure workspace */}
         {configureMode ? (
-          <ConfigWorkspace
+          <ConfigOrGroup
             item={configuring.item} currency={currency} initial={configuring.initial}
             onCancel={() => setConfiguring(null)}
             onCommit={(entry) => {
@@ -648,13 +707,15 @@ export default function Pos({ onExit }) {
               <div className="pos-view-ctl">
                 <button type="button" className="pos-view-btn" title="Tile size" onClick={cycleTileSize}>▦ {tileSize === 's' ? 'S' : tileSize === 'l' ? 'L' : 'M'}</button>
                 <button type="button" className={`pos-view-btn${tileImages ? ' on' : ''}`} title="Show images on tiles" onClick={toggleTileImages}>🖼</button>
+                {tileImages && <button type="button" className="pos-view-btn" title="Tile shape (square / wide / tall)" onClick={cycleTileShape}>{tileShape === 'land' ? '▭ Wide' : tileShape === 'port' ? '▯ Tall' : '◻ Square'}</button>}
+                {tileImages && <button type="button" className={`pos-view-btn${tileFit === 'contain' ? ' on' : ''}`} title={tileFit === 'contain' ? 'Showing whole image (no crop)' : 'Filling the tile (may crop). Tap for whole image.'} onClick={toggleTileFit}>{tileFit === 'contain' ? '⤢ Fit' : '⛶ Fill'}</button>}
               </div>
               <input className="pos-search" placeholder="Search products" value={query} onChange={(e) => setQuery(e.target.value)} />
             </div>
-            <div className={`pos-grid size-${tileSize}${tileImages ? ' with-img' : ''}`}>
+            <div className={`pos-grid size-${tileSize} shape-${tileShape}${tileImages ? ' with-img' : ''}${tileFit === 'contain' ? ' fit-contain' : ''}`}>
               {activeItems.map((it) => {
-                const min = Math.min(...(it.variations || []).map((v) => v.price ?? Infinity));
-                const multi = (it.variations || []).length > 1;
+                const min = it.isGroup ? (it.fromPrice ?? Infinity) : Math.min(...(it.variations || []).map((v) => v.price ?? Infinity));
+                const multi = it.isGroup || (it.variations || []).length > 1;
                 return (
                   <button key={it.id} className={`pos-tile${it.soldOut ? ' sold' : ''}${tileImages ? ' has-img' : ''}`} disabled={it.soldOut}
                     onClick={() => pickProduct(it, it.category)}>

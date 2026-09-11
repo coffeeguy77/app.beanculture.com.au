@@ -45,7 +45,7 @@ function parseDescription(text) {
   return { intro, facts };
 }
 
-export default function ItemModal({ item, currency, onClose, onAdd, isFree, orderingClosed, closedLabel }) {
+function ItemModalBody({ item, currency, onClose, onAdd, isFree, orderingClosed, closedLabel }) {
   // Selection / validation / pricing / cart-item build all come from the shared
   // hook, so the customer sheet and the staff POS produce identical results.
   const {
@@ -221,6 +221,60 @@ export default function ItemModal({ item, currency, onClose, onAdd, isFree, orde
               {isFree ? 'Add to order' : `Add to order · ${formatMoney(unitPrice * qty, currency)}`}
             </button>
           )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// A "group" tile (e.g. Coffee Bags → Parliament / Decaf / Single origin) is a
+// two-step build: pick the sub-product, then configure it. Each sub-product is a
+// full item, so the second step + the order are identical to ordering it directly.
+export default function ItemModal(props) {
+  const { item, currency, onClose } = props;
+  const [subId, setSubId] = React.useState(null);
+  if (!item || !item.isGroup || !Array.isArray(item.subProducts) || !item.subProducts.length) {
+    return <ItemModalBody {...props} />;
+  }
+  const sub = item.subProducts.find((s) => s.id === subId);
+  if (sub) {
+    // Configure the chosen sub-product; closing returns to the chooser.
+    return <ItemModalBody {...props} item={sub} onClose={() => setSubId(null)} />;
+  }
+  return (
+    <div className="backdrop item-backdrop" onClick={onClose}>
+      <div className="sheet item-sheet" onClick={(e) => e.stopPropagation()}>
+        <button className="sheet-close" onClick={onClose} aria-label="Close">×</button>
+        <div className="sheet-main">
+          <div className="sheet-left">
+            {item.image && <img className="sheet-img" src={imgUrl(item.image, 720)} alt="" decoding="async" />}
+            <div className="sheet-left-body">
+              {item.category && <div className="sheet-eyebrow">{item.category}</div>}
+              <h2>{item.name}</h2>
+              {item.description && <p className="sheet-desc">{item.description}</p>}
+            </div>
+          </div>
+          <div className="sheet-right">
+            <div className="sheet-right-head">
+              <h3>Choose an option</h3>
+              <p>Pick one, then choose the size.</p>
+            </div>
+            <div className="cgroup">
+              <div className="cgroup-grid">
+                {item.subProducts.map((s) => {
+                  const min = Math.min(...(s.variations || []).map((v) => v.price ?? Infinity));
+                  const multi = (s.variations || []).length > 1;
+                  return (
+                    <button type="button" key={s.id} disabled={s.soldOut}
+                      className={`ccard ${s.soldOut ? 'disabled' : ''}`} onClick={() => setSubId(s.id)}>
+                      <span className="ccard-name">{s.name}{s.soldOut ? ' — Sold out' : ''}</span>
+                      {Number.isFinite(min) && <span className="ccard-price">{multi ? 'from ' : ''}{formatMoney(min, currency)}</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
