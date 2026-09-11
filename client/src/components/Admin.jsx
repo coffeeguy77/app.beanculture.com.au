@@ -1339,6 +1339,30 @@ export default function Admin({ onExit }) {
     ids.splice(to, 0, ids.splice(from, 1)[0]);
     return { ...p, variationIds: ids, variationId: ids[0] };
   }));
+  // ---- Custom (from-scratch) items: not a Square product. Own variations +
+  // option groups with prices, tagged to a Square category for reporting. Ordered
+  // as ad-hoc priced Square lines (server: orders.customLineFor). ----
+  const cvId = () => 'cv' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+  const cgId = () => 'cg' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+  const coId = () => 'co' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+  const strToCents = (raw) => { const r = String(raw).replace(/[^\d.]/g, ''); if (r === '') return 0; const n = Math.round(parseFloat(r) * 100); return Number.isFinite(n) && n > 0 ? n : 0; };
+  const centsToStr = (c) => (c ? (Number(c) / 100).toFixed(2) : '');
+  const addCustomPreset = () => setPresets((cur) => [...cur, {
+    id: newPresetId(), custom: true, name: 'New custom item', section: 'Custom',
+    variations: [{ id: cvId(), name: '', price: 0 }], customGroups: [], categoryName: '',
+    image: null, showImages: true, enabled: true,
+  }]);
+  const mutCustom = (pid, fn) => setPresets((list) => list.map((p) => (p.id === pid ? fn(p) : p)));
+  const addVariation = (pid) => mutCustom(pid, (p) => ({ ...p, variations: [...(p.variations || []), { id: cvId(), name: '', price: 0 }] }));
+  const updVariation = (pid, vid, patch) => mutCustom(pid, (p) => ({ ...p, variations: (p.variations || []).map((v) => (v.id === vid ? { ...v, ...patch } : v)) }));
+  const rmVariation = (pid, vid) => mutCustom(pid, (p) => ({ ...p, variations: (p.variations || []).filter((v) => v.id !== vid) }));
+  const addCustomGroup = (pid) => mutCustom(pid, (p) => ({ ...p, customGroups: [...(p.customGroups || []), { id: cgId(), name: '', selectionType: 'single', min: 0, max: null, options: [] }] }));
+  const updCustomGroup = (pid, gid, patch) => mutCustom(pid, (p) => ({ ...p, customGroups: (p.customGroups || []).map((g) => (g.id === gid ? { ...g, ...patch } : g)) }));
+  const rmCustomGroup = (pid, gid) => mutCustom(pid, (p) => ({ ...p, customGroups: (p.customGroups || []).filter((g) => g.id !== gid) }));
+  const addCustomOption = (pid, gid) => mutCustom(pid, (p) => ({ ...p, customGroups: (p.customGroups || []).map((g) => (g.id === gid ? { ...g, options: [...(g.options || []), { id: coId(), name: '', price: 0 }] } : g)) }));
+  const updCustomOption = (pid, gid, oid, patch) => mutCustom(pid, (p) => ({ ...p, customGroups: (p.customGroups || []).map((g) => (g.id === gid ? { ...g, options: (g.options || []).map((o) => (o.id === oid ? { ...o, ...patch } : o)) } : g)) }));
+  const rmCustomOption = (pid, gid, oid) => mutCustom(pid, (p) => ({ ...p, customGroups: (p.customGroups || []).map((g) => (g.id === gid ? { ...g, options: (g.options || []).filter((o) => o.id !== oid) } : g)) }));
+
   const toggleCombineSel = (id) => setCombineSel((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   // Merge the given tiles (must share a source item) into one tile with a size toggle.
   const combinePresets = (ids) => {
@@ -2706,6 +2730,8 @@ export default function Admin({ onExit }) {
                     const isOpen = !!expanded[p.id];
                     const v = cfg && (cfg.variations.find((x) => x.id === p.variationId) || cfg.variations[0]);
                     let price = v ? (v.price || 0) : null;
+                    // Custom items price from their own variations (lowest, "from $X").
+                    if (p.custom) { const cps = (p.variations || []).map((x) => Number(x.price) || 0); price = cps.length ? Math.min(...cps) : null; }
                     if (cfg && price != null) {
                       for (const g of cfg.modifierGroups || []) {
                         const gc = p.groups?.[g.id] || {};
@@ -2812,13 +2838,14 @@ export default function Admin({ onExit }) {
                           <label style={{ ...row, flex: 1, minWidth: 0 }}>
                             <input type="checkbox" checked={p.enabled !== false} title="Available — untick to hide this tile when unavailable"
                               onChange={(e) => updPreset(p.id, { enabled: e.target.checked })} />
-                            <span title="Preset" style={{ fontSize: 'var(--fs-lg)' }}>🛠️</span>
+                            <span title={p.custom ? 'Custom item' : 'Preset'} style={{ fontSize: 'var(--fs-lg)' }}>{p.custom ? '✨' : '🛠️'}</span>
                             <input value={p.name || ''} onChange={(e) => updPreset(p.id, { name: e.target.value })} placeholder="Tile name (e.g. Egg & Bacon Roll – Rocket & Aioli)"
                               style={{ fontWeight: 700, flex: 1, minWidth: 0, padding: '6px 8px', border: '1px solid var(--line)', borderRadius: 8 }} />
                             {isCombined(p) && <span className="muted" style={{ fontSize: 'var(--fs-xs)', whiteSpace: 'nowrap' }}>· {presetVids(p).length} sizes</span>}
-                            {price != null && <span className="muted" style={{ fontSize: 'var(--fs-sm)', whiteSpace: 'nowrap' }}>{isCombined(p) ? 'from ' : ''}{formatMoney(price, data?.currency)}</span>}
+                            {p.custom && (p.variations || []).length > 1 && <span className="muted" style={{ fontSize: 'var(--fs-xs)', whiteSpace: 'nowrap' }}>· {(p.variations || []).length} sizes</span>}
+                            {price != null && <span className="muted" style={{ fontSize: 'var(--fs-sm)', whiteSpace: 'nowrap' }}>{(isCombined(p) || (p.custom && (p.variations || []).length > 1)) ? 'from ' : ''}{formatMoney(price, data?.currency)}</span>}
                           </label>
-                          <button className="link" title="Select to combine (tick 2+ from the same product)" onClick={() => toggleCombineSel(p.id)} style={{ color: combineSel.has(p.id) ? 'var(--accent)' : 'var(--muted)', fontWeight: combineSel.has(p.id) ? 700 : 400 }}>⛓</button>
+                          {!p.custom && <button className="link" title="Select to combine (tick 2+ from the same product)" onClick={() => toggleCombineSel(p.id)} style={{ color: combineSel.has(p.id) ? 'var(--accent)' : 'var(--muted)', fontWeight: combineSel.has(p.id) ? 700 : 400 }}>⛓</button>}
                           <button className="link" title="Duplicate preset" onClick={() => dupPreset(p.id)}>⧉</button>
                           <button className="link" onClick={() => setExpanded((x) => ({ ...x, [p.id]: !isOpen }))}>{isOpen ? '▲' : '▼'}</button>
                           <button className="link" disabled={deleteLock} style={{ color: '#c0392b', opacity: deleteLock ? 0.3 : 1 }}
@@ -2826,6 +2853,100 @@ export default function Admin({ onExit }) {
                         </div>
                         {isOpen && (
                           <div style={{ marginTop: 8, borderTop: '1px solid var(--line)', paddingTop: 8, display: 'grid', gap: 8 }}>
+                            {p.custom && (
+                              <div style={{ display: 'grid', gap: 10 }}>
+                                <div style={{ fontWeight: 700, fontSize: 'var(--fs-sm)' }}>✨ Custom item — built from scratch (not a Square product)</div>
+                                <label style={{ display: 'grid', gap: 4 }}>
+                                  <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>Item name</span>
+                                  <input value={p.name || ''} onChange={(e) => updPreset(p.id, { name: e.target.value })} placeholder="e.g. Iced Latte"
+                                    style={{ padding: 8, borderRadius: 10, border: '1px solid var(--line)' }} />
+                                </label>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                                  {p.image
+                                    ? <img src={p.image} alt="" style={{ width: 44, height: 44, borderRadius: 8, objectFit: 'cover', flex: 'none' }} />
+                                    : <span style={{ width: 44, height: 44, borderRadius: 8, background: 'var(--brand-soft)', flex: 'none', display: 'grid', placeItems: 'center', fontSize: 'var(--fs-lg)' }}>✨</span>}
+                                  <label className="btn ghost" style={{ padding: '5px 10px', fontSize: 'var(--fs-sm)', cursor: 'pointer' }}>
+                                    {p.image ? 'Replace image' : 'Add image (optional)'}
+                                    <input type="file" accept="image/*" style={{ display: 'none' }}
+                                      onChange={(e) => { const f = e.target.files[0]; if (f) uploadImage(f, (url) => updPreset(p.id, { image: url }), 'custom'); e.target.value = ''; }} />
+                                  </label>
+                                  {p.image && <button type="button" className="link" style={{ color: '#c0392b' }} onClick={() => updPreset(p.id, { image: '' })}>Remove</button>}
+                                  <span className="muted" style={{ fontSize: 'var(--fs-xs)' }}>Shown on the POS tile when “images” is on.</span>
+                                </div>
+                                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                                  <label style={{ display: 'grid', gap: 4, flex: '1 1 180px' }}>
+                                    <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>Show in section</span>
+                                    <input list={`secnames-${p.id}`} value={p.section || ''} onChange={(e) => updPreset(p.id, { section: e.target.value })} placeholder="e.g. Iced drinks"
+                                      style={{ padding: 8, borderRadius: 10, border: '1px solid var(--line)' }} />
+                                    <datalist id={`secnames-${p.id}`}>{[...new Set(presets.map((x) => x.section).filter(Boolean))].map((n) => <option key={n} value={n} />)}</datalist>
+                                  </label>
+                                  <label style={{ display: 'grid', gap: 4, flex: '1 1 180px' }}>
+                                    <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>Square sales category (for reporting)</span>
+                                    <input list={`sqcat-${p.id}`} value={p.categoryName || ''} onChange={(e) => updPreset(p.id, { categoryName: e.target.value })} placeholder="e.g. Coffee"
+                                      style={{ padding: 8, borderRadius: 10, border: '1px solid var(--line)' }} />
+                                    <datalist id={`sqcat-${p.id}`}>{[...new Set(adminCat.map((c) => c.category).filter(Boolean))].map((n) => <option key={n} value={n} />)}</datalist>
+                                  </label>
+                                </div>
+
+                                {/* Variations — each its own price (cents stored; shown as dollars) */}
+                                <div style={{ display: 'grid', gap: 6, padding: '8px 10px', background: 'var(--admin-surface-soft, #f0f1f4)', borderRadius: 8 }}>
+                                  <span className="muted" style={{ fontSize: 'var(--fs-sm)', fontWeight: 700 }}>Sizes / variations (each with its own price)</span>
+                                  {(p.variations || []).map((v) => (
+                                    <div key={v.id} style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                                      <input value={v.name || ''} onChange={(e) => updVariation(p.id, v.id, { name: e.target.value })} placeholder="Name (e.g. Small) — optional"
+                                        style={{ flex: '1 1 140px', minWidth: 120, padding: '6px 8px', border: '1px solid var(--line)', borderRadius: 8 }} />
+                                      <span>$</span>
+                                      <input inputMode="decimal" defaultValue={centsToStr(v.price)} placeholder="0.00"
+                                        onChange={(e) => updVariation(p.id, v.id, { price: strToCents(e.target.value) })}
+                                        onBlur={(e) => { const c = strToCents(e.target.value); e.target.value = c ? (c / 100).toFixed(2) : ''; }}
+                                        style={{ width: 84, padding: '6px 8px', border: '1px solid var(--line)', borderRadius: 8 }} />
+                                      {(p.variations || []).length > 1 && (
+                                        <button type="button" title="Remove" onClick={() => rmVariation(p.id, v.id)}
+                                          style={{ border: '1px solid var(--line)', borderRadius: 6, background: 'none', cursor: 'pointer', padding: '4px 8px' }}>✕</button>
+                                      )}
+                                    </div>
+                                  ))}
+                                  <button type="button" className="link" onClick={() => addVariation(p.id)} style={{ justifySelf: 'start', fontSize: 'var(--fs-sm)' }}>+ Add size</button>
+                                </div>
+
+                                {/* Option groups with priced options */}
+                                <div style={{ display: 'grid', gap: 8 }}>
+                                  <span className="muted" style={{ fontSize: 'var(--fs-sm)', fontWeight: 700 }}>Option groups (add-ons)</span>
+                                  {(p.customGroups || []).map((g) => (
+                                    <div key={g.id} style={{ display: 'grid', gap: 6, border: '1px solid var(--line)', borderRadius: 8, padding: '8px 10px' }}>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                                        <input value={g.name || ''} onChange={(e) => updCustomGroup(p.id, g.id, { name: e.target.value })} placeholder="Group name (e.g. Milk)"
+                                          style={{ flex: '1 1 140px', minWidth: 120, padding: '6px 8px', border: '1px solid var(--line)', borderRadius: 8 }} />
+                                        <select value={g.selectionType || 'single'} onChange={(e) => updCustomGroup(p.id, g.id, { selectionType: e.target.value })}
+                                          style={{ padding: '6px 8px', border: '1px solid var(--line)', borderRadius: 8 }}>
+                                          <option value="single">Pick one</option>
+                                          <option value="multi">Pick many</option>
+                                        </select>
+                                        <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 'var(--fs-sm)' }} title="Force the customer/staff to choose from this group">
+                                          <input type="checkbox" checked={(g.min || 0) > 0} onChange={(e) => updCustomGroup(p.id, g.id, { min: e.target.checked ? 1 : 0 })} /> Required
+                                        </label>
+                                        <button type="button" className="link" onClick={() => rmCustomGroup(p.id, g.id)} style={{ fontSize: 'var(--fs-sm)', color: 'var(--admin-danger)' }}>Remove group</button>
+                                      </div>
+                                      {(g.options || []).map((o) => (
+                                        <div key={o.id} style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', paddingLeft: 8 }}>
+                                          <input value={o.name || ''} onChange={(e) => updCustomOption(p.id, g.id, o.id, { name: e.target.value })} placeholder="Option (e.g. Oat milk)"
+                                            style={{ flex: '1 1 140px', minWidth: 120, padding: '6px 8px', border: '1px solid var(--line)', borderRadius: 8 }} />
+                                          <span>+$</span>
+                                          <input inputMode="decimal" defaultValue={centsToStr(o.price)} placeholder="0.00"
+                                            onChange={(e) => updCustomOption(p.id, g.id, o.id, { price: strToCents(e.target.value) })}
+                                            onBlur={(e) => { const c = strToCents(e.target.value); e.target.value = c ? (c / 100).toFixed(2) : ''; }}
+                                            style={{ width: 78, padding: '6px 8px', border: '1px solid var(--line)', borderRadius: 8 }} />
+                                          <button type="button" title="Remove" onClick={() => rmCustomOption(p.id, g.id, o.id)}
+                                            style={{ border: '1px solid var(--line)', borderRadius: 6, background: 'none', cursor: 'pointer', padding: '4px 8px' }}>✕</button>
+                                        </div>
+                                      ))}
+                                      <button type="button" className="link" onClick={() => addCustomOption(p.id, g.id)} style={{ justifySelf: 'start', fontSize: 'var(--fs-sm)', paddingLeft: 8 }}>+ Add option</button>
+                                    </div>
+                                  ))}
+                                  <button type="button" className="btn ghost" onClick={() => addCustomGroup(p.id)} style={{ justifySelf: 'start', padding: '6px 12px', fontSize: 'var(--fs-sm)' }}>+ Add option group</button>
+                                </div>
+                              </div>
+                            )}
                             {presetSectionNav[secName]?.pos?.on === true && cfg && (
                               <div style={{ display: 'grid', gap: 6, padding: '8px 10px', background: 'var(--admin-surface-soft, #f0f1f4)', borderRadius: 8 }}>
                                 <span className="muted" style={{ fontSize: 'var(--fs-sm)', fontWeight: 700 }}>POS price (overrides the normal price at this pop-up)</span>
@@ -2863,6 +2984,7 @@ export default function Admin({ onExit }) {
                                 <span className="muted" style={{ fontSize: 'var(--fs-xs)' }}>Leave blank to use the normal price. Only applies in the POS at the ticked stores.</span>
                               </div>
                             )}
+                            {!p.custom && (
                             <div style={{ display: 'grid', gap: 4 }}>
                               <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>Source product</span>
                               {(() => {
@@ -2880,6 +3002,7 @@ export default function Admin({ onExit }) {
                                 );
                               })()}
                             </div>
+                            )}
                             {cfg && p.sourceItemId && (
                               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                                 {(() => {
@@ -3025,7 +3148,10 @@ export default function Admin({ onExit }) {
                   <datalist id="menu-section-names">
                     {[...new Set([...adminCat.map((c) => c.category), ...productSections.map((x) => x.name), ...presets.map((x) => x.section)].filter(Boolean))].map((n) => <option key={n} value={n} />)}
                   </datalist>
-                  <button className="btn ghost full" onClick={addPreset}>+ Add preset</button>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    <button className="btn ghost" style={{ flex: 1, minWidth: 160 }} onClick={addPreset}>+ Add preset</button>
+                    <button className="btn ghost" style={{ flex: 1, minWidth: 160 }} onClick={addCustomPreset} title="Build an item from scratch — your own name, sizes with prices, and options with prices. Not a Square product; sold as ad-hoc priced lines and tagged to a Square category.">✨ Add custom item</button>
+                  </div>
                 </div>
                 )}
               </>

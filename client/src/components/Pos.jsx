@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { api, formatMoney, imgUrl, comboDiscountFor } from '../api.js';
-import { useItemConfig, itemIsQuickAdd, buildQuickCartItem } from '../hooks/useItemConfig.js';
+import { useItemConfig, itemHasOptions, buildQuickCartItem } from '../hooks/useItemConfig.js';
 import Kds from './Kds.jsx';
 import ComboModal from './ComboModal.jsx';
 import Logo from './Logo.jsx';
@@ -172,6 +172,12 @@ export default function Pos({ onExit }) {
   const [configuring, setConfiguring] = useState(null); // { item, initial? }
   const [combo, setCombo] = useState(null);             // a combo item being built (uses ComboModal)
   const [query, setQuery] = useState('');
+  // Device-level POS tile view (each iPad chooses): tile size + whether to show
+  // product images/icons on the tiles. Persisted per device in localStorage.
+  const [tileSize, setTileSize] = useState(() => { try { return localStorage.getItem('bc-pos-tilesize') || 'm'; } catch { return 'm'; } });
+  const [tileImages, setTileImages] = useState(() => { try { return localStorage.getItem('bc-pos-tileimg') === '1'; } catch { return false; } });
+  const cycleTileSize = () => setTileSize((s) => { const n = s === 's' ? 'm' : s === 'm' ? 'l' : 's'; try { localStorage.setItem('bc-pos-tilesize', n); } catch {} return n; });
+  const toggleTileImages = () => setTileImages((v) => { const n = !v; try { localStorage.setItem('bc-pos-tileimg', n ? '1' : '0'); } catch {} return n; });
 
   const [cart, setCart] = useState(() => { try { return JSON.parse(localStorage.getItem(CART_KEY) || '[]') || []; } catch { return []; } });
   const [dineIn, setDineIn] = useState(false);
@@ -363,7 +369,10 @@ export default function Pos({ onExit }) {
   function pickProduct(item, catName) {
     const withCat = { ...item, category: item.category || catName };
     if (withCat.isCombo) { setCombo(withCat); return; }         // combos use ComboModal
-    if (itemIsQuickAdd(withCat)) { addLine(buildQuickCartItem(withCat)); return; }
+    // POS: open the options sheet whenever the item has ANY options — a size
+    // choice OR modifier options, even optional ones — so staff can add them
+    // (e.g. syrups, extra shot). Only a truly optionless item is a one-tap add.
+    if (!itemHasOptions(withCat)) { addLine(buildQuickCartItem(withCat)); return; }
     setConfiguring({ item: withCat });
   }
   function editLine(line) {
@@ -427,7 +436,7 @@ export default function Pos({ onExit }) {
       const amount = cartTotal(cart) - comboDiscountFor(cart);
       const payload = {
         cart: cart.map((c) => ({
-          variationId: c.variationId, quantity: c.quantity, modifierIds: c.modifierIds, note: c.note, presetId: c.presetId,
+          variationId: c.variationId, quantity: c.quantity, modifierIds: c.modifierIds, note: c.note, presetId: c.presetId, custom: c.custom,
           // Combo tags — the server re-derives + applies the combo discount from these.
           ...(c.comboInstanceId ? { comboId: c.comboId, comboInstanceId: c.comboInstanceId, comboGroupId: c.comboGroupId, comboItemId: c.comboItemId || c.itemId } : {}),
         })),
@@ -636,15 +645,22 @@ export default function Pos({ onExit }) {
           <main className="pos-main">
             <div className="pos-main-head">
               <div className="pos-cat-title">{q ? 'Search' : activeCat} <span>{activeItems.length} items</span></div>
+              <div className="pos-view-ctl">
+                <button type="button" className="pos-view-btn" title="Tile size" onClick={cycleTileSize}>▦ {tileSize === 's' ? 'S' : tileSize === 'l' ? 'L' : 'M'}</button>
+                <button type="button" className={`pos-view-btn${tileImages ? ' on' : ''}`} title="Show images on tiles" onClick={toggleTileImages}>🖼</button>
+              </div>
               <input className="pos-search" placeholder="Search products" value={query} onChange={(e) => setQuery(e.target.value)} />
             </div>
-            <div className="pos-grid">
+            <div className={`pos-grid size-${tileSize}${tileImages ? ' with-img' : ''}`}>
               {activeItems.map((it) => {
                 const min = Math.min(...(it.variations || []).map((v) => v.price ?? Infinity));
                 const multi = (it.variations || []).length > 1;
                 return (
-                  <button key={it.id} className={`pos-tile${it.soldOut ? ' sold' : ''}`} disabled={it.soldOut}
+                  <button key={it.id} className={`pos-tile${it.soldOut ? ' sold' : ''}${tileImages ? ' has-img' : ''}`} disabled={it.soldOut}
                     onClick={() => pickProduct(it, it.category)}>
+                    {tileImages && (it.image
+                      ? <img className="pos-tile-img" src={it.image} alt="" loading="lazy" />
+                      : <span className="pos-tile-ico" aria-hidden="true">{(it.name || '?').trim().charAt(0).toUpperCase()}</span>)}
                     <span className="pos-tile-name">{it.name}</span>
                     <span className="pos-tile-price">
                       {it.soldOut ? 'Sold out' : Number.isFinite(min) ? `${multi ? 'From ' : ''}${formatMoney(min, currency)}` : ''}

@@ -152,7 +152,7 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
   const needsShipping = eventMode && hasPaidItems;
   const shipCost = needsShipping ? (Number(shippingFee) || 0) : 0;
   const cartPayload = cart.map((c) => ({
-    variationId: c.variationId, quantity: c.quantity, modifierIds: c.modifierIds, note: c.note,
+    variationId: c.variationId, quantity: c.quantity, modifierIds: c.modifierIds, note: c.note, presetId: c.presetId, custom: c.custom,
     // Combo Builder tags — the server independently re-validates these against
     // the stored combo definition before applying any discount (see
     // server/lib/combos.js); nothing here is trusted at face value.
