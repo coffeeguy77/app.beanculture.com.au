@@ -170,6 +170,9 @@ export default function Admin({ onExit }) {
   const [saving, setSaving] = useState(false);
   const [savedMsg, setSavedMsg] = useState('');
   const [syncMsg, setSyncMsg] = useState('');
+  const [backupsOpen, setBackupsOpen] = useState(false);
+  const [backups, setBackups] = useState(null); // null = not loaded, [] = loaded empty
+  const [backupBusy, setBackupBusy] = useState(false);
   const [adminCat, setAdminCat] = useState([]);
   const [allProducts, setAllProducts] = useState([]);
   // ---- Pay It Forward (gift-a-coffee) admin state ----
@@ -1694,6 +1697,33 @@ export default function Admin({ onExit }) {
       setSavedMsg('Saved — live now.');
     } catch (e) { setSavedMsg('Save failed: ' + e.message); }
     finally { setSaving(false); setTimeout(() => setSavedMsg(''), 5000); }
+  }
+
+  async function openBackups() {
+    setBackupsOpen(true); setBackups(null);
+    try {
+      const r = await fetch(`/api/admin/settings/backups?pass=${encodeURIComponent(pass)}`);
+      const d = await r.json();
+      setBackups(r.ok ? (d.backups || []) : []);
+    } catch { setBackups([]); }
+  }
+
+  async function restoreBackup(id) {
+    // eslint-disable-next-line no-alert
+    if (!window.confirm('Restore this backup? Your current settings are snapshotted first, so this is reversible.')) return;
+    setBackupBusy(true);
+    try {
+      const r = await fetch(`/api/admin/settings/restore?pass=${encodeURIComponent(pass)}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || 'Restore failed');
+      await load(pass); // re-pull the now-restored settings
+      setBackupsOpen(false);
+      setSavedMsg('Restored — live now.');
+      setTimeout(() => setSavedMsg(''), 5000);
+    } catch (e) { setSavedMsg('Restore failed: ' + e.message); }
+    finally { setBackupBusy(false); }
   }
 
   if (needPass) {
@@ -5228,9 +5258,41 @@ export default function Admin({ onExit }) {
       <div className="admin-savebar">
         <div className="admin-savebar-inner">
           <span className="muted" style={{ fontSize: 'var(--fs-sm)', flex: 1 }}>{savedMsg}</span>
+          <button className="btn ghost" style={{ minWidth: 110 }} onClick={openBackups} title="View and restore automatic backups of your settings">🛟 Backups</button>
           <button className="btn" style={{ minWidth: 140 }} disabled={saving} onClick={save}>{saving ? 'Saving…' : 'Save changes'}</button>
         </div>
       </div>
+
+      {backupsOpen && (
+        <div onClick={() => setBackupsOpen(false)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'grid', placeItems: 'center', zIndex: 1000, padding: 16 }}>
+          <div onClick={(e) => e.stopPropagation()}
+            style={{ background: 'var(--admin-panel, #fff)', color: 'var(--admin-text, #111)', borderRadius: 14, padding: 18, width: 'min(560px, 96vw)', maxHeight: '82vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+              <strong style={{ fontSize: 'var(--fs-lg)', flex: 1 }}>🛟 Settings backups</strong>
+              <button className="link" onClick={() => setBackupsOpen(false)}>Close ✕</button>
+            </div>
+            <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 0 }}>
+              A snapshot is saved automatically every time your settings change. If something was lost, restore the most recent version that still had it — your current settings are snapshotted first, so restoring is always reversible.
+            </p>
+            {backups === null && <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>Loading…</p>}
+            {backups && backups.length === 0 && <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>No backups yet. They start accumulating from your next save.</p>}
+            {backups && backups.length > 0 && (
+              <div style={{ display: 'grid', gap: 8 }}>
+                {backups.map((b) => (
+                  <div key={b.id} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', border: '1px solid var(--line)', borderRadius: 10, padding: '8px 10px' }}>
+                    <div style={{ flex: 1, minWidth: 180 }}>
+                      <div style={{ fontWeight: 600, fontSize: 'var(--fs-sm)' }}>{new Date(b.createdAt).toLocaleString('en-AU', { timeZone: 'Australia/Sydney' })}</div>
+                      <div className="muted" style={{ fontSize: 'var(--fs-xs)' }}>{b.presetCount} tiles · {b.sectionCount} sections · {b.couponCount} coupons</div>
+                    </div>
+                    <button className="btn" disabled={backupBusy} style={{ padding: '5px 12px', fontSize: 'var(--fs-sm)' }} onClick={() => restoreBackup(b.id)}>{backupBusy ? '…' : 'Restore'}</button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
