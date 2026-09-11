@@ -94,6 +94,7 @@ export const api = {
   posRefund: (pass, payload) => req(`/api/pos/refund?pass=${encodeURIComponent(pass || '')}`, { method: 'POST', body: JSON.stringify(payload) }),
   posSetManagerPin: (pass, pin, currentPin) => req(`/api/pos/manager-pin?pass=${encodeURIComponent(pass || '')}`, { method: 'POST', body: JSON.stringify({ pin, currentPin }) }),
   posSetPayments: (pass, locationId, payments) => req(`/api/pos/payments?pass=${encodeURIComponent(pass || '')}`, { method: 'POST', body: JSON.stringify({ locationId, payments }) }),
+  posSetTerminalOptions: (pass, showItemizedCart) => req(`/api/pos/terminal-options?pass=${encodeURIComponent(pass || '')}`, { method: 'POST', body: JSON.stringify({ showItemizedCart }) }),
   posDay: (pass, locationId) => req(`/api/pos/day?pass=${encodeURIComponent(pass || '')}${locationId ? `&location=${encodeURIComponent(locationId)}` : ''}`),
 };
 
