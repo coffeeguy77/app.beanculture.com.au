@@ -537,7 +537,11 @@ async function getMenu(opts = {}) {
         // so the app/cafe price is never affected.
         variations: chosenVars.map((v) => {
           const ov = opts.pos && p.posOverride && p.posOverride[v.id] != null ? Math.max(0, Math.round(Number(p.posOverride[v.id]) || 0)) : null;
-          return { id: v.id, name: v.name, price: (ov != null ? ov : (v.price || 0)) + lockedTotal, soldOut: !!v.soldOut };
+          // Owner can rename the size-toggle label per variation (p.varNames);
+          // falls back to Square's variation name. Purely a display label — the
+          // order still submits the real Square variation id.
+          const label = (p.varNames && typeof p.varNames[v.id] === 'string' && p.varNames[v.id].trim()) ? p.varNames[v.id].trim() : v.name;
+          return { id: v.id, name: label, price: (ov != null ? ov : (v.price || 0)) + lockedTotal, soldOut: !!v.soldOut };
         }),
         modifierGroups: groups,
         lockedModifierIds,
@@ -557,7 +561,7 @@ async function getMenu(opts = {}) {
         id: 'preset:' + p.id,
         name: tile.name,
         image: src.image || null,
-        variations: chosenVars.map((v) => ({ id: v.id, name: v.name, price: v.price || 0, soldOut: !!v.soldOut })),
+        variations: chosenVars.map((v) => ({ id: v.id, name: ((p.varNames && typeof p.varNames[v.id] === 'string' && p.varNames[v.id].trim()) ? p.varNames[v.id].trim() : v.name), price: v.price || 0, soldOut: !!v.soldOut })),
         modifierGroups: groups,
         lockedMods,
         defaults,
