@@ -173,6 +173,7 @@ export default function Admin({ onExit }) {
   const [backupsOpen, setBackupsOpen] = useState(false);
   const [backups, setBackups] = useState(null); // null = not loaded, [] = loaded empty
   const [backupBusy, setBackupBusy] = useState(false);
+  const [varDrag, setVarDrag] = useState(null); // { pid, vid } while dragging a size row
   const [adminCat, setAdminCat] = useState([]);
   const [allProducts, setAllProducts] = useState([]);
   // ---- Pay It Forward (gift-a-coffee) admin state ----
@@ -932,25 +933,35 @@ export default function Admin({ onExit }) {
 
   // ---- product builder presets (named hot-links into one variable item) ----
   const presets = s?.presets || [];
-  const setPresets = (arr) => set({ presets: arr });
+  // setPresets accepts an array OR an updater fn. ALWAYS prefer passing a function
+  // (cur => next): every preset mutation must be computed from the CURRENT state,
+  // never from the `presets` render-closure. Two edits firing before a re-render
+  // (create section, tick POS-only, tick location, set a price — all in a burst)
+  // would otherwise each rebuild from the same stale snapshot and silently clobber
+  // one another, which is how whole sections "vanished". (data-loss fix)
+  const setPresets = (arrOrFn) =>
+    setS((cur) => ({ ...cur, presets: (typeof arrOrFn === 'function' ? arrOrFn(cur.presets || []) : arrOrFn) }));
   const addPreset = () =>
-    setPresets([...presets, { id: 'pre' + Date.now().toString(36), name: 'New preset', section: 'Breakfast', sourceItemId: '', variationId: '', groups: {}, showImages: true }]);
-  const updPreset = (id, patch) => setPresets(presets.map((x) => (x.id === id ? { ...x, ...patch } : x)));
+    setPresets((cur) => [...cur, { id: newPresetId(), name: 'New preset', section: 'Breakfast', sourceItemId: '', variationId: '', groups: {}, showImages: true }]);
+  const updPreset = (id, patch) => setPresets((cur) => cur.map((x) => (x.id === id ? { ...x, ...patch } : x)));
   const rmPreset = (id) => {
     // Remember the variations this tile covered so "Sync new variations from
     // Square" doesn't silently re-create the tile you just deleted (the cause of
     // "deleted teas keep coming back"). Cleared automatically if you rebuild a
     // tile for that variation.
-    const p = presets.find((x) => x.id === id);
-    const vids = p ? (Array.isArray(p.variationIds) && p.variationIds.length ? p.variationIds : [p.variationId].filter(Boolean)) : [];
-    const ex = new Set(Array.isArray(s?.builderExcludedVariationIds) ? s.builderExcludedVariationIds : []);
-    vids.forEach((v) => ex.add(v));
-    set({ presets: presets.filter((x) => x.id !== id), builderExcludedVariationIds: [...ex] });
+    setS((cur) => {
+      const list = cur.presets || [];
+      const p = list.find((x) => x.id === id);
+      const vids = p ? (Array.isArray(p.variationIds) && p.variationIds.length ? p.variationIds : [p.variationId].filter(Boolean)) : [];
+      const ex = new Set(Array.isArray(cur.builderExcludedVariationIds) ? cur.builderExcludedVariationIds : []);
+      vids.forEach((v) => ex.add(v));
+      return { ...cur, presets: list.filter((x) => x.id !== id), builderExcludedVariationIds: [...ex] };
+    });
   };
   // Cycle a modifier through Off → Show → Default → Lock → Off for a preset.
   const CYCLE = { undefined: 'optional', off: 'optional', optional: 'default', default: 'locked', locked: undefined };
   const cyclePresetMod = (presetId, groupId, modId) =>
-    setPresets(presets.map((p) => {
+    setPresets((list) => list.map((p) => {
       if (p.id !== presetId) return p;
       const groups = { ...(p.groups || {}) };
       const g = { ...(groups[groupId] || {}) };
@@ -968,7 +979,7 @@ export default function Admin({ onExit }) {
   // already Default/Locked keeps its state); hide-all clears the group/preset
   // entirely so every modifier goes back to Hide.
   const setGroupShowAll = (presetId, g, show) =>
-    setPresets(presets.map((p) => {
+    setPresets((list) => list.map((p) => {
       if (p.id !== presetId) return p;
       const groups = { ...(p.groups || {}) };
       if (!show) { delete groups[g.id]; return { ...p, groups }; }
@@ -978,7 +989,7 @@ export default function Admin({ onExit }) {
       return { ...p, groups };
     }));
   const setPresetShowAll = (presetId, cfg, show) =>
-    setPresets(presets.map((p) => {
+    setPresets((list) => list.map((p) => {
       if (p.id !== presetId) return p;
       if (!show) return { ...p, groups: {} };
       const groups = { ...(p.groups || {}) };
@@ -992,7 +1003,7 @@ export default function Admin({ onExit }) {
   // Which headings force the customer to pick at least one option — overrides
   // Square's own modifier-list minimum for this preset only (server: catalog.js).
   const toggleGroupRequired = (presetId, groupId) =>
-    setPresets(presets.map((p) => {
+    setPresets((list) => list.map((p) => {
       if (p.id !== presetId) return p;
       const cur = Array.isArray(p.requiredGroups) ? p.requiredGroups : [];
       const next = cur.includes(groupId) ? cur.filter((id) => id !== groupId) : [...cur, groupId];
@@ -1015,7 +1026,14 @@ export default function Admin({ onExit }) {
   const presetsSorted = [...presets].sort((a, b) => (a.section || '').localeCompare(b.section || ''));
   // Per-section top/footer nav inclusion (product-builder sections).
   const presetSectionNav = s?.presetSectionNav || {};
-  const setSectionNav = (name, patch) => set({ presetSectionNav: { ...presetSectionNav, [name]: { ...(presetSectionNav[name] || {}), ...patch } } });
+  // Functional so back-to-back nav edits (POS-only on, then locations, then banner)
+  // each build from the CURRENT nav rather than a stale snapshot — otherwise a
+  // later edit drops an earlier one, taking a whole section's config with it.
+  const setSectionNav = (name, patch) => setS((cur) => {
+    const nav = { ...(cur.presetSectionNav || {}) };
+    nav[name] = { ...(nav[name] || {}), ...patch };
+    return { ...cur, presetSectionNav: nav };
+  });
   // Rename a Product Builder section everywhere it's referenced: every tile's
   // `section`, the section's own nav/banner config, footer buttons, and any
   // event-menu / free-category lists that name it — so the rename doesn't orphan
@@ -1302,35 +1320,61 @@ export default function Admin({ onExit }) {
   const newPresetId = () => 'pre' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   const presetVids = (p) => (Array.isArray(p.variationIds) && p.variationIds.length ? p.variationIds : [p.variationId].filter(Boolean));
   const isCombined = (p) => presetVids(p).length > 1;
+  // Reorder the size-toggle options on a combined tile. dir = -1 (up) / +1 (down)
+  // for the arrow buttons; moveVariationTo(pid, fromVid, toVid) for drag-and-drop.
+  // variationId is kept pointing at the first option (the default the sheet opens on).
+  const moveVariation = (pid, vid, dir) => setPresets((list) => list.map((p) => {
+    if (p.id !== pid) return p;
+    const ids = presetVids(p).slice();
+    const i = ids.indexOf(vid); const j = i + dir;
+    if (i < 0 || j < 0 || j >= ids.length) return p;
+    [ids[i], ids[j]] = [ids[j], ids[i]];
+    return { ...p, variationIds: ids, variationId: ids[0] };
+  }));
+  const moveVariationTo = (pid, fromVid, toVid) => setPresets((list) => list.map((p) => {
+    if (p.id !== pid || fromVid === toVid) return p;
+    const ids = presetVids(p).slice();
+    const from = ids.indexOf(fromVid); const to = ids.indexOf(toVid);
+    if (from < 0 || to < 0) return p;
+    ids.splice(to, 0, ids.splice(from, 1)[0]);
+    return { ...p, variationIds: ids, variationId: ids[0] };
+  }));
   const toggleCombineSel = (id) => setCombineSel((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   // Merge the given tiles (must share a source item) into one tile with a size toggle.
   const combinePresets = (ids) => {
-    const chosen = presets.filter((p) => ids.includes(p.id));
-    if (chosen.length < 2) return;
-    const src = chosen[0].sourceItemId;
-    if (!chosen.every((p) => p.sourceItemId === src)) { alert('Combine only works on tiles built from the SAME source product.'); return; }
-    const vids = [];
-    for (const p of chosen) for (const v of presetVids(p)) if (v && !vids.includes(v)) vids.push(v);
-    const cfg = itemConfigs[src];
-    const base = chosen[0];
-    const combined = { ...base, id: newPresetId(), variationId: vids[0], variationIds: vids, name: cfg?.name || base.name };
-    const anchor = presets.findIndex((p) => p.id === base.id);
-    const remaining = presets.filter((p) => !ids.includes(p.id));
-    remaining.splice(Math.min(Math.max(0, anchor), remaining.length), 0, combined);
-    setPresets(remaining);
+    const preCheck = presets.filter((p) => ids.includes(p.id));
+    if (preCheck.length < 2) return;
+    if (!preCheck.every((p) => p.sourceItemId === preCheck[0].sourceItemId)) { alert('Combine only works on tiles built from the SAME source product.'); return; }
+    setPresets((list) => {
+      const chosen = list.filter((p) => ids.includes(p.id));
+      if (chosen.length < 2) return list;
+      const src = chosen[0].sourceItemId;
+      if (!chosen.every((p) => p.sourceItemId === src)) return list;
+      const vids = [];
+      for (const p of chosen) for (const v of presetVids(p)) if (v && !vids.includes(v)) vids.push(v);
+      const cfg = itemConfigs[src];
+      const base = chosen[0];
+      const combined = { ...base, id: newPresetId(), variationId: vids[0], variationIds: vids, name: cfg?.name || base.name };
+      const anchor = list.findIndex((p) => p.id === base.id);
+      const remaining = list.filter((p) => !ids.includes(p.id));
+      remaining.splice(Math.min(Math.max(0, anchor), remaining.length), 0, combined);
+      return remaining;
+    });
     setCombineSel((prev) => { const n = new Set(prev); ids.forEach((id) => n.delete(id)); return n; });
   };
   // Split a combined tile back into one tile per variation.
   const splitPreset = (id) => {
-    const idx = presets.findIndex((p) => p.id === id);
-    if (idx < 0) return;
-    const p = presets[idx];
-    const cfg = itemConfigs[p.sourceItemId];
-    const parts = presetVids(p).map((vid, i) => {
-      const v = cfg && cfg.variations.find((x) => x.id === vid);
-      return { ...p, id: i === 0 ? p.id : newPresetId(), variationId: vid, variationIds: undefined, name: (v && v.name) || p.name };
+    setPresets((list) => {
+      const idx = list.findIndex((p) => p.id === id);
+      if (idx < 0) return list;
+      const p = list[idx];
+      const cfg = itemConfigs[p.sourceItemId];
+      const parts = presetVids(p).map((vid, i) => {
+        const v = cfg && cfg.variations.find((x) => x.id === vid);
+        return { ...p, id: i === 0 ? p.id : newPresetId(), variationId: vid, variationIds: undefined, name: (v && v.name) || p.name };
+      });
+      const arr = [...list]; arr.splice(idx, 1, ...parts); return arr;
     });
-    const arr = [...presets]; arr.splice(idx, 1, ...parts); setPresets(arr);
   };
   // Sync the product builder with Square: add tiles for newly-added variations,
   // drop variations that were deleted (prices are already live from Square).
@@ -1402,7 +1446,7 @@ export default function Admin({ onExit }) {
     } finally { setSyncBusy(false); }
   }
   // Toggle which variations a combined tile offers.
-  const toggleVariationId = (pid, vid) => setPresets(presets.map((p) => {
+  const toggleVariationId = (pid, vid) => setPresets((list) => list.map((p) => {
     if (p.id !== pid) return p;
     const cur = presetVids(p);
     const next = cur.includes(vid) ? cur.filter((x) => x !== vid) : [...cur, vid];
@@ -1412,13 +1456,15 @@ export default function Admin({ onExit }) {
   // Duplicate a preset right below itself (name + " copy") so you can quickly
   // spin off variants and just tweak the name/options.
   const dupPreset = (id) => {
-    const i = presets.findIndex((x) => x.id === id);
-    if (i < 0) return;
-    const src = presets[i];
-    const copy = { ...src, id: newPresetId(), name: (src.name || '') + ' copy', groups: JSON.parse(JSON.stringify(src.groups || {})) };
-    const arr = [...presets];
-    arr.splice(i + 1, 0, copy);
-    setPresets(arr);
+    setPresets((list) => {
+      const i = list.findIndex((x) => x.id === id);
+      if (i < 0) return list;
+      const src = list[i];
+      const copy = { ...src, id: newPresetId(), name: (src.name || '') + ' copy', groups: JSON.parse(JSON.stringify(src.groups || {})) };
+      const arr = [...list];
+      arr.splice(i + 1, 0, copy);
+      return arr;
+    });
   };
   // Ensure an item's config is loaded, returning it.
   async function ensureItemConfig(id) {
@@ -1448,7 +1494,7 @@ export default function Admin({ onExit }) {
           made.push({ id: newPresetId(), name: nm, section, sourceItemId: id, variationId: v.id, groups: {}, showImages: true });
         }
       }
-      if (made.length) setPresets([...presets, ...made]);
+      if (made.length) setPresets((list) => [...list, ...made]);
       setGenSelected(new Set());
     } finally { setGenBusy(false); }
   }
@@ -2866,28 +2912,39 @@ export default function Admin({ onExit }) {
                                           </label>
                                         ))}
                                       </div>
-                                      {/* Rename the toggle label the customer/POS sees for each ticked size.
-                                          Blank = use Square's variation name. Display only — the real
-                                          Square variation is still what's ordered. */}
+                                      {/* Order + rename the size toggles the customer/POS sees. Drag the
+                                          ⠿ handle or use ↑/↓ to change the order; the label box renames it
+                                          (blank = Square's name). All display only — the real Square
+                                          variation is still what's ordered. */}
                                       {presetVids(p).length > 0 && (
                                         <div style={{ display: 'grid', gap: 4, marginTop: 2 }}>
-                                          <span className="muted" style={{ fontSize: 'var(--fs-xs)' }}>Rename the size labels (blank = Square’s name)</span>
-                                          {presetVids(p).map((vid) => {
+                                          <span className="muted" style={{ fontSize: 'var(--fs-xs)' }}>Order &amp; rename the sizes (drag ⠿ or use ↑↓; blank = Square’s name)</span>
+                                          {presetVids(p).map((vid, idx, arr) => {
                                             const vr = cfg.variations.find((x) => x.id === vid);
                                             if (!vr) return null;
+                                            const dragging = varDrag && varDrag.pid === p.id && varDrag.vid === vid;
                                             return (
-                                              <label key={vid} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--fs-sm)' }}>
-                                                <span className="muted" style={{ minWidth: 96, fontSize: 'var(--fs-xs)' }}>{vr.name || cfg.name}</span>
+                                              <div key={vid}
+                                                draggable
+                                                onDragStart={() => setVarDrag({ pid: p.id, vid })}
+                                                onDragEnd={() => setVarDrag(null)}
+                                                onDragOver={(e) => { if (varDrag && varDrag.pid === p.id) e.preventDefault(); }}
+                                                onDrop={(e) => { e.preventDefault(); if (varDrag && varDrag.pid === p.id) moveVariationTo(p.id, varDrag.vid, vid); setVarDrag(null); }}
+                                                style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 'var(--fs-sm)', opacity: dragging ? 0.45 : 1, border: '1px solid var(--line)', borderRadius: 8, padding: '4px 6px', background: 'var(--admin-panel, #fff)' }}>
+                                                <span title="Drag to reorder" style={{ cursor: 'grab', color: 'var(--muted)', userSelect: 'none' }}>⠿</span>
+                                                <button type="button" title="Move up" disabled={idx === 0} onClick={() => moveVariation(p.id, vid, -1)}
+                                                  style={{ border: '1px solid var(--line)', borderRadius: 6, background: 'none', cursor: idx === 0 ? 'default' : 'pointer', opacity: idx === 0 ? 0.35 : 1, lineHeight: 1, padding: '2px 6px' }}>↑</button>
+                                                <button type="button" title="Move down" disabled={idx === arr.length - 1} onClick={() => moveVariation(p.id, vid, 1)}
+                                                  style={{ border: '1px solid var(--line)', borderRadius: 6, background: 'none', cursor: idx === arr.length - 1 ? 'default' : 'pointer', opacity: idx === arr.length - 1 ? 0.35 : 1, lineHeight: 1, padding: '2px 6px' }}>↓</button>
+                                                <span className="muted" style={{ minWidth: 80, fontSize: 'var(--fs-xs)' }}>{vr.name || cfg.name}</span>
                                                 <span>→</span>
                                                 <input value={(p.varNames || {})[vid] || ''} placeholder={vr.name || cfg.name}
                                                   onChange={(e) => {
-                                                    const next = { ...(p.varNames || {}) };
                                                     const val = e.target.value;
-                                                    if (val.trim() === '') delete next[vid]; else next[vid] = val;
-                                                    updPreset(p.id, { varNames: next });
+                                                    updPreset(p.id, { varNames: (() => { const next = { ...(p.varNames || {}) }; if (val.trim() === '') delete next[vid]; else next[vid] = val; return next; })() });
                                                   }}
-                                                  style={{ flex: '1 1 140px', minWidth: 120, padding: '5px 8px', border: '1px solid var(--line)', borderRadius: 8 }} />
-                                              </label>
+                                                  style={{ flex: '1 1 120px', minWidth: 110, padding: '5px 8px', border: '1px solid var(--line)', borderRadius: 8 }} />
+                                              </div>
                                             );
                                           })}
                                         </div>
