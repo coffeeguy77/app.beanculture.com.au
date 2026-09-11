@@ -181,9 +181,14 @@ app.get('/api/menu', async (req, res) => {
     const now = Date.now();
     // Resolve the requested store (falls back to the default/main location).
     const loc = locations.resolve(req.query.location).id;
-    const hit = menuByLoc[loc];
+    // The POS asks with ?pos=1 — that feed can include POS-only sections (and
+    // their price overrides) that the app must never see, so it is cached under
+    // a separate key from the app's menu for the same store.
+    const isPos = req.query.pos === '1';
+    const cacheKey = isPos ? `${loc}#pos` : loc;
+    const hit = menuByLoc[cacheKey];
     if (hit && hit.data && now - hit.at < MENU_TTL_MS) return res.json(hit.data);
-    let menu = await catalog.getMenu({ location: loc });
+    let menu = await catalog.getMenu({ location: loc, pos: isPos });
     // Curated event menu: if this store lists specific sections, show ONLY those
     // (in the order the store chose) and treat them as primary nav so the single
     // curated section behaves like a normal top-level menu at the event.
@@ -236,8 +241,8 @@ app.get('/api/menu', async (req, res) => {
         };
       }
     }
-    menuByLoc[loc] = { data: menu, at: now };
-    if (loc === locations.resolve(null).id) menuCache = { data: menu, at: now }; // keep legacy field warm
+    menuByLoc[cacheKey] = { data: menu, at: now };
+    if (!isPos && loc === locations.resolve(null).id) menuCache = { data: menu, at: now }; // keep legacy field warm
     res.json(menu);
   } catch (err) {
     console.error('menu error', err.message);
@@ -1528,6 +1533,7 @@ app.post('/api/pos/order', async (req, res) => {
       freeCategories: posFreeCategories,
       eventId: posEvLoc && posEvLoc.type === 'event' ? posEvLoc.id : undefined,
       appLocationId: posEvLoc ? posEvLoc.id : undefined,
+      posOverrideLocation: locationId || (posEvLoc && posEvLoc.id) || undefined, // apply POS-only price overrides
       reason: (tender === 'unpaid' || locations.isFree(locationId)) ? reason : undefined,
       // Card orders are held OFF the kitchen screen until the Terminal payment
       // completes — so a cancelled/declined card checkout never reaches the
