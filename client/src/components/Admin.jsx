@@ -234,6 +234,12 @@ export default function Admin({ onExit }) {
   const [userQuery, setUserQuery] = useState('');
   const [userSort, setUserSort] = useState('recent'); // recent | oldest | points | earned | redeemed
   const [userFilter, setUserFilter] = useState('all'); // all | active | redeemers | new
+  const [enroll, setEnroll] = useState({ name: '', phone: '', busy: false, msg: '' });
+  const [openUser, setOpenUser] = useState(null);      // expanded member (loyalty account id)
+  const [uHist, setUHist] = useState({});              // accountId -> events[] | null (loading)
+  const [uBusy, setUBusy] = useState('');              // accountId currently being acted on
+  const [uMsg, setUMsg] = useState({});                // accountId -> inline status message
+  const [adj, setAdj] = useState({ amount: '', reason: '' }); // adjust-points form (for openUser)
   const [notifyStatus, setNotifyStatus] = useState(null); // { sms, email }
   const [push, setPush] = useState({ channel: 'sms', subject: '', message: '', link: '' });
   const [pushBusy, setPushBusy] = useState(false);
@@ -517,6 +523,56 @@ export default function Admin({ onExit }) {
     try { const d = await api.adminCustomers(pass); setUsers(d.users || []); }
     catch (e) { alert('Could not load users: ' + e.message); }
     finally { setUsersBusy(false); }
+  }
+  // ---- Loyalty member management (Users tab) ----
+  async function enrollMember() {
+    if (!enroll.phone.trim()) { setEnroll((s) => ({ ...s, msg: 'Enter a phone number.' })); return; }
+    setEnroll((s) => ({ ...s, busy: true, msg: '' }));
+    try {
+      const d = await api.loyaltyEnroll(pass, enroll.phone.trim(), enroll.name.trim());
+      // Add (or move to top) the new member. If they already existed, refresh from Square.
+      setUsers((cur) => {
+        const list = Array.isArray(cur) ? cur : [];
+        const without = list.filter((x) => x.id !== d.user.id);
+        return [d.user, ...without];
+      });
+      setEnroll({ name: '', phone: '', busy: false, msg: d.user.existed ? 'Already a member — shown at top.' : 'Enrolled ✓' });
+      setTimeout(() => setEnroll((s) => ({ ...s, msg: '' })), 4000);
+    } catch (e) { setEnroll((s) => ({ ...s, busy: false, msg: e.message || 'Could not enrol' })); }
+  }
+  async function openMember(u) {
+    if (openUser === u.id) { setOpenUser(null); return; }
+    setOpenUser(u.id); setAdj({ amount: '', reason: '' });
+    if (uHist[u.id] === undefined) {
+      setUHist((h) => ({ ...h, [u.id]: null }));
+      try { const d = await api.loyaltyHistory(pass, u.id); setUHist((h) => ({ ...h, [u.id]: d.events || [] })); }
+      catch { setUHist((h) => ({ ...h, [u.id]: [] })); }
+    }
+  }
+  async function adjustMember(u, sign) {
+    const amt = Math.trunc(Number(String(adj.amount).replace(/[^\d]/g, '')));
+    if (!Number.isFinite(amt) || amt <= 0) { setUMsg((m) => ({ ...m, [u.id]: 'Enter a whole number of points.' })); return; }
+    setUBusy(u.id); setUMsg((m) => ({ ...m, [u.id]: '' }));
+    try {
+      const d = await api.loyaltyAdjust(pass, u.id, sign * amt, adj.reason.trim());
+      setUsers((cur) => (cur || []).map((x) => (x.id === u.id ? { ...x, points: d.points != null ? d.points : x.points, lifetimePoints: d.lifetimePoints != null ? d.lifetimePoints : x.lifetimePoints } : x)));
+      setAdj({ amount: '', reason: '' });
+      setUMsg((m) => ({ ...m, [u.id]: `${sign > 0 ? 'Added' : 'Removed'} ${amt} pts ✓` }));
+      // Refresh this member's history so the adjustment shows.
+      try { const h = await api.loyaltyHistory(pass, u.id); setUHist((hh) => ({ ...hh, [u.id]: h.events || [] })); } catch {}
+      setTimeout(() => setUMsg((m) => ({ ...m, [u.id]: '' })), 4000);
+    } catch (e) { setUMsg((m) => ({ ...m, [u.id]: e.message || 'Adjustment failed' })); }
+    finally { setUBusy(''); }
+  }
+  async function saveMemberProfile(u, patch) {
+    setUBusy(u.id); setUMsg((m) => ({ ...m, [u.id]: '' }));
+    try {
+      const d = await api.loyaltyProfile(pass, u.customerId, patch);
+      setUsers((cur) => (cur || []).map((x) => (x.id === u.id ? { ...x, name: d.name || x.name, email: d.email || x.email, phone: d.phone || x.phone } : x)));
+      setUMsg((m) => ({ ...m, [u.id]: 'Profile saved ✓' }));
+      setTimeout(() => setUMsg((m) => ({ ...m, [u.id]: '' })), 4000);
+    } catch (e) { setUMsg((m) => ({ ...m, [u.id]: e.message || 'Could not save profile' })); }
+    finally { setUBusy(''); }
   }
   // Ids of products actually offered in the app menu (to refine the Sold Out /
   // Day Exclusion lists so they don't wade through every Square product).
@@ -4922,7 +4978,17 @@ export default function Admin({ onExit }) {
                   <div className="group-title" style={{ margin: 0 }}>Users · loyalty members</div>
                   <button type="button" className="btn ghost" style={{ padding: '6px 12px', fontSize: 'var(--fs-base)' }} disabled={usersBusy} onClick={loadUsers}>{usersBusy ? 'Loading…' : (users === null ? 'Load' : 'Refresh')}</button>
                 </div>
-                <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 6 }}>Everyone enrolled in your Square loyalty program — name, contact, points and when they joined. Pulled live from Square.</p>
+                <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 6 }}>Everyone enrolled in your Square loyalty program — name, contact, points and when they joined. Pulled live from Square. Tap a member to adjust their points, edit their details, or see their history.</p>
+                {/* Enrol a new member (name + phone) */}
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', padding: '10px', border: '1px solid var(--line)', borderRadius: 12, background: 'var(--brand-soft)', marginBottom: 10 }}>
+                  <span style={{ fontWeight: 700, fontSize: 'var(--fs-sm)' }}>➕ Enrol a member</span>
+                  <input value={enroll.name} onChange={(e) => setEnroll((s) => ({ ...s, name: e.target.value }))} placeholder="Name (optional)"
+                    style={{ flex: '1 1 140px', minWidth: 0, padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 10 }} />
+                  <input value={enroll.phone} onChange={(e) => setEnroll((s) => ({ ...s, phone: e.target.value }))} placeholder="Mobile number" inputMode="tel"
+                    style={{ flex: '1 1 140px', minWidth: 0, padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 10 }} />
+                  <button type="button" className="btn" disabled={enroll.busy} onClick={enrollMember} style={{ padding: '8px 14px' }}>{enroll.busy ? 'Enrolling…' : 'Enrol'}</button>
+                  {enroll.msg && <span className="muted" style={{ fontSize: 'var(--fs-sm)', flexBasis: '100%' }}>{enroll.msg}</span>}
+                </div>
                 {users === null && !usersBusy && <p className="muted" style={{ fontSize: 'var(--fs-base)' }}>Tap Load to fetch your loyalty members.</p>}
                 {users && users.length === 0 && <p className="muted" style={{ fontSize: 'var(--fs-base)' }}>No loyalty members yet.</p>}
                 {users && users.length > 0 && (() => {
@@ -4976,18 +5042,70 @@ export default function Admin({ onExit }) {
                       </div>
                       <div className="admin-users">
                         {rows.map((u) => (
-                          <div key={u.id} className="user-row">
-                            <div className="user-main">
-                              <div className="user-name">{u.name || 'Guest'}</div>
-                              <div className="muted" style={{ fontSize: 'var(--fs-sm)' }}>{[u.phone, u.email].filter(Boolean).join(' · ') || '—'}</div>
+                          <div key={u.id} className="user-row" style={{ display: 'block' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }} onClick={() => openMember(u)}>
+                              <div className="user-main" style={{ flex: 1, minWidth: 0 }}>
+                                <div className="user-name">{u.name || 'Guest'} <span className="muted" style={{ fontWeight: 400, fontSize: 'var(--fs-xs)' }}>{openUser === u.id ? '▲' : '▾'}</span></div>
+                                <div className="muted" style={{ fontSize: 'var(--fs-sm)' }}>{[u.phone, u.email].filter(Boolean).join(' · ') || '—'}</div>
+                              </div>
+                              <div className="user-meta">
+                                <span className="user-pts">{u.points} pts</span>
+                                <span className="muted" style={{ fontSize: 'var(--fs-xs)' }}>
+                                  {u.lifetimePoints} earned{u.redemptions > 0 ? ` · ${u.redemptions} redeemed` : ''}
+                                </span>
+                                <span className="muted" style={{ fontSize: 'var(--fs-xs)' }}>Joined {fmtJoined(u.enrolledAt)}</span>
+                              </div>
                             </div>
-                            <div className="user-meta">
-                              <span className="user-pts">{u.points} pts</span>
-                              <span className="muted" style={{ fontSize: 'var(--fs-xs)' }}>
-                                {u.lifetimePoints} earned{u.redemptions > 0 ? ` · ${u.redemptions} redeemed` : ''}
-                              </span>
-                              <span className="muted" style={{ fontSize: 'var(--fs-xs)' }}>Joined {fmtJoined(u.enrolledAt)}</span>
-                            </div>
+                            {openUser === u.id && (
+                              <div style={{ marginTop: 10, borderTop: '1px solid var(--line)', paddingTop: 10, display: 'grid', gap: 12 }}>
+                                {/* Adjust points */}
+                                <div style={{ display: 'grid', gap: 6 }}>
+                                  <span className="muted" style={{ fontSize: 'var(--fs-sm)', fontWeight: 700 }}>Adjust points</span>
+                                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                                    <input value={adj.amount} onChange={(e) => setAdj((a) => ({ ...a, amount: e.target.value.replace(/[^\d]/g, '') }))} placeholder="Points" inputMode="numeric"
+                                      style={{ width: 90, padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 10 }} />
+                                    <input value={adj.reason} onChange={(e) => setAdj((a) => ({ ...a, reason: e.target.value }))} placeholder="Reason (e.g. goodwill)"
+                                      style={{ flex: '1 1 160px', minWidth: 0, padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 10 }} />
+                                    <button type="button" className="btn" disabled={uBusy === u.id} onClick={() => adjustMember(u, 1)} style={{ padding: '8px 12px' }}>+ Add</button>
+                                    <button type="button" className="btn ghost" disabled={uBusy === u.id} onClick={() => adjustMember(u, -1)} style={{ padding: '8px 12px' }}>− Remove</button>
+                                  </div>
+                                  <span className="muted" style={{ fontSize: 'var(--fs-xs)' }}>Writes to Square with your reason — appears in the member’s history below and in Square.</span>
+                                </div>
+                                {/* Edit profile */}
+                                <details>
+                                  <summary style={{ cursor: 'pointer', fontSize: 'var(--fs-sm)', fontWeight: 700, color: 'var(--muted)' }}>Edit details</summary>
+                                  {(() => {
+                                    const inp = { padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 10, flex: '1 1 140px', minWidth: 0 };
+                                    return (
+                                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginTop: 8 }}>
+                                        <input defaultValue={u.name || ''} id={`nm-${u.id}`} placeholder="Name" style={inp} />
+                                        <input defaultValue={u.email || ''} id={`em-${u.id}`} placeholder="Email" style={inp} />
+                                        <input defaultValue={u.phone || ''} id={`ph-${u.id}`} placeholder="Phone" style={inp} />
+                                        <button type="button" className="btn ghost" disabled={uBusy === u.id || !u.customerId}
+                                          onClick={() => saveMemberProfile(u, {
+                                            name: document.getElementById(`nm-${u.id}`).value,
+                                            email: document.getElementById(`em-${u.id}`).value,
+                                            phone: document.getElementById(`ph-${u.id}`).value,
+                                          })} style={{ padding: '8px 12px' }}>Save details</button>
+                                      </div>
+                                    );
+                                  })()}
+                                </details>
+                                {uMsg[u.id] && <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>{uMsg[u.id]}</span>}
+                                {/* History */}
+                                <div style={{ display: 'grid', gap: 4 }}>
+                                  <span className="muted" style={{ fontSize: 'var(--fs-sm)', fontWeight: 700 }}>Points history</span>
+                                  {uHist[u.id] === null && <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>Loading…</span>}
+                                  {Array.isArray(uHist[u.id]) && uHist[u.id].length === 0 && <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>No history yet.</span>}
+                                  {Array.isArray(uHist[u.id]) && uHist[u.id].map((ev) => (
+                                    <div key={ev.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 'var(--fs-sm)', padding: '3px 0', borderBottom: '1px solid var(--line)' }}>
+                                      <span>{ev.detail}<span className="muted" style={{ fontSize: 'var(--fs-xs)' }}> · {ev.at ? new Date(ev.at).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' }) : ''}</span></span>
+                                      {ev.points != null && <span style={{ fontWeight: 700, color: ev.points < 0 ? 'var(--admin-danger)' : 'var(--admin-success, #2e7d32)', whiteSpace: 'nowrap' }}>{ev.points > 0 ? '+' : ''}{ev.points}</span>}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
                           </div>
                         ))}
                         {rows.length === 0 && <p className="muted" style={{ fontSize: 'var(--fs-base)' }}>No members match.</p>}
