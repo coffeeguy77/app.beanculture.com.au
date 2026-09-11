@@ -1238,6 +1238,27 @@ app.post('/api/admin/settings', async (req, res) => {
   }
 });
 
+// ---- Admin: settings backups (automatic versioned snapshots) ----
+// Every save snapshots the previous settings; these let the admin see recent
+// versions and roll back if a save wiped something (e.g. a Product Builder section).
+app.get('/api/admin/settings/backups', async (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    res.json({ backups: await db.listSettingsBackups(40) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/admin/settings/restore', async (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const id = (req.body || {}).id;
+    if (!id) return res.status(400).json({ error: 'Missing backup id' });
+    const restored = await db.restoreSettingsBackup(id);
+    bustMenuCache();
+    res.json({ ok: true, settings: restored });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
 // ---- Admin: fast per-item sold-out toggle (kitchen / front-of-house) ----
 // Writes only availability.items[id] into the persisted overrides so a busy
 // service can flip stock without round-tripping the whole settings blob.
