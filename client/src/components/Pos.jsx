@@ -228,6 +228,9 @@ export default function Pos({ onExit }) {
   const toggleTileImages = () => setTileImages((v) => { const n = !v; try { localStorage.setItem('bc-pos-tileimg', n ? '1' : '0'); } catch {} return n; });
   const cycleTileShape = () => setTileShape((s) => { const order = ['square', 'land', 'port']; const n = order[(order.indexOf(s) + 1) % order.length]; try { localStorage.setItem('bc-pos-tileshape', n); } catch {} return n; });
   const toggleTileFit = () => setTileFit((f) => { const n = f === 'cover' ? 'contain' : 'cover'; try { localStorage.setItem('bc-pos-tilefit', n); } catch {} return n; });
+  // Customer display pairing: this POS pushes its live order to a station code that
+  // the /display screen also uses. Blank = use this store's location as the code.
+  const [displayCode, setDisplayCode] = useState(() => { try { return localStorage.getItem('bc-pos-display-code') || ''; } catch { return ''; } });
 
   const [cart, setCart] = useState(() => { try { return JSON.parse(localStorage.getItem(CART_KEY) || '[]') || []; } catch { return []; } });
   const [dineIn, setDineIn] = useState(false);
@@ -300,6 +303,23 @@ export default function Pos({ onExit }) {
   useEffect(() => { try { localStorage.setItem(CART_KEY, JSON.stringify(cart)); } catch {} }, [cart]);
   useEffect(() => { try { localStorage.setItem(THEME_KEY, theme); } catch {} }, [theme]);
   useEffect(() => { try { if (kdsIdleSec != null) localStorage.setItem(IDLE_KEY, String(kdsIdleSec)); } catch {} }, [kdsIdleSec]);
+  useEffect(() => { try { localStorage.setItem('bc-pos-display-code', displayCode); } catch {} }, [displayCode]);
+  // Mirror the live order to the customer display (a second screen on /display with
+  // the same station code). Debounced; paused while the thank-you screen shows.
+  useEffect(() => {
+    if (!pass || mode !== 'register' || success) return;
+    const station = (displayCode.trim() || posLoc || 'main');
+    const t = setTimeout(() => {
+      const items = cart.map((c) => ({ name: c.itemName, variation: c.variationName, options: c.modifierNames || [], quantity: c.quantity, amount: c.unitPrice }));
+      api.posDisplayPush(pass, {
+        station, cart: items, total: cartTotal(cart) - comboDiscountFor(cart),
+        name: orderName.trim(), dineIn, table: dineIn ? table : '',
+        status: cart.length ? 'building' : 'idle',
+      }).catch(() => {});
+    }, 300);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cart, orderName, dineIn, table, displayCode, mode, pass, posLoc, success]);
 
   // Paint the mobile status bar (theme-color meta) to match the POS theme, and
   // restore whatever it was (the storefront colour) when the POS closes — this
@@ -478,14 +498,21 @@ export default function Pos({ onExit }) {
   }
 
   function finishSuccess(shortId, orderId, tenderType, change) {
+    const paidTotal = cartTotal(cart) - comboDiscountFor(cart);
     setSuccess({ orderId, shortId, tender: tenderType, change });
     setCartOpen(false);
     clearCart();
+    // Customer display: show a thank-you (with change for cash), then go idle.
+    const station = (displayCode.trim() || posLoc || 'main');
+    if (pass) api.posDisplayPush(pass, { station, cart: [], total: paidTotal, status: 'paid', change: change || 0 }).catch(() => {});
     // After a sale, clear the receipt and stay on the register — ready for the
     // next customer. Moving to the KDS is left to the idle timer / app-order
     // watcher, so a busy counter isn't bounced to the kitchen between sales.
     const delay = Math.max(1500, (cfg?.autoReturnSec || 3) * 1000);
-    returnTimer.current = setTimeout(() => { setSuccess(null); lastActivityRef.current = Date.now(); }, delay);
+    returnTimer.current = setTimeout(() => {
+      setSuccess(null); lastActivityRef.current = Date.now();
+      if (pass) api.posDisplayPush(pass, { station, cart: [], total: 0, status: 'idle' }).catch(() => {});
+    }, delay);
   }
 
   async function submit(tenderType, cashGiven, reason) {
@@ -877,6 +904,7 @@ export default function Pos({ onExit }) {
           pass={pass}
           onPayments={(loc, next) => setCfg((c) => ({ ...c, paymentsByLocation: { ...(c.paymentsByLocation || {}), [loc]: next } }))}
           onSwitchStore={switchStore} onOpenTerminal={() => { setShowSettings(false); setShowSetup(true); }}
+          displayCode={displayCode} onDisplayCode={setDisplayCode}
           onExit={onExit} onClose={() => setShowSettings(false)} />
       )}
 
@@ -1170,7 +1198,7 @@ function CashUpModal({ pass, posLoc, currency, onClose }) {
   );
 }
 
-function SettingsSheet({ cfg, posLoc, multiStore, curTerm, theme, onTheme, idleSec, onIdle, pass, onPayments, onSwitchStore, onOpenTerminal, onExit, onClose }) {
+function SettingsSheet({ cfg, posLoc, multiStore, curTerm, theme, onTheme, idleSec, onIdle, pass, onPayments, onSwitchStore, onOpenTerminal, onExit, onClose, displayCode, onDisplayCode }) {
   const idleOpts = [{ v: 0, t: 'Never' }, { v: 30, t: '30s' }, { v: 60, t: '60s' }, { v: 120, t: '2 min' }, { v: 300, t: '5 min' }];
   const [showRefund, setShowRefund] = useState(false);
   const [showCashUp, setShowCashUp] = useState(false);
@@ -1208,6 +1236,25 @@ function SettingsSheet({ cfg, posLoc, multiStore, curTerm, theme, onTheme, idleS
               </button>
             ))}
           </div>
+        </div>
+
+        <div className="pos-set-block">
+          <div className="pos-set-label">Customer display</div>
+          <p className="pos-set-hint">Open <b>/display</b> on a second screen (tablet, phone or monitor) facing the customer to show their order live as you build it, and a thank-you when paid. Pair it by matching this code.</p>
+          <input className="pos-name" style={{ width: '100%' }} value={displayCode || ''}
+            onChange={(e) => onDisplayCode && onDisplayCode(e.target.value.replace(/[^a-zA-Z0-9_-]/g, ''))}
+            placeholder={`Code (default: ${posLoc || 'main'})`} />
+          {(() => {
+            const station = ((displayCode || '').trim() || posLoc || 'main');
+            const url = `${window.location.origin}/display?s=${encodeURIComponent(station)}`;
+            return (
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginTop: 8 }}>
+                <button type="button" className="pos-btn ghost" onClick={() => window.open(url, '_blank', 'noopener')}>Open display ↗</button>
+                <button type="button" className="pos-btn ghost" onClick={() => { try { navigator.clipboard.writeText(url); } catch {} }}>Copy link</button>
+                <span className="pos-set-hint" style={{ flexBasis: '100%', wordBreak: 'break-all', marginTop: 4 }}>{url}</span>
+              </div>
+            );
+          })()}
         </div>
 
         {(cfg.mode || 'pos_kds') === 'pos_kds' && (
