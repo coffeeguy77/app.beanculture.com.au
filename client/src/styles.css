@@ -3657,11 +3657,19 @@ body:has(.store-shell) { background: var(--bc-canvas-deep, #160f12); }
 .pos-grid.size-l .pos-tile-name { font-size: 19px; }
 /* Image / icon on tiles */
 .pos-tile.has-img { justify-content: flex-start; gap: 8px; }
-.pos-tile-img, .pos-tile-ico { width: 100%; aspect-ratio: 1 / 1; max-height: 118px; object-fit: cover; border-radius: 10px; background: var(--pos-surface2); flex: none; }
+/* Aspect-ratio drives the image box, so the picture keeps its shape; the grid
+   column width (tile size) sets how big it is. Default square. */
+.pos-tile-img, .pos-tile-ico { width: 100%; aspect-ratio: 1 / 1; object-fit: cover; border-radius: 10px; background: var(--pos-surface2); flex: none; }
 .pos-tile-ico { display: grid; place-items: center; font-size: 30px; font-weight: 800; color: var(--pos-accent); }
-.pos-grid.size-s .pos-tile-img, .pos-grid.size-s .pos-tile-ico { max-height: 62px; }
 .pos-grid.size-s .pos-tile-ico { font-size: 22px; }
-.pos-grid.size-l .pos-tile-img, .pos-grid.size-l .pos-tile-ico { max-height: 150px; }
+.pos-grid.size-l .pos-tile-ico { font-size: 40px; }
+/* Tile shape (orientation of the image box) */
+.pos-grid.shape-land .pos-tile-img, .pos-grid.shape-land .pos-tile-ico { aspect-ratio: 4 / 3; }
+.pos-grid.shape-port .pos-tile-img, .pos-grid.shape-port .pos-tile-ico { aspect-ratio: 3 / 4; }
+/* Fit: show the WHOLE image (no crop) instead of filling/cropping the box.
+   Letterboxed against the tile surface so a portrait photo in a wide tile
+   (e.g. the Parliament bag) shows in full rather than being cut off. */
+.pos-grid.fit-contain .pos-tile-img { object-fit: contain; }
 
 /* Cart panel */
 .pos-cart { width: 330px; flex: none; background: var(--pos-surface); border-left: 1px solid var(--pos-line); display: flex; flex-direction: column; min-height: 0; }
