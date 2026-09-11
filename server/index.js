@@ -175,6 +175,13 @@ let menuCache = { data: null, at: 0 };
 let menuByLoc = {};
 function bustMenuCache() { menuCache = { data: null, at: 0 }; menuByLoc = {}; }
 const MENU_TTL_MS = Number(process.env.MENU_TTL_MS || 45_000);
+
+// Short-lived cache for the heavy analytics endpoints (each paginates Square
+// SearchOrders across every store). Repeated dashboard/POS loads reuse the last
+// result instead of re-hitting Square and tripping the rate limit (429).
+const _analyticsCache = new Map();
+function analyticsCache(key, ttlMs) { const h = _analyticsCache.get(key); return (h && Date.now() - h.at < ttlMs) ? h.data : null; }
+function analyticsCacheSet(key, data) { if (_analyticsCache.size > 200) _analyticsCache.clear(); _analyticsCache.set(key, { at: Date.now(), data }); }
 app.get('/api/menu', async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   try {
@@ -1388,6 +1395,9 @@ app.post('/api/pos/payments', async (req, res) => {
 app.get('/api/pos/day', async (req, res) => {
   if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
   try {
+    const cacheKey = `day|${req.query.location || ''}`;
+    const cached = analyticsCache(cacheKey, 30_000);
+    if (cached) return res.json(cached);
     const squareLocationId = locations.squareIdFor(req.query.location);
     const tz = (getSettings().contact && getSettings().contact.timezone) || 'Australia/Sydney';
     const today = dayInTz(new Date().toISOString(), tz);
@@ -1429,7 +1439,9 @@ app.get('/api/pos/day', async (req, res) => {
     }
     const tot = { card: { n: 0, v: 0 }, cash: { n: 0, v: 0 }, unpaid: { n: 0, v: 0 }, refunds: 0 };
     for (const o of orders) { tot[o.tender].n += 1; tot[o.tender].v += o.total; tot.refunds += o.refunded; }
-    res.json({ date: today, currency: sq.CURRENCY, orders, totals: tot });
+    const payload = { date: today, currency: sq.CURRENCY, orders, totals: tot };
+    analyticsCacheSet(cacheKey, payload);
+    res.json(payload);
   } catch (e) { res.status(502).json({ error: e.message }); }
 });
 
@@ -1982,6 +1994,9 @@ app.get('/api/admin/analytics/compare', async (req, res) => {
     // range wins over days: today (local), week (Mon→now), or a rolling N days.
     const range = String(req.query.range || '').toLowerCase();
     const days = Math.max(1, Math.min(90, parseInt(req.query.days, 10) || 7));
+    const cacheKey = `compare|${range}|${days}`;
+    const cached = analyticsCache(cacheKey, 60_000);
+    if (cached) return res.json(cached);
     const todayStr = dayInTz(new Date().toISOString(), tz);
     let mondayStr = todayStr;
     if (range === 'week') {
@@ -2037,7 +2052,9 @@ app.get('/api/admin/analytics/compare', async (req, res) => {
       orders: t.orders + s.orders, revenue: t.revenue + s.revenue,
       app: t.app + s.app, pos: t.pos + s.pos, other: t.other + s.other, qr: t.qr + s.qr,
     }), { orders: 0, revenue: 0, app: 0, pos: 0, other: 0, qr: 0 });
-    res.json({ days, range: range || null, currency: sq.CURRENCY, stores: out, totals });
+    const payload = { days, range: range || null, currency: sq.CURRENCY, stores: out, totals };
+    analyticsCacheSet(cacheKey, payload);
+    res.json(payload);
   } catch (e) { res.status(502).json({ error: e.message }); }
 });
 
