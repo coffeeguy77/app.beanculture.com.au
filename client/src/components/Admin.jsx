@@ -2790,7 +2790,7 @@ export default function Admin({ onExit }) {
                                   const dollars = ovc != null ? (Number(ovc) / 100).toFixed(2) : '';
                                   return (
                                     <label key={vid} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--fs-sm)' }}>
-                                      <span style={{ minWidth: 84 }}>{v.name || 'Price'}</span>
+                                      <span style={{ minWidth: 84 }}>{(p.varNames || {})[vid] || v.name || 'Price'}</span>
                                       <span>$</span>
                                       {/* Uncontrolled: let the user type "5.5" freely instead of reformatting to
                                           "5.00" on every keystroke (which mangled the second decimal). Save as
@@ -2866,6 +2866,32 @@ export default function Admin({ onExit }) {
                                           </label>
                                         ))}
                                       </div>
+                                      {/* Rename the toggle label the customer/POS sees for each ticked size.
+                                          Blank = use Square's variation name. Display only — the real
+                                          Square variation is still what's ordered. */}
+                                      {presetVids(p).length > 0 && (
+                                        <div style={{ display: 'grid', gap: 4, marginTop: 2 }}>
+                                          <span className="muted" style={{ fontSize: 'var(--fs-xs)' }}>Rename the size labels (blank = Square’s name)</span>
+                                          {presetVids(p).map((vid) => {
+                                            const vr = cfg.variations.find((x) => x.id === vid);
+                                            if (!vr) return null;
+                                            return (
+                                              <label key={vid} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--fs-sm)' }}>
+                                                <span className="muted" style={{ minWidth: 96, fontSize: 'var(--fs-xs)' }}>{vr.name || cfg.name}</span>
+                                                <span>→</span>
+                                                <input value={(p.varNames || {})[vid] || ''} placeholder={vr.name || cfg.name}
+                                                  onChange={(e) => {
+                                                    const next = { ...(p.varNames || {}) };
+                                                    const val = e.target.value;
+                                                    if (val.trim() === '') delete next[vid]; else next[vid] = val;
+                                                    updPreset(p.id, { varNames: next });
+                                                  }}
+                                                  style={{ flex: '1 1 140px', minWidth: 120, padding: '5px 8px', border: '1px solid var(--line)', borderRadius: 8 }} />
+                                              </label>
+                                            );
+                                          })}
+                                        </div>
+                                      )}
                                       <button className="link" onClick={() => splitPreset(p.id)} style={{ fontSize: 'var(--fs-sm)', justifySelf: 'start' }}>Split into separate tiles</button>
                                     </div>
                                   ) : (
