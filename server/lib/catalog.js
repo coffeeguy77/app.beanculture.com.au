@@ -531,7 +531,14 @@ async function getMenu(opts = {}) {
         // recomputes the true total from the ids we submit. Multiple variations
         // become a size toggle in the item sheet.
         soldOut: chosenVars.every((v) => !!v.soldOut),
-        variations: chosenVars.map((v) => ({ id: v.id, name: v.name, price: (v.price || 0) + lockedTotal, soldOut: !!v.soldOut })),
+        // POS-only sections can override the price per variation (e.g. a pop-up
+        // that charges more). The override is the base price; locked-mod prices
+        // still add on top, same as normal. Only ever applied for a POS request
+        // so the app/cafe price is never affected.
+        variations: chosenVars.map((v) => {
+          const ov = opts.pos && p.posOverride && p.posOverride[v.id] != null ? Math.max(0, Math.round(Number(p.posOverride[v.id]) || 0)) : null;
+          return { id: v.id, name: v.name, price: (ov != null ? ov : (v.price || 0)) + lockedTotal, soldOut: !!v.soldOut };
+        }),
         modifierGroups: groups,
         lockedModifierIds,
         lockedModifierNames,
@@ -569,6 +576,20 @@ async function getMenu(opts = {}) {
       const existing = sections.find((s) => s.category.toLowerCase() === secName.toLowerCase());
       if (existing) { existing.items.push(...tiles); continue; }
       const nav = sectionNav[secName] || {};
+      // "POS location only": the section belongs to the counter POS of the ticked
+      // locations and NOWHERE else — never the app, never other locations. So it
+      // is included only for a POS request whose location is ticked, and skipped
+      // entirely otherwise (the app + non-ticked POS never receive it).
+      const posCfg = nav.pos || {};
+      if (posCfg.on === true) {
+        const locs = Array.isArray(posCfg.locations) ? posCfg.locations : [];
+        if (!(opts.pos && opts.location && locs.includes(opts.location))) continue;
+        const banner = nav.banner && nav.banner.on && (nav.banner.title || nav.banner.image)
+          ? { title: nav.banner.title || '', image: nav.banner.image || null, itemId: nav.banner.itemId || null, hideText: nav.banner.hideText === true }
+          : null;
+        sections.push({ category: secName, items: tiles, showImages: nav.showImages !== false, custom: true, builder: true, topNav: true, footerNav: false, eventOnly: false, posOnly: true, banner });
+        continue;
+      }
       if (!(nav.top === true || nav.footer === true || nav.event === true)) continue;
       const eventOnly = nav.top !== true && nav.footer !== true && nav.event === true;
       const banner = nav.banner && nav.banner.on && (nav.banner.title || nav.banner.image)

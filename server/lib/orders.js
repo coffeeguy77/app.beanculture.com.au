@@ -7,6 +7,25 @@ const combos = require('./combos');
 const catalog = require('./catalog');
 const payItForward = require('./payItForward');
 const db = require('./db');
+const { getSettings } = require('./settings');
+
+// POS-only price override: a preset in a "POS location only" section can charge
+// a different price at a ticked location (e.g. a pop-up). Returns { price, name }
+// when the override genuinely applies — server-authoritative, never from the
+// client — else null. Used to build an ad-hoc Square line at that price.
+function posOverrideFor(presetId, variationId, locationId) {
+  try {
+    if (!presetId || !variationId || !locationId) return null;
+    const id = String(presetId).replace(/^preset:/, '');
+    const s = getSettings();
+    const preset = (s.presets || []).find((p) => p && p.id === id);
+    if (!preset || !preset.posOverride || preset.posOverride[variationId] == null) return null;
+    const nav = (s.presetSectionNav || {})[String(preset.section || '').trim()] || {};
+    const pos = nav.pos || {};
+    if (!(pos.on === true && Array.isArray(pos.locations) && pos.locations.includes(locationId))) return null;
+    return { price: Math.max(0, Math.round(Number(preset.posOverride[variationId]) || 0)), name: (preset.name || '').trim() || 'Item' };
+  } catch { return null; }
+}
 
 const DINEIN_FULFILLMENT = (process.env.SQUARE_DINEIN_FULFILLMENT || 'PICKUP').toUpperCase();
 const COMP_COUPON_CODE = (process.env.COMP_COUPON_CODE || '').trim();
@@ -37,7 +56,7 @@ function buildNote({ dineIn, table }) {
   return dineIn ? `DINE-IN · ${tableLabel(table) || '?'}` : 'TAKEAWAY';
 }
 
-async function createOrder({ cart, dineIn, table, name, coupon, couponContext, customerId, pickupAt, idempotencyKey, note: customerNote, pifVoucher, source, squareLocationId, cardPayment, free, freeCategories, shipping, eventId, appLocationId, src, reason, holdForPayment }) {
+async function createOrder({ cart, dineIn, table, name, coupon, couponContext, customerId, pickupAt, idempotencyKey, note: customerNote, pifVoucher, source, squareLocationId, cardPayment, free, freeCategories, shipping, eventId, appLocationId, src, reason, posOverrideLocation, holdForPayment }) {
   const LOC = squareLocationId || LOCATION_ID;
   if (!Array.isArray(cart) || cart.length === 0) throw new Error('Cart is empty');
   // Bake any per-combo locked modifiers into the combo lines before pricing, so
@@ -102,7 +121,14 @@ async function createOrder({ cart, dineIn, table, name, coupon, couponContext, c
   // (never the whole order) -- see the pifReservation block below. The uid is
   // just an array index; it only needs to be unique within this one order.
   const lineItems = cart.map((ci, i) => {
-    const li = { uid: `li${i}`, catalog_object_id: ci.variationId, quantity: String(ci.quantity || 1) };
+    // A POS-only-section preset with a price override at this location becomes an
+    // ad-hoc Square line (name + base_price_money) so Square charges the override
+    // instead of the catalog price. Modifiers keep their catalog ids so add-on
+    // prices stay correct. The price comes from settings, never the client.
+    const ov = posOverrideLocation ? posOverrideFor(ci.presetId, ci.variationId, posOverrideLocation) : null;
+    const li = ov
+      ? { uid: `li${i}`, name: ov.name, quantity: String(ci.quantity || 1), base_price_money: { amount: ov.price, currency: CURRENCY } }
+      : { uid: `li${i}`, catalog_object_id: ci.variationId, quantity: String(ci.quantity || 1) };
     if (Array.isArray(ci.modifierIds) && ci.modifierIds.length) {
       li.modifiers = ci.modifierIds.map((id) => ({ catalog_object_id: id }));
     }
