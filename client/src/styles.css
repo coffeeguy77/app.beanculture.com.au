@@ -3644,6 +3644,25 @@ body:has(.store-shell) { background: var(--bc-canvas-deep, #160f12); }
 .pos-tile-price { font-size: 13px; color: var(--pos-muted); font-weight: 600; }
 .pos-empty { grid-column: 1 / -1; color: var(--pos-muted); text-align: center; padding: 50px; }
 
+/* POS tile view control (device-level: tile size + images) */
+.pos-view-ctl { display: flex; gap: 6px; }
+.pos-view-btn { border: 1px solid var(--pos-line); background: var(--pos-surface); color: var(--pos-ink); border-radius: 9px; padding: 7px 10px; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; white-space: nowrap; }
+.pos-view-btn.on { background: var(--pos-on-bg); border-color: var(--pos-on-bd); color: var(--pos-accent); }
+/* Tile sizes */
+.pos-grid.size-s { grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 10px; }
+.pos-grid.size-l { grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 14px; }
+.pos-grid.size-s .pos-tile { min-height: 76px; padding: 10px; border-radius: 12px; }
+.pos-grid.size-s .pos-tile-name { font-size: 14px; }
+.pos-grid.size-l .pos-tile { min-height: 150px; padding: 18px; }
+.pos-grid.size-l .pos-tile-name { font-size: 19px; }
+/* Image / icon on tiles */
+.pos-tile.has-img { justify-content: flex-start; gap: 8px; }
+.pos-tile-img, .pos-tile-ico { width: 100%; aspect-ratio: 1 / 1; max-height: 118px; object-fit: cover; border-radius: 10px; background: var(--pos-surface2); flex: none; }
+.pos-tile-ico { display: grid; place-items: center; font-size: 30px; font-weight: 800; color: var(--pos-accent); }
+.pos-grid.size-s .pos-tile-img, .pos-grid.size-s .pos-tile-ico { max-height: 62px; }
+.pos-grid.size-s .pos-tile-ico { font-size: 22px; }
+.pos-grid.size-l .pos-tile-img, .pos-grid.size-l .pos-tile-ico { max-height: 150px; }
+
 /* Cart panel */
 .pos-cart { width: 330px; flex: none; background: var(--pos-surface); border-left: 1px solid var(--pos-line); display: flex; flex-direction: column; min-height: 0; }
 .pos-cart.slim { width: 264px; }
