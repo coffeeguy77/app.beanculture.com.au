@@ -209,7 +209,7 @@ export default function Pos({ onExit }) {
       const locs = c.locations || [];
       let loc = posLoc;
       if (locs.length && !locs.some((l) => l.id === loc)) { loc = locs[0].id; setPosLoc(loc); try { localStorage.setItem('bc-pos-location', loc); } catch {} }
-      const m = await api.getMenu(loc);
+      const m = await api.getMenu(loc, true);
       setCfg(c); setMenu(m); setCurrency(m.currency || 'AUD'); setNeedPass(false);
       try { localStorage.setItem('bc-admin-pass', btoa(p)); } catch {}
       const cats = (m.categories || []);
@@ -229,7 +229,7 @@ export default function Pos({ onExit }) {
     setPosLoc(id);
     try { localStorage.setItem('bc-pos-location', id); } catch {}
     try {
-      const m = await api.getMenu(id);
+      const m = await api.getMenu(id, true);
       setMenu(m); setActiveCat((m.categories || [])[0]?.category || null); setConfiguring(null); setQuery('');
     } catch (e) { setErr(e.message); }
     clearCart(); // a different store may not offer the current items
@@ -427,7 +427,7 @@ export default function Pos({ onExit }) {
       const amount = cartTotal(cart) - comboDiscountFor(cart);
       const payload = {
         cart: cart.map((c) => ({
-          variationId: c.variationId, quantity: c.quantity, modifierIds: c.modifierIds, note: c.note,
+          variationId: c.variationId, quantity: c.quantity, modifierIds: c.modifierIds, note: c.note, presetId: c.presetId,
           // Combo tags — the server re-derives + applies the combo discount from these.
           ...(c.comboInstanceId ? { comboId: c.comboId, comboInstanceId: c.comboInstanceId, comboGroupId: c.comboGroupId, comboItemId: c.comboItemId || c.itemId } : {}),
         })),

@@ -2663,6 +2663,27 @@ export default function Admin({ onExit }) {
                           <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 'var(--fs-sm)' }} title="Make this section available to event locations WITHOUT putting it in your normal menus. Then pick it under an event store's 'Event menu' list.">
                             <input type="checkbox" checked={presetSectionNav[secName]?.event === true} onChange={(e) => setSectionNav(secName, { event: e.target.checked })} /> Event locations
                           </label>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 'var(--fs-sm)' }} title="Show this section ONLY in the counter POS of the ticked stores — never in the app or other stores. Set a per-item POS price on each tile below.">
+                            <input type="checkbox" checked={presetSectionNav[secName]?.pos?.on === true} onChange={(e) => setSectionNav(secName, { pos: { ...(presetSectionNav[secName]?.pos || {}), on: e.target.checked } })} /> POS only
+                          </label>
+                          {presetSectionNav[secName]?.pos?.on === true && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', flexBasis: '100%', margin: '2px 0 0', padding: '6px 8px', background: 'var(--admin-surface-soft, #f0f1f4)', borderRadius: 8 }}>
+                              <span className="muted" style={{ fontSize: 'var(--fs-sm)', fontWeight: 700 }}>Show in POS at:</span>
+                              {(s?.locations || []).filter((l) => l && l.id).map((l) => {
+                                const locs = presetSectionNav[secName]?.pos?.locations || [];
+                                const on = locs.includes(l.id);
+                                return (
+                                  <label key={l.id} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 'var(--fs-sm)' }}>
+                                    <input type="checkbox" checked={on} onChange={(e) => {
+                                      const next = e.target.checked ? [...locs, l.id] : locs.filter((x) => x !== l.id);
+                                      setSectionNav(secName, { pos: { ...(presetSectionNav[secName]?.pos || {}), on: true, locations: next } });
+                                    }} /> {l.name || l.id}
+                                  </label>
+                                );
+                              })}
+                              {!(s?.locations || []).filter((l) => l && l.id).length && <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>Add stores under the Stores tab first.</span>}
+                            </div>
+                          )}
                           <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 'var(--fs-sm)' }} title="Show product images for this section (hide to avoid empty thumbnails)">
                             <input type="checkbox" checked={presetSectionNav[secName]?.showImages !== false} onChange={(e) => setSectionNav(secName, { showImages: e.target.checked })} /> Images
                           </label>
@@ -2729,6 +2750,33 @@ export default function Admin({ onExit }) {
                         </div>
                         {isOpen && (
                           <div style={{ marginTop: 8, borderTop: '1px solid var(--line)', paddingTop: 8, display: 'grid', gap: 8 }}>
+                            {presetSectionNav[secName]?.pos?.on === true && cfg && (
+                              <div style={{ display: 'grid', gap: 6, padding: '8px 10px', background: 'var(--admin-surface-soft, #f0f1f4)', borderRadius: 8 }}>
+                                <span className="muted" style={{ fontSize: 'var(--fs-sm)', fontWeight: 700 }}>POS price (overrides the normal price at this pop-up)</span>
+                                {presetVids(p).map((vid) => {
+                                  const v = (cfg.variations || []).find((x) => x.id === vid);
+                                  if (!v) return null;
+                                  const ovc = (p.posOverride || {})[vid];
+                                  const dollars = ovc != null ? (Number(ovc) / 100).toFixed(2) : '';
+                                  return (
+                                    <label key={vid} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--fs-sm)' }}>
+                                      <span style={{ minWidth: 84 }}>{v.name || 'Price'}</span>
+                                      <span>$</span>
+                                      <input inputMode="decimal" value={dollars} placeholder={((v.price || 0) / 100).toFixed(2)}
+                                        onChange={(e) => {
+                                          const raw = e.target.value.replace(/[^\d.]/g, '');
+                                          const next = { ...(p.posOverride || {}) };
+                                          if (raw === '') delete next[vid]; else next[vid] = Math.round(parseFloat(raw) * 100) || 0;
+                                          updPreset(p.id, { posOverride: next });
+                                        }}
+                                        style={{ width: 90, padding: '6px 8px', border: '1px solid var(--line)', borderRadius: 8 }} />
+                                      <span className="muted">normal {formatMoney(v.price || 0, data?.currency)}</span>
+                                    </label>
+                                  );
+                                })}
+                                <span className="muted" style={{ fontSize: 'var(--fs-xs)' }}>Leave blank to use the normal price. Only applies in the POS at the ticked stores.</span>
+                              </div>
+                            )}
                             <div style={{ display: 'grid', gap: 4 }}>
                               <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>Source product</span>
                               {(() => {
