@@ -1467,28 +1467,35 @@ app.post('/api/pos/payments', async (req, res) => {
 app.get('/api/pos/day', async (req, res) => {
   if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
   try {
-    const cacheKey = `day|${req.query.location || ''}`;
+    const tz = (getSettings().contact && getSettings().contact.timezone) || 'Australia/Sydney';
+    // Which local day to tally. ?date=YYYY-MM-DD picks a past day (cash-up "yesterday");
+    // default is today. Validated to a plain date so it can't inject anything.
+    const reqDate = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.date || '')) ? req.query.date : null;
+    const today = reqDate || dayInTz(new Date().toISOString(), tz);
+    const cacheKey = `day|${req.query.location || ''}|${today}`;
     const cached = analyticsCache(cacheKey, 30_000);
     if (cached) return res.json(cached);
     const squareLocationId = locations.squareIdFor(req.query.location);
-    const tz = (getSettings().contact && getSettings().contact.timezone) || 'Australia/Sydney';
-    const today = dayInTz(new Date().toISOString(), tz);
-    const startAt = new Date(Date.now() - 26 * 3600 * 1000).toISOString(); // cover the whole local day
+    // Query a generous UTC window around noon of the chosen local day (covers the
+    // whole local day incl. DST for AU timezones), then filter precisely by tz-day.
+    const base = Date.parse(`${today}T12:00:00Z`);
+    const startAt = new Date(base - 24 * 3600 * 1000).toISOString();
+    const endAt = new Date(base + 24 * 3600 * 1000).toISOString();
     const data = await sq.squareFetch('/v2/orders/search', {
       method: 'POST',
       body: {
         location_ids: [squareLocationId],
         query: {
-          filter: { date_time_filter: { created_at: { start_at: startAt } }, state_filter: { states: ['COMPLETED', 'OPEN'] } },
+          filter: { date_time_filter: { created_at: { start_at: startAt, end_at: endAt } }, state_filter: { states: ['COMPLETED', 'OPEN'] } },
           sort: { sort_field: 'CREATED_AT', sort_order: 'DESC' },
         },
-        limit: 200,
+        limit: 500,
       },
     });
     const orders = [];
     for (const o of (data.orders || [])) {
       if (o.state === 'CANCELED') continue;
-      if (dayInTz(o.created_at, tz) !== today) continue;   // only today (local)
+      if (dayInTz(o.created_at, tz) !== today) continue;   // only the chosen local day
       const md = o.metadata || {};
       const total = (o.total_money && o.total_money.amount) || 0;
       const refunded = (o.refunds || []).filter((r) => (r.status || '').toUpperCase() !== 'REJECTED').reduce((s, r) => s + ((r.amount_money && r.amount_money.amount) || 0), 0);
