@@ -2939,7 +2939,12 @@ app.listen(PORT, () => console.log(`Bean Culture app on :${PORT} (Square env: ${
 db.init().finally(() => {
   scheduler.start();
   seedPresetNavFooter();
-  purgeExcludedPresets();
+  // NOTE: purgeExcludedPresets() and syncPresetsWithSquare() are DISABLED. They
+  // automatically deleted the owner's hand-built Product Builder tiles on every
+  // boot / timer (a partial or mismatched Square read, or a stale "excluded"
+  // list, wiped whole categories like COFFEE and persisted it). Tile removal is
+  // now owner-controlled only — via an explicit delete, or the manual "Sync new
+  // variations" button (which is additive-only). Nothing deletes tiles on its own.
   // Keep the weather cache warm whenever the temperature display or a weather
   // campaign is in use, so the customer chip / campaigns always have a fresh
   // reading without any request having to wait on the provider.
@@ -2955,12 +2960,8 @@ db.init().finally(() => {
   // checkouts), so they don't linger as OPEN orders in Square. Runs every 15 min.
   setTimeout(() => orders.sweepHeldOrders().catch(() => {}), 60000);
   setInterval(() => orders.sweepHeldOrders().catch(() => {}), 2 * 60 * 1000);
-  // Prune the product builder against Square a few times a day: drop tiles whose
-  // Square variation was deleted. It never auto-CREATES tiles — new variations
-  // are pulled in only when the owner clicks "Sync new variations from Square"
-  // in the admin (so deleted items never silently return). First run after boot.
-  setTimeout(syncPresetsWithSquare, 30000);
-  setInterval(syncPresetsWithSquare, 6 * 60 * 60 * 1000);
+  // (Automatic product-builder pruning removed — see note above. It was deleting
+  // real tiles and persisting the loss on every deploy.)
 });
 
 // Reconcile settings.presets against live Square variations and persist. Adds a
@@ -2968,6 +2969,8 @@ db.init().finally(() => {
 // everything else adds separately), drops tiles whose variation was deleted.
 // Prices need no sync — the storefront always reads them live.
 async function syncPresetsWithSquare() {
+  return; // DISABLED: auto-pruning deleted the owner's hand-built tiles. Never run.
+  // eslint-disable-next-line no-unreachable
   if (!db.enabled) return;
   try {
     const settings = getSettings();
@@ -3037,6 +3040,8 @@ async function seedPresetNavFooter() {
 // touches variations the owner already chose to remove — never deletes anything
 // that isn't already on the deleted list.
 async function purgeExcludedPresets() {
+  return; // DISABLED: this deleted rebuilt tiles whose variation was on the old "excluded" list. Never run.
+  // eslint-disable-next-line no-unreachable
   try {
     if (!db.enabled) return;
     const overrides = db.getOverrides() || {};
