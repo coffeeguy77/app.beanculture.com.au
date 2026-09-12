@@ -79,6 +79,8 @@ async function salesSummary(days = 30) {
               name: li.name || 'Item',
               variation: li.variation_name || '',
               qty: li.quantity || '1',
+              amount: (li.total_money && li.total_money.amount) || 0,
+              modifiers: (li.modifiers || []).map((m) => m.name).filter(Boolean).join(', '),
             })),
           });
         }
