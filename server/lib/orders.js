@@ -491,24 +491,34 @@ async function releaseHold(orderId) {
 // only touches OPEN orders tagged bc_hold='1' that carry no payment tender.
 async function sweepHeldOrders(maxAgeMin = 5) {
   try {
-    const startAt = new Date(Date.now() - 6 * 3600 * 1000).toISOString();
-    const data = await squareFetch('/v2/orders/search', {
-      method: 'POST',
-      body: {
-        location_ids: [LOCATION_ID],
-        query: {
-          filter: {
-            date_time_filter: { created_at: { start_at: startAt } },
-            state_filter: { states: ['OPEN'] },
+    // Sweep EVERY store's Square location — not just the default one. A held,
+    // unpaid order at a second location (e.g. an event/pop-up like Tulip Tops)
+    // was never being cleaned up, so abandoned/failed card checkouts lingered
+    // there forever and showed up as phantom "unpaid" takings. Look back 48h.
+    const settings = getSettings();
+    const locIds = [...new Set([LOCATION_ID, ...((settings.locations || []).map((l) => l && l.squareLocationId).filter(Boolean))])];
+    const startAt = new Date(Date.now() - 48 * 3600 * 1000).toISOString();
+    const held = [];
+    for (const locId of locIds) {
+      const data = await squareFetch('/v2/orders/search', {
+        method: 'POST',
+        body: {
+          location_ids: [locId],
+          query: {
+            filter: {
+              date_time_filter: { created_at: { start_at: startAt } },
+              state_filter: { states: ['OPEN'] },
+            },
+            sort: { sort_field: 'CREATED_AT', sort_order: 'DESC' },
           },
-          sort: { sort_field: 'CREATED_AT', sort_order: 'DESC' },
+          limit: 200,
         },
-      },
-    });
+      }).catch(() => ({}));
+      for (const o of (data.orders || [])) if ((o.metadata || {}).bc_hold === '1') held.push(o);
+    }
     const cutoff = Date.now() - maxAgeMin * 60 * 1000;
     // Never cancel an order our own DB has recorded as paid, even if Square's
     // search hasn't surfaced the tender yet — that would bin a paid order.
-    const held = (data.orders || []).filter((o) => (o.metadata || {}).bc_hold === '1');
     const paidSet = await db.kdsGetPaid(held.map((o) => o.id)).catch(() => new Set());
     let cancelled = 0, failed = 0;
     for (const o of held) {
