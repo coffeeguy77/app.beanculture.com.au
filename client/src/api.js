@@ -50,6 +50,7 @@ export const api = {
   appSales: (pass, days) => req(`/api/admin/analytics/app-sales?days=${days}&pass=${encodeURIComponent(pass || '')}`),
   posDisplayPush: (pass, payload) => req(`/api/pos/display/push?pass=${encodeURIComponent(pass || '')}`, { method: 'POST', body: JSON.stringify(payload) }),
   posDisplayState: (station) => req(`/api/pos/display/state?station=${encodeURIComponent(station || 'main')}`),
+  posPrintReceipt: (pass, { paymentId, location, duplicate }) => req(`/api/pos/print-receipt?pass=${encodeURIComponent(pass || '')}`, { method: 'POST', body: JSON.stringify({ paymentId, location, duplicate }) }),
   loyaltyAdjust: (pass, accountId, points, reason) => req(`/api/admin/loyalty/adjust?pass=${encodeURIComponent(pass || '')}`, { method: 'POST', body: JSON.stringify({ accountId, points, reason }) }),
   loyaltyEnroll: (pass, phone, name) => req(`/api/admin/loyalty/enroll?pass=${encodeURIComponent(pass || '')}`, { method: 'POST', body: JSON.stringify({ phone, name }) }),
   loyaltyHistory: (pass, accountId) => req(`/api/admin/loyalty/history?pass=${encodeURIComponent(pass || '')}&accountId=${encodeURIComponent(accountId || '')}`),
@@ -101,7 +102,7 @@ export const api = {
   posRefund: (pass, payload) => req(`/api/pos/refund?pass=${encodeURIComponent(pass || '')}`, { method: 'POST', body: JSON.stringify(payload) }),
   posSetManagerPin: (pass, pin, currentPin) => req(`/api/pos/manager-pin?pass=${encodeURIComponent(pass || '')}`, { method: 'POST', body: JSON.stringify({ pin, currentPin }) }),
   posSetPayments: (pass, locationId, payments) => req(`/api/pos/payments?pass=${encodeURIComponent(pass || '')}`, { method: 'POST', body: JSON.stringify({ locationId, payments }) }),
-  posSetTerminalOptions: (pass, showItemizedCart) => req(`/api/pos/terminal-options?pass=${encodeURIComponent(pass || '')}`, { method: 'POST', body: JSON.stringify({ showItemizedCart }) }),
+  posSetTerminalOptions: (pass, opts) => req(`/api/pos/terminal-options?pass=${encodeURIComponent(pass || '')}`, { method: 'POST', body: JSON.stringify(typeof opts === 'boolean' ? { showItemizedCart: opts } : (opts || {})) }),
   posDay: (pass, locationId) => req(`/api/pos/day?pass=${encodeURIComponent(pass || '')}${locationId ? `&location=${encodeURIComponent(locationId)}` : ''}`),
 };
 
