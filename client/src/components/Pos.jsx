@@ -993,7 +993,7 @@ function PosStorePulse({ posLoc, storeName }) {
     { v: row.qr, l: 'QR' },
   ] : [];
   return (
-    <div className="pos-set-block">
+    <div className="pos-set-block pos-set-span">
       <div className="pos-set-label">How we&rsquo;re traveling{storeName ? ` · ${storeName}` : ''}</div>
       <div className="pos-idle-opts" style={{ marginTop: 8 }}>
         {RANGES.map((r) => <button key={r.k} type="button" className={`pos-idle-opt${rk === r.k ? ' on' : ''}`} onClick={() => setRk(r.k)}>{r.t}</button>)}
@@ -1270,13 +1270,13 @@ function SettingsSheet({ cfg, posLoc, multiStore, curTerm, theme, onTheme, idleS
   const termOn = !!(curTerm && curTerm.deviceId);
   return (
     <div className="pos-scrim" onClick={onClose}>
-      <div className="pos-settings" onClick={(e) => e.stopPropagation()}>
+      <div className="pos-settings pos-settings-wide" onClick={(e) => e.stopPropagation()}>
         <div className="pos-settings-head">
           <div className="pos-tender-title">Settings</div>
           <button className="pos-icon" title="Close" onClick={onClose}><IcoX /></button>
         </div>
 
-        <div className="pos-set-block">
+        <div className="pos-set-block pos-set-span">
           <div className="pos-set-label">Colour scheme</div>
           <p className="pos-set-hint">Sets the look of this screen. Saved on this device.</p>
           <div className="pos-swatches">
