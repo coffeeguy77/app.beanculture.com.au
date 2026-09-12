@@ -1517,15 +1517,12 @@ export default function Admin({ onExit }) {
         if (!sectionBySource[p.sourceItemId]) sectionBySource[p.sourceItemId] = p.section || 'Specials';
       }
       let removedDead = 0, trimmed = 0;
-      const reconciled = [];
-      for (const p of presets) {
-        const cfg = configs[p.sourceItemId];
-        if (!cfg) { reconciled.push(p); continue; }
-        const alive = presetVids(p).filter((vid) => cfg.variations.some((v) => v.id === vid));
-        if (!alive.length) { removedDead++; continue; }
-        if (alive.length !== presetVids(p).length) trimmed++;
-        reconciled.push({ ...p, variationId: alive[0], variationIds: alive.length > 1 ? alive : undefined });
-      }
+      // ADDITIVE ONLY: never drop or trim existing tiles here. A partial/mismatched
+      // Square read must never delete the owner's hand-built menu (this is what
+      // wiped whole categories). Existing tiles are kept exactly as-is; the loop
+      // below only APPENDS tiles for genuinely new variations. Remove a tile only
+      // by deleting it explicitly.
+      const reconciled = presets.map((p) => p);
       // A product you've already combined (size toggle) auto-absorbs its new
       // sizes; everything else adds as a separate tile.
       const combinedForSource = {};
