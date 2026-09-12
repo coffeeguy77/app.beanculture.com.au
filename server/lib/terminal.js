@@ -48,14 +48,17 @@ async function listDevices() {
 // ── Checkout (payment) ───────────────────────────────────────────────────────
 // amountMoney: { amount, currency }; deviceId: paired reader; orderId associates
 // the resulting payment with our Square order so it reads as paid + reconciles.
-async function createCheckout({ amountMoney, deviceId, orderId, referenceId, note, showItemizedCart }) {
+async function createCheckout({ amountMoney, deviceId, orderId, referenceId, note, showItemizedCart, skipReceipt }) {
   const checkout = {
     amount_money: amountMoney,
     reference_id: (referenceId || '').slice(0, 40) || undefined,
     note: (note || 'Bean Culture POS').slice(0, 500),
     device_options: {
       device_id: deviceId,
-      skip_receipt_screen: false,
+      // Skip the post-payment receipt screen so the Terminal returns to ready
+      // straight after the tap, instead of hanging on Print / No receipt. Skipped
+      // by default; a POS setting can turn the receipt prompt back on.
+      skip_receipt_screen: skipReceipt !== false,
       collect_signature: false,
       // The Terminal's "confirm & pay" itemisation screen. Defaults to TRUE in
       // Square (only when an order is linked). Off by default here so pressing
@@ -83,6 +86,24 @@ async function getCheckout(id) {
   return data.checkout;
 }
 
+// Print a receipt for an EXISTING payment on the Terminal's built-in printer.
+// print_only skips the on-screen receipt-options prompt and prints straight away;
+// is_duplicate marks a reprint. (Terminal API "RECEIPT" action.)
+async function printReceipt({ deviceId, paymentId, duplicate }) {
+  const data = await squareFetch('/v2/terminals/actions', {
+    method: 'POST',
+    body: {
+      idempotency_key: idem(),
+      action: {
+        type: 'RECEIPT',
+        device_id: deviceId,
+        receipt_options: { payment_id: paymentId, print_only: true, is_duplicate: duplicate === true },
+      },
+    },
+  });
+  return data.action || {};
+}
+
 async function cancelCheckout(id) {
   try {
     const data = await squareFetch(`/v2/terminals/checkouts/${id}/cancel`, { method: 'POST', body: {} });
@@ -108,5 +129,5 @@ function phaseOf(checkout) {
 
 module.exports = {
   createDeviceCode, getDeviceCode, listDevices,
-  createCheckout, getCheckout, cancelCheckout, phaseOf,
+  createCheckout, getCheckout, cancelCheckout, printReceipt, phaseOf,
 };
