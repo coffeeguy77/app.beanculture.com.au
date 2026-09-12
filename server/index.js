@@ -1497,6 +1497,10 @@ app.get('/api/pos/day', async (req, res) => {
       if (o.state === 'CANCELED') continue;
       if (dayInTz(o.created_at, tz) !== today) continue;   // only the chosen local day
       const md = o.metadata || {};
+      // Skip app orders still HELD for payment that were never paid (declined /
+      // abandoned card checkouts): they aren't real sales, so they must not show
+      // as phantom "unpaid" takings. A paid one has a tender (bc_hold flips to '0').
+      if (md.bc_hold === '1' && !((o.tenders || []).length)) continue;
       const total = (o.total_money && o.total_money.amount) || 0;
       const refunded = (o.refunds || []).filter((r) => (r.status || '').toUpperCase() !== 'REJECTED').reduce((s, r) => s + ((r.amount_money && r.amount_money.amount) || 0), 0);
       const tenders = o.tenders || [];
@@ -2119,7 +2123,10 @@ app.get('/api/admin/analytics/compare', async (req, res) => {
           body: {
             location_ids: [store.squareLocationId], cursor,
             query: {
-              filter: { date_time_filter: { created_at: { start_at: startAt } }, state_filter: { states: ['COMPLETED'] } },
+              // Include OPEN as well as COMPLETED: POS/app card orders keep a
+              // fulfilment and usually stay OPEN after payment, so a COMPLETED-only
+              // filter dropped every one (0 POS, $0 revenue). Gate on "paid" below.
+              filter: { date_time_filter: { created_at: { start_at: startAt } }, state_filter: { states: ['COMPLETED', 'OPEN'] } },
               sort: { sort_field: 'CREATED_AT', sort_order: 'DESC' },
             },
             limit: 500,
@@ -2131,7 +2138,14 @@ app.get('/api/admin/analytics/compare', async (req, res) => {
           // gets orders that aren't an event's and aren't tagged to a different
           // store sharing its Square location (untagged POS/counter orders count).
           const md = o.metadata || {};
+          if (o.state === 'CANCELED') continue;
           if (!withinRange(o.created_at)) continue;
+          // Paid only: COMPLETED (incl. free $0 comps) or OPEN with a tender.
+          // Excludes held/abandoned card checkouts + plain unpaid tickets so
+          // takings aren't inflated by non-sales.
+          const paid = o.state === 'COMPLETED' || (Array.isArray(o.tenders) && o.tenders.length > 0);
+          if (!paid) continue;
+          if (md.bc_hold === '1' && !((o.tenders || []).length)) continue;
           if (store.type === 'event') { if (md.bc_event !== store.id) continue; }
           else { if (md.bc_event) continue; if (md.bc_store && md.bc_store !== store.id) continue; }
           m.orders += 1;
