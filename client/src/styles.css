@@ -3572,7 +3572,20 @@ body:has(.store-shell) { background: var(--bc-canvas-deep, #160f12); }
 .pos-storepill-dot { color: #7fe0a6; font-size: 10px; }
 
 /* Settings sheet (⚙) — holds store, terminal, staff, exit */
-.pos-settings { background: var(--pos-surface); border-radius: 20px; padding: 22px; width: min(94vw, 440px); max-height: 88vh; overflow-y: auto; box-shadow: 0 30px 80px rgba(0,0,0,.4); }
+.pos-settings { background: var(--pos-surface); border-radius: 20px; padding: 22px; width: min(96vw, 460px); max-height: 90vh; overflow-y: auto; box-shadow: 0 30px 80px rgba(0,0,0,.4); }
+/* The settings / cash-up / refund sheet was hard-capped at 440px, so on a tablet
+   it sat as a narrow strip with big empty margins. Give it room as the screen
+   grows, and lay the setting blocks two-up on wide tablets so it fills the space. */
+@media (min-width: 700px) {
+  .pos-settings { width: min(90vw, 680px); padding: 24px 28px; }
+}
+@media (min-width: 1000px) {
+  .pos-settings { width: min(80vw, 860px); }
+  .pos-settings-wide { display: grid; grid-template-columns: 1fr 1fr; gap: 0 20px; align-content: start; }
+  .pos-settings-wide > .pos-settings-head,
+  .pos-settings-wide > .pos-set-block.pos-set-span { grid-column: 1 / -1; }
+  .pos-settings-wide > .pos-set-block { margin-top: 16px; align-self: start; }
+}
 .pos-settings-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
 .pos-settings-head .pos-icon { border-color: var(--pos-line); color: var(--pos-muted); }
 .pos-settings-head .pos-icon:hover { background: var(--pos-surface2); }
