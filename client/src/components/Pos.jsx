@@ -239,7 +239,8 @@ export default function Pos({ onExit }) {
 
   const [tender, setTender] = useState(null);      // null | 'choose' | 'cash'
   const [busy, setBusy] = useState(false);
-  const [success, setSuccess] = useState(null);    // { orderId, tender, change }
+  const [success, setSuccess] = useState(null);    // { orderId, tender, change, paymentId }
+  const [printMsg, setPrintMsg] = useState('');     // receipt-print status on the success screen
   const [cardPay, setCardPay] = useState(() => { try { return JSON.parse(localStorage.getItem('bc-pos-active-checkout') || 'null'); } catch { return null; } });
   const [showSetup, setShowSetup] = useState(false);    // card-terminal pairing modal
   const [showSettings, setShowSettings] = useState(false); // the ⚙ settings sheet
@@ -497,9 +498,16 @@ export default function Pos({ onExit }) {
     return out;
   }
 
-  function finishSuccess(shortId, orderId, tenderType, change) {
+  async function printSuccessReceipt() {
+    if (!success || !success.paymentId) return;
+    setPrintMsg('printing');
+    try { await api.posPrintReceipt(pass, { paymentId: success.paymentId, location: posLoc }); setPrintMsg('done'); }
+    catch (e) { setPrintMsg(e.message || 'Print failed'); }
+  }
+  function finishSuccess(shortId, orderId, tenderType, change, paymentId) {
     const paidTotal = cartTotal(cart) - comboDiscountFor(cart);
-    setSuccess({ orderId, shortId, tender: tenderType, change });
+    setPrintMsg('');
+    setSuccess({ orderId, shortId, tender: tenderType, change, paymentId: paymentId || null });
     setCartOpen(false);
     clearCart();
     // Customer display: show a thank-you (with change for cash), then go idle.
@@ -570,7 +578,7 @@ export default function Pos({ onExit }) {
         if (!alive) return;
         if (s.status === 'paid') {
           clearActiveCheckout(); setCardPay(null);
-          finishSuccess((cardPay.orderId || '').slice(-4).toUpperCase(), cardPay.orderId, 'card', 0);
+          finishSuccess((cardPay.orderId || '').slice(-4).toUpperCase(), cardPay.orderId, 'card', 0, s.paymentId);
         } else if (s.status === 'canceled') {
           clearActiveCheckout(); setCardPay((c) => c && { ...c, status: 'canceled' });
         }
@@ -924,6 +932,12 @@ export default function Pos({ onExit }) {
             {success.tender === 'cash' && success.change > 0 && (
               <div className="pos-success-change">Change due <b>{formatMoney(success.change, currency)}</b></div>
             )}
+            {success.paymentId && (
+              <button className="pos-btn ghost big" disabled={printMsg === 'printing'} onClick={printSuccessReceipt}>
+                {printMsg === 'printing' ? 'Printing…' : printMsg === 'done' ? '✓ Printed — print again' : '🖨 Print receipt'}
+              </button>
+            )}
+            {printMsg && printMsg !== 'printing' && printMsg !== 'done' && <div className="pos-success-id" style={{ color: 'var(--pos-danger, #c0392b)' }}>{printMsg}</div>}
             <button className="pos-btn primary big" onClick={() => { setSuccess(null); setMode('register'); lastActivityRef.current = Date.now(); }}>Done</button>
           </div>
         </div>
@@ -1121,6 +1135,14 @@ function CashUpModal({ pass, posLoc, currency, onClose }) {
   const [err, setErr] = useState('');
   const [filter, setFilter] = useState('all');
   const [sel, setSel] = useState(null);
+  const [printingId, setPrintingId] = useState('');
+  const [printErr, setPrintErr] = useState('');
+  async function reprint(o) {
+    setPrintingId(o.orderId); setPrintErr('');
+    try { await api.posPrintReceipt(pass, { paymentId: o.paymentId, location: posLoc, duplicate: true }); }
+    catch (e) { setPrintErr(e.message || 'Print failed'); }
+    finally { setPrintingId(''); }
+  }
   const floatKey = `bc-pos-float-${posLoc || 'main'}-${new Date().toISOString().slice(0, 10)}`;
   const [floatStr, setFloatStr] = useState(() => { try { return localStorage.getItem(floatKey) || ''; } catch { return ''; } });
   useEffect(() => { try { localStorage.setItem(floatKey, floatStr); } catch {} }, [floatKey, floatStr]);
@@ -1182,15 +1204,23 @@ function CashUpModal({ pass, posLoc, currency, onClose }) {
             <div className="pos-refund-list" style={{ marginTop: 10 }}>
               {shown.length === 0 && <p className="pos-set-hint">No orders.</p>}
               {shown.map((o) => (
-                <button key={o.orderId} type="button" className="pos-refund-order" onClick={() => setSel(o)}>
-                  <span className="pos-refund-order-main">
-                    <b>{o.name || `#${o.orderId.slice(-4).toUpperCase()}`}{o.free ? ' · FREE' : ''}</b>
-                    <span className="muted">{fmtTime(o.createdAt)} · {o.tender}{o.reason ? ` · ${o.reason}` : ''}</span>
-                  </span>
-                  <span className="pos-refund-order-amt">{formatMoney(o.total, cur)}</span>
-                </button>
+                <div key={o.orderId} style={{ display: 'flex', alignItems: 'stretch', gap: 6 }}>
+                  <button type="button" className="pos-refund-order" style={{ flex: 1 }} onClick={() => setSel(o)}>
+                    <span className="pos-refund-order-main">
+                      <b>{o.name || `#${o.orderId.slice(-4).toUpperCase()}`}{o.free ? ' · FREE' : ''}</b>
+                      <span className="muted">{fmtTime(o.createdAt)} · {o.tender}{o.reason ? ` · ${o.reason}` : ''}</span>
+                    </span>
+                    <span className="pos-refund-order-amt">{formatMoney(o.total, cur)}</span>
+                  </button>
+                  {o.tender === 'card' && o.paymentId && (
+                    <button type="button" className="pos-btn ghost" title="Reprint this receipt on the terminal"
+                      style={{ padding: '0 14px', flex: 'none' }} disabled={printingId === o.orderId}
+                      onClick={() => reprint(o)}>{printingId === o.orderId ? '…' : '🖨'}</button>
+                  )}
+                </div>
               ))}
             </div>
+            {printErr && <p className="pos-set-hint" style={{ color: 'var(--pos-danger, #c0392b)' }}>{printErr}</p>}
           </>
         )}
       </div>
@@ -1425,10 +1455,15 @@ function TerminalSetup({ pass, cfg, locationId, curTerm, onClose, onSelected }) 
   const [msg, setMsg] = useState('');
   const [err, setErr] = useState('');
   const [showCart, setShowCart] = useState(cfg.terminalShowCart === true);
+  const [skipReceipt, setSkipReceipt] = useState(cfg.terminalSkipReceipt !== false);
   const storeName = (cfg.locations || []).find((l) => l.id === locationId)?.name || '';
   const toggleShowCart = (v) => {
     setShowCart(v);
-    api.posSetTerminalOptions(pass, v).catch(() => setShowCart(!v));
+    api.posSetTerminalOptions(pass, { showItemizedCart: v }).catch(() => setShowCart(!v));
+  };
+  const toggleSkipReceipt = (v) => {
+    setSkipReceipt(v);
+    api.posSetTerminalOptions(pass, { skipReceipt: v }).catch(() => setSkipReceipt(!v));
   };
 
   async function loadDevices() {
@@ -1531,6 +1566,11 @@ function TerminalSetup({ pass, cfg, locationId, curTerm, onClose, onSelected }) 
             <input type="checkbox" checked={showCart} onChange={(e) => toggleShowCart(e.target.checked)} />
           </label>
           <p className="pos-set-hint">Off (default): pressing Charge sends the amount straight to the terminal — the customer just taps. On: the terminal shows the itemised order and a confirm step first.</p>
+          <label className="pos-set-row" style={{ cursor: 'pointer', marginTop: 8 }}>
+            <span className="pos-set-status">Skip the receipt screen after payment</span>
+            <input type="checkbox" checked={skipReceipt} onChange={(e) => toggleSkipReceipt(e.target.checked)} />
+          </label>
+          <p className="pos-set-hint">On (default): after the tap, the terminal returns to ready immediately instead of hanging on the Print / No-receipt prompt. Turn off only if you want customers offered a printed/emailed receipt on the terminal.</p>
         </div>
 
         <div className="pos-setup-warn" style={{ margin: '10px 0', padding: '10px 12px', border: '1px solid #e6b800', background: '#fff8e1', borderRadius: 10, fontSize: 13, color: '#6b5300' }}>
