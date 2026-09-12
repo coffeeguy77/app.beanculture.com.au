@@ -2045,9 +2045,14 @@ export default function Admin({ onExit }) {
                     const best = appSales.best;
                     return (
                       <>
-                        <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', alignItems: 'baseline', margin: '4px 0 10px' }}>
-                          <div><div className="stat-v" style={{ fontSize: 24 }}>{money2(appSales.total)}</div><div className="stat-l">{appSales.count} app sale{appSales.count === 1 ? '' : 's'}</div></div>
-                          {best && <div><div className="stat-v" style={{ fontSize: 18 }}>🏆 {best.name}{best.phone ? <span className="muted" style={{ fontSize: 'var(--fs-sm)', fontWeight: 400 }}> · {best.phone}</span> : ''}</div><div className="stat-l">Best customer · {money2(best.total)} over {best.count} order{best.count === 1 ? '' : 's'}</div></div>}
+                        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-start', margin: '4px 0 10px' }}>
+                          <div style={{ minWidth: 0 }}><div className="stat-v" style={{ fontSize: 24 }}>{money2(appSales.total)}</div><div className="stat-l">{appSales.count} app sale{appSales.count === 1 ? '' : 's'}</div></div>
+                          {best && (
+                            <div style={{ flex: '1 1 200px', minWidth: 0 }}>
+                              <div className="stat-v" style={{ fontSize: 18, wordBreak: 'break-word' }}>🏆 {best.name}</div>
+                              <div className="stat-l">Best customer{best.phone ? ` · ${best.phone}` : ''} · {money2(best.total)} over {best.count} order{best.count === 1 ? '' : 's'}</div>
+                            </div>
+                          )}
                         </div>
                         {appSales.count === 0 && <p className="muted" style={{ fontSize: 'var(--fs-base)' }}>No app sales in this period.</p>}
                         {appSales.daily && appSales.daily.length > 0 && (
@@ -2055,10 +2060,9 @@ export default function Admin({ onExit }) {
                             <summary style={{ cursor: 'pointer', fontSize: 'var(--fs-sm)', fontWeight: 700 }}>Sales by day</summary>
                             <div className="loc-avail-list" style={{ maxHeight: 260, marginTop: 6 }}>
                               {[...appSales.daily].reverse().map((d) => (
-                                <div key={d.date} style={{ display: 'flex', gap: 10, alignItems: 'baseline', fontSize: 'var(--fs-sm)', padding: '3px 0', borderTop: '1px solid var(--line)' }}>
-                                  <span style={{ minWidth: 130 }}>{fmtDay(d.date)}</span>
-                                  <span className="muted">{d.count} sale{d.count === 1 ? '' : 's'}</span>
-                                  <span style={{ marginLeft: 'auto', fontWeight: 700 }}>{money2(d.total)}</span>
+                                <div key={d.date} style={{ display: 'flex', gap: 8, alignItems: 'baseline', justifyContent: 'space-between', fontSize: 'var(--fs-sm)', padding: '4px 0', borderTop: '1px solid var(--line)' }}>
+                                  <span style={{ minWidth: 0 }}>{fmtDay(d.date)} <span className="muted">· {d.count} sale{d.count === 1 ? '' : 's'}</span></span>
+                                  <span style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>{money2(d.total)}</span>
                                 </div>
                               ))}
                             </div>
@@ -2069,12 +2073,13 @@ export default function Admin({ onExit }) {
                             <summary style={{ cursor: 'pointer', fontSize: 'var(--fs-sm)', fontWeight: 700 }}>Top customers</summary>
                             <div className="loc-avail-list" style={{ maxHeight: 240, marginTop: 6 }}>
                               {appSales.topCustomers.map((c, i) => (
-                                <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'baseline', fontSize: 'var(--fs-sm)', padding: '3px 0', borderTop: i ? '1px solid var(--line)' : 'none' }}>
-                                  <span style={{ minWidth: 20, fontWeight: 700 }}>{i + 1}</span>
-                                  <span style={{ fontWeight: 600 }}>{c.name}</span>
-                                  <span className="muted">{c.phone}</span>
-                                  <span className="muted">· {c.count} order{c.count === 1 ? '' : 's'}</span>
-                                  <span style={{ marginLeft: 'auto', fontWeight: 700 }}>{money2(c.total)}</span>
+                                <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'baseline', fontSize: 'var(--fs-sm)', padding: '4px 0', borderTop: i ? '1px solid var(--line)' : 'none' }}>
+                                  <span style={{ flex: 'none', fontWeight: 700, width: 16 }}>{i + 1}</span>
+                                  <span style={{ flex: 1, minWidth: 0 }}>
+                                    <span style={{ fontWeight: 600 }}>{c.name}</span>
+                                    <span className="muted" style={{ display: 'block', fontSize: 'var(--fs-xs)' }}>{c.phone ? `${c.phone} · ` : ''}{c.count} order{c.count === 1 ? '' : 's'}</span>
+                                  </span>
+                                  <span style={{ flex: 'none', fontWeight: 700, whiteSpace: 'nowrap' }}>{money2(c.total)}</span>
                                 </div>
                               ))}
                             </div>
@@ -2085,10 +2090,12 @@ export default function Admin({ onExit }) {
                             <summary style={{ cursor: 'pointer', fontSize: 'var(--fs-sm)', fontWeight: 700 }}>Recent app sales</summary>
                             <div className="loc-avail-list" style={{ maxHeight: 300, marginTop: 6 }}>
                               {appSales.sales.map((sle, i) => (
-                                <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'baseline', fontSize: 'var(--fs-sm)', padding: '3px 0', borderTop: i ? '1px solid var(--line)' : 'none' }}>
-                                  <span style={{ minWidth: 132 }}>{sle.at ? new Date(sle.at).toLocaleString('en-AU', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : ''}</span>
-                                  <span style={{ fontWeight: 600 }}>{sle.name}</span>
-                                  <span style={{ marginLeft: 'auto', fontWeight: 700 }}>{money2(sle.amount)}</span>
+                                <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'baseline', fontSize: 'var(--fs-sm)', padding: '4px 0', borderTop: i ? '1px solid var(--line)' : 'none' }}>
+                                  <span style={{ flex: 1, minWidth: 0 }}>
+                                    <span style={{ fontWeight: 600 }}>{sle.name}</span>
+                                    <span className="muted" style={{ display: 'block', fontSize: 'var(--fs-xs)' }}>{sle.at ? new Date(sle.at).toLocaleString('en-AU', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : ''}</span>
+                                  </span>
+                                  <span style={{ flex: 'none', fontWeight: 700, whiteSpace: 'nowrap' }}>{money2(sle.amount)}</span>
                                 </div>
                               ))}
                             </div>
@@ -2177,10 +2184,8 @@ export default function Admin({ onExit }) {
 
                 </div>
 
-                {/* App performance — the same app data as Insights (minus the
-                    product heat map), surfaced here for an at-a-glance view. */}
-                <AppPerformanceSection days={aDays} onDays={setADays} dashboard={dashboard}
-                  analytics={analytics} refreshing={insRefreshing} onRefresh={reloadInsights} />
+                {/* (App performance charts live on the Insights tab — the App sales
+                    card above covers the at-a-glance view here, so it's not repeated.) */}
 
                 {!data.dbEnabled && (
                   <div className="card" style={card}>
