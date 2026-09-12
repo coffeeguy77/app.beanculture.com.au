@@ -1143,14 +1143,23 @@ function CashUpModal({ pass, posLoc, currency, onClose }) {
     catch (e) { setPrintErr(e.message || 'Print failed'); }
     finally { setPrintingId(''); }
   }
-  const floatKey = `bc-pos-float-${posLoc || 'main'}-${new Date().toISOString().slice(0, 10)}`;
+  // Which day to cash up. Defaults to today (in the cafe's timezone); staff can
+  // step back to yesterday / any past day.
+  const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: CAFE_TZ });
+  const [day, setDay] = useState(todayStr);
+  const isToday = day === todayStr;
+  const shiftDay = (n) => { const d = new Date(day + 'T12:00:00'); d.setDate(d.getDate() + n); const s = d.toLocaleDateString('en-CA'); if (s <= todayStr) setDay(s); };
+  const dayLabel = isToday ? 'Today' : new Date(day + 'T12:00:00').toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+  const floatKey = `bc-pos-float-${posLoc || 'main'}-${day}`;
   const [floatStr, setFloatStr] = useState(() => { try { return localStorage.getItem(floatKey) || ''; } catch { return ''; } });
+  useEffect(() => { try { setFloatStr(localStorage.getItem(floatKey) || ''); } catch {} }, [floatKey]);
   useEffect(() => { try { localStorage.setItem(floatKey, floatStr); } catch {} }, [floatKey, floatStr]);
   useEffect(() => {
     let alive = true;
-    api.posDay(pass, posLoc).then((d) => { if (alive) setData(d); }).catch((e) => { if (alive) setErr(e.message); });
+    setData(null); setErr('');
+    api.posDay(pass, posLoc, day).then((d) => { if (alive) setData(d); }).catch((e) => { if (alive) setErr(e.message); });
     return () => { alive = false; };
-  }, [pass, posLoc]);
+  }, [pass, posLoc, day]);
 
   const cur = (data && data.currency) || currency || 'AUD';
   const t = data ? data.totals : null;
@@ -1163,10 +1172,18 @@ function CashUpModal({ pass, posLoc, currency, onClose }) {
   return (
     <div className="pos-scrim" onClick={(e) => { e.stopPropagation(); onClose(); }} style={{ zIndex: 80 }}>
       <div className="pos-settings" onClick={(e) => e.stopPropagation()}>
-        <div className="pos-settings-head"><div className="pos-tender-title">Cash-up · today</div><button className="pos-icon" onClick={onClose}><IcoX /></button></div>
+        <div className="pos-settings-head"><div className="pos-tender-title">Cash-up · {dayLabel}</div><button className="pos-icon" onClick={onClose}><IcoX /></button></div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', margin: '4px 0 10px' }}>
+          <button type="button" className="pos-btn ghost" style={{ padding: '6px 12px' }} onClick={() => shiftDay(-1)}>‹ Prev day</button>
+          <input type="date" value={day} max={todayStr} onChange={(e) => { if (e.target.value && e.target.value <= todayStr) setDay(e.target.value); }}
+            style={{ padding: '6px 10px', border: '1px solid var(--pos-line)', borderRadius: 10, background: 'var(--pos-surface)', color: 'var(--pos-ink)', font: 'inherit' }} />
+          <button type="button" className="pos-btn ghost" style={{ padding: '6px 12px', opacity: isToday ? 0.4 : 1 }} disabled={isToday} onClick={() => shiftDay(1)}>Next day ›</button>
+          {!isToday && <button type="button" className="pos-btn ghost" style={{ padding: '6px 12px' }} onClick={() => setDay(todayStr)}>Today</button>}
+        </div>
 
         {err && <div className="pos-err">{err}</div>}
-        {!data && !err && <p className="pos-set-hint">Loading today’s orders…</p>}
+        {!data && !err && <p className="pos-set-hint">Loading {isToday ? 'today’s' : dayLabel} orders…</p>}
 
         {sel ? (
           <div className="pos-set-block">
