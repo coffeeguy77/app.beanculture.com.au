@@ -2022,7 +2022,10 @@ export default function Admin({ onExit }) {
                   </div>
                 </div>
 
-                {/* App sales — self-order sales by day + best customer for the period */}
+                {/* This card was removed — it duplicated the "App sales" card that already
+                    lives inside the App performance section below. Gated out (not deleted)
+                    so nothing else on the dashboard shifts. */}
+                {false && (
                 <div className="card" style={{ marginBottom: 18 }}>
                   <div className="group-title" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', margin: 0 }}>
                     App sales
@@ -2105,6 +2108,7 @@ export default function Admin({ onExit }) {
                     );
                   })()}
                 </div>
+                )}
 
                 <div className="admin-cmd-grid">
                   {/* Upcoming reservations — future only, nothing past. */}
@@ -2184,8 +2188,10 @@ export default function Admin({ onExit }) {
 
                 </div>
 
-                {/* (App performance charts live on the Insights tab — the App sales
-                    card above covers the at-a-glance view here, so it's not repeated.) */}
+                {/* App performance — the same app data as Insights (minus the
+                    product heat map), surfaced here for an at-a-glance view. */}
+                <AppPerformanceSection days={aDays} onDays={setADays} dashboard={dashboard}
+                  analytics={analytics} refreshing={insRefreshing} onRefresh={reloadInsights} />
 
                 {!data.dbEnabled && (
                   <div className="card" style={card}>

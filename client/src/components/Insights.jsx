@@ -317,6 +317,7 @@ function dateTime(iso) {
 // individual app order, which is what the owner asked to see on the dashboard.
 function AppSalesCard({ sales }) {
   const [expanded, setExpanded] = useState(false);
+  const [openId, setOpenId] = useState(null); // which order is expanded to show its items
   const cur = (sales && sales.currency) || 'AUD';
   const app = (sales && sales.app) || null;
 
@@ -364,20 +365,42 @@ function AppSalesCard({ sales }) {
             <div className="ins-appsales-orders">
               <div className="ins-appsales-orders-head">Each order ({num(list.length)})</div>
               <ul className="ins-appsales-list">
-                {shown.map((o) => (
-                  <li key={o.id} className="ins-appsales-order">
+                {shown.map((o) => {
+                  const open = openId === o.id;
+                  const items = o.items || [];
+                  return (
+                  <li key={o.id} className="ins-appsales-order" style={{ cursor: 'pointer' }}
+                    onClick={() => setOpenId(open ? null : o.id)}
+                    title="Tap to see what was ordered">
                     <span className="ins-appsales-order-main">
-                      <span className="ins-appsales-order-name" title={o.name}>{o.name}</span>
-                      <span className="ins-appsales-order-items">
-                        {(o.items || []).map((it, i) => `${it.qty}× ${it.name}${it.variation ? ` (${it.variation})` : ''}`).join(', ')}
-                      </span>
+                      <span className="ins-appsales-order-name" title={o.name}>{o.name} <span aria-hidden="true" style={{ opacity: 0.6, fontSize: '0.8em' }}>{open ? '▲' : '▼'}</span></span>
+                      {!open && (
+                        <span className="ins-appsales-order-items">
+                          {items.map((it) => `${it.qty}× ${it.name}${it.variation ? ` (${it.variation})` : ''}`).join(', ') || '—'}
+                        </span>
+                      )}
+                      {open && (
+                        <span className="ins-appsales-order-detail" style={{ display: 'block', marginTop: 6 }}>
+                          {items.length === 0 && <span className="ins-appsales-order-items">No item detail recorded.</span>}
+                          {items.map((it, i) => (
+                            <span key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '3px 0', borderTop: i ? '1px solid var(--ins-line, rgba(0,0,0,0.08))' : 'none' }}>
+                              <span style={{ minWidth: 0 }}>
+                                {it.qty}× {it.name}{it.variation ? ` · ${it.variation}` : ''}
+                                {it.modifiers ? <span style={{ opacity: 0.7 }}> — {it.modifiers}</span> : ''}
+                              </span>
+                              {it.amount != null && <span style={{ whiteSpace: 'nowrap', fontWeight: 600 }}>{formatMoney(it.amount, cur)}</span>}
+                            </span>
+                          ))}
+                        </span>
+                      )}
                     </span>
                     <span className="ins-appsales-order-meta">
                       <span className="ins-appsales-order-amt">{formatMoney(o.total || 0, cur)}</span>
                       <span className="ins-appsales-order-time">{dateTime(o.at)}</span>
                     </span>
                   </li>
-                ))}
+                  );
+                })}
               </ul>
               {list.length > 8 && (
                 <button type="button" className="ins-viewall" onClick={() => setExpanded((v) => !v)}>
