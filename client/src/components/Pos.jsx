@@ -553,7 +553,11 @@ export default function Pos({ onExit }) {
         finishSuccess((res.orderId || '').slice(-4).toUpperCase(), res.orderId, tenderType, change);
       }
     } catch (e) {
-      setErr(e.message);
+      const m = String((e && e.message) || '');
+      const offlineish = /network|failed to fetch|load failed|timeout|could not start|terminal|unreachable|50[0-9]/i.test(m);
+      setErr(offlineish
+        ? 'Couldn’t reach the card terminal or Square. Nothing was charged and the order is still in the cart — check the internet, take cash, or use the Square app directly on the terminal for offline card.'
+        : (m || 'Something went wrong. Nothing was charged; the order is still in the cart.'));
     } finally { setBusy(false); }
   }
 
@@ -884,9 +888,12 @@ export default function Pos({ onExit }) {
             {cardPay.status === 'canceled' ? (
               <>
                 <div className="pos-card-x">✕</div>
-                <div className="pos-success-title">Payment canceled</div>
-                <div className="pos-success-id">The order was not charged. Your items are still in the cart.</div>
-                <button className="pos-btn primary big" onClick={() => { setCardPay(null); }}>Back to order</button>
+                <div className="pos-success-title">Card didn’t go through</div>
+                <div className="pos-success-id"><b>Nothing was charged.</b> The order is still open in the cart — tell the customer their card didn’t work and try again, or take another way.</div>
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'center', marginTop: 8 }}>
+                  <button className="pos-btn primary big" onClick={() => { setCardPay(null); submit('card'); }}>Try card again</button>
+                  <button className="pos-btn ghost big" onClick={() => { setCardPay(null); }}>Back to order</button>
+                </div>
               </>
             ) : (
               <>
