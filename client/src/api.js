@@ -103,7 +103,7 @@ export const api = {
   posSetManagerPin: (pass, pin, currentPin) => req(`/api/pos/manager-pin?pass=${encodeURIComponent(pass || '')}`, { method: 'POST', body: JSON.stringify({ pin, currentPin }) }),
   posSetPayments: (pass, locationId, payments) => req(`/api/pos/payments?pass=${encodeURIComponent(pass || '')}`, { method: 'POST', body: JSON.stringify({ locationId, payments }) }),
   posSetTerminalOptions: (pass, opts) => req(`/api/pos/terminal-options?pass=${encodeURIComponent(pass || '')}`, { method: 'POST', body: JSON.stringify(typeof opts === 'boolean' ? { showItemizedCart: opts } : (opts || {})) }),
-  posDay: (pass, locationId) => req(`/api/pos/day?pass=${encodeURIComponent(pass || '')}${locationId ? `&location=${encodeURIComponent(locationId)}` : ''}`),
+  posDay: (pass, locationId, date) => req(`/api/pos/day?pass=${encodeURIComponent(pass || '')}${locationId ? `&location=${encodeURIComponent(locationId)}` : ''}${date ? `&date=${encodeURIComponent(date)}` : ''}`),
 };
 
 // Serve Cloudinary images auto-format (WebP/AVIF), auto-quality and sized to the
