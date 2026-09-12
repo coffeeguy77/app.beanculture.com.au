@@ -1385,6 +1385,7 @@ app.get('/api/pos/config', (req, res) => {
     hasManagerPin: !!p.managerPin,   // refunds require a manager PIN; is one set?
     paymentsByLocation: p.paymentsByLocation || {}, // per-store {card,cash,unpaid}
     terminalShowCart: p.terminalShowCart === true,  // show the confirm/itemised screen on the Terminal
+    terminalSkipReceipt: p.terminalSkipReceipt !== false, // skip the post-payment receipt screen (default on)
     dbEnabled: db.enabled,
   });
 });
@@ -1396,9 +1397,12 @@ app.post('/api/pos/terminal-options', async (req, res) => {
   try {
     const ov = db.getOverrides() || {};
     ov.pos = ov.pos || {};
-    ov.pos.terminalShowCart = req.body && req.body.showItemizedCart === true;
+    const b = req.body || {};
+    if (b.showItemizedCart !== undefined) ov.pos.terminalShowCart = b.showItemizedCart === true;
+    // skipReceipt: only change it when the client sends it, so the two toggles are independent.
+    if (b.skipReceipt !== undefined) ov.pos.terminalSkipReceipt = b.skipReceipt === true;
     await db.saveOverrides(ov);
-    res.json({ ok: true, terminalShowCart: ov.pos.terminalShowCart });
+    res.json({ ok: true, terminalShowCart: ov.pos.terminalShowCart, terminalSkipReceipt: ov.pos.terminalSkipReceipt !== false });
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
@@ -1495,9 +1499,10 @@ app.get('/api/pos/day', async (req, res) => {
         const t0 = (tenders[0].type || '').toUpperCase();
         tender = t0 === 'CASH' ? 'cash' : (t0 === 'CARD' || t0 === 'SQUARE_GIFT_CARD' || t0 === 'WALLET') ? 'card' : 'card';
       }
+      const paymentId = (tenders.find((t) => t.payment_id) || {}).payment_id || (o.payment_ids && o.payment_ids[0]) || null;
       orders.push({
         orderId: o.id, createdAt: o.created_at,
-        tender, total, refunded,
+        tender, total, refunded, paymentId,
         source: (o.source && o.source.name) || 'Square',
         name: md.bc_name || o.ticket_name || '',
         reason: md.bc_reason || '',
@@ -1650,6 +1655,7 @@ app.post('/api/pos/order', async (req, res) => {
           referenceId: order.id,
           note: `${pos.deviceName || 'POS'} · ${name || (dineIn ? 'Dine-in' : 'Takeaway')}`,
           showItemizedCart: pos.terminalShowCart === true,
+          skipReceipt: pos.terminalSkipReceipt !== false, // default: skip the receipt screen
         });
         try { await db.posPaymentUpsert({ checkoutId: checkout.id, squareOrderId: order.id, deviceId: posTerminal.deviceId, amount, status: 'waiting' }); } catch {}
         return res.json({
@@ -1738,6 +1744,20 @@ app.get('/api/pos/checkout/:id', async (req, res) => {
   try {
     const out = await reconcileCheckout(req.params.id, null, req.query.orderId);
     res.json(out);
+  } catch (e) { res.status(502).json({ error: e.message }); }
+});
+
+// Print (or reprint) a receipt for a completed payment on the Terminal's printer.
+app.post('/api/pos/print-receipt', async (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const { paymentId, location, duplicate } = req.body || {};
+    if (!paymentId) return res.status(400).json({ error: 'No payment to print (card sales only).' });
+    const pos = getSettings().pos || {};
+    const posTerminal = posTerminalFor(pos, location);
+    if (!posTerminal.deviceId) return res.status(400).json({ error: 'No Square Terminal paired at this store.' });
+    const action = await terminal.printReceipt({ deviceId: posTerminal.deviceId, paymentId, duplicate: duplicate === true });
+    res.json({ ok: true, actionId: action.id || null, status: action.status || 'PENDING' });
   } catch (e) { res.status(502).json({ error: e.message }); }
 });
 
