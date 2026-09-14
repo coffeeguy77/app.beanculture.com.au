@@ -125,7 +125,7 @@ const TABS = [
   { id: 'banners', label: 'Banners', Icon: BannerIcon },
   { id: 'users', label: 'Users', Icon: InsightsIcon },
   { id: 'coupons', label: 'Coupons', Icon: BannerIcon },
-  { id: 'push', label: 'SMS Advertising', Icon: BannerIcon },
+  { id: 'push', label: 'Marketing', Icon: BannerIcon },
   { id: 'tables', label: 'Tables', Icon: QrIcon },
   { id: 'customtables', label: 'Custom Tables', Icon: QrIcon },
   { id: 'theme', label: 'Theme', Icon: ThemeIcon2 },
