@@ -34,7 +34,9 @@ export function BirthdayOverlay({ offer, currency, onDismiss, onTerms }) {
       </div>
       <div className="bday-banner" role="status">
         <button className="bday-x" onClick={onDismiss} aria-label="Close">✕</button>
-        <div className="bday-emoji">🎉🎂</div>
+        {offer.bannerImage
+          ? <img className="bday-img" src={offer.bannerImage} alt="" />
+          : <div className="bday-emoji">🎉🎂</div>}
         <div className="bday-title">{offer.title || 'Happy Birthday! 🎂'}</div>
         <div className="bday-msg">{offer.message}</div>
         {offer.valueCents > 0 && (

@@ -4,6 +4,7 @@ import { SlotIcon } from './icons.jsx';
 import IconPicker from './IconPicker.jsx';
 import HoursEditor from './HoursEditor.jsx';
 import Insights, { AppPerformanceSection } from './Insights.jsx';
+import { BirthdayOverlay } from './Birthday.jsx';
 import EffectBuilder from './EffectBuilder.jsx';
 import { formatMoney, api, imgUrl } from '../api.js';
 
@@ -125,7 +126,8 @@ const TABS = [
   { id: 'banners', label: 'Banners', Icon: BannerIcon },
   { id: 'users', label: 'Users', Icon: InsightsIcon },
   { id: 'coupons', label: 'Coupons', Icon: BannerIcon },
-  { id: 'push', label: 'Marketing', Icon: BannerIcon },
+  { id: 'push', label: 'SMS & Email', Icon: BannerIcon },
+  { id: 'birthday', label: 'Birthday', Icon: BannerIcon },
   { id: 'tables', label: 'Tables', Icon: QrIcon },
   { id: 'customtables', label: 'Custom Tables', Icon: QrIcon },
   { id: 'theme', label: 'Theme', Icon: ThemeIcon2 },
@@ -136,7 +138,7 @@ const TAB_GROUPS = [
   { label: 'Overview', tabs: ['overview', 'insights'] },
   { label: 'Orders & Service', tabs: ['reservations', 'kds', 'tables', 'customtables'] },
   { label: 'Menu', tabs: ['menubuilder', 'productbuilder', 'combobuilder', 'availability'] },
-  { label: 'Marketing', tabs: ['banners', 'coupons', 'push', 'payitforward', 'smartcampaigns'] },
+  { label: 'Marketing', tabs: ['banners', 'coupons', 'push', 'birthday', 'payitforward', 'smartcampaigns'] },
   { label: 'Customers', tabs: ['users'] },
   { label: 'Store', tabs: ['store', 'locations', 'seo', 'theme'] },
 ];
@@ -264,6 +266,10 @@ export default function Admin({ onExit }) {
   const [appSales, setAppSales] = useState(null);   // App sales report (Dashboard)
   const [appSalesDays, setAppSalesDays] = useState(1); // 1=today, 7, 30, 90, 180, 365
   const [appSalesBusy, setAppSalesBusy] = useState(false);
+  const [bdayRoster, setBdayRoster] = useState(null);   // birthday roster
+  const [bdayRosterBusy, setBdayRosterBusy] = useState(false);
+  const [bdayPreview, setBdayPreview] = useState(false); // preview the birthday overlay
+  const [bdayEdit, setBdayEdit] = useState(null);        // { customerId, name, month, day }
   const [insCustomers, setInsCustomers] = useState(null); // loyalty members for Top customers
   const [insRefreshing, setInsRefreshing] = useState(false);
   const [insSync, setInsSync] = useState(null); // Date of last successful insights load
@@ -484,6 +490,9 @@ export default function Admin({ onExit }) {
       if (users === null && !usersBusy) loadUsers();
       if (appSales === null && !appSalesBusy) loadAppSales();
     }
+    if (tab === 'birthday') {
+      if (bdayRoster === null && !bdayRosterBusy) loadBdayRoster();
+    }
     // Opening the Reservations tab clears the "new" badge — everything
     // currently loaded counts as seen from this point on.
     if (tab === 'reservations') {
@@ -609,6 +618,19 @@ export default function Admin({ onExit }) {
     try { const d = await api.appSales(pass, days); setAppSales(d && d.error ? { error: d.error } : d); }
     catch (e) { setAppSales({ error: e.message }); }
     finally { setAppSalesBusy(false); }
+  }
+  async function loadBdayRoster() {
+    setBdayRosterBusy(true);
+    try { const d = await api.adminBirthdays(pass); setBdayRoster(d && d.rows ? d : { rows: [], error: d && d.error }); }
+    catch (e) { setBdayRoster({ rows: [], error: e.message }); }
+    finally { setBdayRosterBusy(false); }
+  }
+  async function saveAdminBirthday() {
+    if (!bdayEdit || !bdayEdit.month || !bdayEdit.day) return;
+    try {
+      await api.adminSetBirthday(pass, bdayEdit.customerId, `${bdayEdit.month}-${bdayEdit.day}`);
+      setBdayEdit(null); loadBdayRoster();
+    } catch (e) { alert(e.message || 'Could not save.'); }
   }
   // Event guest log ("who got a free coffee") — name, phone, booth, time.
   async function loadGuests(days = guestsDays, venue = guestVenue) {
@@ -5569,29 +5591,120 @@ export default function Admin({ onExit }) {
                 </div>
               </>
             )}
-            {tab === 'push' && (() => {
+            {tab === 'birthday' && (() => {
               const bg = s?.birthday || {};
               const setBg = (patch) => set({ birthday: { ...(s?.birthday || {}), ...patch } });
               const ta = { padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 10, font: 'inherit', width: '100%', resize: 'vertical' };
+              const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+              const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+              const cur = (bdayRoster && bdayRoster.currency) || 'AUD';
+              const money = (c) => new Intl.NumberFormat('en-AU', { style: 'currency', currency: cur }).format((c || 0) / 100);
+              const fmtBday = (mmdd) => `${Number(mmdd.slice(3, 5))} ${MON[Number(mmdd.slice(0, 2)) - 1]}`;
+              const fmtUntil = (d) => d === 0 ? 'Today! 🎉' : d === 1 ? 'Tomorrow' : `in ${d} days`;
+              const rows = (bdayRoster && bdayRoster.rows) || [];
               return (
-              <div className="card" style={card}>
-                <div className="group-title">🎂 Birthday gift</div>
-                <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 0 }}>On a customer’s birthday (day &amp; month, which they lock in their account), the app auto-applies a free-drink credit up to the value you set, shows a balloon birthday theme + a personal banner, and marks it used for the year. They must have completed an app purchase <strong>before</strong> their birthday. Remember to press <strong>Save changes</strong>.</p>
-                <label className="avail-switch"><input type="checkbox" checked={bg.enabled !== false} onChange={(e) => setBg({ enabled: e.target.checked })} /><span>Offer the birthday gift</span></label>
-                <div className="admin-two-col" style={{ marginTop: 10 }}>
-                  <label className="field"><span>Gift value ($ — a drink up to this is free)</span>
-                    <input type="number" min="0" step="0.5" value={((bg.valueCents ?? 600) / 100)} onChange={(e) => setBg({ valueCents: Math.max(0, Math.round((parseFloat(e.target.value) || 0) * 100)) })} /></label>
-                  <label className="field"><span>Also valid days around birthday (0 = day only)</span>
-                    <input type="number" min="0" max="31" value={bg.windowDays ?? 0} onChange={(e) => setBg({ windowDays: Math.max(0, Math.min(31, parseInt(e.target.value, 10) || 0)) })} /></label>
+              <>
+                <div className="admin-page-head">
+                  <h1 className="admin-page-title">🎂 Birthday</h1>
+                  <p className="admin-page-desc">The birthday gift, the banner customers see on their day, and everyone’s birthdays — who’s coming up, who’s spent the most, and who’s claimed their gift.</p>
                 </div>
-                <label className="field" style={{ marginTop: 10 }}><span>Banner title</span>
-                  <input value={bg.bannerTitle || ''} onChange={(e) => setBg({ bannerTitle: e.target.value })} placeholder="Happy Birthday! 🎂" /></label>
-                <label className="field" style={{ marginTop: 10 }}><span>Banner message (shown on their day)</span>
-                  <textarea rows={3} style={ta} value={bg.bannerMessage || ''} onChange={(e) => setBg({ bannerMessage: e.target.value })} placeholder="It’s your day — pop in for a coffee on us…" /></label>
-                <label className="field" style={{ marginTop: 10 }}><span>Gift terms (customers can read these)</span>
-                  <textarea rows={6} style={ta} value={bg.terms || ''} onChange={(e) => setBg({ terms: e.target.value })} /></label>
-                <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 8 }}>Remember to press <strong>Save changes</strong>.</p>
-              </div>
+
+                <div className="card" style={card}>
+                  <div className="group-title">The gift &amp; offer</div>
+                  <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 0 }}>On a customer’s birthday (day &amp; month, which they lock in their account), the app auto-applies a free-drink credit up to the value below, shows rising balloons + a personal banner, and marks it used for the year. They must have completed an app purchase <strong>before</strong> their birthday. Remember to press <strong>Save changes</strong>.</p>
+                  <label className="avail-switch"><input type="checkbox" checked={bg.enabled !== false} onChange={(e) => setBg({ enabled: e.target.checked })} /><span>Offer the birthday gift</span></label>
+                  <div className="admin-two-col" style={{ marginTop: 10 }}>
+                    <label className="field"><span>Gift value ($ — a drink up to this is free)</span>
+                      <input type="number" min="0" step="0.5" value={((bg.valueCents ?? 600) / 100)} onChange={(e) => setBg({ valueCents: Math.max(0, Math.round((parseFloat(e.target.value) || 0) * 100)) })} /></label>
+                    <label className="field"><span>Also valid days around birthday (0 = day only)</span>
+                      <input type="number" min="0" max="31" value={bg.windowDays ?? 0} onChange={(e) => setBg({ windowDays: Math.max(0, Math.min(31, parseInt(e.target.value, 10) || 0)) })} /></label>
+                  </div>
+                  <label className="field" style={{ marginTop: 10 }}><span>Banner title</span>
+                    <input value={bg.bannerTitle || ''} onChange={(e) => setBg({ bannerTitle: e.target.value })} placeholder="Happy Birthday! 🎂" /></label>
+                  <label className="field" style={{ marginTop: 10 }}><span>Banner message (shown on their day)</span>
+                    <textarea rows={3} style={ta} value={bg.bannerMessage || ''} onChange={(e) => setBg({ bannerMessage: e.target.value })} placeholder="It’s your day — pop in for a coffee on us…" /></label>
+                  <div className="field" style={{ marginTop: 10 }}>
+                    <span>Custom banner image (optional — shown on their day)</span>
+                    <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginTop: 4 }}>
+                      {bg.bannerImage && <img src={bg.bannerImage} alt="" style={{ height: 54, borderRadius: 10, border: '1px solid var(--line)' }} />}
+                      <label className="btn ghost" style={{ padding: '8px 12px', cursor: 'pointer' }}>{bg.bannerImage ? 'Replace' : 'Upload'}<input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files[0]; if (f) uploadImage(f, (url) => setBg({ bannerImage: url }), 'birthday'); e.target.value = ''; }} /></label>
+                      {bg.bannerImage && <button type="button" className="link" style={{ color: 'var(--admin-danger, #c0392b)' }} onClick={() => setBg({ bannerImage: '' })}>Remove</button>}
+                      {!data.cloudinary && <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>Add Cloudinary keys in Railway to upload images.</span>}
+                    </div>
+                  </div>
+                  <label className="field" style={{ marginTop: 10 }}><span>Gift terms (customers can read these)</span>
+                    <textarea rows={6} style={ta} value={bg.terms || ''} onChange={(e) => setBg({ terms: e.target.value })} /></label>
+                  <div style={{ display: 'flex', gap: 10, marginTop: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+                    <button type="button" className="btn ghost" onClick={() => setBdayPreview(true)}>👀 Test / preview the birthday screen</button>
+                    <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>Remember to press <strong>Save changes</strong>.</span>
+                  </div>
+                </div>
+
+                <div className="card" style={card}>
+                  <div className="group-title" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                    Everyone’s birthdays
+                    <button type="button" className="btn ghost" style={{ marginLeft: 'auto', padding: '6px 12px' }} disabled={bdayRosterBusy} onClick={loadBdayRoster}>{bdayRosterBusy ? 'Loading…' : 'Refresh'}</button>
+                  </div>
+                  <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 0 }}>Loyalty members who’ve added a birthday, soonest first. Spend is the last 12 months. Tip: a big spender coming up might be worth an extra treat.</p>
+                  {bdayRoster && bdayRoster.error && <p className="error-text">{bdayRoster.error}</p>}
+                  {bdayRoster === null && <p className="muted">Loading…</p>}
+                  {bdayRoster && !bdayRosterBusy && rows.length === 0 && <p className="muted" style={{ fontSize: 'var(--fs-base)' }}>No members have added a birthday yet.</p>}
+                  {rows.length > 0 && (
+                    <div className="loc-avail-list" style={{ maxHeight: 520, marginTop: 6 }}>
+                      {rows.map((r) => (
+                        <div key={r.customerId} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '9px 0', borderTop: '1px solid var(--line)' }}>
+                          <div style={{ flex: '0 0 62px', textAlign: 'center' }}>
+                            <div style={{ fontWeight: 800, fontSize: 'var(--fs-base)' }}>{fmtBday(r.birthday)}</div>
+                            <div className="muted" style={{ fontSize: 'var(--fs-xs)' }}>{fmtUntil(r.daysUntil)}</div>
+                          </div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontWeight: 600 }}>{r.name}{r.isToday && ' 🎂'}</div>
+                            <div className="muted" style={{ fontSize: 'var(--fs-xs)' }}>{r.phone || '—'} · {money(r.spendCents)} over {r.spendOrders} order{r.spendOrders === 1 ? '' : 's'}</div>
+                          </div>
+                          <div style={{ flex: '0 0 auto', display: 'flex', gap: 6, alignItems: 'center' }}>
+                            {r.redeemedThisYear
+                              ? <span className="chip" style={{ background: '#eef7f0', color: '#1c7a41' }}>Gift used</span>
+                              : <span className="chip" style={{ color: 'var(--muted)' }}>Not used</span>}
+                            <button type="button" className="link" style={{ fontSize: 'var(--fs-sm)' }} onClick={() => setBdayEdit({ customerId: r.customerId, name: r.name, month: r.birthday.slice(0, 2), day: r.birthday.slice(3, 5) })}>Edit</button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {bdayPreview && (
+                  <BirthdayOverlay
+                    offer={{ title: bg.bannerTitle, message: bg.bannerMessage, valueCents: bg.valueCents ?? 600, bannerImage: bg.bannerImage, terms: bg.terms }}
+                    currency={cur}
+                    onDismiss={() => setBdayPreview(false)}
+                    onTerms={() => {}}
+                  />
+                )}
+
+                {bdayEdit && (
+                  <div className="backdrop" onClick={() => setBdayEdit(null)}>
+                    <div className="sheet" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 380 }}>
+                      <button className="sheet-close" onClick={() => setBdayEdit(null)} aria-label="Close">✕</button>
+                      <div className="sheet-body">
+                        <h2 style={{ marginBottom: 4 }}>Edit birthday</h2>
+                        <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>Correcting the birthday for <strong>{bdayEdit.name}</strong>. Only do this to fix a genuine error — check ID.</p>
+                        <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                          <select value={bdayEdit.day} onChange={(e) => setBdayEdit((v) => ({ ...v, day: e.target.value }))} style={{ padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 10 }}>
+                            <option value="">Day</option>
+                            {Array.from({ length: 31 }).map((_, i) => { const d = String(i + 1).padStart(2, '0'); return <option key={d} value={d}>{i + 1}</option>; })}
+                          </select>
+                          <select value={bdayEdit.month} onChange={(e) => setBdayEdit((v) => ({ ...v, month: e.target.value }))} style={{ padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 10 }}>
+                            <option value="">Month</option>
+                            {MONTHS.map((m, i) => { const mm = String(i + 1).padStart(2, '0'); return <option key={mm} value={mm}>{m}</option>; })}
+                          </select>
+                        </div>
+                        <button className="btn full" style={{ marginTop: 14 }} disabled={!bdayEdit.month || !bdayEdit.day} onClick={saveAdminBirthday}>Save birthday</button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </>
               );
             })()}
 
