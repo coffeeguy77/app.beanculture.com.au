@@ -962,6 +962,14 @@ async function birthdayClaim(customerId, year) {
     return r.rowCount > 0;
   } catch { return false; }
 }
+// All customers who have claimed their birthday gift this year (for the roster).
+async function birthdayRedeemedSet(year) {
+  if (!pool) return new Set();
+  try {
+    const r = await pool.query('SELECT customer_id FROM birthday_redemptions WHERE year = $1', [year]);
+    return new Set(r.rows.map((x) => x.customer_id));
+  } catch { return new Set(); }
+}
 async function birthdayUnclaim(customerId, year) {
   if (!pool || !customerId) return;
   try { await pool.query('DELETE FROM birthday_redemptions WHERE customer_id = $1 AND year = $2', [customerId, year]); } catch {}
@@ -1116,7 +1124,7 @@ module.exports = {
   init, getOverrides, saveOverrides, listSettingsBackups, restoreSettingsBackup,
   kdsGetStates, kdsSetStatus, kdsNotify, kdsMarkPaid, kdsGetPaid,
   smsRecord, smsCounts, smsCreditsGet, smsCreditsAdd, smsCreditsConsume,
-  birthdayRedeemedThisYear, birthdayClaim, birthdayUnclaim,
+  birthdayRedeemedThisYear, birthdayClaim, birthdayUnclaim, birthdayRedeemedSet,
   posRecordOrder, posPaymentUpsert, posPaymentSetStatus, posPaymentGet, posPaymentByOrder,
   insertScheduled, listScheduledByCustomer, cancelScheduled, claimDue, updateScheduled,
   track, getAnalytics,

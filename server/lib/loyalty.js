@@ -292,12 +292,14 @@ async function listLoyaltyUsers() {
     const balance = a.balance || 0;
     const lifetime = a.lifetime_points || 0;
     const rc = redeem.get(a.id) || { count: 0, last: null };
+    const bdm = String(c.birthday || '').match(/(\d{2})-(\d{2})$/);
     return {
       id: a.id,
       customerId: a.customer_id || null,
       name,
       phone,
       email: c.email_address || '',
+      birthday: bdm ? `${bdm[1]}-${bdm[2]}` : '',   // MM-DD, for the birthday roster
       points: balance,
       lifetimePoints: lifetime,
       redeemedPoints: Math.max(0, lifetime - balance),

@@ -170,6 +170,8 @@ const DEFAULTS = {
     windowDays: 0,            // 0 = birthday day only; N = also the N days around it
     bannerTitle: 'Happy Birthday! 🎂',
     bannerMessage: 'It’s your day — pop in for a coffee on us. Your birthday gift is ready to use at checkout. Enjoy! ☕',
+    bannerImage: '',          // optional custom banner image shown on their day
+
     terms: 'Your birthday gift is one free drink up to the set value, once per year, on your birthday.\n\nTo receive it you must have completed at least one app purchase before your birthday.\n\nYour birthday (day and month) is locked once confirmed and can’t be changed in the app — contact us if it was entered incorrectly.\n\nProof of ID confirming your date of birth may be requested, and the gift is provided at management’s discretion.',
   },
   // Loyalty automation. autoEnrollOnSignIn: create a Square Loyalty account on
