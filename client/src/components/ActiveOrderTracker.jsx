@@ -136,7 +136,9 @@ export default function ActiveOrderTracker({ paused }) {
 
   return (
     <div className={`active-order-bar status-${status}${schedPending ? ' scheduled' : ''}`} role="status">
-      <span className="active-order-emoji">{emoji}</span>
+      <span className="active-order-emoji">{schedPending
+        ? <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 7.5V12l3 2" /></svg>
+        : emoji}</span>
       <div className="active-order-txt"><b>{heading}</b><span>{hintX ? 'Tap ✕ again to close' : label}</span></div>
       <button className="active-order-x" onClick={onXTap} title="Double-tap to dismiss" aria-label="Double-tap to dismiss">✕</button>
     </div>

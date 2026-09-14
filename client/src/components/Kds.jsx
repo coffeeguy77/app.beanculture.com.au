@@ -63,6 +63,7 @@ const IcoGrid = () => <Ico><rect x="3" y="3" width="7" height="7" rx="1" /><rect
 const IcoBell = () => <Ico><path d="M6 8a6 6 0 0 1 12 0c0 7 3 8 3 8H3s3-1 3-8" /><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" /></Ico>;
 const IcoBellOff = () => <Ico><path d="M18.6 14A18 18 0 0 1 18 8" /><path d="M6 8a6 6 0 0 1 9.3-5" /><path d="M6 8c0 7-3 8-3 8h13" /><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" /><line x1="3" y1="3" x2="21" y2="21" /></Ico>;
 const IcoRefresh = () => <Ico><path d="M21 12a9 9 0 1 1-2.64-6.36" /><path d="M21 3v6h-6" /></Ico>;
+const IcoClock = () => <Ico><circle cx="12" cy="12" r="9" /><path d="M12 7.5V12l3 2" /></Ico>;
 
 export default function Kds({ onExit, embedded, location, onControls }) {
   const [pass, setPass] = useState(() => { try { return atob(localStorage.getItem('bc-admin-pass') || '') || ''; } catch { return ''; } });
@@ -522,7 +523,7 @@ export default function Kds({ onExit, embedded, location, onControls }) {
             <div key={t.orderId} className={`kds-card lvl-${lvl}${st === 'preparing' ? ' preparing' : ''}${notified ? ' notified' : ''}${schedPending ? ' scheduled' : ''}`}>
               {notified && <span className="kds-notified-tag">✓ Customer notified</span>}
               {schedMs > 0 && (
-                <span className={`kds-sched-tag${schedPending ? '' : ' due'}`}>⏰ {schedPending ? `Scheduled ${fmtClock(t.scheduledAt)} · ${fmtUntil(t.scheduledAt)}` : `Due now (was ${fmtClock(t.scheduledAt)})`}</span>
+                <span className={`kds-sched-tag${schedPending ? '' : ' due'}`}><IcoClock /> {schedPending ? `Scheduled ${fmtClock(t.scheduledAt)} · ${fmtUntil(t.scheduledAt)}` : `Due now (was ${fmtClock(t.scheduledAt)})`}</span>
               )}
               <div className="kds-card-head">
                 <div className="kds-card-title">
@@ -549,7 +550,7 @@ export default function Kds({ onExit, embedded, location, onControls }) {
               <div className="kds-card-foot">
                 {schedPending ? (
                   /* Locked until the scheduled time — no making/bumping early. */
-                  <div className="kds-sched-lock">🕒 Make at {fmtClock(t.scheduledAt)} — {fmtUntil(t.scheduledAt)}</div>
+                  <div className="kds-sched-lock"><IcoClock /> Make at {fmtClock(t.scheduledAt)} — {fmtUntil(t.scheduledAt)}</div>
                 ) : (
                   <>
                     {/* Notify → tells the app customer it's ready (app orders only)

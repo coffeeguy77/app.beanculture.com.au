@@ -8,7 +8,7 @@ const BALLOON_COLORS = ['#ff5d8f', '#ffd23f', '#6c8cff', '#3ec6a0', '#ff8a3d', '
 // Rising multi-colour balloons + a personal birthday banner, shown only on the
 // signed-in customer's birthday. The gift itself is applied at checkout; this is
 // the celebration.
-export function BirthdayOverlay({ offer, name, currency, onDismiss, onTerms }) {
+export function BirthdayOverlay({ offer, name, currency, onDismiss, onTerms, balloonsOnly }) {
   // Personalise: {name} in the title/message becomes the customer's first name.
   const first = String(name || '').trim().split(/\s+/)[0] || '';
   const fill = (t) => {
@@ -25,20 +25,26 @@ export function BirthdayOverlay({ offer, name, currency, onDismiss, onTerms }) {
     sway: Math.round((Math.random() * 2 - 1) * 16),
   })), []);
   if (!offer) return null;
+  const balloonField = (
+    <div className="bday-balloons" aria-hidden="true">
+      {balloons.map((b, i) => (
+        <span key={i} className="bday-balloon" style={{ left: `${b.left}%`, animationDuration: `${b.dur}s`, animationDelay: `${b.delay}s`, '--sway': `${b.sway}px` }}>
+          <svg width={b.size} height={Math.round(b.size * 1.5)} viewBox="0 0 40 60" aria-hidden="true">
+            <ellipse cx="20" cy="21" rx="16" ry="20" fill={b.c} />
+            <ellipse cx="14" cy="14" rx="4" ry="6" fill="rgba(255,255,255,.35)" />
+            <path d="M20 41 l-3.2 5 h6.4 z" fill={b.c} />
+            <path d="M20 46 q5 7 0 13" stroke={b.c} strokeWidth="1.4" fill="none" />
+          </svg>
+        </span>
+      ))}
+    </div>
+  );
+  // The customer only gets the persistent balloons (the greeting is now the #1
+  // banner in the hero slider); the banner card is kept for the admin preview.
+  if (balloonsOnly) return balloonField;
   return (
     <>
-      <div className="bday-balloons" aria-hidden="true">
-        {balloons.map((b, i) => (
-          <span key={i} className="bday-balloon" style={{ left: `${b.left}%`, animationDuration: `${b.dur}s`, animationDelay: `${b.delay}s`, '--sway': `${b.sway}px` }}>
-            <svg width={b.size} height={Math.round(b.size * 1.5)} viewBox="0 0 40 60" aria-hidden="true">
-              <ellipse cx="20" cy="21" rx="16" ry="20" fill={b.c} />
-              <ellipse cx="14" cy="14" rx="4" ry="6" fill="rgba(255,255,255,.35)" />
-              <path d="M20 41 l-3.2 5 h6.4 z" fill={b.c} />
-              <path d="M20 46 q5 7 0 13" stroke={b.c} strokeWidth="1.4" fill="none" />
-            </svg>
-          </span>
-        ))}
-      </div>
+      {balloonField}
       <div className="bday-banner" role="status">
         <button className="bday-x" onClick={onDismiss} aria-label="Close">✕</button>
         {offer.bannerImage
