@@ -121,6 +121,8 @@ app.get('/api/config', async (_req, res) => {
     footerIconScale: settings.footerIconScale || 1,
     kitchenClosingOrderCategory: settings.kitchenClosingOrderCategory || '',
     preorderCategory: settings.preorderCategory || '',
+    // Show customers the live "your order" tracker (bump-driven). Default on.
+    orderTracker: settings.orderTracker !== false,
     cloudinary: cloudinary.configured(),
     // Optional subtle temperature display. Never blocks app load: we serve the
     // cached reading instantly and refresh in the background. null when the
