@@ -1268,6 +1268,16 @@ function SettingsSheet({ cfg, posLoc, multiStore, curTerm, theme, onTheme, idleS
   };
   const storeName = (cfg.locations || []).find((l) => l.id === posLoc)?.name || '';
   const termOn = !!(curTerm && curTerm.deviceId);
+  // Dine-in keyword trigger (a comma-separated list, saved to pos settings).
+  const [dineKw, setDineKw] = useState((cfg.dineInKeywords || []).join(', '));
+  const [dineSaved, setDineSaved] = useState('');
+  const saveDineKw = () => {
+    const kws = dineKw.split(/[\n,]/).map((s) => s.trim()).filter(Boolean);
+    setDineSaved('saving');
+    api.posSetTerminalOptions(pass, { dineInKeywords: kws })
+      .then((r) => { if (r && Array.isArray(r.dineInKeywords)) setDineKw(r.dineInKeywords.join(', ')); setDineSaved('saved'); setTimeout(() => setDineSaved(''), 2000); })
+      .catch(() => setDineSaved('error'));
+  };
   return (
     <div className="pos-scrim" onClick={onClose}>
       <div className="pos-settings pos-settings-wide" onClick={(e) => e.stopPropagation()}>
@@ -1370,6 +1380,19 @@ function SettingsSheet({ cfg, posLoc, multiStore, curTerm, theme, onTheme, idleS
           <div className="pos-set-row">
             <span className="pos-set-status">{hasPin ? 'Manager PIN set' : 'No manager PIN yet'}</span>
             <button className="pos-btn primary" onClick={() => setShowRefund(true)}>{hasPin ? 'Issue a refund' : 'Set up refunds'}</button>
+          </div>
+        </div>
+
+        <div className="pos-set-block pos-set-span">
+          <div className="pos-set-label">Dine-in labels</div>
+          <p className="pos-set-hint">When an order includes an option — a cup choice or modifier — whose name contains one of these words (e.g. a “Have here” cup), the kitchen screen labels it <b>DINE IN</b> instead of TAKEAWAY. Separate words with commas. Staff swiping the register’s own dine-in / takeaway (fulfilment) toggle always overrides this.</p>
+          <input className="pos-name" style={{ width: '100%' }} value={dineKw}
+            onChange={(e) => setDineKw(e.target.value)} onBlur={saveDineKw}
+            placeholder="have here, dine in, for here, eat in" />
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 8, flexWrap: 'wrap' }}>
+            <button type="button" className="pos-btn primary" onClick={saveDineKw} disabled={dineSaved === 'saving'}>{dineSaved === 'saving' ? 'Saving…' : 'Save keywords'}</button>
+            {dineSaved === 'saved' && <span className="pos-set-hint" style={{ margin: 0, color: '#2e7d32' }}>Saved ✓</span>}
+            {dineSaved === 'error' && <span className="pos-err">Couldn’t save — a database is required to store this.</span>}
           </div>
         </div>
 

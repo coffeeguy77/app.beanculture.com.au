@@ -163,6 +163,7 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
   // any combo is in the cart (the server enforces this too, independently).
   const hasCoupon = !hasCombo && coupon.trim().length > 0;
   const usingReward = !!tierId;
+  const rewardTier = usingReward && loyalty?.tiers ? loyalty.tiers.find((t) => t.id === tierId) : null;
   // A Pay It Forward voucher (claimed via the /gift link, or typed in as a
   // backup code) takes priority over a combo/coupon, same precedent as
   // combo-beats-coupon above -- the server enforces this independently too.
@@ -421,6 +422,15 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
       const pickupAt = isSchedule ? pickupIso() : null;
       const order = await createOrder(pickupAt);
 
+      // If the customer chose a loyalty reward but the server couldn't apply it,
+      // stop here rather than silently charging full price (the held order is
+      // swept automatically). Keep their points and tell them what happened.
+      if (usingReward && loyalty?.accountId && !order.rewardApplied) {
+        throw new Error(order.rewardError === 'no_discount'
+          ? "That reward doesn’t apply to anything in your cart — remove it or add an eligible item, then try again."
+          : "Sorry, we couldn’t apply your reward just now. Your points are untouched — please try again in a moment.");
+      }
+
       // Pay from prepaid balance (gift card).
       if (cardChoice === 'balance') {
         const pay = await api.pay({ orderId: order.orderId, totalMoney: order.totalMoney, customerId: user.customerId, payWith: 'balance', locationId: location?.id });
@@ -507,7 +517,7 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
     ? `Ordering opens ${config.hours?.opening?.label || config.hours?.nextOpen?.label || 'soon'}`
     : autocharge
       ? (isRepeat ? 'Set up repeating order' : 'Schedule order')
-      : (isFree ? 'Place order' : `Pay ${formatMoney(grandTotal, currency)}`);
+      : (isFree ? 'Place order' : usingReward ? 'Redeem reward & check out' : `Pay ${formatMoney(grandTotal, currency)}`);
 
   return (
     <main className="page checkout-page">
@@ -602,7 +612,7 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
         <p className="error-text" style={{ fontSize: 13 }}>Sign in from the Account tab to set up auto-charge at pickup. Or choose “Pay now” to pre-order as a guest.</p>
       )}
 
-      {!eventMode && loyalty?.active && loyalty.tiers?.length > 0 && when === 'asap' && (
+      {!eventMode && loyalty?.active && loyalty.tiers?.length > 0 && !autocharge && (
         <div style={{ marginTop: 16 }}>
           <div className="group-title">Rewards · {loyalty.balance} {loyalty.terminology?.other || 'points'}</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -781,7 +791,8 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
           <>{surchargeRows}<div className="row grand"><span>Total</span><span>{formatMoney(grandTotal, currency)}</span></div></>
         )}
         {hasCoupon && !couponValid && couponInfo && <div className="row discount"><span>{couponReasonText(couponInfo)}</span><span>—</span></div>}
-        {usingReward && <div className="row discount"><span>Reward applied at payment</span><span>—</span></div>}
+        {usingReward && <div className="row discount"><span>🎁 {rewardTier?.name || 'Reward'} — discount applied at payment</span><span>−{rewardTier?.points || ''} pts</span></div>}
+        {usingReward && <p className="muted" style={{ fontSize: 11.5, marginTop: 2 }}>Your reward is applied when you check out — the total above drops to the discounted amount (often $0).</p>}
         {autocharge && <div className="row"><span>{isRepeat ? 'Charged each time' : 'Charged at pickup'}</span><span>{formatMoney(payTotal, currency)}</span></div>}
       </div>
 
