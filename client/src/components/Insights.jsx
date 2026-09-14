@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { formatMoney } from '../api.js';
+import { formatMoney, api } from '../api.js';
 
 /* ═══════════════════════════════════════════════════════════════════════════
    Insights — premium admin analytics dashboard.
@@ -315,101 +315,104 @@ function dateTime(iso) {
 // App sales — the mobile app's own takings, split out from the combined
 // (app + POS) revenue above. Shows a per-day value breakdown and every
 // individual app order, which is what the owner asked to see on the dashboard.
-function AppSalesCard({ sales }) {
-  const [expanded, setExpanded] = useState(false);
-  const [openId, setOpenId] = useState(null); // which order is expanded to show its items
-  const cur = (sales && sales.currency) || 'AUD';
-  const app = (sales && sales.app) || null;
+// App sales — every order customers placed themselves in the app, for ONE day
+// (today, or the date you pick). Live from Square, includes app orders that are
+// still OPEN but paid. Tap any order to see the items, value, payment method,
+// and whether points were used (a free coffee) or earned (Stars on a coffee).
+function AppSalesCard() {
+  const localToday = () => new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD, venue-local
+  const [date, setDate] = useState(localToday);
+  const [data, setData] = useState(null);   // null | { error } | payload
+  const [loading, setLoading] = useState(true);
+  const [openId, setOpenId] = useState(null);
+  const pass = (() => { try { return atob(localStorage.getItem('bc-admin-pass') || '') || ''; } catch { return ''; } })();
+  const todayStr = localToday();
 
-  if (sales && sales.error) {
-    return <DashboardCard title="App sales" subtitle="Mobile app orders, by day" span="3">
-      <ErrorState message={sales.error === true ? 'Sales data unavailable.' : sales.error} />
-    </DashboardCard>;
-  }
+  useEffect(() => {
+    let alive = true;
+    setLoading(true); setOpenId(null);
+    api.appSales(pass, { date })
+      .then((d) => { if (alive) { setData(d && d.error ? { error: d.error } : d); setLoading(false); } })
+      .catch((e) => { if (alive) { setData({ error: (e && e.message) || true }); setLoading(false); } });
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [date]);
 
-  const daily = (app && app.daily) || [];
-  const list = (app && app.list) || [];
-  const maxRev = Math.max(1, ...daily.map((d) => d.revenue || 0));
+  const cur = (data && data.currency) || 'AUD';
+  const orders = (data && data.orders) || [];
+  const shiftDay = (delta) => { const d = new Date(date + 'T00:00:00'); d.setDate(d.getDate() + delta); setDate(d.toLocaleDateString('en-CA')); };
 
-  const chips = app ? (
-    <div className="ins-chips">
-      <span className="ins-chip"><b>{formatMoney(app.revenue || 0, cur)}</b> app total</span>
-      <span className="ins-chip"><b>{num(app.orders || 0)}</b> orders</span>
-      <span className="ins-chip"><b>{formatMoney(app.avgOrder || 0, cur)}</b> avg</span>
+  const selector = (
+    <div className="ins-appsales-datebar">
+      <button type="button" className="ins-daynav" onClick={() => shiftDay(-1)} aria-label="Previous day">‹</button>
+      <input type="date" className="ins-dateinput" value={date} max={todayStr} onChange={(e) => e.target.value && setDate(e.target.value)} />
+      <button type="button" className="ins-daynav" onClick={() => shiftDay(1)} disabled={date >= todayStr} aria-label="Next day">›</button>
+      {date !== todayStr && <button type="button" className="ins-today-btn" onClick={() => setDate(todayStr)}>Today</button>}
     </div>
-  ) : null;
-
-  const shown = expanded ? list : list.slice(0, 8);
+  );
 
   return (
-    <DashboardCard title="App sales" subtitle="Mobile app orders, by day" span="3" right={chips}>
-      {(!app || (daily.length === 0 && list.length === 0)) ? (
-        <EmptyState>No app orders in this period.</EmptyState>
+    <DashboardCard title="App sales" subtitle="Every app order — today or a date you pick" span="3" right={selector}>
+      {loading ? (
+        <Skeleton h={150} r={12} />
+      ) : data && data.error ? (
+        <ErrorState message={data.error === true ? 'App sales unavailable.' : data.error} />
       ) : (
-        <div className="ins-appsales">
-          {daily.length > 0 && (
-            <div className="ins-appsales-days">
-              {[...daily].reverse().map((d) => (
-                <div key={d.day} className="ins-appsales-day">
-                  <span className="ins-appsales-date">{longDate(d.day)}</span>
-                  <span className="ins-appsales-bar">
-                    <span className="ins-appsales-fill" style={{ width: `${Math.round(((d.revenue || 0) / maxRev) * 100)}%` }} />
-                  </span>
-                  <span className="ins-appsales-val"><b>{formatMoney(d.revenue || 0, cur)}</b> · {num(d.orders || 0)}</span>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {list.length > 0 && (
+        <>
+          <div className="ins-chips" style={{ marginBottom: 12 }}>
+            <span className="ins-chip"><b>{formatMoney(data.total || 0, cur)}</b> total</span>
+            <span className="ins-chip"><b>{num(data.count || 0)}</b> {(data.count === 1) ? 'order' : 'orders'}</span>
+            <span className="ins-chip"><b>{formatMoney(data.count ? Math.round((data.total || 0) / data.count) : 0, cur)}</b> avg</span>
+          </div>
+          {orders.length === 0 ? (
+            <EmptyState>No app orders on {longDate(date)}.</EmptyState>
+          ) : (
             <div className="ins-appsales-orders">
-              <div className="ins-appsales-orders-head">Each order ({num(list.length)})</div>
+              <div className="ins-appsales-orders-head">{longDate(date)} · tap an order for details</div>
               <ul className="ins-appsales-list">
-                {shown.map((o) => {
+                {orders.map((o) => {
                   const open = openId === o.id;
                   const items = o.items || [];
                   return (
-                  <li key={o.id} className="ins-appsales-order" style={{ cursor: 'pointer' }}
-                    onClick={() => setOpenId(open ? null : o.id)}
-                    title="Tap to see what was ordered">
-                    <span className="ins-appsales-order-main">
-                      <span className="ins-appsales-order-name" title={o.name}>{o.name} <span aria-hidden="true" style={{ opacity: 0.6, fontSize: '0.8em' }}>{open ? '▲' : '▼'}</span></span>
-                      {!open && (
-                        <span className="ins-appsales-order-items">
-                          {items.map((it) => `${it.qty}× ${it.name}${it.variation ? ` (${it.variation})` : ''}`).join(', ') || '—'}
-                        </span>
-                      )}
-                      {open && (
-                        <span className="ins-appsales-order-detail" style={{ display: 'block', marginTop: 6 }}>
-                          {items.length === 0 && <span className="ins-appsales-order-items">No item detail recorded.</span>}
-                          {items.map((it, i) => (
-                            <span key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '3px 0', borderTop: i ? '1px solid var(--ins-line, rgba(0,0,0,0.08))' : 'none' }}>
-                              <span style={{ minWidth: 0 }}>
-                                {it.qty}× {it.name}{it.variation ? ` · ${it.variation}` : ''}
-                                {it.modifiers ? <span style={{ opacity: 0.7 }}> — {it.modifiers}</span> : ''}
+                    <li key={o.id} className="ins-appsales-order" style={{ cursor: 'pointer' }}
+                      onClick={() => setOpenId(open ? null : o.id)} title="Tap to see what was ordered">
+                      <span className="ins-appsales-order-main">
+                        <span className="ins-appsales-order-name" title={o.name}>{o.name} <span aria-hidden="true" style={{ opacity: 0.6, fontSize: '0.8em' }}>{open ? '▲' : '▼'}</span></span>
+                        {!open ? (
+                          <span className="ins-appsales-order-items">
+                            {items.map((it) => `${it.qty}× ${it.name}${it.variation ? ` (${it.variation})` : ''}`).join(', ') || '—'}
+                          </span>
+                        ) : (
+                          <span className="ins-appsales-order-detail" style={{ display: 'block', marginTop: 6 }}>
+                            {items.length === 0 && <span className="ins-appsales-order-items">No item detail recorded.</span>}
+                            {items.map((it, i) => (
+                              <span key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '3px 0', borderTop: i ? '1px solid var(--ins-line, rgba(0,0,0,0.08))' : 'none' }}>
+                                <span style={{ minWidth: 0 }}>
+                                  {it.qty}× {it.name}{it.variation ? ` · ${it.variation}` : ''}
+                                  {it.modifiers ? <span style={{ opacity: 0.7 }}> — {it.modifiers}</span> : ''}
+                                </span>
+                                {it.amount != null && <span style={{ whiteSpace: 'nowrap', fontWeight: 600 }}>{formatMoney(it.amount, cur)}</span>}
                               </span>
-                              {it.amount != null && <span style={{ whiteSpace: 'nowrap', fontWeight: 600 }}>{formatMoney(it.amount, cur)}</span>}
+                            ))}
+                            <span className="ins-appsales-tags">
+                              <span className="ins-tag">💳 {o.payment || '—'}</span>
+                              {o.freeCoffees > 0 && <span className="ins-tag free">☕ {o.freeCoffees} free coffee{o.freeCoffees === 1 ? '' : 's'} used</span>}
+                              {o.pointsEarned != null && <span className={`ins-tag ${o.pointsEarned > 0 ? 'earn' : 'muted'}`}>{o.pointsEarned > 0 ? `★ +${o.pointsEarned} earned` : '★ none earned'}</span>}
                             </span>
-                          ))}
-                        </span>
-                      )}
-                    </span>
-                    <span className="ins-appsales-order-meta">
-                      <span className="ins-appsales-order-amt">{formatMoney(o.total || 0, cur)}</span>
-                      <span className="ins-appsales-order-time">{dateTime(o.at)}</span>
-                    </span>
-                  </li>
+                          </span>
+                        )}
+                      </span>
+                      <span className="ins-appsales-order-meta">
+                        <span className="ins-appsales-order-amt">{formatMoney(o.total || 0, cur)}</span>
+                        <span className="ins-appsales-order-time">{dateTime(o.at)}</span>
+                      </span>
+                    </li>
                   );
                 })}
               </ul>
-              {list.length > 8 && (
-                <button type="button" className="ins-viewall" onClick={() => setExpanded((v) => !v)}>
-                  {expanded ? 'Show less' : `View all (${num(list.length)})`}
-                </button>
-              )}
             </div>
           )}
-        </div>
+        </>
       )}
     </DashboardCard>
   );
@@ -794,7 +797,7 @@ export function AppPerformanceSection({ days, onDays, dashboard, analytics, refr
       <div className="ins-section">
         {dashLoading
           ? <div className="ins-grid"><DashboardCard span="3" title="App sales"><Skeleton h={160} r={12} /></DashboardCard></div>
-          : <div className="ins-grid"><AppSalesCard sales={sales} /></div>}
+          : <div className="ins-grid"><AppSalesCard /></div>}
       </div>
     </div>
   );
@@ -962,7 +965,7 @@ export default function Insights({ days, onDays, dashboard, analytics, customers
             <RevenuePerformanceChart sales={sales} />
           </div>
           <div className="ins-grid">
-            <AppSalesCard sales={sales} />
+            <AppSalesCard />
           </div>
         </div>
       )}
