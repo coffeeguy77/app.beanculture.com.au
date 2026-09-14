@@ -411,6 +411,13 @@ const DEFAULTS = {
     terminalDeviceId: '',   // default/fallback Square Terminal device id
     terminalName: '',       // friendly name of that reader
     terminalByLocation: {}, // per-store readers: { [locationId]: { deviceId, name } }
+    // "Dine in" keyword trigger (Admin → POS settings). If a counter/register
+    // order carries an option — a variation or modifier — whose name contains
+    // one of these words (case-insensitive), the kitchen screen labels it
+    // DINE IN instead of the default TAKEAWAY. e.g. a "Have here" cup option.
+    // The register's own fulfilment-method toggle, when staff use it, overrides
+    // this. See server/lib/kds.js parseTicketMeta.
+    dineInKeywords: ['have here', 'dine in', 'for here', 'eat in'],
   },
   // ── Smart Campaigns: contextual merchandising driven by rules (Weather first;
   //    future: time, holidays, stock, loyalty…). A single server-side resolver

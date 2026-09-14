@@ -45,21 +45,86 @@ function kdsSettings(locationId) {
     redMin: Number(s.redMin) >= 0 ? Number(s.redMin) : 12,
     sound: s.sound !== false,
     showPrepStep: s.showPrepStep !== false,
+    // "Dine in" keyword trigger: if a counter/register order carries an option
+    // (variation / modifier) whose name contains one of these words, it's shown
+    // as DINE IN instead of the default TAKEAWAY. Global (from pos settings), so
+    // it's the same on every screen. See parseTicketMeta for the full precedence.
+    dineInKeywords: Array.isArray(all.pos && all.pos.dineInKeywords)
+      ? all.pos.dineInKeywords.map((k) => String(k || '').trim()).filter(Boolean)
+      : [],
   };
+}
+
+// The register's own "fulfilment method / order type" toggle, read off the Square
+// order's fulfillment TYPE. When staff explicitly pick a dine-in order type on the
+// register, that choice is authoritative and OVERRIDES the keyword trigger.
+// Returns true (dine in), false (takeaway) or undefined (no explicit signal —
+// e.g. the plain PICKUP fulfilment Square/our app adds to every order, which must
+// NOT block the keyword). We only read the fulfilment TYPE, never its note — our
+// own orders carry the literal word "TAKEAWAY" in that note, so scanning it would
+// wrongly veto the keyword on every counter order.
+function fulfillmentDineIn(order) {
+  for (const f of (order.fulfillments || [])) {
+    const type = String((f && f.type) || '').toUpperCase().replace(/[\s-]+/g, '_');
+    if (type === 'DINE_IN' || type === 'DINEIN' || type === 'IN_HOUSE' || type === 'EAT_IN') return true;
+    if (type === 'TAKEAWAY' || type === 'TAKEOUT' || type === 'TO_GO') return false;
+  }
+  return undefined;
+}
+
+// Does any line's option text (variation, modifier, item name or line note)
+// contain one of the configured dine-in keywords? Case-insensitive substring
+// match, so "Have here" matches a keyword of "have here". This is what turns a
+// "Have here cup" latte into a DINE IN ticket.
+function dineInKeywordHit(order, keywords) {
+  const kws = (keywords || []).map((k) => String(k || '').trim().toLowerCase()).filter(Boolean);
+  if (!kws.length) return false;
+  const parts = [];
+  for (const li of (order.line_items || [])) {
+    if (li.variation_name) parts.push(li.variation_name);
+    if (li.name) parts.push(li.name);
+    if (li.note) parts.push(li.note);
+    for (const m of (li.modifiers || [])) if (m && m.name) parts.push(m.name);
+  }
+  const blob = parts.join(' │ ').toLowerCase();
+  return kws.some((k) => blob.includes(k));
 }
 
 // Pull dine-in / table / customer-name signals out of the Square ticket name +
 // note (the app encodes them there — "T5 DINE-IN", "TAKEAWAY Alex", etc.).
-function parseTicketMeta(order) {
+function parseTicketMeta(order, cfg) {
   const tn = (order.ticket_name || '').trim();
   const note = (order.note || '').trim();
   const md = order.metadata || {};
-  const appOrigin = originOf(order) === 'app';
-  // Dine-in: trust the explicit metadata flag first (set at order creation);
-  // only fall back to text-parsing for legacy/POS orders that lack it.
-  const dineIn = md.bc_dinein === '1' ? true
-    : md.bc_dinein === '0' ? false
-    : (/dine-?in/i.test(tn) || /dine-?in/i.test(note));
+  const origin = originOf(order);
+  const appOrigin = origin === 'app';
+  const keywords = (cfg && cfg.dineInKeywords) || [];
+  // Dine-in vs takeaway, in priority order:
+  //  1. The register's own fulfilment-method / order-type toggle, when staff
+  //     explicitly set it — that choice wins over everything (the owner asked
+  //     for the register swipe to override the keyword trigger).
+  //  2. An app order's explicit bc_dinein flag (the customer's own choice in the
+  //     app), set at order creation — never second-guessed by a keyword.
+  //  3. The DINE IN keyword trigger: a counter/register order (or any order with
+  //     no explicit app choice) whose options contain a configured keyword —
+  //     e.g. a "Have here" cup — is treated as dine in. This is the fix for
+  //     counter orders that would otherwise always read TAKEAWAY.
+  //  4. Legacy fallback: parse "dine-in" out of the ticket name / note.
+  const fulfilChoice = fulfillmentDineIn(order);
+  let dineIn;
+  if (fulfilChoice !== undefined) {
+    dineIn = fulfilChoice;
+  } else if (md.bc_dinein === '1') {
+    dineIn = true;
+  } else if (dineInKeywordHit(order, keywords) && (origin === 'pos' || md.bc_dinein == null || md.bc_dinein === '')) {
+    // Counter/register order carrying a dine-in option. We don't override an app
+    // customer who explicitly chose takeaway (bc_dinein === '0' on an app order).
+    dineIn = true;
+  } else if (md.bc_dinein === '0') {
+    dineIn = false;
+  } else {
+    dineIn = (/dine-?in/i.test(tn) || /dine-?in/i.test(note));
+  }
   // Table only matters for dine-in. Prefer the raw label stashed in bc_booth
   // (covers named tables like "Shaun's Desk"); the T<n> regex requires DIGITS so
   // it can't wrongly grab "AKEAWAY" out of "TAKEAWAY".
@@ -94,7 +159,7 @@ function parseTicketMeta(order) {
 function buildTickets(orders, varCat, states, cfg, now = Date.now()) {
   const zones = Array.isArray(cfg.zones) ? cfg.zones.filter((z) => z && z.id) : [];
   return (orders || []).map((o) => {
-    const meta = parseTicketMeta(o);
+    const meta = parseTicketMeta(o, cfg);
     const origin = originOf(o);
     const appOrigin = origin === 'app';
     const posOrigin = origin === 'pos';
