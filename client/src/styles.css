@@ -960,6 +960,24 @@ img { max-width: 100%; }
   display: flex; align-items: center; gap: 12px; padding: 11px 14px; border-radius: 14px; background: #2a1620; color: #fff; box-shadow: 0 10px 34px rgba(0,0,0,.32); }
 .active-order-bar.status-ready { background: #2e7d51; animation: aob-pulse 1.5s ease-in-out infinite; }
 .active-order-bar.scheduled { background: #2a3550; }
+
+/* ── Birthday: rising balloons + personal banner ── */
+.bday-balloons { position: fixed; inset: 0; pointer-events: none; z-index: 1290; overflow: hidden; }
+.bday-balloon { position: absolute; bottom: -90px; animation-name: bday-rise; animation-timing-function: linear; animation-iteration-count: infinite; will-change: transform, opacity; }
+@keyframes bday-rise {
+  0% { transform: translateY(0) translateX(0); opacity: 0; }
+  8% { opacity: .95; }
+  88% { opacity: .95; }
+  100% { transform: translateY(-118vh) translateX(var(--sway, 0px)); opacity: 0; }
+}
+.bday-banner { position: fixed; left: 12px; right: 12px; top: calc(10px + env(safe-area-inset-top, 0px)); margin: 0 auto; max-width: 440px; z-index: 1295; background: linear-gradient(135deg, #ff5d8f, #b06cff); color: #fff; border-radius: 16px; padding: 14px 16px 16px; box-shadow: 0 12px 40px rgba(0,0,0,.28); text-align: center; }
+.bday-x { position: absolute; top: 8px; right: 8px; width: 28px; height: 28px; border: none; border-radius: 50%; background: rgba(255,255,255,.22); color: #fff; cursor: pointer; font-size: 13px; }
+.bday-emoji { font-size: 26px; line-height: 1; }
+.bday-title { font-size: 19px; font-weight: 900; margin-top: 3px; }
+.bday-msg { font-size: 13.5px; margin-top: 6px; opacity: .96; line-height: 1.45; }
+.bday-gift { margin-top: 10px; background: rgba(255,255,255,.18); border-radius: 10px; padding: 8px 10px; font-weight: 800; font-size: 13.5px; }
+.bday-terms-link { margin-top: 10px; background: none; border: none; color: #fff; text-decoration: underline; font-size: 12.5px; cursor: pointer; opacity: .92; }
+@media (prefers-reduced-motion: reduce) { .bday-balloon { animation: none; opacity: .9; } }
 .active-order-emoji { font-size: 26px; line-height: 1; flex: none; }
 .active-order-txt { display: flex; flex-direction: column; line-height: 1.2; flex: 1; min-width: 0; }
 .active-order-txt b { font-size: 11px; font-weight: 700; opacity: .75; text-transform: uppercase; letter-spacing: .04em; }

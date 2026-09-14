@@ -20,6 +20,7 @@ import Kds from './components/Kds.jsx';
 import Pos from './components/Pos.jsx';
 import LiveOrderStatus from './components/LiveOrderStatus.jsx';
 import ActiveOrderTracker, { saveActiveOrder } from './components/ActiveOrderTracker.jsx';
+import { BirthdayOverlay, BirthdayTerms } from './components/Birthday.jsx';
 import PayItForward from './components/PayItForward.jsx';
 import GiftClaim from './components/GiftClaim.jsx';
 import Logo from './components/Logo.jsx';
@@ -243,8 +244,28 @@ export default function App() {
   });
 
   const [user, setUserState] = useState(getUser());
+  const [bdayOffer, setBdayOffer] = useState(null);   // birthday gift eligibility
+  const [bdayDismissed, setBdayDismissed] = useState(false);
+  const [bdayTerms, setBdayTerms] = useState(false);
   const [view, setView] = useState('home'); // home | cart | checkout | done | account | admin
   const [activeItem, setActiveItem] = useState(null);
+
+  // Birthday gift: when a signed-in customer is eligible today, celebrate (balloons
+  // + banner) and let checkout auto-apply the gift. Dismissable once per day.
+  useEffect(() => {
+    if (!user?.customerId) { setBdayOffer(null); return; }
+    let alive = true;
+    api.birthdayOffer(user.customerId).then((o) => { if (alive) setBdayOffer(o && o.eligible ? o : null); }).catch(() => {});
+    try {
+      const key = `bc-bday-dismissed-${new Date().toISOString().slice(0, 10)}`;
+      setBdayDismissed(localStorage.getItem(key) === '1');
+    } catch {}
+    return () => { alive = false; };
+  }, [user?.customerId]);
+  const dismissBday = () => {
+    setBdayDismissed(true);
+    try { localStorage.setItem(`bc-bday-dismissed-${new Date().toISOString().slice(0, 10)}`, '1'); } catch {}
+  };
   const [showTheme, setShowTheme] = useState(false);
   const [showPif, setShowPif] = useState(false);
   const [pifEnabled, setPifEnabled] = useState(false);
@@ -1049,6 +1070,7 @@ export default function App() {
       dineIn={dineIn} setDineIn={setDineIn} table={table} setTable={setTable}
       tableLock={tableLock} onUnlockTable={unlockTable} onScanTable={applyScannedTable}
       name={name} setName={setName} user={user} canOrder={canOrder}
+      birthdayOffer={bdayOffer}
       preWhen={preWhen} preAt={preAt}
       orderSrc={qrLocked ? 'qr' : ''}
       onPaid={onPaid} onScheduled={onScheduledOrder} onBack={() => setView(wide ? 'home' : 'cart')}
@@ -1343,6 +1365,10 @@ export default function App() {
           : `${Number(config.siteMaxWidth) || 1920}px`,
       }}>
       {config.orderTracker !== false && <ActiveOrderTracker paused={view === 'done' || view === 'checkout' || view === 'admin'} />}
+      {bdayOffer && !bdayDismissed && view !== 'admin' && (
+        <BirthdayOverlay offer={bdayOffer} currency={config.currency} onDismiss={dismissBday} onTerms={() => setBdayTerms(true)} />
+      )}
+      {bdayTerms && <BirthdayTerms terms={bdayOffer?.terms} onClose={() => setBdayTerms(false)} />}
       {resolvedEffectPreset && (
         <EffectOverlay
           preset={resolvedEffectPreset}

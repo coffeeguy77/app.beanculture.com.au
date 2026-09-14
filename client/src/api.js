@@ -46,6 +46,7 @@ export const api = {
   // Customer birthday (for birthday-special coupons)
   getBirthday: (customerId) => req(`/api/profile/birthday?customerId=${encodeURIComponent(customerId || '')}`),
   setBirthday: (customerId, birthday) => req('/api/profile/birthday', { method: 'POST', body: JSON.stringify({ customerId, birthday }) }),
+  birthdayOffer: (customerId) => req(`/api/birthday/offer?customerId=${encodeURIComponent(customerId || '')}`),
   // Admin: customers enrolled via Square loyalty
   adminCustomers: (pass) => req(`/api/admin/customers?pass=${encodeURIComponent(pass || '')}`),
   appSales: (pass, arg) => {
