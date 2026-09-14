@@ -5,9 +5,11 @@ import { api } from '../api.js';
 // customer around the app (and survives a reload / locking the phone), polling
 // the KDS-driven status so they see Received → Being prepared → Ready even if
 // they navigated away from the confirmation screen. Clears itself on collection
-// or after 30 minutes. No SMS / phone number needed.
+// or after 60 minutes, or when the customer double-taps the ✕. No SMS / phone
+// number needed. Only shown when the café enables it (Admin → Kitchen Screen).
 
 const KEY = 'bc-active-order';
+const MAX_AGE_MS = 60 * 60000; // auto-dismiss 60 minutes after ordering
 export function saveActiveOrder(o) {
   try { if (o && o.orderId) localStorage.setItem(KEY, JSON.stringify({ ...o, at: Date.now() })); } catch {}
 }
@@ -16,7 +18,7 @@ function readActiveOrder() {
   try {
     const o = JSON.parse(localStorage.getItem(KEY) || 'null');
     if (!o || !o.orderId) return null;
-    if (Date.now() - (o.at || 0) > 30 * 60000) return null;   // stale
+    if (Date.now() - (o.at || 0) > MAX_AGE_MS) return null;   // stale
     return o;
   } catch { return null; }
 }
@@ -47,7 +49,9 @@ function readyChime() {
 export default function ActiveOrderTracker({ paused }) {
   const [order, setOrder] = useState(readActiveOrder);
   const [status, setStatus] = useState('new');
+  const [hintX, setHintX] = useState(false); // brief "tap again to close" nudge
   const chimedRef = useRef(false);
+  const lastTapRef = useRef(0);
 
   // Pick up a newly-saved order (set right after checkout) without a reload.
   useEffect(() => {
@@ -82,14 +86,27 @@ export default function ActiveOrderTracker({ paused }) {
   if (!order || paused || status === 'done') return null;
   const l = LABELS[status] || LABELS.new;
   const label = status === 'ready'
-    ? (order.dineIn ? (order.table ? `Ready — coming to table ${order.table}!` : 'Ready — on its way!') : 'Ready for collection!')
+    ? (order.dineIn
+        ? (order.table ? `Coming to table ${order.table} — sit tight!` : 'On its way to your table — sit tight!')
+        : 'Order ready — come on in!')
     : l.t;
+  const dismiss = () => { clearActiveOrder(); setOrder(null); };
+  // Require a DOUBLE tap/click to close (two within 500ms), so an accidental
+  // single tap never dismisses the tracker. onClick fires for both mouse and
+  // touch, so this works reliably on phones where dblclick often doesn't.
+  const onXTap = () => {
+    const now = Date.now();
+    if (now - lastTapRef.current < 500) { lastTapRef.current = 0; dismiss(); return; }
+    lastTapRef.current = now;
+    setHintX(true);
+    setTimeout(() => setHintX(false), 1400);
+  };
 
   return (
     <div className={`active-order-bar status-${status}`} role="status">
       <span className="active-order-emoji">{l.e}</span>
-      <div className="active-order-txt"><b>Your order</b><span>{label}</span></div>
-      <button className="active-order-x" onClick={() => { clearActiveOrder(); setOrder(null); }} aria-label="Dismiss">✕</button>
+      <div className="active-order-txt"><b>Your order</b><span>{hintX ? 'Tap ✕ again to close' : label}</span></div>
+      <button className="active-order-x" onClick={onXTap} title="Double-tap to dismiss" aria-label="Double-tap to dismiss">✕</button>
     </div>
   );
 }

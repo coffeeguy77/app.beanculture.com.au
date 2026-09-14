@@ -4114,6 +4114,16 @@ export default function Admin({ onExit }) {
                 </div>
 
                 <div className="card" style={card}>
+                  <div className="group-title">Customer order tracker</div>
+                  <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 0 }}>A live &ldquo;your order&rdquo; bar sits at the top of the customer&rsquo;s app after they order and follows them around &mdash; even if they browse for another coffee or lock their phone. The moment your staff <strong>bump</strong> the ticket on this Kitchen Screen, it flips to <strong>&ldquo;Order ready&rdquo;</strong> with a chime, so they know to come in and collect (or that it&rsquo;s on its way to their table). It clears itself after 60 minutes, or a customer can double-tap the ✕ to dismiss it.</p>
+                  <label className="avail-switch" style={{ marginTop: 6 }}>
+                    <input type="checkbox" checked={s?.orderTracker !== false} onChange={(e) => set({ orderTracker: e.target.checked })} />
+                    <span>Show customers the live order tracker</span>
+                  </label>
+                  <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 10 }}>Turn this <strong>off</strong> if you don&rsquo;t use the bump / ready function &mdash; otherwise customers would see a status that never advances. Remember to press <strong>Save changes</strong>.</p>
+                </div>
+
+                <div className="card" style={card}>
                   <div className="group-title">Instant updates (optional)</div>
                   <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 0 }}>The screen already updates on its own every few seconds. To make new orders appear <em>the instant</em> they&rsquo;re placed, add a Square webhook &mdash; then order changes push straight to every screen.</p>
                   <ol className="muted" style={{ fontSize: 'var(--fs-sm)', paddingLeft: 18, lineHeight: 1.7 }}>
