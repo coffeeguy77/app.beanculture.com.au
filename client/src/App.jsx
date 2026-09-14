@@ -844,7 +844,7 @@ export default function App() {
     // Remember it as the active order so the live tracker follows the customer
     // around the app (and back after a reload), not just on this screen. Skip
     // scheduled pre-orders — those aren't "being made now".
-    if (order && (order.orderId || order.id) && !(meta && meta.pickupAt)) {
+    if (config?.orderTracker !== false && order && (order.orderId || order.id) && !(meta && meta.pickupAt)) {
       saveActiveOrder({ orderId: order.orderId || order.id, dineIn, table });
     }
     setCompleted({ payment, order, meta: meta || {} });
@@ -1341,7 +1341,7 @@ export default function App() {
           ? 'none'
           : `${Number(config.siteMaxWidth) || 1920}px`,
       }}>
-      <ActiveOrderTracker paused={view === 'done' || view === 'checkout' || view === 'admin'} />
+      {config.orderTracker !== false && <ActiveOrderTracker paused={view === 'done' || view === 'checkout' || view === 'admin'} />}
       {resolvedEffectPreset && (
         <EffectOverlay
           preset={resolvedEffectPreset}
