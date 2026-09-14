@@ -296,7 +296,12 @@ app.get('/api/order-status', async (req, res) => {
       const topZoneId = readyZones.length ? readyZones[0][0] : null;
       message = (topZoneId && zoneMsg[topZoneId]) || (settings.orderReadyMessage && String(settings.orderReadyMessage).trim()) || undefined;
     }
-    res.json({ orderId, status, message });
+    // When staff last hit "Notify" (and how many times) — lets the customer app
+    // re-chime if they were re-notified after missing the first alert.
+    const notif = zones['__notified__'] || null;
+    const notifiedAt = notif && notif.bumpedAt ? notif.bumpedAt : undefined;
+    const notifyCount = (notif && notif.notifyCount) || 0;
+    res.json({ orderId, status, message, notifiedAt, notifyCount });
   } catch { res.json({ orderId, status: 'new' }); }
 });
 
@@ -2017,6 +2022,34 @@ app.post('/api/admin/kds/bump', async (req, res) => {
     }
     kdsBroadcast('bump');
     res.json({ ok: true, count: rows.length, row: rows[0], rows });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+// Notify: tell an app customer their order is ready — WITHOUT clearing the ticket
+// (that's Bump). Marks the order's station(s) 'ready' so the customer's live
+// tracker flips to "ready", records the notification (count + timestamp) so staff
+// can see how long ago they were told, and re-sends the SMS/email each press so a
+// customer who didn't hear the first chime can be reminded. The ticket stays on
+// screen (dimmed) until staff Bump it once the order is collected.
+app.post('/api/admin/kds/notify', async (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const { orderId, zone, zones } = req.body || {};
+    if (!orderId) return res.status(400).json({ error: 'Missing orderId' });
+    // The station lane(s) to mark ready — a single zone, or the order's real
+    // stations when notifying from the "All orders" lane.
+    const targets = (Array.isArray(zones) ? zones : [zone]).filter(Boolean);
+    if (!targets.length) return res.status(400).json({ error: 'Missing zone' });
+    for (const z of targets) await db.kdsSetStatus(orderId, z, 'ready');
+    // Record this notification (count++ / last-notified = now).
+    const n = await db.kdsNotify(orderId);
+    // Re-send the SMS/email each press — the whole point of Notify-again is to
+    // remind a customer who missed it. Best-effort; never blocks the response.
+    notifyOrderReady(orderId).catch(() => {});
+    kdsBroadcast('bump');
+    res.json({ ok: true, notifyCount: n.count, notifiedAt: n.at });
   } catch (e) {
     res.status(400).json({ error: e.message });
   }
