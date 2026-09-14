@@ -133,20 +133,45 @@ async function accountHistory(accountId, limit = 50) {
   } catch { return []; }
 }
 
-// Combined view for the app: balance + which tiers the customer can afford.
+// Combined view for the app: balance + which tiers the customer can afford, PLUS
+// a "stamp card" reading of the program — the cheapest tier is treated as the
+// "free coffee", so the app can show a balance of whole free coffees and the
+// cups-filling progress toward the next one, instead of a raw points number.
 async function getCustomerLoyalty(phone) {
   const [program, account] = await Promise.all([getProgram(), getAccountByPhone(phone)]);
   if (!program.active) return { active: false };
+  const balance = account ? (account.balance || 0) : 0;
+  // The "free coffee" = the cheapest reward tier (Bean Culture has one: 10 Stars).
+  const rewardTier = (program.tiers || []).slice().sort((a, b) => a.points - b.points)[0] || null;
+  const pointsPerReward = Math.max(1, rewardTier ? rewardTier.points : 10);
+  const freeCoffees = Math.floor(balance / pointsPerReward);   // whole free drinks in hand
+  const progress = balance % pointsPerReward;                   // cups filled toward the next
   return {
     active: true,
     terminology: program.terminology,
-    balance: account ? account.balance : 0,
+    balance,
     accountId: account ? account.id : null,
+    // Stamp-card view:
+    pointsPerReward,
+    freeCoffees,
+    progress,
+    rewardTierId: rewardTier ? rewardTier.id : null,
+    rewardName: rewardTier ? rewardTier.name : 'Free coffee',
     tiers: program.tiers.map((t) => ({
       ...t,
-      affordable: account ? account.balance >= t.points : false,
+      affordable: balance >= t.points,
     })),
   };
+}
+
+// Balance + points ledger for one phone — for the app's "Points activity" popup.
+// Returns the current balance (Stars) and a newest-first list of earn/redeem/
+// adjust events, so a customer can see what they've earned and what they've used.
+async function getCustomerHistory(phone, limit = 40) {
+  const acct = await getAccountByPhone(phone);
+  if (!acct) return { balance: 0, events: [] };
+  const events = await accountHistory(acct.id, limit);
+  return { balance: acct.balance || 0, events };
 }
 
 async function createReward({ loyaltyAccountId, rewardTierId, orderId }) {
@@ -327,4 +352,4 @@ async function adjustPoints({ accountId, points, reason }) {
   } catch (e) { console.error('[loyalty] adjust failed', e.message); return false; }
 }
 
-module.exports = { getProgram, getAccountByPhone, getAccountByCustomerId, accumulateForOrder, getBalance, accountHistory, getCustomerLoyalty, createReward, deleteReward, listLoyaltyUsers, signupStats, enrollAccount, adjustPoints };
+module.exports = { getProgram, getAccountByPhone, getAccountByCustomerId, accumulateForOrder, getBalance, accountHistory, getCustomerLoyalty, getCustomerHistory, createReward, deleteReward, listLoyaltyUsers, signupStats, enrollAccount, adjustPoints };

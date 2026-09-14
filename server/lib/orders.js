@@ -373,6 +373,20 @@ async function getOrder(orderId) {
   return data.order;
 }
 
+// Merge a few metadata keys onto an existing order (best-effort caller). Reads the
+// current version first so it never conflicts. Used to tag an order with how many
+// loyalty free coffees were redeemed (bc_loyfree) so order history can show it.
+async function stampMeta(orderId, patch) {
+  const cur = await getOrder(orderId);
+  if (!cur) return null;
+  const metadata = { ...(cur.metadata || {}), ...patch };
+  const data = await squareFetch(`/v2/orders/${orderId}`, {
+    method: 'PUT',
+    body: { order: { version: cur.version, metadata }, idempotency_key: idem() },
+  });
+  return data.order;
+}
+
 async function createPayment({ sourceId, orderId, amountMoney, verificationToken, buyerEmail, customerId, squareLocationId }) {
   const body = {
     source_id: sourceId,
@@ -558,6 +572,9 @@ async function getHistory(customerId, limit = 25) {
     state: o.state,
     ticketName: o.ticket_name,
     total: o.total_money,
+    // How many loyalty free coffees were redeemed on this order (tagged at
+    // checkout), so order history can show a "Free coffee" badge.
+    freeCoffees: Number((o.metadata || {}).bc_loyfree) || 0,
     items: (o.line_items || []).map((li) => ({
       name: li.name,
       variation: li.variation_name,
@@ -630,4 +647,4 @@ async function createReservationOrder({ name, phone, email, partySize, at, notes
   return data.order;
 }
 
-module.exports = { createOrder, getOrder, createPayment, authorizePayment, completePayment, cancelPayment, payZeroOrder, createCashPayment, cancelOrder, releaseHold, sweepHeldOrders, getHistory, createReservationOrder };
+module.exports = { createOrder, getOrder, stampMeta, createPayment, authorizePayment, completePayment, cancelPayment, payZeroOrder, createCashPayment, cancelOrder, releaseHold, sweepHeldOrders, getHistory, createReservationOrder };
