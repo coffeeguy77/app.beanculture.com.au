@@ -4193,6 +4193,15 @@ export default function Admin({ onExit }) {
                 </div>
 
                 <div className="card" style={card}>
+                  <div className="group-title">Dine-in labels (keyword trigger)</div>
+                  <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 0 }}>When a counter / register order includes an option &mdash; a cup choice or modifier &mdash; whose name contains one of these words (e.g. a &ldquo;Have here&rdquo; cup), the kitchen screen labels it <strong>DINE IN</strong> instead of TAKEAWAY. Separate words with commas. Staff swiping the register&rsquo;s own dine-in / takeaway toggle overrides this. (Also editable in the POS app under ⚙ Settings.) Remember to press <strong>Save changes</strong>.</p>
+                  <input value={(s?.pos?.dineInKeywords || []).join(', ')}
+                    onChange={(e) => set({ pos: { ...(s?.pos || {}), dineInKeywords: e.target.value.split(/[\n,]/).map((x) => x.trim().toLowerCase()).filter(Boolean) } })}
+                    placeholder="have here, dine in, for here, eat in"
+                    style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 10, font: 'inherit' }} />
+                </div>
+
+                <div className="card" style={card}>
                   <div className="group-title">Notifications &mdash; how customers are told</div>
                   {(() => {
                     const ns = notifyStatus || {};
@@ -5619,8 +5628,8 @@ export default function Admin({ onExit }) {
                     <label className="field"><span>Also valid days around birthday (0 = day only)</span>
                       <input type="number" min="0" max="31" value={bg.windowDays ?? 0} onChange={(e) => setBg({ windowDays: Math.max(0, Math.min(31, parseInt(e.target.value, 10) || 0)) })} /></label>
                   </div>
-                  <label className="field" style={{ marginTop: 10 }}><span>Banner title</span>
-                    <input value={bg.bannerTitle || ''} onChange={(e) => setBg({ bannerTitle: e.target.value })} placeholder="Happy Birthday! 🎂" /></label>
+                  <label className="field" style={{ marginTop: 10 }}><span>Banner title <span className="muted" style={{ fontWeight: 400 }}>— use {'{name}'} for their first name</span></span>
+                    <input value={bg.bannerTitle || ''} onChange={(e) => setBg({ bannerTitle: e.target.value })} placeholder="Happy Birthday, {name}! 🎂" /></label>
                   <label className="field" style={{ marginTop: 10 }}><span>Banner message (shown on their day)</span>
                     <textarea rows={3} style={ta} value={bg.bannerMessage || ''} onChange={(e) => setBg({ bannerMessage: e.target.value })} placeholder="It’s your day — pop in for a coffee on us…" /></label>
                   <div className="field" style={{ marginTop: 10 }}>
@@ -5652,16 +5661,13 @@ export default function Admin({ onExit }) {
                   {rows.length > 0 && (
                     <div className="loc-avail-list" style={{ maxHeight: 520, marginTop: 6 }}>
                       {rows.map((r) => (
-                        <div key={r.customerId} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '9px 0', borderTop: '1px solid var(--line)' }}>
-                          <div style={{ flex: '0 0 62px', textAlign: 'center' }}>
-                            <div style={{ fontWeight: 800, fontSize: 'var(--fs-base)' }}>{fmtBday(r.birthday)}</div>
-                            <div className="muted" style={{ fontSize: 'var(--fs-xs)' }}>{fmtUntil(r.daysUntil)}</div>
+                        <div key={r.customerId} className="bday-row">
+                          <div className="bday-when"><b>{fmtBday(r.birthday)}</b><span>{fmtUntil(r.daysUntil)}</span></div>
+                          <div className="bday-who">
+                            <div className="n">{r.name}{r.isToday && ' 🎂'}</div>
+                            <div className="s">{r.phone || '—'} · {money(r.spendCents)} · {r.spendOrders} order{r.spendOrders === 1 ? '' : 's'}</div>
                           </div>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontWeight: 600 }}>{r.name}{r.isToday && ' 🎂'}</div>
-                            <div className="muted" style={{ fontSize: 'var(--fs-xs)' }}>{r.phone || '—'} · {money(r.spendCents)} over {r.spendOrders} order{r.spendOrders === 1 ? '' : 's'}</div>
-                          </div>
-                          <div style={{ flex: '0 0 auto', display: 'flex', gap: 6, alignItems: 'center' }}>
+                          <div className="bday-acts">
                             {r.redeemedThisYear
                               ? <span className="chip" style={{ background: '#eef7f0', color: '#1c7a41' }}>Gift used</span>
                               : <span className="chip" style={{ color: 'var(--muted)' }}>Not used</span>}
@@ -5676,7 +5682,7 @@ export default function Admin({ onExit }) {
                 {bdayPreview && (
                   <BirthdayOverlay
                     offer={{ title: bg.bannerTitle, message: bg.bannerMessage, valueCents: bg.valueCents ?? 600, bannerImage: bg.bannerImage, terms: bg.terms }}
-                    currency={cur}
+                    name="Sam" currency={cur}
                     onDismiss={() => setBdayPreview(false)}
                     onTerms={() => {}}
                   />

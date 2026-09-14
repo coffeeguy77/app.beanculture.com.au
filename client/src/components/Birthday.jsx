@@ -8,7 +8,14 @@ const BALLOON_COLORS = ['#ff5d8f', '#ffd23f', '#6c8cff', '#3ec6a0', '#ff8a3d', '
 // Rising multi-colour balloons + a personal birthday banner, shown only on the
 // signed-in customer's birthday. The gift itself is applied at checkout; this is
 // the celebration.
-export function BirthdayOverlay({ offer, currency, onDismiss, onTerms }) {
+export function BirthdayOverlay({ offer, name, currency, onDismiss, onTerms }) {
+  // Personalise: {name} in the title/message becomes the customer's first name.
+  const first = String(name || '').trim().split(/\s+/)[0] || '';
+  const fill = (t) => {
+    let s = String(t || '');
+    s = first ? s.replace(/\{name\}/g, first) : s.replace(/,?\s*\{name\}/g, '');
+    return s;
+  };
   const balloons = useMemo(() => Array.from({ length: 16 }).map((_, i) => ({
     c: BALLOON_COLORS[i % BALLOON_COLORS.length],
     left: Math.min(97, Math.max(1, Math.round((i / 16) * 100 + (Math.random() * 6 - 3)))),
@@ -37,8 +44,8 @@ export function BirthdayOverlay({ offer, currency, onDismiss, onTerms }) {
         {offer.bannerImage
           ? <img className="bday-img" src={offer.bannerImage} alt="" />
           : <div className="bday-emoji">🎉🎂</div>}
-        <div className="bday-title">{offer.title || 'Happy Birthday! 🎂'}</div>
-        <div className="bday-msg">{offer.message}</div>
+        <div className="bday-title">{fill(offer.title) || (first ? `Happy Birthday, ${first}! 🎂` : 'Happy Birthday! 🎂')}</div>
+        <div className="bday-msg">{fill(offer.message)}</div>
         {offer.valueCents > 0 && (
           <div className="bday-gift">🎁 Your gift: a drink up to {formatMoney(offer.valueCents, currency)} — free at checkout today</div>
         )}

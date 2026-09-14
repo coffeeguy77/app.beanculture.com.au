@@ -244,12 +244,17 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
   // (Never trust location.free alone — a per-category event store defaults it on
   // but can still have paid retail beans in the cart.)
   const storeFree = !!wholeFree || eventFreeAll;
-  const isFree = couponFree || storeFree;
+  // Birthday gift: a fixed $ credit toward the order (a drink up to its value is
+  // free). Applies only on a normal order (no coupon/PIF/event) — same rule the
+  // server uses — and the value is known, so we reflect it in the shown total.
+  const bdayEligibleHere = !!birthdayOffer?.eligible && !hasCoupon && !hasPif && !eventMode;
+  const bdayDiscount = bdayEligibleHere ? Math.min(birthdayOffer.valueCents || 0, cartTotal) : 0;
+  const isFree = couponFree || storeFree || (bdayEligibleHere && bdayDiscount >= cartTotal);
   // Event mixed carts pay for the paid lines only (+ shipping, added into the
   // grand total below); coupons / PIF don't apply at events.
   const payTotal = storeFree ? 0
     : eventMode ? paidSubtotal
-    : (couponValid ? discountedTotal : Math.max(0, cartTotal - pifEstimateCents));
+    : (couponValid ? discountedTotal : Math.max(0, cartTotal - pifEstimateCents - bdayDiscount));
   // Surcharge estimate (server is authoritative; this mirrors it for the summary
   // so the customer sees the weekend/card surcharge before paying).
   const scfg = (config && config.surcharges) || {};
@@ -848,10 +853,10 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
         {hasCoupon && !couponValid && couponInfo && <div className="row discount"><span>{couponReasonText(couponInfo)}</span><span>—</span></div>}
         {usingReward && <div className="row discount"><span>🎁 {redeemQty} free {redeemQty === 1 ? 'coffee' : 'coffees'} — applied at payment</span><span>−{redeemQty * (loyalty?.pointsPerReward || 0)} {loyalty?.terminology?.other || 'pts'}</span></div>}
         {usingReward && <p className="muted" style={{ fontSize: 11.5, marginTop: 2 }}>Your free {redeemQty === 1 ? 'coffee comes' : 'coffees come'} off when you check out — the total above drops to what’s left to pay.</p>}
-        {birthdayOffer?.eligible && !hasCoupon && !hasPif && !eventMode && (
+        {bdayEligibleHere && bdayDiscount > 0 && (
           <>
-            <div className="row discount"><span>🎂 Birthday gift — applied at payment</span><span>up to −{formatMoney(birthdayOffer.valueCents || 0, currency)}</span></div>
-            <p className="muted" style={{ fontSize: 11.5, marginTop: 2 }}>Happy birthday! A drink up to {formatMoney(birthdayOffer.valueCents || 0, currency)} is on us — it comes off when you check out.</p>
+            <div className="row discount"><span>🎂 Birthday gift</span><span>−{formatMoney(bdayDiscount, currency)}</span></div>
+            <p className="muted" style={{ fontSize: 11.5, marginTop: 2 }}>Happy birthday! A drink up to {formatMoney(birthdayOffer.valueCents || 0, currency)} is on us 🎂</p>
           </>
         )}
         {autocharge && <div className="row"><span>{isRepeat ? 'Charged each time' : 'Charged at pickup'}</span><span>{formatMoney(payTotal, currency)}</span></div>}
