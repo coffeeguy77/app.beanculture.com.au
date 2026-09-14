@@ -274,7 +274,8 @@ export default function Kds({ onExit, embedded, location, onControls }) {
   // Bump every open ticket in the current station at once. Confirms first so a
   // stray tap can't clear the whole board.
   async function bumpAll() {
-    const acts = active;
+    // Never clear a pre-order that isn't due yet — it must wait for its time.
+    const acts = active.filter((t) => !(t.scheduledAt && Date.now() < new Date(t.scheduledAt).getTime()));
     if (!acts.length) return;
     const label = zone === ALL ? 'all stations' : (zones.find((z) => z.id === zone)?.name || 'this station');
     if (typeof window !== 'undefined' && !window.confirm(`Bump all ${acts.length} open ticket${acts.length > 1 ? 's' : ''} for ${label}?`)) return;
@@ -328,6 +329,17 @@ export default function Kds({ onExit, embedded, location, onControls }) {
     if (m < 60) return `${m} min ago`;
     const h = Math.floor(m / 60);
     return `${h}h ${m % 60}m ago`;
+  };
+  // Clock time ("8:45 AM") and a live "in 45 min" countdown for a pre-order.
+  const fmtClock = (iso) => { try { return new Date(iso).toLocaleTimeString('en-AU', { hour: 'numeric', minute: '2-digit' }); } catch { return ''; } };
+  const fmtUntil = (iso) => {
+    if (!iso) return '';
+    const s = Math.round((new Date(iso).getTime() - now) / 1000);
+    if (s <= 0) return 'now';
+    const m = Math.round(s / 60);
+    if (m < 60) return `in ${m} min`;
+    const h = Math.floor(m / 60);
+    return `in ${h}h ${m % 60}m`;
   };
   const levelOf = (sec) => { const m = sec / 60; return m >= redMin ? 'red' : m >= amberMin ? 'amber' : 'green'; };
 
@@ -502,9 +514,16 @@ export default function Kds({ onExit, embedded, location, onControls }) {
           const stId = singleStation && stationZones[0] && stationZones[0].id;
           const unrouted = stId && (t.zoneItems[ALL] || []).length > (t.zoneItems[stId] || []).length;
           const notified = t.appOrigin && t.notifyCount > 0 && st !== 'done';
+          // Pre-order (pay-now scheduled): don't let staff make/bump it before its
+          // scheduled time — show WHEN it's due and lock the actions until then.
+          const schedMs = t.scheduledAt ? new Date(t.scheduledAt).getTime() : 0;
+          const schedPending = schedMs && now < schedMs;
           return (
-            <div key={t.orderId} className={`kds-card lvl-${lvl}${st === 'preparing' ? ' preparing' : ''}${notified ? ' notified' : ''}`}>
+            <div key={t.orderId} className={`kds-card lvl-${lvl}${st === 'preparing' ? ' preparing' : ''}${notified ? ' notified' : ''}${schedPending ? ' scheduled' : ''}`}>
               {notified && <span className="kds-notified-tag">✓ Customer notified</span>}
+              {schedMs > 0 && (
+                <span className={`kds-sched-tag${schedPending ? '' : ' due'}`}>⏰ {schedPending ? `Scheduled ${fmtClock(t.scheduledAt)} · ${fmtUntil(t.scheduledAt)}` : `Due now (was ${fmtClock(t.scheduledAt)})`}</span>
+              )}
               <div className="kds-card-head">
                 <div className="kds-card-title">
                   {label(t)}
@@ -528,19 +547,26 @@ export default function Kds({ onExit, embedded, location, onControls }) {
                 ))}
               </ul>
               <div className="kds-card-foot">
-                {/* Notify → tells the app customer it's ready (app orders only)
-                    WITHOUT clearing the ticket, and shows how long ago they were
-                    told; tap again to remind. Bump clears the ticket once
-                    collected. */}
-                {t.appOrigin && (
-                  <button className={`kds-btn notify${t.notifyCount > 0 ? ' sent' : ''}`} onClick={() => notify(t.orderId)}
-                    title={t.notifyCount > 0 ? `Told the customer ${t.notifyCount}× — tap to remind them again` : 'Tell the customer their order is ready'}>
-                    {t.notifyCount > 0
-                      ? `🔔 Notified · ${fmtSince(t.notifiedAt)}${t.notifyCount > 1 ? ` ·×${t.notifyCount}` : ''}`
-                      : '🔔 Notify'}
-                  </button>
+                {schedPending ? (
+                  /* Locked until the scheduled time — no making/bumping early. */
+                  <div className="kds-sched-lock">🕒 Make at {fmtClock(t.scheduledAt)} — {fmtUntil(t.scheduledAt)}</div>
+                ) : (
+                  <>
+                    {/* Notify → tells the app customer it's ready (app orders only)
+                        WITHOUT clearing the ticket, and shows how long ago they were
+                        told; tap again to remind. Bump clears the ticket once
+                        collected. */}
+                    {t.appOrigin && (
+                      <button className={`kds-btn notify${t.notifyCount > 0 ? ' sent' : ''}`} onClick={() => notify(t.orderId)}
+                        title={t.notifyCount > 0 ? `Told the customer ${t.notifyCount}× — tap to remind them again` : 'Tell the customer their order is ready'}>
+                        {t.notifyCount > 0
+                          ? `🔔 Notified · ${fmtSince(t.notifiedAt)}${t.notifyCount > 1 ? ` ·×${t.notifyCount}` : ''}`
+                          : '🔔 Notify'}
+                      </button>
+                    )}
+                    <button className="kds-btn bump" onClick={() => bump(t.orderId, 'done')}>Bump ✓</button>
+                  </>
                 )}
-                <button className="kds-btn bump" onClick={() => bump(t.orderId, 'done')}>Bump ✓</button>
               </div>
             </div>
           );

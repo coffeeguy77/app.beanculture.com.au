@@ -18,7 +18,10 @@ function readActiveOrder() {
   try {
     const o = JSON.parse(localStorage.getItem(KEY) || 'null');
     if (!o || !o.orderId) return null;
-    if (Date.now() - (o.at || 0) > MAX_AGE_MS) return null;   // stale
+    // A pre-order stays until an hour AFTER its scheduled time; a normal order,
+    // an hour after it was placed.
+    const base = o.scheduledAt ? new Date(o.scheduledAt).getTime() : (o.at || 0);
+    if (Date.now() - base > MAX_AGE_MS) return null;   // stale
     return o;
   } catch { return null; }
 }
@@ -51,9 +54,13 @@ export default function ActiveOrderTracker({ paused }) {
   const [status, setStatus] = useState('new');
   const [msg, setMsg] = useState('');        // café's custom "ready" message, if any
   const [hintX, setHintX] = useState(false); // brief "tap again to close" nudge
+  const [nowTs, setNowTs] = useState(Date.now()); // ticks the pre-order countdown
   const chimedRef = useRef(false);
   const notifiedRef = useRef(null); // last-seen "notified at" — a newer one = re-chime
   const lastTapRef = useRef(0);
+
+  // Keep the "ready in X min" countdown fresh for a pre-order.
+  useEffect(() => { const iv = setInterval(() => setNowTs(Date.now()), 30000); return () => clearInterval(iv); }, []);
 
   // Pick up a newly-saved order (set right after checkout) without a reload.
   useEffect(() => {
@@ -100,11 +107,21 @@ export default function ActiveOrderTracker({ paused }) {
 
   if (!order || paused || status === 'done') return null;
   const l = LABELS[status] || LABELS.new;
-  const label = status === 'ready'
-    ? (msg || (order.dineIn
-        ? (order.table ? `Coming to table ${order.table} — sit tight!` : 'On its way to your table — sit tight!')
-        : 'Order ready — come on in!'))
-    : l.t;
+  // A pre-order that hasn't been made yet shows a countdown to its pickup time
+  // instead of "being made now" (until staff actually bump it ready).
+  const schedMs = order.scheduledAt ? new Date(order.scheduledAt).getTime() : 0;
+  const schedPending = schedMs && nowTs < schedMs && status !== 'ready';
+  const fmtClock = (ms) => { try { return new Date(ms).toLocaleTimeString('en-AU', { hour: 'numeric', minute: '2-digit' }); } catch { return ''; } };
+  const untilStr = (ms) => { const s = Math.round((ms - nowTs) / 1000); if (s <= 0) return 'soon'; const m = Math.round(s / 60); if (m < 60) return `in ${m} min`; const h = Math.floor(m / 60); return `in ${h}h ${m % 60}m`; };
+  const emoji = schedPending ? '⏰' : l.e;
+  const heading = order.scheduledAt ? 'Your pre-order' : 'Your order';
+  const label = schedPending
+    ? `Ready ~${fmtClock(schedMs)} · ${untilStr(schedMs)}`
+    : status === 'ready'
+      ? (msg || (order.dineIn
+          ? (order.table ? `Coming to table ${order.table} — sit tight!` : 'On its way to your table — sit tight!')
+          : 'Order ready — come on in!'))
+      : l.t;
   const dismiss = () => { clearActiveOrder(); setOrder(null); };
   // Require a DOUBLE tap/click to close (two within 500ms), so an accidental
   // single tap never dismisses the tracker. onClick fires for both mouse and
@@ -118,9 +135,9 @@ export default function ActiveOrderTracker({ paused }) {
   };
 
   return (
-    <div className={`active-order-bar status-${status}`} role="status">
-      <span className="active-order-emoji">{l.e}</span>
-      <div className="active-order-txt"><b>Your order</b><span>{hintX ? 'Tap ✕ again to close' : label}</span></div>
+    <div className={`active-order-bar status-${status}${schedPending ? ' scheduled' : ''}`} role="status">
+      <span className="active-order-emoji">{emoji}</span>
+      <div className="active-order-txt"><b>{heading}</b><span>{hintX ? 'Tap ✕ again to close' : label}</span></div>
       <button className="active-order-x" onClick={onXTap} title="Double-tap to dismiss" aria-label="Double-tap to dismiss">✕</button>
     </div>
   );

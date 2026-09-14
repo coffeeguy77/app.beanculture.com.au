@@ -6,6 +6,18 @@ import WalletButtons from './WalletButtons.jsx';
 
 // Friendly reason a typed coupon isn't applying, so the customer knows why
 // (e.g. it's a first-visit code, or only valid on their birthday / certain days).
+// A takeaway coffee cup — the loyalty "stamp". Themed via CSS (stroke = brand;
+// filled brand when earned). One cup = one point; 10 cups = a free coffee.
+function TakeawayCup() {
+  return (
+    <svg viewBox="0 0 24 26" width="100%" height="100%" aria-hidden="true">
+      <path d="M4.3 6 H19.7 L18.5 8.7 H5.5 Z" strokeLinejoin="round" />
+      <path d="M5.7 8.7 H18.3 L16.9 22.4 A2 2 0 0 1 14.9 24.2 H9.1 A2 2 0 0 1 7.1 22.4 Z" strokeLinejoin="round" />
+      <path d="M10.2 3.2 H13.8 L13.3 6 H10.7 Z" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 function couponReasonText(info) {
   switch (info && info.reason) {
     case 'not_first_visit': return 'Coupon is first-visit only';
@@ -634,7 +646,7 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
             {/* Cups filling toward the NEXT free coffee (stamp-card style). */}
             <div className="loy-cups" role="img" aria-label={`${prog} of ${per} ${starW} toward your next free coffee`}>
               {Array.from({ length: per }).map((_, i) => (
-                <span key={i} className={`loy-cup ${i < prog ? 'on' : ''}`} aria-hidden="true">☕</span>
+                <span key={i} className={`loy-cup ${i < prog ? 'on' : ''}`} aria-hidden="true"><TakeawayCup /></span>
               ))}
             </div>
             <p className="muted" style={{ fontSize: 12, margin: '4px 0 0' }}>

@@ -15,13 +15,18 @@ const GiftIco = (p) => <Ico {...p}><rect x="4" y="9.5" width="16" height="11" rx
 const OutIco = (p) => <Ico {...p}><path d="M15 5H6.5A1.5 1.5 0 0 0 5 6.5v11A1.5 1.5 0 0 0 6.5 19H15" /><path d="M14 12h7m0 0-3-3m3 3-3 3" /></Ico>;
 const CoffeeIco = (p) => <Ico {...p}><path d="M4 8h13v6a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5V8Z" /><path d="M17 9.5h1.5a2.5 2.5 0 0 1 0 5H17" /><path d="M7 4.5c-.6.7-.6 1.3 0 2M10.5 4.5c-.6.7-.6 1.3 0 2" /></Ico>;
 
-/* A single loyalty cup — filled once earned, the last one is the FREE reward. */
+/* A single loyalty cup — a takeaway coffee cup, filled once earned; the last one
+   is the FREE reward. Themed via --cup-fill / --cup-stroke (brand/accent). */
 function Cup({ on, free }) {
   return (
     <span className={`lc-cup ${on ? 'on' : ''} ${free ? 'free' : ''}`}>
       <svg viewBox="0 0 24 26" width="100%" height="100%" aria-hidden="true">
-        <path d="M4.5 7.5h15l-1.3 14.2a2.2 2.2 0 0 1-2.2 2H8a2.2 2.2 0 0 1-2.2-2L4.5 7.5Z" fill="var(--cup-fill)" stroke="var(--cup-stroke)" strokeWidth="1.6" strokeLinejoin="round" />
-        <path d="M4.5 7.5 3.9 5a1 1 0 0 1 1-1.3h14.2a1 1 0 0 1 1 1.3l-.6 2.5" fill="none" stroke="var(--cup-stroke)" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+        {/* lid */}
+        <path d="M4.3 6 H19.7 L18.5 8.7 H5.5 Z" fill="var(--cup-fill)" stroke="var(--cup-stroke)" strokeWidth="1.5" strokeLinejoin="round" />
+        {/* tapered cup body */}
+        <path d="M5.7 8.7 H18.3 L16.9 22.4 A2 2 0 0 1 14.9 24.2 H9.1 A2 2 0 0 1 7.1 22.4 Z" fill="var(--cup-fill)" stroke="var(--cup-stroke)" strokeWidth="1.6" strokeLinejoin="round" />
+        {/* raised sip lid */}
+        <path d="M10.2 3.2 H13.8 L13.3 6 H10.7 Z" fill="var(--cup-fill)" stroke="var(--cup-stroke)" strokeWidth="1.4" strokeLinejoin="round" />
       </svg>
       {free && <em>FREE</em>}
     </span>
@@ -528,7 +533,7 @@ function pifStatusPill(status) {
                       <div className="muted">{bal} {gauge.starW} · {bal % per}/{per} toward your next</div>
                     </div>
                     {evs.length === 0 ? (
-                      <p className="muted" style={{ marginTop: 12 }}>No activity yet — your earned and used points will show here.</p>
+                      <p className="muted" style={{ marginTop: 12 }}>No activity yet — your earned and used cups will show here.</p>
                     ) : (
                       <ul className="pa-list">
                         {evs.map((e) => (
