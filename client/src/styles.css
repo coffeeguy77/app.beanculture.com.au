@@ -970,10 +970,19 @@ img { max-width: 100%; }
   88% { opacity: .95; }
   100% { transform: translateY(-118vh) translateX(var(--sway, 0px)); opacity: 0; }
 }
-.bday-banner { position: fixed; left: 12px; right: 12px; top: calc(10px + env(safe-area-inset-top, 0px)); margin: 0 auto; max-width: 440px; z-index: 1295; background: linear-gradient(135deg, #ff5d8f, #b06cff); color: #fff; border-radius: 16px; padding: 14px 16px 16px; box-shadow: 0 12px 40px rgba(0,0,0,.28); text-align: center; }
+.bday-banner { position: fixed; left: 12px; right: 12px; top: 50%; transform: translateY(-50%); margin: 0 auto; max-width: 420px; z-index: 1295; background: linear-gradient(135deg, #ff5d8f, #b06cff); color: #fff; border-radius: 18px; padding: 18px 18px 20px; box-shadow: 0 18px 60px rgba(0,0,0,.34); text-align: center; }
 .bday-x { position: absolute; top: 8px; right: 8px; width: 28px; height: 28px; border: none; border-radius: 50%; background: rgba(255,255,255,.22); color: #fff; cursor: pointer; font-size: 13px; }
 .bday-emoji { font-size: 26px; line-height: 1; }
 .bday-img { display: block; width: 100%; max-height: 160px; object-fit: cover; border-radius: 12px; margin-bottom: 6px; }
+/* Birthday roster (admin) — responsive rows */
+.bday-row { display: flex; gap: 12px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); flex-wrap: wrap; }
+.bday-when { flex: 0 0 60px; text-align: center; }
+.bday-when b { display: block; font-size: 15px; }
+.bday-when span { display: block; color: var(--muted); font-size: 11px; }
+.bday-who { flex: 1 1 150px; min-width: 0; }
+.bday-who .n { font-weight: 600; }
+.bday-who .s { color: var(--muted); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bday-acts { flex: 0 0 auto; display: flex; gap: 8px; align-items: center; margin-left: auto; }
 .bday-title { font-size: 19px; font-weight: 900; margin-top: 3px; }
 .bday-msg { font-size: 13.5px; margin-top: 6px; opacity: .96; line-height: 1.45; }
 .bday-gift { margin-top: 10px; background: rgba(255,255,255,.18); border-radius: 10px; padding: 8px 10px; font-weight: 800; font-size: 13.5px; }

@@ -1366,7 +1366,7 @@ export default function App() {
       }}>
       {config.orderTracker !== false && <ActiveOrderTracker paused={view === 'done' || view === 'checkout' || view === 'admin'} />}
       {bdayOffer && !bdayDismissed && view !== 'admin' && (
-        <BirthdayOverlay offer={bdayOffer} currency={config.currency} onDismiss={dismissBday} onTerms={() => setBdayTerms(true)} />
+        <BirthdayOverlay offer={bdayOffer} name={user?.name} currency={config.currency} onDismiss={dismissBday} onTerms={() => setBdayTerms(true)} />
       )}
       {bdayTerms && <BirthdayTerms terms={bdayOffer?.terms} onClose={() => setBdayTerms(false)} />}
       {resolvedEffectPreset && (
