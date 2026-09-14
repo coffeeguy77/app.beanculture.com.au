@@ -48,7 +48,13 @@ export const api = {
   setBirthday: (customerId, birthday) => req('/api/profile/birthday', { method: 'POST', body: JSON.stringify({ customerId, birthday }) }),
   // Admin: customers enrolled via Square loyalty
   adminCustomers: (pass) => req(`/api/admin/customers?pass=${encodeURIComponent(pass || '')}`),
-  appSales: (pass, days) => req(`/api/admin/analytics/app-sales?days=${days}&pass=${encodeURIComponent(pass || '')}`),
+  appSales: (pass, arg) => {
+    // arg can be a number of days (legacy) or { date } / { days }.
+    const q = (arg && typeof arg === 'object')
+      ? (arg.date ? `date=${encodeURIComponent(arg.date)}` : `days=${arg.days || 1}`)
+      : `days=${arg || 1}`;
+    return req(`/api/admin/analytics/app-sales?${q}&pass=${encodeURIComponent(pass || '')}`);
+  },
   posDisplayPush: (pass, payload) => req(`/api/pos/display/push?pass=${encodeURIComponent(pass || '')}`, { method: 'POST', body: JSON.stringify(payload) }),
   posDisplayState: (station) => req(`/api/pos/display/state?station=${encodeURIComponent(station || 'main')}`),
   posPrintReceipt: (pass, { paymentId, location, duplicate }) => req(`/api/pos/print-receipt?pass=${encodeURIComponent(pass || '')}`, { method: 'POST', body: JSON.stringify({ paymentId, location, duplicate }) }),
