@@ -47,6 +47,8 @@ export const api = {
   getBirthday: (customerId) => req(`/api/profile/birthday?customerId=${encodeURIComponent(customerId || '')}`),
   setBirthday: (customerId, birthday) => req('/api/profile/birthday', { method: 'POST', body: JSON.stringify({ customerId, birthday }) }),
   birthdayOffer: (customerId) => req(`/api/birthday/offer?customerId=${encodeURIComponent(customerId || '')}`),
+  adminBirthdays: (pass) => req(`/api/admin/birthdays?pass=${encodeURIComponent(pass || '')}`),
+  adminSetBirthday: (pass, customerId, birthday) => req(`/api/admin/birthday/set?pass=${encodeURIComponent(pass || '')}`, { method: 'POST', body: JSON.stringify({ customerId, birthday }) }),
   // Admin: customers enrolled via Square loyalty
   adminCustomers: (pass) => req(`/api/admin/customers?pass=${encodeURIComponent(pass || '')}`),
   appSales: (pass, arg) => {

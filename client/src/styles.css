@@ -973,6 +973,7 @@ img { max-width: 100%; }
 .bday-banner { position: fixed; left: 12px; right: 12px; top: calc(10px + env(safe-area-inset-top, 0px)); margin: 0 auto; max-width: 440px; z-index: 1295; background: linear-gradient(135deg, #ff5d8f, #b06cff); color: #fff; border-radius: 16px; padding: 14px 16px 16px; box-shadow: 0 12px 40px rgba(0,0,0,.28); text-align: center; }
 .bday-x { position: absolute; top: 8px; right: 8px; width: 28px; height: 28px; border: none; border-radius: 50%; background: rgba(255,255,255,.22); color: #fff; cursor: pointer; font-size: 13px; }
 .bday-emoji { font-size: 26px; line-height: 1; }
+.bday-img { display: block; width: 100%; max-height: 160px; object-fit: cover; border-radius: 12px; margin-bottom: 6px; }
 .bday-title { font-size: 19px; font-weight: 900; margin-top: 3px; }
 .bday-msg { font-size: 13.5px; margin-top: 6px; opacity: .96; line-height: 1.45; }
 .bday-gift { margin-top: 10px; background: rgba(255,255,255,.18); border-radius: 10px; padding: 8px 10px; font-weight: 800; font-size: 13.5px; }
