@@ -72,7 +72,8 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
   const [address, setAddress] = useState('');
   const [paymentsObj, setPaymentsObj] = useState(null);
   const [loyalty, setLoyalty] = useState(null);
-  const [tierId, setTierId] = useState(null);
+  const [redeemQty, setRedeemQty] = useState(0);   // how many free coffees to apply
+  const [askRedeem, setAskRedeem] = useState(false); // "how many?" chooser open?
 
   const bigPill = tableLock >= 2 && dineIn && table;
   const sched = config.scheduling || {};
@@ -162,8 +163,15 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
   // on top would stack two discounts, so the coupon field is disabled while
   // any combo is in the cart (the server enforces this too, independently).
   const hasCoupon = !hasCombo && coupon.trim().length > 0;
-  const usingReward = !!tierId;
-  const rewardTier = usingReward && loyalty?.tiers ? loyalty.tiers.find((t) => t.id === tierId) : null;
+  // ── Loyalty free coffees ──
+  // Balance is whole free drinks (Square points ÷ points-per-reward). A free
+  // coffee comes off ONE item, so a customer can redeem up to the number of
+  // items in the cart (Square decides which item each reward frees). Quantity-
+  // based: buy 2 with 1 free coffee → one free, one paid.
+  const freeCoffees = loyalty?.active ? (loyalty.freeCoffees || 0) : 0;
+  const cartQty = (cart || []).reduce((n, ci) => n + (Number(ci.quantity) || 1), 0);
+  const maxRedeem = Math.max(0, Math.min(freeCoffees, cartQty));
+  const usingReward = redeemQty > 0 && !!loyalty?.rewardTierId;
   // A Pay It Forward voucher (claimed via the /gift link, or typed in as a
   // backup code) takes priority over a combo/coupon, same precedent as
   // combo-beats-coupon above -- the server enforces this independently too.
@@ -266,6 +274,10 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
   // wallet token) and where the wallet sheet amount could differ from the charge
   // (a coupon or loyalty reward discounts server-side).
   const hideWallets = hasCoupon || usingReward || autocharge;
+
+  // If the cart shrinks (or loyalty reloads) so fewer free coffees are usable,
+  // never keep more applied than allowed.
+  useEffect(() => { setRedeemQty((q) => Math.min(q, maxRedeem)); }, [maxRedeem]);
 
   // Loyalty + saved cards for a signed-in user.
   useEffect(() => {
@@ -378,7 +390,7 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
       shipping: needsShipping ? { address: address.trim() } : undefined,
       // Card surcharge applies only to actual card payments, not gift balance.
       cardPayment: cardChoice !== 'balance',
-      loyalty: tierId && loyalty?.accountId ? { accountId: loyalty.accountId, tierId } : undefined,
+      loyalty: usingReward && loyalty?.accountId && loyalty?.rewardTierId ? { accountId: loyalty.accountId, tierId: loyalty.rewardTierId, quantity: redeemQty } : undefined,
       pifVoucher: hasPif ? effectivePifCode : undefined,
     });
     // Track it as unpaid-pending until payment completes, so it gets cancelled if
@@ -422,13 +434,13 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
       const pickupAt = isSchedule ? pickupIso() : null;
       const order = await createOrder(pickupAt);
 
-      // If the customer chose a loyalty reward but the server couldn't apply it,
+      // If the customer chose to redeem free coffees but NONE could be applied,
       // stop here rather than silently charging full price (the held order is
       // swept automatically). Keep their points and tell them what happened.
       if (usingReward && loyalty?.accountId && !order.rewardApplied) {
         throw new Error(order.rewardError === 'no_discount'
-          ? "That reward doesn’t apply to anything in your cart — remove it or add an eligible item, then try again."
-          : "Sorry, we couldn’t apply your reward just now. Your points are untouched — please try again in a moment.");
+          ? "Your free coffee doesn’t apply to anything in your cart — add an eligible drink, or remove the reward, then try again."
+          : "Sorry, we couldn’t apply your free coffee just now. Your points are untouched — please try again in a moment.");
       }
 
       // Pay from prepaid balance (gift card).
@@ -612,19 +624,50 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
         <p className="error-text" style={{ fontSize: 13 }}>Sign in from the Account tab to set up auto-charge at pickup. Or choose “Pay now” to pre-order as a guest.</p>
       )}
 
-      {!eventMode && loyalty?.active && loyalty.tiers?.length > 0 && !autocharge && (
-        <div style={{ marginTop: 16 }}>
-          <div className="group-title">Rewards · {loyalty.balance} {loyalty.terminology?.other || 'points'}</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {loyalty.tiers.map((t) => (
-              <button key={t.id} type="button" className={`reward ${tierId === t.id ? 'picked' : ''} ${!t.affordable ? 'locked' : ''}`}
-                onClick={() => t.affordable && setTierId(tierId === t.id ? null : t.id)}>
-                <span>{t.name}</span><span className="pill">{t.points} pts</span>
-              </button>
-            ))}
+      {!eventMode && loyalty?.active && !autocharge && (() => {
+        const per = loyalty.pointsPerReward || 10;
+        const prog = loyalty.progress || 0;
+        const starW = loyalty.terminology?.other || 'Stars';
+        return (
+          <div className="loy-reward" style={{ marginTop: 16 }}>
+            <div className="group-title">Rewards balance · {freeCoffees} free {freeCoffees === 1 ? 'coffee' : 'coffees'}</div>
+            {/* Cups filling toward the NEXT free coffee (stamp-card style). */}
+            <div className="loy-cups" role="img" aria-label={`${prog} of ${per} ${starW} toward your next free coffee`}>
+              {Array.from({ length: per }).map((_, i) => (
+                <span key={i} className={`loy-cup ${i < prog ? 'on' : ''}`} aria-hidden="true">☕</span>
+              ))}
+            </div>
+            <p className="muted" style={{ fontSize: 12, margin: '4px 0 0' }}>
+              {freeCoffees > 0
+                ? `${prog}/${per} toward your next — you’ve got ${freeCoffees} free ${freeCoffees === 1 ? 'coffee' : 'coffees'} to use.`
+                : `${prog}/${per} ${starW} — ${per - prog} more for a free coffee.`}
+            </p>
+
+            {freeCoffees > 0 && cartQty > 0 && loyalty.rewardTierId && (
+              usingReward ? (
+                <div className="loy-applied">
+                  <span>✓ {redeemQty} free {redeemQty === 1 ? 'coffee' : 'coffees'} applied — one comes off each drink</span>
+                  <button type="button" className="loy-x" aria-label="Remove free coffee" title="Remove" onClick={() => { setRedeemQty(0); setAskRedeem(false); }}>✕</button>
+                </div>
+              ) : askRedeem ? (
+                <div className="loy-choose">
+                  <span className="loy-choose-label">How many free coffees to use?</span>
+                  <div className="loy-choose-btns">
+                    {Array.from({ length: maxRedeem }).map((_, i) => (
+                      <button key={i + 1} type="button" className="loy-qty" onClick={() => { setRedeemQty(i + 1); setAskRedeem(false); }}>{i + 1}</button>
+                    ))}
+                    <button type="button" className="loy-qty ghost" onClick={() => setAskRedeem(false)}>Cancel</button>
+                  </div>
+                </div>
+              ) : (
+                <button type="button" className="loy-redeem" onClick={() => { if (maxRedeem <= 1) setRedeemQty(1); else setAskRedeem(true); }}>
+                  ☕ {maxRedeem === 1 ? 'Use my free coffee' : 'Use a free coffee'}
+                </button>
+              )
+            )}
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {!eventMode && pifVoucher && (
         <div className="pif-applied-row">
@@ -791,8 +834,8 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
           <>{surchargeRows}<div className="row grand"><span>Total</span><span>{formatMoney(grandTotal, currency)}</span></div></>
         )}
         {hasCoupon && !couponValid && couponInfo && <div className="row discount"><span>{couponReasonText(couponInfo)}</span><span>—</span></div>}
-        {usingReward && <div className="row discount"><span>🎁 {rewardTier?.name || 'Reward'} — discount applied at payment</span><span>−{rewardTier?.points || ''} pts</span></div>}
-        {usingReward && <p className="muted" style={{ fontSize: 11.5, marginTop: 2 }}>Your reward is applied when you check out — the total above drops to the discounted amount (often $0).</p>}
+        {usingReward && <div className="row discount"><span>🎁 {redeemQty} free {redeemQty === 1 ? 'coffee' : 'coffees'} — applied at payment</span><span>−{redeemQty * (loyalty?.pointsPerReward || 0)} {loyalty?.terminology?.other || 'pts'}</span></div>}
+        {usingReward && <p className="muted" style={{ fontSize: 11.5, marginTop: 2 }}>Your free {redeemQty === 1 ? 'coffee comes' : 'coffees come'} off when you check out — the total above drops to what’s left to pay.</p>}
         {autocharge && <div className="row"><span>{isRepeat ? 'Charged each time' : 'Charged at pickup'}</span><span>{formatMoney(payTotal, currency)}</span></div>}
       </div>
 

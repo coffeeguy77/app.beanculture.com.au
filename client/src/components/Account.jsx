@@ -61,6 +61,7 @@ export default function Account({ user, currency, config, onSignIn, onSignOut, o
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [loyalty, setLoyalty] = useState(null);
+  const [activity, setActivity] = useState(null); // null | 'loading' | { balance, events }
   const [history, setHistory] = useState(null);
   const [cards, setCards] = useState(null);
   const [scheduled, setScheduled] = useState(null);
@@ -123,14 +124,15 @@ export default function Account({ user, currency, config, onSignIn, onSignOut, o
     catch (e) { setError(e.message); } finally { setBusy(false); }
   }
 
-  /* ── loyalty gauge maths: cups toward the cheapest reward tier ─────────── */
+  /* ── loyalty gauge maths: whole free coffees in hand + cups toward the next ─ */
   const gauge = useMemo(() => {
     const active = !!loyalty?.active;
-    const tier = active ? (loyalty.tiers || []).slice().sort((a, b) => a.points - b.points)[0] : null;
-    const goal = Math.max(1, tier?.points || 10);
-    const earned = active ? (loyalty.balance || 0) : 0;
-    const filled = Math.min(earned, goal);
-    return { active, goal, earned, filled, remaining: Math.max(0, goal - earned), complete: earned >= goal };
+    const goal = Math.max(1, active ? (loyalty.pointsPerReward || 10) : 10);
+    const balance = active ? (loyalty.balance || 0) : 0;
+    const freeCoffees = active ? (loyalty.freeCoffees || 0) : 0;
+    const progress = active ? (loyalty.progress || 0) : 0;      // cups toward the next one
+    const starW = (loyalty && loyalty.terminology && loyalty.terminology.other) || 'Stars';
+    return { active, goal, balance, freeCoffees, progress, starW, remaining: Math.max(0, goal - progress), complete: freeCoffees > 0 };
   }, [loyalty]);
 
   const filtered = useMemo(() => {
@@ -159,23 +161,39 @@ export default function Account({ user, currency, config, onSignIn, onSignOut, o
     );
   }
 
+  /* Open the "Points activity" popup — live balance + earned/used history. */
+  const openActivity = () => {
+    setActivity('loading');
+    if (!user?.phone) { setActivity({ balance: gauge.balance, events: [] }); return; }
+    api.getLoyaltyHistory(user.phone)
+      .then((d) => setActivity(d && d.events ? d : { balance: gauge.balance, events: [] }))
+      .catch(() => setActivity({ balance: gauge.balance, events: [] }));
+  };
+
   /* ── reusable blocks ──────────────────────────────────────────────────── */
   const RewardsCard = (
     <section className="acct-card rewards-card">
       <div className="rc-head">
         <h3>Your Coffee Rewards</h3>
-        <span className="rc-count">{gauge.filled} of {gauge.goal} coffees</span>
+        <span className="rc-count">{gauge.freeCoffees} free {gauge.freeCoffees === 1 ? 'coffee' : 'coffees'}</span>
       </div>
-      <div className="lc-track" role="img" aria-label={`${gauge.filled} of ${gauge.goal} coffees earned`}>
+      {gauge.freeCoffees > 0 && (
+        <div className="rc-balance">☕ {gauge.freeCoffees} free {gauge.freeCoffees === 1 ? 'coffee' : 'coffees'} ready to redeem</div>
+      )}
+      <div className="lc-track" role="img" aria-label={`${gauge.progress} of ${gauge.goal} toward your next free coffee`}>
         {Array.from({ length: gauge.goal }).map((_, i) => (
-          <Cup key={i} on={i < gauge.filled} free={i === gauge.goal - 1} />
+          <Cup key={i} on={i < gauge.progress} free={i === gauge.goal - 1} />
         ))}
       </div>
       <p className="rc-msg">
-        {gauge.complete ? 'Your free coffee is ready — redeem it at checkout!'
+        {gauge.freeCoffees > 0
+          ? `${gauge.progress}/${gauge.goal} toward your next — use your free ${gauge.freeCoffees === 1 ? 'coffee' : 'coffees'} at checkout!`
           : `Only ${gauge.remaining} more until your free coffee!`}
       </p>
-      <p className="rc-sub muted">Every eligible coffee purchase fills one cup.</p>
+      <div className="rc-foot">
+        <span className="rc-sub muted">{gauge.balance} {gauge.starW} · every eligible coffee earns one.</span>
+        <button type="button" className="rc-activity-btn" onClick={openActivity}>Points activity</button>
+      </div>
     </section>
   );
 
@@ -204,7 +222,7 @@ export default function Account({ user, currency, config, onSignIn, onSignOut, o
     return (
       <div className="order-card">
         <div className="oc-top">
-          <div className="oc-title">{m.title} <span className={`oc-state ${pill.cls}`}>{pill.label}</span></div>
+          <div className="oc-title">{m.title} <span className={`oc-state ${pill.cls}`}>{pill.label}</span>{o.freeCoffees > 0 && <span className="oc-free">☕ {o.freeCoffees} free</span>}</div>
           <div className="oc-total">{formatMoney(o.total?.amount, o.total?.currency || currency)}</div>
         </div>
         <div className="oc-meta">{fmtDate(o.createdAt)} · {m.type}</div>
@@ -476,10 +494,51 @@ function pifStatusPill(status) {
                         </li>
                       ))}
                     </ul>
+                    {detail.freeCoffees > 0 && <div className="od-free">☕ {detail.freeCoffees} free {detail.freeCoffees === 1 ? 'coffee' : 'coffees'} redeemed on this order</div>}
                     <div className="od-total"><span>Total</span><span>{formatMoney(detail.total?.amount, detail.total?.currency || currency)}</span></div>
                     <button className="btn full" style={{ marginTop: 14 }} disabled={!canReorder}
                       onClick={() => { if (canReorder) { onReorder(detail); setDetail(null); } }}>↻ Order this again</button>
                     {!canReorder && <p className="muted" style={{ fontSize: 12.5, textAlign: 'center', marginTop: 8 }}>These items can’t be re-added automatically.</p>}
+                  </>
+                );
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Points activity — live balance + earned/used history */}
+      {activity !== null && (
+        <div className="backdrop" onClick={() => setActivity(null)}>
+          <div className="sheet od-sheet" onClick={(e) => e.stopPropagation()}>
+            <button className="sheet-close" onClick={() => setActivity(null)} aria-label="Close">✕</button>
+            <div className="sheet-body">
+              <h2 style={{ marginBottom: 2 }}>Points activity</h2>
+              {activity === 'loading' ? (
+                <p className="muted">Loading…</p>
+              ) : (() => {
+                const bal = activity.balance || 0;
+                const per = gauge.goal;
+                const free = Math.floor(bal / per);
+                const evs = activity.events || [];
+                return (
+                  <>
+                    <div className="pa-balance">
+                      <div><span className="pa-big">{free}</span> free {free === 1 ? 'coffee' : 'coffees'}</div>
+                      <div className="muted">{bal} {gauge.starW} · {bal % per}/{per} toward your next</div>
+                    </div>
+                    {evs.length === 0 ? (
+                      <p className="muted" style={{ marginTop: 12 }}>No activity yet — your earned and used points will show here.</p>
+                    ) : (
+                      <ul className="pa-list">
+                        {evs.map((e) => (
+                          <li key={e.id} className="pa-row">
+                            <span className="pa-detail">{e.detail}<em>{e.at ? ` · ${fmtDate(e.at)}` : ''}</em></span>
+                            {e.points != null && <span className={`pa-pts ${e.points < 0 ? 'neg' : 'pos'}`}>{e.points > 0 ? `+${e.points}` : e.points}</span>}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
                   </>
                 );
               })()}
