@@ -182,6 +182,10 @@ async function init(attempt = 1) {
       )
     `);
     await pool.query('CREATE INDEX IF NOT EXISTS kds_updated ON kds_tickets (updated_at)');
+    // How many times the customer has been told this order is ready. Lives on the
+    // synthetic '__notified__' row per order (its bumped_at = the last time they
+    // were notified). Lets staff re-notify and see "told them 3 min ago".
+    await pool.query("ALTER TABLE kds_tickets ADD COLUMN IF NOT EXISTS notify_count int default 0");
 
     // Counter-POS order audit (reconciliation / reports). Square remains the
     // source of truth for the money; this is a local cross-reference log.
@@ -877,16 +881,35 @@ async function pifKpis(days = 90) {
 async function kdsGetStates(orderIds) {
   if (!pool || !orderIds || !orderIds.length) return {};
   const r = await pool.query(
-    'SELECT order_id, zone, status, started_at, bumped_at FROM kds_tickets WHERE order_id = ANY($1)',
+    'SELECT order_id, zone, status, started_at, bumped_at, notify_count FROM kds_tickets WHERE order_id = ANY($1)',
     [orderIds]
   );
   const out = {};
   for (const x of r.rows) {
     (out[x.order_id] = out[x.order_id] || {})[x.zone] = {
-      status: x.status, startedAt: x.started_at, bumpedAt: x.bumped_at,
+      status: x.status, startedAt: x.started_at, bumpedAt: x.bumped_at, notifyCount: x.notify_count || 0,
     };
   }
   return out;
+}
+
+// Record that staff told the customer their order is ready (the Notify button).
+// Stored on the per-order '__notified__' row: notify_count = how many times, and
+// bumped_at = when they were last told. Each press bumps both. Returns the new
+// count and the timestamp so the screen can show "told them just now / 3 min ago".
+async function kdsNotify(orderId) {
+  if (!pool) throw new Error('The kitchen screen needs the database to remember notifications.');
+  const r = await pool.query(
+    `INSERT INTO kds_tickets (order_id, zone, status, bumped_at, updated_at, notify_count)
+     VALUES ($1, '__notified__', 'ready', now(), now(), 1)
+     ON CONFLICT (order_id, zone) DO UPDATE SET
+       bumped_at = now(), updated_at = now(),
+       notify_count = COALESCE(kds_tickets.notify_count, 0) + 1
+     RETURNING notify_count, bumped_at`,
+    [orderId]
+  );
+  const row = r.rows[0] || {};
+  return { count: row.notify_count || 1, at: row.bumped_at || new Date().toISOString() };
 }
 // A payment-completed marker for an app order, stored as a sentinel row in
 // kds_tickets (zone '__paid__'). This is OUR reliable "the money went through"
@@ -982,7 +1005,7 @@ async function posPaymentByOrder(squareOrderId) {
 
 module.exports = {
   init, getOverrides, saveOverrides, listSettingsBackups, restoreSettingsBackup,
-  kdsGetStates, kdsSetStatus, kdsMarkPaid, kdsGetPaid,
+  kdsGetStates, kdsSetStatus, kdsNotify, kdsMarkPaid, kdsGetPaid,
   posRecordOrder, posPaymentUpsert, posPaymentSetStatus, posPaymentGet, posPaymentByOrder,
   insertScheduled, listScheduledByCustomer, cancelScheduled, claimDue, updateScheduled,
   track, getAnalytics,

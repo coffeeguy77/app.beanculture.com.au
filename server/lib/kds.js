@@ -193,6 +193,9 @@ function buildTickets(orders, varCat, states, cfg, now = Date.now()) {
     const st = (states && states[o.id]) || {};
     const zoneStatus = {};
     for (const zid of Object.keys(zoneItems)) zoneStatus[zid] = (st[zid] && st[zid].status) || 'new';
+    // How many times the customer has been told it's ready, and when last — from
+    // the per-order '__notified__' row. Drives the card's "Notified 3 min ago".
+    const notif = st.__notified__ || null;
 
     return {
       orderId: o.id,
@@ -209,6 +212,8 @@ function buildTickets(orders, varCat, states, cfg, now = Date.now()) {
       note: meta.note,
       zoneItems,
       zoneStatus,
+      notifiedAt: notif && notif.bumpedAt ? notif.bumpedAt : null,
+      notifyCount: (notif && notif.notifyCount) || 0,
     };
   });
 }
