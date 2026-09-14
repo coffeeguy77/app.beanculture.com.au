@@ -431,16 +431,41 @@ app.post('/api/orders', async (req, res) => {
     const order = await orders.createOrder({ cart, dineIn: !!dineIn, table, name, coupon, couponContext, customerId: effectiveCustomerId, pickupAt, note, pifVoucher, squareLocationId, cardPayment: cardPayment !== false, free: freeOrder, freeCategories, shipping, eventId, appLocationId: evLoc ? evLoc.id : undefined, src, holdForPayment: true });
 
     let rewardApplied = false;
+    let rewardError; // set when a reward was requested but couldn't be applied
+    let rewardFresh; // the re-read order after a successful reward (reused below)
     if (loy && loy.accountId && loy.tierId) {
+      const beforeAmt = (order.total_money && order.total_money.amount) || 0;
+      let reward;
       try {
-        await loyalty.createReward({
+        reward = await loyalty.createReward({
           loyaltyAccountId: loy.accountId,
           rewardTierId: loy.tierId,
           orderId: order.id,
         });
-        rewardApplied = true;
       } catch (e) {
         console.error('loyalty reward failed', e.message);
+        rewardError = 'create_failed';
+      }
+      if (reward) {
+        // Square applies the reward's discount to the order server-side. Re-read
+        // it and confirm the total actually dropped — a reward whose item scope
+        // matches nothing in the cart "creates" fine but discounts $0, which
+        // would otherwise charge the customer full price AND burn their points.
+        try {
+          const check = await orders.getOrder(order.id);
+          const afterAmt = (check.total_money && check.total_money.amount) || 0;
+          if (afterAmt < beforeAmt) {
+            rewardApplied = true;
+            rewardFresh = check;
+          } else {
+            if (reward.id) await loyalty.deleteReward(reward.id); // return the points
+            rewardError = 'no_discount';
+          }
+        } catch (e) {
+          console.error('loyalty reward verify failed', e.message);
+          if (reward.id) await loyalty.deleteReward(reward.id);
+          rewardError = 'create_failed';
+        }
       }
     }
 
@@ -463,13 +488,14 @@ app.post('/api/orders', async (req, res) => {
       })();
     }
 
-    const fresh = rewardApplied ? await orders.getOrder(order.id) : order;
+    const fresh = rewardApplied ? (rewardFresh || await orders.getOrder(order.id)) : order;
     res.json({
       orderId: fresh.id,
       totalMoney: fresh.total_money,
       version: fresh.version,
       ticketName: fresh.ticket_name,
       rewardApplied,
+      rewardError: rewardError || undefined,
       // When we enrolled a walk-up event customer, hand back their identity so the
       // app can remember them on the device (one-tap reorders at the event).
       customer: (effectiveCustomerId && !customerId) ? { customerId: effectiveCustomerId, name: name || '', phone: orderPhone || '' } : undefined,
@@ -1386,6 +1412,8 @@ app.get('/api/pos/config', (req, res) => {
     paymentsByLocation: p.paymentsByLocation || {}, // per-store {card,cash,unpaid}
     terminalShowCart: p.terminalShowCart === true,  // show the confirm/itemised screen on the Terminal
     terminalSkipReceipt: p.terminalSkipReceipt !== false, // skip the post-payment receipt screen (default on)
+    // "Dine in" keyword trigger — words that flip a counter order to DINE IN.
+    dineInKeywords: Array.isArray(p.dineInKeywords) ? p.dineInKeywords : [],
     dbEnabled: db.enabled,
   });
 });
@@ -1401,8 +1429,21 @@ app.post('/api/pos/terminal-options', async (req, res) => {
     if (b.showItemizedCart !== undefined) ov.pos.terminalShowCart = b.showItemizedCart === true;
     // skipReceipt: only change it when the client sends it, so the two toggles are independent.
     if (b.skipReceipt !== undefined) ov.pos.terminalSkipReceipt = b.skipReceipt === true;
+    // Dine-in keyword trigger: accept an array, or a comma/newline-separated
+    // string, and store a clean de-duplicated, lower-cased list (max 40).
+    if (b.dineInKeywords !== undefined) {
+      const raw = Array.isArray(b.dineInKeywords) ? b.dineInKeywords : String(b.dineInKeywords || '').split(/[\n,]/);
+      const seen = new Set();
+      const list = [];
+      for (const k of raw) {
+        const v = String(k || '').trim().toLowerCase().slice(0, 40);
+        if (v && !seen.has(v)) { seen.add(v); list.push(v); }
+        if (list.length >= 40) break;
+      }
+      ov.pos.dineInKeywords = list;
+    }
     await db.saveOverrides(ov);
-    res.json({ ok: true, terminalShowCart: ov.pos.terminalShowCart, terminalSkipReceipt: ov.pos.terminalSkipReceipt !== false });
+    res.json({ ok: true, terminalShowCart: ov.pos.terminalShowCart, terminalSkipReceipt: ov.pos.terminalSkipReceipt !== false, dineInKeywords: ov.pos.dineInKeywords });
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
