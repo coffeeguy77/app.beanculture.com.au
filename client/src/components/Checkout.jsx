@@ -69,7 +69,7 @@ function dateStr(d) {
 }
 const WEEKDAYS = [['Mon', 1], ['Tue', 2], ['Wed', 3], ['Thu', 4], ['Fri', 5], ['Sat', 6], ['Sun', 0]];
 
-export default function Checkout({ config, location, cart, currency, onQty, onComboQty, onRemoveCombo, onEditCombo, dineIn, setDineIn, table, setTable, tableLock, onUnlockTable, onScanTable, name, setName, user, canOrder, preWhen, preAt, onPaid, onScheduled, onBack, pifVoucher, onClearPifVoucher, eventMode, wholeFree, isFreeCat, shippingFee, onEnrolled, orderSrc }) {
+export default function Checkout({ config, location, cart, currency, onQty, onComboQty, onRemoveCombo, onEditCombo, dineIn, setDineIn, table, setTable, tableLock, onUnlockTable, onScanTable, name, setName, user, canOrder, birthdayOffer, preWhen, preAt, onPaid, onScheduled, onBack, pifVoucher, onClearPifVoucher, eventMode, wholeFree, isFreeCat, shippingFee, onEnrolled, orderSrc }) {
   const [status, setStatus] = useState('init');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -848,6 +848,12 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
         {hasCoupon && !couponValid && couponInfo && <div className="row discount"><span>{couponReasonText(couponInfo)}</span><span>—</span></div>}
         {usingReward && <div className="row discount"><span>🎁 {redeemQty} free {redeemQty === 1 ? 'coffee' : 'coffees'} — applied at payment</span><span>−{redeemQty * (loyalty?.pointsPerReward || 0)} {loyalty?.terminology?.other || 'pts'}</span></div>}
         {usingReward && <p className="muted" style={{ fontSize: 11.5, marginTop: 2 }}>Your free {redeemQty === 1 ? 'coffee comes' : 'coffees come'} off when you check out — the total above drops to what’s left to pay.</p>}
+        {birthdayOffer?.eligible && !hasCoupon && !hasPif && !eventMode && (
+          <>
+            <div className="row discount"><span>🎂 Birthday gift — applied at payment</span><span>up to −{formatMoney(birthdayOffer.valueCents || 0, currency)}</span></div>
+            <p className="muted" style={{ fontSize: 11.5, marginTop: 2 }}>Happy birthday! A drink up to {formatMoney(birthdayOffer.valueCents || 0, currency)} is on us — it comes off when you check out.</p>
+          </>
+        )}
         {autocharge && <div className="row"><span>{isRepeat ? 'Charged each time' : 'Charged at pickup'}</span><span>{formatMoney(payTotal, currency)}</span></div>}
       </div>
 

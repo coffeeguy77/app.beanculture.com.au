@@ -5569,6 +5569,32 @@ export default function Admin({ onExit }) {
                 </div>
               </>
             )}
+            {tab === 'push' && (() => {
+              const bg = s?.birthday || {};
+              const setBg = (patch) => set({ birthday: { ...(s?.birthday || {}), ...patch } });
+              const ta = { padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 10, font: 'inherit', width: '100%', resize: 'vertical' };
+              return (
+              <div className="card" style={card}>
+                <div className="group-title">🎂 Birthday gift</div>
+                <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 0 }}>On a customer’s birthday (day &amp; month, which they lock in their account), the app auto-applies a free-drink credit up to the value you set, shows a balloon birthday theme + a personal banner, and marks it used for the year. They must have completed an app purchase <strong>before</strong> their birthday. Remember to press <strong>Save changes</strong>.</p>
+                <label className="avail-switch"><input type="checkbox" checked={bg.enabled !== false} onChange={(e) => setBg({ enabled: e.target.checked })} /><span>Offer the birthday gift</span></label>
+                <div className="admin-two-col" style={{ marginTop: 10 }}>
+                  <label className="field"><span>Gift value ($ — a drink up to this is free)</span>
+                    <input type="number" min="0" step="0.5" value={((bg.valueCents ?? 600) / 100)} onChange={(e) => setBg({ valueCents: Math.max(0, Math.round((parseFloat(e.target.value) || 0) * 100)) })} /></label>
+                  <label className="field"><span>Also valid days around birthday (0 = day only)</span>
+                    <input type="number" min="0" max="31" value={bg.windowDays ?? 0} onChange={(e) => setBg({ windowDays: Math.max(0, Math.min(31, parseInt(e.target.value, 10) || 0)) })} /></label>
+                </div>
+                <label className="field" style={{ marginTop: 10 }}><span>Banner title</span>
+                  <input value={bg.bannerTitle || ''} onChange={(e) => setBg({ bannerTitle: e.target.value })} placeholder="Happy Birthday! 🎂" /></label>
+                <label className="field" style={{ marginTop: 10 }}><span>Banner message (shown on their day)</span>
+                  <textarea rows={3} style={ta} value={bg.bannerMessage || ''} onChange={(e) => setBg({ bannerMessage: e.target.value })} placeholder="It’s your day — pop in for a coffee on us…" /></label>
+                <label className="field" style={{ marginTop: 10 }}><span>Gift terms (customers can read these)</span>
+                  <textarea rows={6} style={ta} value={bg.terms || ''} onChange={(e) => setBg({ terms: e.target.value })} /></label>
+                <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 8 }}>Remember to press <strong>Save changes</strong>.</p>
+              </div>
+              );
+            })()}
+
             {tab === 'push' && (
               <div className="card" style={card}>
                 <div className="group-title">SMS Advertising · message your customers</div>

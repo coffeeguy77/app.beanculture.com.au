@@ -4,6 +4,7 @@ import GiftCards from './GiftCards.jsx';
 import InstallButton from './InstallButton.jsx';
 import AddAppIcon from './AddAppIcon.jsx';
 import { HeartIcon, ThemeIcon } from './icons.jsx';
+import { BirthdayTerms } from './Birthday.jsx';
 
 /* ── little stroke icons (match the store page line style) ───────────────── */
 const Ico = ({ children, size = 19 }) => (
@@ -81,9 +82,12 @@ export default function Account({ user, currency, config, onSignIn, onSignOut, o
   const [coffeeGifts, setCoffeeGifts] = useState(null); // { sent, received }
   const [coffeeTab, setCoffeeTab] = useState('received'); // received | sent
   const [birthday, setBirthday] = useState('');          // 'MM-DD' saved on file
-  const [bdayInput, setBdayInput] = useState('');        // 'YYYY-MM-DD' in the picker
+  const [bMonth, setBMonth] = useState('');              // '01'..'12'
+  const [bDay, setBDay] = useState('');                  // '01'..'31'
   const [bdayBusy, setBdayBusy] = useState(false);
   const [bdayMsg, setBdayMsg] = useState('');
+  const [bdayTermsOpen, setBdayTermsOpen] = useState(false);
+  const [bdayTermsText, setBdayTermsText] = useState('');
 
   useEffect(() => {
     if (user?.phone) api.getLoyalty(user.phone).then(setLoyalty).catch(() => {});
@@ -95,21 +99,26 @@ export default function Account({ user, currency, config, onSignIn, onSignOut, o
       api.getBirthday(user.customerId).then((r) => {
         const mmdd = (r && r.birthday) || '';
         setBirthday(mmdd);
-        setBdayInput(mmdd ? `2000-${mmdd}` : '');
+        if (mmdd) { setBMonth(mmdd.slice(0, 2)); setBDay(mmdd.slice(3, 5)); }
       }).catch(() => {});
+      api.birthdayOffer(user.customerId).then((o) => setBdayTermsText((o && o.terms) || '')).catch(() => {});
     }
     if (user?.customerId || user?.phone) {
       api.myGifts(user.customerId, user.phone).then(setCoffeeGifts).catch(() => setCoffeeGifts({ sent: [], received: [] }));
     }
   }, [user]);
 
+  const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
   async function saveBirthday() {
-    if (!user?.customerId || !bdayInput) return;
+    if (!user?.customerId || !bMonth || !bDay) return;
+    const label = `${Number(bDay)} ${MONTHS[Number(bMonth) - 1]}`;
+    // Confirm + lock: it can't be changed in the app afterwards.
+    if (typeof window !== 'undefined' && !window.confirm(`Lock in your birthday as ${label}?\n\nThis can't be changed in the app once confirmed.`)) return;
     setBdayBusy(true); setBdayMsg('');
     try {
-      const r = await api.setBirthday(user.customerId, bdayInput);
-      setBirthday(r.birthday || '');
-      setBdayMsg('Saved 🎉');
+      const r = await api.setBirthday(user.customerId, `${bMonth}-${bDay}`);
+      setBirthday(r.birthday || `${bMonth}-${bDay}`);
+      setBdayMsg('Locked in 🎉');
     } catch (e) { setBdayMsg(e.message || 'Could not save.'); }
     finally { setBdayBusy(false); }
   }
@@ -433,16 +442,35 @@ function pifStatusPill(status) {
               {user.customerId && (
                 <div className="acct-card" style={{ padding: 16, marginBottom: 14 }}>
                   <div style={{ fontWeight: 700, marginBottom: 4 }}>🎂 Your birthday</div>
-                  <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>Add your birthday and we’ll have a little treat waiting for you around the day.</p>
-                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                    <input type="date" value={bdayInput} onChange={(e) => setBdayInput(e.target.value)}
-                      style={{ padding: '8px 10px', border: '1px solid var(--line, #e0d6da)', borderRadius: 10, fontSize: 15 }} />
-                    <button className="btn" disabled={bdayBusy || !bdayInput} onClick={saveBirthday} style={{ padding: '8px 16px' }}>
-                      {bdayBusy ? 'Saving…' : (birthday ? 'Update' : 'Save')}
-                    </button>
-                    {bdayMsg && <span className="muted" style={{ fontSize: 13 }}>{bdayMsg}</span>}
-                  </div>
-                  <p className="muted" style={{ fontSize: 11.5, marginTop: 8 }}>We only keep the day and month, never the year.</p>
+                  {birthday ? (
+                    <>
+                      <p style={{ fontSize: 15, marginTop: 0, marginBottom: 6 }}>
+                        <strong>{Number(birthday.slice(3, 5))} {MONTHS[Number(birthday.slice(0, 2)) - 1]}</strong>
+                        <span className="muted" style={{ fontSize: 12.5 }}> · locked 🔒</span>
+                      </p>
+                      <p className="muted" style={{ fontSize: 12.5, marginTop: 0 }}>We’ll have a free birthday drink waiting for you on the day. Your birthday can’t be changed here — contact us if it needs correcting.</p>
+                      {bdayTermsText && <button type="button" className="link" style={{ padding: 0, fontSize: 13 }} onClick={() => setBdayTermsOpen(true)}>Read the birthday gift terms</button>}
+                    </>
+                  ) : (
+                    <>
+                      <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>Add your birthday (day &amp; month) and we’ll have a free drink waiting for you on the day.</p>
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                        <select value={bDay} onChange={(e) => setBDay(e.target.value)} style={{ padding: '8px 10px', border: '1px solid var(--line, #e0d6da)', borderRadius: 10, fontSize: 15 }}>
+                          <option value="">Day</option>
+                          {Array.from({ length: 31 }).map((_, i) => { const d = String(i + 1).padStart(2, '0'); return <option key={d} value={d}>{i + 1}</option>; })}
+                        </select>
+                        <select value={bMonth} onChange={(e) => setBMonth(e.target.value)} style={{ padding: '8px 10px', border: '1px solid var(--line, #e0d6da)', borderRadius: 10, fontSize: 15 }}>
+                          <option value="">Month</option>
+                          {MONTHS.map((m, i) => { const mm = String(i + 1).padStart(2, '0'); return <option key={mm} value={mm}>{m}</option>; })}
+                        </select>
+                        <button className="btn" disabled={bdayBusy || !bMonth || !bDay} onClick={saveBirthday} style={{ padding: '8px 16px' }}>
+                          {bdayBusy ? 'Saving…' : 'Confirm & lock'}
+                        </button>
+                        {bdayMsg && <span className="muted" style={{ fontSize: 13 }}>{bdayMsg}</span>}
+                      </div>
+                      <p className="muted" style={{ fontSize: 11.5, marginTop: 8 }}>We only keep the day and month, never the year. It’s locked once confirmed. {bdayTermsText && <button type="button" className="link" style={{ padding: 0, fontSize: 11.5 }} onClick={() => setBdayTermsOpen(true)}>See terms</button>}</p>
+                    </>
+                  )}
                 </div>
               )}
               {ScheduledBlock}
@@ -511,6 +539,8 @@ function pifStatusPill(status) {
           </div>
         </div>
       )}
+
+      {bdayTermsOpen && <BirthdayTerms terms={bdayTermsText} onClose={() => setBdayTermsOpen(false)} />}
 
       {/* Points activity — live balance + earned/used history */}
       {activity !== null && (
