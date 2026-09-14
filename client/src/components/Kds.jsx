@@ -246,6 +246,31 @@ export default function Kds({ onExit, embedded, location, onControls }) {
     } catch { setErr('Bump didn’t save — check the connection.'); loadTickets(); }
   }
 
+  // Notify the app customer their order is ready — without clearing the ticket.
+  // Marks the station(s) ready (so their live tracker flips to "ready") and
+  // records the notification so the card can show how long ago they were told.
+  // Pressing again re-sends the alert to remind a customer who missed it.
+  async function notify(orderId) {
+    const t = tickets.find((x) => x.orderId === orderId);
+    const targets = zone === ALL && t ? targetsFor(t) : [zone];
+    // Optimistic: flip the station(s) to ready + stamp "just notified" locally.
+    setTickets((ts) => ts.map((x) => (x.orderId === orderId
+      ? { ...x, zoneStatus: { ...x.zoneStatus, ...Object.fromEntries(targets.map((z) => [z, 'ready'])) }, notifiedAt: new Date().toISOString(), notifyCount: (x.notifyCount || 0) + 1 }
+      : x)));
+    try {
+      const r = await fetch(`/api/admin/kds/notify?pass=${encodeURIComponent(pass)}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId, zones: targets }),
+      });
+      if (!r.ok) {
+        let msg = `Notify failed (${r.status})`;
+        try { const d = await r.json(); if (d && d.error) msg = `Notify failed: ${d.error}`; } catch {}
+        setErr(msg); loadTickets(); return;
+      }
+      setErr('');
+    } catch { setErr('Notify didn’t send — check the connection.'); loadTickets(); }
+  }
+
   // Bump every open ticket in the current station at once. Confirms first so a
   // stray tap can't clear the whole board.
   async function bumpAll() {
@@ -293,6 +318,17 @@ export default function Kds({ onExit, embedded, location, onControls }) {
   const amberMin = cfg ? cfg.amberMin : 6;
   const redMin = cfg ? cfg.redMin : 12;
   const ageOf = (t) => Math.max(0, Math.round((now - new Date(t.createdAt).getTime()) / 1000));
+  // "just now" / "3 min ago" for the last-notified time — ticks live off `now`.
+  const fmtSince = (iso) => {
+    if (!iso) return '';
+    const s = Math.max(0, Math.round((now - new Date(iso).getTime()) / 1000));
+    if (s < 10) return 'just now';
+    if (s < 60) return `${s}s ago`;
+    const m = Math.round(s / 60);
+    if (m < 60) return `${m} min ago`;
+    const h = Math.floor(m / 60);
+    return `${h}h ${m % 60}m ago`;
+  };
   const levelOf = (sec) => { const m = sec / 60; return m >= redMin ? 'red' : m >= amberMin ? 'amber' : 'green'; };
 
   // Tickets in this zone: active (not done) and a small recall strip (done)
@@ -465,8 +501,10 @@ export default function Kds({ onExit, embedded, location, onControls }) {
           // order — flag it so the routing gap can be fixed.
           const stId = singleStation && stationZones[0] && stationZones[0].id;
           const unrouted = stId && (t.zoneItems[ALL] || []).length > (t.zoneItems[stId] || []).length;
+          const notified = t.appOrigin && t.notifyCount > 0 && st !== 'done';
           return (
-            <div key={t.orderId} className={`kds-card lvl-${lvl}${st === 'preparing' ? ' preparing' : ''}`}>
+            <div key={t.orderId} className={`kds-card lvl-${lvl}${st === 'preparing' ? ' preparing' : ''}${notified ? ' notified' : ''}`}>
+              {notified && <span className="kds-notified-tag">✓ Customer notified</span>}
               <div className="kds-card-head">
                 <div className="kds-card-title">
                   {label(t)}
@@ -490,11 +528,16 @@ export default function Kds({ onExit, embedded, location, onControls }) {
                 ))}
               </ul>
               <div className="kds-card-foot">
-                {/* Ready → notifies the app customer their order is ready to
-                    collect (app orders only). Then Bump clears the ticket. */}
+                {/* Notify → tells the app customer it's ready (app orders only)
+                    WITHOUT clearing the ticket, and shows how long ago they were
+                    told; tap again to remind. Bump clears the ticket once
+                    collected. */}
                 {t.appOrigin && (
-                  <button className={`kds-btn ready${st === 'ready' ? ' on' : ''}`} onClick={() => bump(t.orderId, 'ready')}>
-                    {st === 'ready' ? 'Ready ✓' : '🔔 Ready'}
+                  <button className={`kds-btn notify${t.notifyCount > 0 ? ' sent' : ''}`} onClick={() => notify(t.orderId)}
+                    title={t.notifyCount > 0 ? `Told the customer ${t.notifyCount}× — tap to remind them again` : 'Tell the customer their order is ready'}>
+                    {t.notifyCount > 0
+                      ? `🔔 Notified · ${fmtSince(t.notifiedAt)}${t.notifyCount > 1 ? ` ·×${t.notifyCount}` : ''}`
+                      : '🔔 Notify'}
                   </button>
                 )}
                 <button className="kds-btn bump" onClick={() => bump(t.orderId, 'done')}>Bump ✓</button>

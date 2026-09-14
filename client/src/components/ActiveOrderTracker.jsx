@@ -52,6 +52,7 @@ export default function ActiveOrderTracker({ paused }) {
   const [msg, setMsg] = useState('');        // café's custom "ready" message, if any
   const [hintX, setHintX] = useState(false); // brief "tap again to close" nudge
   const chimedRef = useRef(false);
+  const notifiedRef = useRef(null); // last-seen "notified at" — a newer one = re-chime
   const lastTapRef = useRef(0);
 
   // Pick up a newly-saved order (set right after checkout) without a reload.
@@ -60,7 +61,7 @@ export default function ActiveOrderTracker({ paused }) {
       const o = readActiveOrder();
       setOrder((prev) => {
         if (!o) return null;
-        if (!prev || prev.orderId !== o.orderId) { chimedRef.current = false; return o; }
+        if (!prev || prev.orderId !== o.orderId) { chimedRef.current = false; notifiedRef.current = null; return o; }
         return prev;
       });
     }, 4000);
@@ -82,6 +83,12 @@ export default function ActiveOrderTracker({ paused }) {
           if (d.status === 'ready' && next && next !== prev) chimedRef.current = false;
           return next;
         });
+        // Staff pressed "Notify" again (a newer notifiedAt) → re-chime to remind a
+        // customer who missed the first alert. Not on the very first read.
+        if (d.status === 'ready' && d.notifiedAt && notifiedRef.current && d.notifiedAt !== notifiedRef.current) {
+          chimedRef.current = false;
+        }
+        if (d.notifiedAt) notifiedRef.current = d.notifiedAt;
         if (d.status === 'ready' && !chimedRef.current) { chimedRef.current = true; readyChime(); }
         if (d.status === 'done') { clearActiveOrder(); setOrder(null); }
       } catch {}
