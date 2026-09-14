@@ -168,9 +168,9 @@ const DEFAULTS = {
     enabled: true,
     valueCents: 600,          // gift value — a drink up to this much is free
     windowDays: 0,            // 0 = birthday day only; N = also the N days around it
-    bannerTitle: 'Happy Birthday! 🎂',
+    bannerTitle: 'Happy Birthday, {name}! 🎂',
     bannerMessage: 'It’s your day — pop in for a coffee on us. Your birthday gift is ready to use at checkout. Enjoy! ☕',
-    bannerImage: '',          // optional custom banner image shown on their day
+    bannerImage: '',          // optional custom banner image shown on their day ({name} works in the title/message)
 
     terms: 'Your birthday gift is one free drink up to the set value, once per year, on your birthday.\n\nTo receive it you must have completed at least one app purchase before your birthday.\n\nYour birthday (day and month) is locked once confirmed and can’t be changed in the app — contact us if it was entered incorrectly.\n\nProof of ID confirming your date of birth may be requested, and the gift is provided at management’s discretion.',
   },
