@@ -199,6 +199,16 @@ async function init(attempt = 1) {
       )
     `);
     await pool.query('CREATE INDEX IF NOT EXISTS sms_events_ts ON sms_events (created_at)');
+    // Birthday gift redemptions — one row per customer per year, so the free
+    // birthday drink can only be claimed once each birthday.
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS birthday_redemptions (
+        customer_id text not null,
+        year int not null,
+        created_at timestamptz default now(),
+        primary key (customer_id, year)
+      )
+    `);
     // Prepaid SMS credit balance (future multi-tenant metering). Single row today
     // (tenant 'main'); each metered SMS decrements `balance`. Dormant until the
     // notifications.smsCredits.enforce setting is turned on.
@@ -935,6 +945,28 @@ async function kdsNotify(orderId) {
   return { count: row.notify_count || 1, at: row.bumped_at || new Date().toISOString() };
 }
 
+// ── Birthday gift redemptions (once per customer per year) ────────────────
+async function birthdayRedeemedThisYear(customerId, year) {
+  if (!pool || !customerId) return false;
+  try {
+    const r = await pool.query('SELECT 1 FROM birthday_redemptions WHERE customer_id = $1 AND year = $2', [customerId, year]);
+    return r.rowCount > 0;
+  } catch { return false; }
+}
+// Claim atomically: inserts the row and returns true only if it wasn't already
+// there (so two rapid orders can't both get the gift).
+async function birthdayClaim(customerId, year) {
+  if (!pool || !customerId) return false;
+  try {
+    const r = await pool.query('INSERT INTO birthday_redemptions (customer_id, year) VALUES ($1,$2) ON CONFLICT DO NOTHING', [customerId, year]);
+    return r.rowCount > 0;
+  } catch { return false; }
+}
+async function birthdayUnclaim(customerId, year) {
+  if (!pool || !customerId) return;
+  try { await pool.query('DELETE FROM birthday_redemptions WHERE customer_id = $1 AND year = $2', [customerId, year]); } catch {}
+}
+
 // ── SMS usage counting + prepaid credits ──────────────────────────────────
 // Record one sent SMS (best-effort; never blocks the send).
 async function smsRecord({ purpose, orderId } = {}) {
@@ -1084,6 +1116,7 @@ module.exports = {
   init, getOverrides, saveOverrides, listSettingsBackups, restoreSettingsBackup,
   kdsGetStates, kdsSetStatus, kdsNotify, kdsMarkPaid, kdsGetPaid,
   smsRecord, smsCounts, smsCreditsGet, smsCreditsAdd, smsCreditsConsume,
+  birthdayRedeemedThisYear, birthdayClaim, birthdayUnclaim,
   posRecordOrder, posPaymentUpsert, posPaymentSetStatus, posPaymentGet, posPaymentByOrder,
   insertScheduled, listScheduledByCustomer, cancelScheduled, claimDue, updateScheduled,
   track, getAnalytics,

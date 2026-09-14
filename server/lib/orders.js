@@ -93,8 +93,10 @@ function buildNote({ dineIn, table }) {
   return dineIn ? `DINE-IN · ${tableLabel(table) || '?'}` : 'TAKEAWAY';
 }
 
-async function createOrder({ cart, dineIn, table, name, coupon, couponContext, customerId, pickupAt, idempotencyKey, note: customerNote, pifVoucher, source, squareLocationId, cardPayment, free, freeCategories, shipping, eventId, appLocationId, src, reason, posOverrideLocation, holdForPayment }) {
+async function createOrder({ cart, dineIn, table, name, coupon, couponContext, customerId, pickupAt, idempotencyKey, note: customerNote, pifVoucher, source, squareLocationId, cardPayment, free, freeCategories, shipping, eventId, appLocationId, src, reason, posOverrideLocation, birthdayGift, holdForPayment }) {
   const LOC = squareLocationId || LOCATION_ID;
+  // Birthday gift credit in cents (eligibility already checked by the caller).
+  const bdayCents = birthdayGift ? Math.max(0, Math.round(Number(birthdayGift.cents) || 0)) : 0;
   if (!Array.isArray(cart) || cart.length === 0) throw new Error('Cart is empty');
   // Bake any per-combo locked modifiers into the combo lines before pricing, so
   // an item the owner locked into a combo (e.g. chips) is always charged even if
@@ -234,6 +236,8 @@ async function createOrder({ cart, dineIn, table, name, coupon, couponContext, c
     // so the kitchen screen always reads it right — this is what makes a table
     // order show as "Dine-in · <table>" instead of Takeaway.
     order.metadata.bc_dinein = dineIn ? '1' : '0';
+    // Birthday gift applied → the year, so payment can mark it claimed (once/year).
+    if (bdayCents > 0 && birthdayGift && birthdayGift.year) order.metadata.bc_bday = String(birthdayGift.year);
     // The buyer's own name from app checkout, so the KDS can show a real name
     // instead of a random order code (parseTicketMeta reads bc_name first).
     if (name) order.metadata.bc_name = String(name).trim().slice(0, 60);
@@ -304,6 +308,13 @@ async function createOrder({ cart, dineIn, table, name, coupon, couponContext, c
         if (d) order.discounts = [d];
       }
     }
+  }
+
+  // Birthday gift: a fixed $ credit toward the order (Square caps it at the order
+  // total, so a drink up to that value is free and anything over is still paid).
+  // Only on a normal, non-comp order — the caller has already checked eligibility.
+  if (!isComp && bdayCents > 0) {
+    order.discounts = [...(order.discounts || []), { uid: 'bday', name: '🎂 Birthday gift', amount_money: { amount: bdayCents, currency: CURRENCY }, scope: 'ORDER' }];
   }
 
   // Mixed event cart: 100%-off just the complimentary lines (LINE_ITEM scope),

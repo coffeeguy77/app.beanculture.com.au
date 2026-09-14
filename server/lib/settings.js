@@ -158,6 +158,20 @@ const DEFAULTS = {
     partialRedemptionAllowed: true,
     noCashChange: true,
   },
+  // ── Birthday gift ──
+  // A once-a-year treat: on a signed-in customer's birthday (day+month, locked
+  // once set) the app auto-applies a $valueCents credit toward a drink, shows a
+  // balloon birthday theme + a personal banner, and marks it used so it can't be
+  // claimed twice. Rules: the customer must have COMPLETED an app purchase before
+  // their birthday, and management may verify the date by ID (see the terms).
+  birthday: {
+    enabled: true,
+    valueCents: 600,          // gift value — a drink up to this much is free
+    windowDays: 0,            // 0 = birthday day only; N = also the N days around it
+    bannerTitle: 'Happy Birthday! 🎂',
+    bannerMessage: 'It’s your day — pop in for a coffee on us. Your birthday gift is ready to use at checkout. Enjoy! ☕',
+    terms: 'Your birthday gift is one free drink up to the set value, once per year, on your birthday.\n\nTo receive it you must have completed at least one app purchase before your birthday.\n\nYour birthday (day and month) is locked once confirmed and can’t be changed in the app — contact us if it was entered incorrectly.\n\nProof of ID confirming your date of birth may be requested, and the gift is provided at management’s discretion.',
+  },
   // Loyalty automation. autoEnrollOnSignIn: create a Square Loyalty account on
   // passwordless sign-in. autoEnrollGiftRecipients: enrol a Pay It Forward
   // recipient (by the phone we SMS'd) at redemption so the gifted coffee earns
