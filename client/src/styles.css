@@ -3478,6 +3478,7 @@ body:has(.store-shell) { background: var(--bc-canvas-deep, #160f12); }
 .kds-sched-tag { display: block; background: #23304f; color: #cdd9ff; font-size: 12px; font-weight: 800; padding: 5px 12px; letter-spacing: .01em; }
 .kds-sched-tag.due { background: #4a3a10; color: #ffdf9e; }
 .kds-sched-lock { flex: 1; text-align: center; padding: 12px; border-radius: 11px; background: #23304f; color: #cdd9ff; font-weight: 800; font-size: 14px; }
+.kds-sched-tag svg, .kds-sched-lock svg { width: 15px; height: 15px; vertical-align: -3px; }
 
 /* Recall strip */
 .kds-recall { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 16px; background: #0e1216; border-top: 1px solid #222a32; }

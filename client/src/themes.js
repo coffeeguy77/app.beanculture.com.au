@@ -369,6 +369,26 @@ export function presetSwatch(p) {
 // the legacy --brand/--accent/--bg (used outside .store-shell) and the
 // theme-color meta in sync. Idempotent — safe to call after the pre-paint
 // inline script has already seeded the tokens.
+// A festive birthday theme that OVERRIDES whatever theme is selected, applied
+// only on the signed-in customer's birthday. Deep magenta→purple canvas, light
+// pink cards, gold accents — celebratory and readable behind the balloons.
+export const BIRTHDAY_THEME = {
+  id: 'birthday', name: 'Birthday',
+  theme: { bg: '#5C1668', surface: '#FFF6FB', ink: '#2E1330', muted: '#7B5E76', brand: '#D6336C', accent: '#F4B400', accentInk: '#FFFFFF', line: '#EEC9E1' },
+  palette: {
+    canvasStart: '#2A0B3F', canvasMid: '#5C1668', canvasEnd: '#9B1E6A', canvasGlow: '#FF66A3',
+    surface: '#FFF6FB', surfaceRaised: '#FFFFFF', surfaceTint: '#F8E6F2',
+    primary: '#D6336C', primaryHover: '#E7538A', primaryPressed: '#A81F55',
+    accent: '#F4B400', accentStrong: '#FFCF3F',
+    text: '#2E1330', textMuted: '#7B5E76', textOnDark: '#FFF3FA', textOnDarkMuted: '#E7C9DE', textOnPrimary: '#FFFFFF',
+    border: '#EEC9E1', borderAccent: '#F4B400', controlBorder: '#DFAECF', focus: '#FF66A3',
+    heroBorder: '#F4B400', heroGlow: 'rgba(244,180,0,.22)',
+    progressTrack: 'rgba(255,246,251,.24)', progressFillStart: '#D6336C', progressFillEnd: '#F4B400',
+    cartIllustration: '#D6336C', success: '#2E8B57', warning: '#F4B400', danger: '#D6336C',
+    shadowColor: 'rgba(30,6,30,.42)', glowColor: 'rgba(255,102,163,.24)',
+  },
+};
+
 export function applyStoreTheme(preset) {
   // Accept a full preset object or a bare { id } — resolve the latter.
   let p = preset;

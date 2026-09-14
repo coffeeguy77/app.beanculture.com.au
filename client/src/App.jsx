@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { api, formatMoney, imgUrl, comboDiscountFor } from './api.js';
 import { applyTheme } from './theme.js';
-import { STOREFRONT_THEMES, resolvePreset, applyStoreTheme, presetSwatch, buildTokens, seasonalAsPreset } from './themes.js';
+import { STOREFRONT_THEMES, resolvePreset, applyStoreTheme, presetSwatch, buildTokens, seasonalAsPreset, BIRTHDAY_THEME } from './themes.js';
 import { getUser, setUser as saveUser, getSavedTheme, setSavedTheme, getSeasonOptOut, setSeasonOptOut, getStoredOrder, setStoredOrder, getFavorites, saveFavorites, getStoredThemeBlob, saveStoredTheme, getEffectPreference, setEffectPreference, getPifVoucher, setPifVoucher as savePifVoucher } from './store.js';
 import HeroSlider from './components/HeroSlider.jsx';
 import OrderTypeBar from './components/OrderTypeBar.jsx';
@@ -20,7 +20,7 @@ import Kds from './components/Kds.jsx';
 import Pos from './components/Pos.jsx';
 import LiveOrderStatus from './components/LiveOrderStatus.jsx';
 import ActiveOrderTracker, { saveActiveOrder } from './components/ActiveOrderTracker.jsx';
-import { BirthdayOverlay, BirthdayTerms } from './components/Birthday.jsx';
+import { BirthdayOverlay } from './components/Birthday.jsx';
 import PayItForward from './components/PayItForward.jsx';
 import GiftClaim from './components/GiftClaim.jsx';
 import Logo from './components/Logo.jsx';
@@ -245,27 +245,24 @@ export default function App() {
 
   const [user, setUserState] = useState(getUser());
   const [bdayOffer, setBdayOffer] = useState(null);   // birthday gift eligibility
-  const [bdayDismissed, setBdayDismissed] = useState(false);
-  const [bdayTerms, setBdayTerms] = useState(false);
   const [view, setView] = useState('home'); // home | cart | checkout | done | account | admin
   const [activeItem, setActiveItem] = useState(null);
 
-  // Birthday gift: when a signed-in customer is eligible today, celebrate (balloons
-  // + banner) and let checkout auto-apply the gift. Dismissable once per day.
+  // Birthday gift: when a signed-in customer is eligible today, celebrate with
+  // balloons (all day), the #1 hero banner, and the festive birthday theme, and
+  // let checkout auto-apply the gift.
   useEffect(() => {
     if (!user?.customerId) { setBdayOffer(null); return; }
     let alive = true;
     api.birthdayOffer(user.customerId).then((o) => { if (alive) setBdayOffer(o && o.eligible ? o : null); }).catch(() => {});
-    try {
-      const key = `bc-bday-dismissed-${new Date().toISOString().slice(0, 10)}`;
-      setBdayDismissed(localStorage.getItem(key) === '1');
-    } catch {}
     return () => { alive = false; };
   }, [user?.customerId]);
-  const dismissBday = () => {
-    setBdayDismissed(true);
-    try { localStorage.setItem(`bc-bday-dismissed-${new Date().toISOString().slice(0, 10)}`, '1'); } catch {}
-  };
+  // On their birthday, override whatever theme is selected with the festive
+  // birthday palette (so it never clashes with a seasonal theme like Tulip Tops).
+  useEffect(() => {
+    if (!bdayOffer?.eligible) return;
+    try { applyTheme(BIRTHDAY_THEME.theme); applyStoreTheme(seasonalAsPreset(BIRTHDAY_THEME)); } catch {}
+  }, [bdayOffer]);
   const [showTheme, setShowTheme] = useState(false);
   const [showPif, setShowPif] = useState(false);
   const [pifEnabled, setPifEnabled] = useState(false);
@@ -1114,7 +1111,22 @@ export default function App() {
     for (const k of Object.keys(src)) if (atThisStore(src[k])) out[k] = src[k];
     return out;
   })();
+  // Birthday banner rides at the FRONT of the hero slider on the customer's day,
+  // personalised with their first name; uses the custom image if uploaded.
+  const bdayFirst = (user?.name || '').trim().split(/\s+/)[0] || '';
+  const bdayFill = (t) => { const s = String(t || ''); return bdayFirst ? s.replace(/\{name\}/g, bdayFirst) : s.replace(/,?\s*\{name\}/g, ''); };
+  const bdaySlide = bdayOffer?.eligible ? {
+    id: 'bday-banner',
+    title: bdayFill(bdayOffer.title) || (bdayFirst ? `Happy Birthday, ${bdayFirst}! 🎂` : 'Happy Birthday! 🎂'),
+    subtitle: bdayFill(bdayOffer.message),
+    cta: 'Grab your free birthday drink',
+    bg: 'linear-gradient(135deg,#ff5d8f 0%,#b06cff 100%)',
+    textColor: '#ffffff',
+    image: bdayOffer.bannerImage || undefined,
+    link: { type: 'scroll', value: 'menu' },
+  } : null;
   const heroSlides = [
+    ...(bdaySlide ? [bdaySlide] : []),
     ...smartSlides,
     ...(seasonBanner ? [{ id: 'season-banner', ...seasonBanner }] : []),
     ...shopSlides,
@@ -1365,11 +1377,11 @@ export default function App() {
           : `${Number(config.siteMaxWidth) || 1920}px`,
       }}>
       {config.orderTracker !== false && <ActiveOrderTracker paused={view === 'done' || view === 'checkout' || view === 'admin'} />}
-      {bdayOffer && !bdayDismissed && view !== 'admin' && (
-        <BirthdayOverlay offer={bdayOffer} name={user?.name} currency={config.currency} onDismiss={dismissBday} onTerms={() => setBdayTerms(true)} />
-      )}
-      {bdayTerms && <BirthdayTerms terms={bdayOffer?.terms} onClose={() => setBdayTerms(false)} />}
-      {resolvedEffectPreset && (
+      {/* Birthday: balloons rise all day (the greeting is the #1 hero banner). */}
+      {bdayOffer?.eligible && view !== 'admin' && <BirthdayOverlay offer={bdayOffer} balloonsOnly />}
+      {/* Other visual effects (snow, tulips…) are suppressed on the birthday so
+          only the balloons run. */}
+      {resolvedEffectPreset && !bdayOffer?.eligible && (
         <EffectOverlay
           preset={resolvedEffectPreset}
           active
