@@ -465,7 +465,16 @@ app.post('/api/orders', async (req, res) => {
     // (released in /api/pay). A comp/$0 order is released moments later by its
     // zero-payment, so the only orders left hidden are ones that never paid.
     const couponContext = await couponContextFor(effectiveCustomerId, coupon ? coupons.find(coupon) : null);
-    const order = await orders.createOrder({ cart, dineIn: !!dineIn, table, name, coupon, couponContext, customerId: effectiveCustomerId, pickupAt, note, pifVoucher, squareLocationId, cardPayment: cardPayment !== false, free: freeOrder, freeCategories, shipping, eventId, appLocationId: evLoc ? evLoc.id : undefined, src, holdForPayment: true });
+    // Birthday gift: on the customer's birthday (and only if they've bought before
+    // and haven't used it this year) auto-apply a $ credit toward their order. It
+    // is claimed for the year when the order is PAID (see /api/pay), so an
+    // abandoned checkout never burns the gift. Skipped when a coupon/PIF is in play.
+    let birthdayGift;
+    if (!coupon && !pifVoucher && !freeOrder) {
+      const bel = await birthdayEligibility(effectiveCustomerId).catch(() => ({ eligible: false }));
+      if (bel.eligible && bel.valueCents > 0) birthdayGift = { cents: bel.valueCents, year: bel.year };
+    }
+    const order = await orders.createOrder({ cart, dineIn: !!dineIn, table, name, coupon, couponContext, customerId: effectiveCustomerId, pickupAt, note, pifVoucher, squareLocationId, cardPayment: cardPayment !== false, free: freeOrder, freeCategories, shipping, eventId, appLocationId: evLoc ? evLoc.id : undefined, src, birthdayGift, holdForPayment: true });
 
     // Loyalty free coffees: redeem `quantity` of them (default 1). Each reward
     // frees one eligible drink and burns one tier's worth of points (Square). We
@@ -552,6 +561,15 @@ app.post('/api/pay', async (req, res) => {
     const release = async () => {
       await db.kdsMarkPaid(orderId).catch(() => {});
       await orders.releaseHold(orderId).catch(() => {});
+      // Birthday gift: now that the order is actually PAID, mark the gift claimed
+      // for the year (so it can't be used again). Held/abandoned orders never
+      // reach here, so an unfinished checkout doesn't burn the gift.
+      try {
+        const o = await orders.getOrder(orderId);
+        const yr = o && o.metadata && o.metadata.bc_bday;
+        const cid = o && o.customer_id;
+        if (yr && cid) await db.birthdayClaim(cid, Number(yr)).catch(() => {});
+      } catch {}
     };
 
     // $0 order (comp or fully covered by loyalty): complete without a card.
@@ -2656,21 +2674,62 @@ app.get('/api/coupon', async (req, res) => {
   } catch (e) { res.json({ valid: false }); }
 });
 
-// ---- Customer birthday (for birthday-special coupons) ----
+// ---- Customer birthday (for the birthday gift; locked once set) ----
 // Stored on the Square customer with a blank year; we keep only month + day.
 app.get('/api/profile/birthday', async (req, res) => {
   try {
     const bd = await customers.getBirthday(req.query.customerId);
-    res.json({ birthday: bd || '' });
-  } catch (e) { res.json({ birthday: '' }); }
+    res.json({ birthday: bd || '', locked: !!bd });
+  } catch (e) { res.json({ birthday: '', locked: false }); }
 });
 app.post('/api/profile/birthday', async (req, res) => {
   try {
     const { customerId, birthday } = req.body || {};
     if (!customerId) return res.status(400).json({ error: 'Please sign in first.' });
+    // Locked once set: the customer confirms it ONCE and can't change it in the
+    // app afterwards (an owner can amend it in Square if it was a genuine error).
+    const existing = await customers.getBirthday(customerId).catch(() => '');
+    if (existing) return res.status(409).json({ error: 'Your birthday is already set and locked. Contact us if it needs correcting.', birthday: existing, locked: true });
     const saved = await customers.setBirthday(customerId, birthday);
-    res.json({ ok: true, birthday: saved });
+    res.json({ ok: true, birthday: saved, locked: true });
   } catch (e) { res.status(400).json({ error: e.message || 'Could not save your birthday.' }); }
+});
+
+// Today's month-day / year in the venue timezone.
+function todayMMDDInTz(tz) {
+  const p = {}; for (const x of new Intl.DateTimeFormat('en-CA', { timeZone: tz, month: '2-digit', day: '2-digit' }).formatToParts(new Date())) p[x.type] = x.value;
+  return `${p.month}-${p.day}`;
+}
+function yearInTz(tz) { return Number(new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric' }).format(new Date())); }
+
+// Is this signed-in customer eligible for their birthday gift right now?
+async function birthdayEligibility(customerId) {
+  const s = getSettings().birthday || {};
+  const valueCents = Math.max(0, Number(s.valueCents) || 0);
+  if (!s.enabled) return { eligible: false, reason: 'disabled' };
+  if (!customerId) return { eligible: false, reason: 'not_signed_in', valueCents };
+  const tz = (getSettings().contact && getSettings().contact.timezone) || 'Australia/Sydney';
+  const bday = await customers.getBirthday(customerId).catch(() => '');
+  const base = { valueCents, bday, title: s.bannerTitle, message: s.bannerMessage };
+  if (!bday) return { eligible: false, reason: 'no_birthday', ...base };
+  const win = Math.max(0, Math.min(31, Number(s.windowDays) || 0));
+  const dist = coupons.mmddDistance(todayMMDDInTz(tz), bday);
+  if (dist == null || dist > win) return { eligible: false, reason: 'not_birthday', ...base };
+  // Must have COMPLETED an app purchase before the birthday (a prior order).
+  const hist = await orders.getHistory(customerId, 5).catch(() => []);
+  if (!(hist && hist.length >= 1)) return { eligible: false, reason: 'no_purchase', ...base };
+  const year = yearInTz(tz);
+  if (await db.birthdayRedeemedThisYear(customerId, year).catch(() => false)) return { eligible: false, reason: 'already_used', ...base };
+  return { eligible: true, year, ...base };
+}
+
+// Client checks this on checkout / home to show the birthday banner + gift.
+app.get('/api/birthday/offer', async (req, res) => {
+  try {
+    const el = await birthdayEligibility(req.query.customerId);
+    const s = getSettings().birthday || {};
+    res.json({ ...el, terms: s.terms || '' });
+  } catch (e) { res.json({ eligible: false, reason: 'error' }); }
 });
 
 // ---- Admin: customers enrolled via Square loyalty ----
