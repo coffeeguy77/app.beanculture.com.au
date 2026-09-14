@@ -842,10 +842,11 @@ export default function App() {
   function onPaid(payment, order, meta) {
     trackPurchase(order);
     // Remember it as the active order so the live tracker follows the customer
-    // around the app (and back after a reload), not just on this screen. Skip
-    // scheduled pre-orders — those aren't "being made now".
-    if (config?.orderTracker !== false && order && (order.orderId || order.id) && !(meta && meta.pickupAt)) {
-      saveActiveOrder({ orderId: order.orderId || order.id, dineIn, table });
+    // around the app (and back after a reload), not just on this screen. A
+    // pre-order (pay-now scheduled) is tracked too, carrying its scheduled time so
+    // the bar shows a countdown ("ready at 8:45am") instead of "being made now".
+    if (config?.orderTracker !== false && order && (order.orderId || order.id)) {
+      saveActiveOrder({ orderId: order.orderId || order.id, dineIn, table, scheduledAt: (meta && meta.pickupAt) || null });
     }
     setCompleted({ payment, order, meta: meta || {} });
     setCart([]);
