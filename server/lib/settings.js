@@ -398,6 +398,20 @@ const DEFAULTS = {
   // the bump / ready function — turn it OFF (Admin → Kitchen Screen) if you don't
   // bump orders, so customers aren't shown a status that never advances.
   orderTracker: true,
+  // How customers are told their order is ready, and the SMS billing model.
+  //  • readyChannel: 'app'  = in-app tracker only (free; the default)
+  //                  'sms'  = also send an SMS/email push (the tracker still works)
+  //                  'both' = same as 'sms' today (SMS + the in-app tracker)
+  //  • smsCredits: a PREPAID meter for the future multi-tenant build. `enforce`
+  //    OFF (the default) = unlimited (a single café using its own Twilio). When a
+  //    tenant's SMS is metered, turning `enforce` ON makes each SMS consume one
+  //    credit; at/under `lowAt` the dashboard warns, and at zero SMS is skipped
+  //    and the free in-app tracker is used instead. The balance itself lives in
+  //    the DB (sms_credits), not here, so a send can decrement it safely.
+  notifications: {
+    readyChannel: 'app',
+    smsCredits: { enforce: false, lowAt: 20 },
+  },
   // The default message a customer sees in the tracker when their order is bumped
   // "ready". Empty = the built-in wording ("Order ready — come on in!" / "Coming
   // to table N"). Each Kitchen Screen station can override this with its own

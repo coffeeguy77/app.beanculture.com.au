@@ -14,8 +14,25 @@ const OWNER_EMAIL = process.env.RESERVATION_OWNER_EMAIL || '';
 const smsConfigured = !!(TW_SID && TW_TOKEN && TW_FROM);
 const emailConfigured = !!(RESEND_KEY && EMAIL_FROM);
 
-async function sendSMS(to, body) {
+const db = require('./db');
+// Read settings lazily so there's no module load-order coupling.
+function smsCreditCfg() {
+  try { return (require('./settings').getSettings().notifications || {}).smsCredits || {}; }
+  catch { return {}; }
+}
+
+// Send one SMS. Every successful send is COUNTED (db.sms_events) so usage can be
+// reported and, in the multi-tenant build, billed. When prepaid metering is
+// enforced (notifications.smsCredits.enforce), a credit is consumed first and the
+// send is skipped when the balance is empty — the caller then falls back to the
+// free in-app tracker. `opts.purpose` / `opts.orderId` tag the usage row.
+async function sendSMS(to, body, opts = {}) {
   if (!smsConfigured || !to) return false;
+  const enforce = !!smsCreditCfg().enforce;
+  if (enforce) {
+    const left = await db.smsCreditsConsume(1).catch(() => null);
+    if (left == null) { console.warn('[notify] SMS skipped — no prepaid credits left'); return false; }
+  }
   try {
     const auth = Buffer.from(`${TW_SID}:${TW_TOKEN}`).toString('base64');
     const params = new URLSearchParams({ To: to, From: TW_FROM, Body: String(body).slice(0, 640) });
@@ -24,9 +41,18 @@ async function sendSMS(to, body) {
       headers: { Authorization: `Basic ${auth}`, 'Content-Type': 'application/x-www-form-urlencoded' },
       body: params.toString(),
     });
-    if (!res.ok) { console.error('[notify] SMS failed', res.status, (await res.text()).slice(0, 200)); return false; }
+    if (!res.ok) {
+      if (enforce) await db.smsCreditsAdd(1).catch(() => {}); // refund — it didn't go out
+      console.error('[notify] SMS failed', res.status, (await res.text()).slice(0, 200));
+      return false;
+    }
+    db.smsRecord({ purpose: opts.purpose, orderId: opts.orderId }).catch(() => {});
     return true;
-  } catch (e) { console.error('[notify] SMS error', e.message); return false; }
+  } catch (e) {
+    if (enforce) await db.smsCreditsAdd(1).catch(() => {});
+    console.error('[notify] SMS error', e.message);
+    return false;
+  }
 }
 
 async function sendEmail(to, subject, text) {

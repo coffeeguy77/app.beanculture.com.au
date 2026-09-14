@@ -187,6 +187,29 @@ async function init(attempt = 1) {
     // were notified). Lets staff re-notify and see "told them 3 min ago".
     await pool.query("ALTER TABLE kds_tickets ADD COLUMN IF NOT EXISTS notify_count int default 0");
 
+    // Every SMS we send, one row — so usage can be counted (and, in the future
+    // multi-tenant build, billed) per period. No phone number is stored (privacy);
+    // just when + what it was for.
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS sms_events (
+        id bigserial primary key,
+        purpose text,
+        order_id text,
+        created_at timestamptz default now()
+      )
+    `);
+    await pool.query('CREATE INDEX IF NOT EXISTS sms_events_ts ON sms_events (created_at)');
+    // Prepaid SMS credit balance (future multi-tenant metering). Single row today
+    // (tenant 'main'); each metered SMS decrements `balance`. Dormant until the
+    // notifications.smsCredits.enforce setting is turned on.
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS sms_credits (
+        tenant text primary key,
+        balance int not null default 0,
+        updated_at timestamptz default now()
+      )
+    `);
+
     // Counter-POS order audit (reconciliation / reports). Square remains the
     // source of truth for the money; this is a local cross-reference log.
     await pool.query(`
@@ -911,6 +934,60 @@ async function kdsNotify(orderId) {
   const row = r.rows[0] || {};
   return { count: row.notify_count || 1, at: row.bumped_at || new Date().toISOString() };
 }
+
+// ── SMS usage counting + prepaid credits ──────────────────────────────────
+// Record one sent SMS (best-effort; never blocks the send).
+async function smsRecord({ purpose, orderId } = {}) {
+  if (!pool) return;
+  try {
+    await pool.query('INSERT INTO sms_events (purpose, order_id) VALUES ($1,$2)',
+      [String(purpose || 'other').slice(0, 40), orderId ? String(orderId).slice(0, 64) : null]);
+  } catch (e) { console.warn('[db] smsRecord failed:', e.message); }
+}
+// How many SMS were sent: all-time, last 30 days, and this calendar month.
+async function smsCounts() {
+  if (!pool) return { total: 0, last30: 0, month: 0 };
+  try {
+    const r = await pool.query(`SELECT
+      count(*)::int AS total,
+      count(*) FILTER (WHERE created_at >= now() - interval '30 days')::int AS last30,
+      count(*) FILTER (WHERE date_trunc('month', created_at) = date_trunc('month', now()))::int AS month
+      FROM sms_events`);
+    return r.rows[0] || { total: 0, last30: 0, month: 0 };
+  } catch { return { total: 0, last30: 0, month: 0 }; }
+}
+// Current prepaid balance (tenant 'main' for now).
+async function smsCreditsGet(tenant = 'main') {
+  if (!pool) return 0;
+  try {
+    const r = await pool.query('SELECT balance FROM sms_credits WHERE tenant = $1', [tenant]);
+    return r.rows[0] ? (r.rows[0].balance || 0) : 0;
+  } catch { return 0; }
+}
+// Add (top-up) credits; returns the new balance. Negative n is allowed (manual adjust).
+async function smsCreditsAdd(n, tenant = 'main') {
+  if (!pool) throw new Error('A database is required to store SMS credits.');
+  const r = await pool.query(
+    `INSERT INTO sms_credits (tenant, balance, updated_at) VALUES ($1, GREATEST(0,$2), now())
+     ON CONFLICT (tenant) DO UPDATE SET balance = GREATEST(0, sms_credits.balance + $2), updated_at = now()
+     RETURNING balance`,
+    [tenant, Math.round(Number(n) || 0)]
+  );
+  return r.rows[0] ? r.rows[0].balance : 0;
+}
+// Consume one credit atomically only if the balance is positive. Returns the new
+// balance, or null if there was nothing to consume (caller should fall back).
+async function smsCreditsConsume(n = 1, tenant = 'main') {
+  if (!pool) return null;
+  try {
+    const r = await pool.query(
+      `UPDATE sms_credits SET balance = balance - $2, updated_at = now()
+       WHERE tenant = $1 AND balance >= $2 RETURNING balance`,
+      [tenant, Math.max(1, Math.round(Number(n) || 1))]
+    );
+    return r.rows[0] ? r.rows[0].balance : null;
+  } catch { return null; }
+}
 // A payment-completed marker for an app order, stored as a sentinel row in
 // kds_tickets (zone '__paid__'). This is OUR reliable "the money went through"
 // signal for the kitchen screen, independent of Square metadata propagation or
@@ -1006,6 +1083,7 @@ async function posPaymentByOrder(squareOrderId) {
 module.exports = {
   init, getOverrides, saveOverrides, listSettingsBackups, restoreSettingsBackup,
   kdsGetStates, kdsSetStatus, kdsNotify, kdsMarkPaid, kdsGetPaid,
+  smsRecord, smsCounts, smsCreditsGet, smsCreditsAdd, smsCreditsConsume,
   posRecordOrder, posPaymentUpsert, posPaymentSetStatus, posPaymentGet, posPaymentByOrder,
   insertScheduled, listScheduledByCustomer, cancelScheduled, claimDue, updateScheduled,
   track, getAnalytics,
