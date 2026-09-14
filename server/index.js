@@ -351,6 +351,17 @@ app.get('/api/loyalty', async (req, res) => {
   }
 });
 
+// ---- Loyalty points ledger (earned / redeemed) for the account popup ----
+app.get('/api/loyalty/history', async (req, res) => {
+  try {
+    const phone = req.query.phone;
+    if (!phone) return res.json({ balance: 0, events: [] });
+    res.json(await loyalty.getCustomerHistory(phone));
+  } catch (e) {
+    res.json({ balance: 0, events: [], error: e.message });
+  }
+});
+
 // ---- Enrol a walk-up customer (name + phone) at an event ----
 // Finds or creates the Square customer, drops them into the loyalty program, and
 // hands the app their identity so the device remembers them for fast reorders.
@@ -456,42 +467,36 @@ app.post('/api/orders', async (req, res) => {
     const couponContext = await couponContextFor(effectiveCustomerId, coupon ? coupons.find(coupon) : null);
     const order = await orders.createOrder({ cart, dineIn: !!dineIn, table, name, coupon, couponContext, customerId: effectiveCustomerId, pickupAt, note, pifVoucher, squareLocationId, cardPayment: cardPayment !== false, free: freeOrder, freeCategories, shipping, eventId, appLocationId: evLoc ? evLoc.id : undefined, src, holdForPayment: true });
 
-    let rewardApplied = false;
-    let rewardError; // set when a reward was requested but couldn't be applied
-    let rewardFresh; // the re-read order after a successful reward (reused below)
+    // Loyalty free coffees: redeem `quantity` of them (default 1). Each reward
+    // frees one eligible drink and burns one tier's worth of points (Square). We
+    // create them one at a time and re-read the order after each: while the total
+    // keeps dropping we keep going; the moment a reward discounts nothing (no
+    // eligible item left) we delete THAT reward (returning its points) and stop.
+    // So a customer is only ever charged points for coffees actually made free.
+    let rewardApplied = 0;   // how many free coffees actually came off
+    let rewardRequested = 0;
+    let rewardError;
+    let rewardFresh;         // latest re-read order (reused for the response)
     if (loy && loy.accountId && loy.tierId) {
-      const beforeAmt = (order.total_money && order.total_money.amount) || 0;
-      let reward;
-      try {
-        reward = await loyalty.createReward({
-          loyaltyAccountId: loy.accountId,
-          rewardTierId: loy.tierId,
-          orderId: order.id,
-        });
-      } catch (e) {
-        console.error('loyalty reward failed', e.message);
-        rewardError = 'create_failed';
-      }
-      if (reward) {
-        // Square applies the reward's discount to the order server-side. Re-read
-        // it and confirm the total actually dropped — a reward whose item scope
-        // matches nothing in the cart "creates" fine but discounts $0, which
-        // would otherwise charge the customer full price AND burn their points.
+      rewardRequested = Math.max(1, Math.min(20, parseInt(loy.quantity, 10) || 1));
+      let cur = order;
+      for (let i = 0; i < rewardRequested; i++) {
+        const beforeAmt = (cur.total_money && cur.total_money.amount) || 0;
+        if (beforeAmt <= 0) break;   // whole order already free — nothing left to discount
+        let reward;
         try {
-          const check = await orders.getOrder(order.id);
-          const afterAmt = (check.total_money && check.total_money.amount) || 0;
-          if (afterAmt < beforeAmt) {
-            rewardApplied = true;
-            rewardFresh = check;
-          } else {
-            if (reward.id) await loyalty.deleteReward(reward.id); // return the points
-            rewardError = 'no_discount';
-          }
-        } catch (e) {
-          console.error('loyalty reward verify failed', e.message);
-          if (reward.id) await loyalty.deleteReward(reward.id);
-          rewardError = 'create_failed';
-        }
+          reward = await loyalty.createReward({ loyaltyAccountId: loy.accountId, rewardTierId: loy.tierId, orderId: order.id });
+        } catch (e) { console.error('loyalty reward failed', e.message); if (rewardApplied === 0) rewardError = 'create_failed'; break; }
+        let check;
+        try { check = await orders.getOrder(order.id); }
+        catch (e) { console.error('loyalty reward verify failed', e.message); if (reward && reward.id) await loyalty.deleteReward(reward.id); if (rewardApplied === 0) rewardError = 'create_failed'; break; }
+        const afterAmt = (check.total_money && check.total_money.amount) || 0;
+        if (afterAmt < beforeAmt) { rewardApplied += 1; cur = check; rewardFresh = check; }
+        else { if (reward && reward.id) await loyalty.deleteReward(reward.id); if (rewardApplied === 0) rewardError = 'no_discount'; break; }
+      }
+      // Tag the order so order history can badge it "Free coffee ×N" (best-effort).
+      if (rewardApplied > 0) {
+        try { rewardFresh = await orders.stampMeta(order.id, { bc_loyfree: String(rewardApplied) }); } catch (e) { console.warn('loyfree tag failed', e.message); }
       }
     }
 
@@ -514,13 +519,14 @@ app.post('/api/orders', async (req, res) => {
       })();
     }
 
-    const fresh = rewardApplied ? (rewardFresh || await orders.getOrder(order.id)) : order;
+    const fresh = rewardApplied > 0 ? (rewardFresh || await orders.getOrder(order.id)) : order;
     res.json({
       orderId: fresh.id,
       totalMoney: fresh.total_money,
       version: fresh.version,
       ticketName: fresh.ticket_name,
-      rewardApplied,
+      rewardApplied,          // how many free coffees actually came off (0 = none)
+      rewardRequested,        // how many the customer asked to redeem
       rewardError: rewardError || undefined,
       // When we enrolled a walk-up event customer, hand back their identity so the
       // app can remember them on the device (one-tap reorders at the event).
