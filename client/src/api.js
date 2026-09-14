@@ -11,6 +11,7 @@ export const api = {
   getHours: (location) => req(`/api/hours${location ? `?location=${encodeURIComponent(location)}` : ''}`),
   auth: (phone, name) => req('/api/auth', { method: 'POST', body: JSON.stringify({ phone, name }) }),
   getLoyalty: (phone) => req(`/api/loyalty?phone=${encodeURIComponent(phone)}`),
+  getLoyaltyHistory: (phone) => req(`/api/loyalty/history?phone=${encodeURIComponent(phone)}`),
   getHistory: (customerId) => req(`/api/history?customerId=${encodeURIComponent(customerId)}`),
   createOrder: (payload) => req('/api/orders', { method: 'POST', body: JSON.stringify(payload) }),
   cancelOrder: (orderId) => req(`/api/orders/${encodeURIComponent(orderId)}/cancel`, { method: 'POST' }),
