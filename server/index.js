@@ -270,14 +270,33 @@ app.get('/api/order-status', async (req, res) => {
     const states = await db.kdsGetStates([orderId]).catch(() => ({}));
     const zones = states[orderId] || {};
     const SYNTH = new Set(['__paid__', '__notified__']);   // internal markers, not kitchen state
-    const st = Object.entries(zones).filter(([z]) => !SYNTH.has(z)).map(([, v]) => (v && v.status) || 'new');
+    const entries = Object.entries(zones).filter(([z]) => !SYNTH.has(z));
+    const st = entries.map(([, v]) => (v && v.status) || 'new');
     let status = 'new';
     if (st.length) {
       if (st.some((s) => s === 'ready')) status = 'ready';
       else if (st.every((s) => s === 'done')) status = 'done';
       else if (st.some((s) => s === 'preparing')) status = 'preparing';
     }
-    res.json({ orderId, status });
+    // Custom "ready" message: a per-station override (kds.zones[].customerMessage)
+    // wins over the café-wide default (orderReadyMessage); empty = the tracker's
+    // built-in wording. When several stations are ready, the MOST RECENTLY bumped
+    // one drives the text, so the customer sees the coffee message when coffee is
+    // bumped, then the food message when the kitchen bumps.
+    let message;
+    if (status === 'ready') {
+      const settings = getSettings();
+      const zoneMsg = {};
+      const collect = (arr) => { for (const z of (arr || [])) { const m = z && z.customerMessage && String(z.customerMessage).trim(); if (z && z.id && m) zoneMsg[z.id] = m; } };
+      collect(settings.kds && settings.kds.zones);
+      for (const loc of Object.values(settings.kdsByLocation || {})) collect(loc && loc.zones);
+      const readyZones = entries
+        .filter(([, v]) => v && v.status === 'ready')
+        .sort((a, b) => new Date(b[1].bumpedAt || 0) - new Date(a[1].bumpedAt || 0));
+      const topZoneId = readyZones.length ? readyZones[0][0] : null;
+      message = (topZoneId && zoneMsg[topZoneId]) || (settings.orderReadyMessage && String(settings.orderReadyMessage).trim()) || undefined;
+    }
+    res.json({ orderId, status, message });
   } catch { res.json({ orderId, status: 'new' }); }
 });
 
