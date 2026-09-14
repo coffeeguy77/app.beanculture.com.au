@@ -281,10 +281,10 @@ const DEFAULTS = {
       banner: { title: 'Happy Mother’s Day', subtitle: 'Spoil Mum with a treat', cta: 'Order for Mum', bg: 'linear-gradient(135deg,#f28fb2,#d94f8c)', textColor: '#fff', link: { type: 'scroll', value: 'menu' } },
     },
     {
-      id: 'floriade', name: '🌷 Floriade', from: '09-13', to: '10-12', enabled: true,
-      theme: { bg: '#fef4e8', surface: '#ffffff', ink: '#3a3320', muted: '#a99d7e', brand: '#e5533c', accent: '#7cb342', accentInk: '#fff', line: '#efe6d0' },
+      id: 'floriade', name: '🌷 Tulip Tops', from: '09-13', to: '10-12', enabled: true,
+      theme: { bg: '#5E1E6E', surface: '#FFF6FC', ink: '#2E1330', muted: '#7B5E76', brand: '#D6337A', accent: '#F26FB2', accentInk: '#fff', line: '#EEC9E1' },
       effects: { petals: true },
-      banner: { title: 'Floriade is here', subtitle: 'Canberra’s in bloom — so are we', cta: 'Grab a coffee & go', bg: 'linear-gradient(135deg,#7cb342,#e5533c)', textColor: '#fff', link: { type: 'scroll', value: 'menu' } },
+      banner: { title: 'Tulip Tops is here', subtitle: 'Canberra’s in bloom — so are we', cta: 'Grab a coffee & go', bg: 'linear-gradient(135deg,#D6337A,#8A2BE2)', textColor: '#fff', link: { type: 'scroll', value: 'menu' } },
     },
     {
       id: 'fathersday', name: '👔 Father’s Day', from: '09-06', to: '09-07', enabled: true,
@@ -596,17 +596,19 @@ const SEASONAL_PALETTES = {
     shadowColor: 'rgba(27,6,14,.40)', glowColor: 'rgba(230,154,177,.20)',
   },
   // Stable id `floriade`; display name is admin-set (currently "🌷 Tulip Tops").
+  // Recoloured to tulip pinks & purples (no more brown/green canvas), with a
+  // fresh-leaf green as the "success" accent.
   floriade: {
-    canvasStart: '#151D0C', canvasMid: '#33481C', canvasEnd: '#687C2D', canvasGlow: '#E76648',
-    surface: '#FFF9EC', surfaceRaised: '#FFFDF5', surfaceTint: '#EEF1D7',
-    primary: '#D9583E', primaryHover: '#EB6B4E', primaryPressed: '#AC402D',
-    accent: '#F0C253', accentStrong: '#F7D874',
-    text: '#25291B', textMuted: '#6C735E', textOnDark: '#FFF9EC', textOnDarkMuted: '#D8DFC5', textOnPrimary: '#FFFFFF',
-    border: '#BFC99B', borderAccent: '#E18A5B', controlBorder: '#C9C8A9', focus: '#F0C253',
-    heroBorder: '#E18A5B', heroGlow: 'rgba(231,102,72,.22)',
-    progressTrack: 'rgba(255,249,236,.23)', progressFillStart: '#D9583E', progressFillEnd: '#F0C253',
-    cartIllustration: '#D9583E', success: '#5C8A4B', warning: '#D6A938', danger: '#B6433A',
-    shadowColor: 'rgba(10,16,4,.38)', glowColor: 'rgba(231,102,72,.20)',
+    canvasStart: '#2C0B37', canvasMid: '#5E1E6E', canvasEnd: '#9B2E86', canvasGlow: '#FF7EC8',
+    surface: '#FFF6FC', surfaceRaised: '#FFFFFF', surfaceTint: '#F7E4F3',
+    primary: '#D6337A', primaryHover: '#E7538F', primaryPressed: '#A8215E',
+    accent: '#F26FB2', accentStrong: '#FF9BD0',
+    text: '#2E1330', textMuted: '#7B5E76', textOnDark: '#FFF3FA', textOnDarkMuted: '#E7C9DE', textOnPrimary: '#FFFFFF',
+    border: '#EEC9E1', borderAccent: '#F26FB2', controlBorder: '#DFAECF', focus: '#FF7EC8',
+    heroBorder: '#F26FB2', heroGlow: 'rgba(242,111,178,.22)',
+    progressTrack: 'rgba(255,246,252,.24)', progressFillStart: '#D6337A', progressFillEnd: '#F26FB2',
+    cartIllustration: '#D6337A', success: '#3FA34D', warning: '#F4B400', danger: '#D6337A',
+    shadowColor: 'rgba(28,6,30,.42)', glowColor: 'rgba(255,126,200,.24)',
   },
   fathersday: {
     canvasStart: '#061521', canvasMid: '#0A334C', canvasEnd: '#14516E', canvasGlow: '#C98532',
