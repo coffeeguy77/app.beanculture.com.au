@@ -471,8 +471,10 @@ export default function Admin({ onExit }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
   useEffect(() => {
+    if ((tab === 'push' || tab === 'kds' || tab === 'overview') && notifyStatus === null) {
+      api.adminNotifyStatus(pass).then(setNotifyStatus).catch(() => setNotifyStatus({ sms: false, email: false }));
+    }
     if (tab === 'push') {
-      if (notifyStatus === null) api.adminNotifyStatus(pass).then(setNotifyStatus).catch(() => setNotifyStatus({ sms: false, email: false }));
       if (users === null && !usersBusy) loadUsers();
     }
     // Dashboard cards reuse the same already-existing loaders (messages,
@@ -744,6 +746,26 @@ export default function Admin({ onExit }) {
 
   // ---- generic setters ----
   const set = (patch) => setS((cur) => ({ ...cur, ...patch }));
+
+  // ── Notifications (order-ready channel + prepaid SMS credits) ──
+  const [creditTopUp, setCreditTopUp] = useState('');
+  const [notifyBusy, setNotifyBusy] = useState(false);
+  const saveReadyChannel = (readyChannel) => {
+    setNotifyStatus((s) => ({ ...(s || {}), readyChannel }));
+    api.adminNotifyConfig(pass, { readyChannel }).catch(() => api.adminNotifyStatus(pass).then(setNotifyStatus).catch(() => {}));
+  };
+  const saveCreditPolicy = (patch) => {
+    setNotifyStatus((s) => ({ ...(s || {}), credits: { ...((s && s.credits) || {}), ...patch } }));
+    api.adminNotifyConfig(pass, patch).then(() => api.adminNotifyStatus(pass).then(setNotifyStatus)).catch(() => {});
+  };
+  const topUpCredits = async () => {
+    const add = parseInt(creditTopUp, 10);
+    if (!add) return;
+    setNotifyBusy(true);
+    try { await api.adminSmsCredits(pass, add); setCreditTopUp(''); const st = await api.adminNotifyStatus(pass); setNotifyStatus(st); }
+    catch (e) { alert(e.message); }
+    finally { setNotifyBusy(false); }
+  };
   const setTheme = (k, v) => setS((cur) => ({ ...cur, theme: { ...cur.theme, [k]: v } }));
   const setContact = (k, v) => setS((cur) => ({ ...cur, contact: { ...(cur.contact || {}), [k]: v } }));
 
@@ -1995,6 +2017,16 @@ export default function Admin({ onExit }) {
                   <div className="admin-greet">{_greeting}</div>
                   <p className="admin-page-desc">Here’s what’s happening at Bean Culture today.</p>
                 </div>
+                {notifyStatus && notifyStatus.credits && notifyStatus.credits.enforce && (notifyStatus.credits.empty || notifyStatus.credits.low) && (
+                  <div className="card" style={{ ...card, marginBottom: 16, border: `1px solid ${notifyStatus.credits.empty ? 'var(--admin-danger, #c0392b)' : '#e0a008'}`, background: notifyStatus.credits.empty ? 'rgba(192,57,43,.08)' : 'rgba(224,160,8,.08)' }}>
+                    <strong>{notifyStatus.credits.empty ? '⚠ Out of SMS credits' : '⚠ SMS credits running low'}</strong>
+                    <p className="muted" style={{ fontSize: 'var(--fs-sm)', margin: '4px 0 0' }}>
+                      {notifyStatus.credits.empty
+                        ? `Text notifications are paused — customers are getting the free in-app tracker instead. Top up in Kitchen Screen → Notifications.`
+                        : `${notifyStatus.credits.balance} SMS credit${notifyStatus.credits.balance === 1 ? '' : 's'} left. Top up in Kitchen Screen → Notifications before they run out.`}
+                    </p>
+                  </div>
+                )}
                 {/* One status tile PER store, so multiple locations each show their
                     own Open / Closed / event countdown — not a single ambiguous one. */}
                 <div className="stat-tiles" style={{ marginBottom: 18 }}>
@@ -4136,6 +4168,57 @@ export default function Admin({ onExit }) {
                   </label>
                   <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 6 }}>This is what customers read the moment their order is bumped. Leave it blank to use the built-in wording. You can give each <strong>station below</strong> its own message &mdash; so the coffee bar says one thing and the food kitchen another; whichever station is bumped decides what the customer sees.</p>
                   <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 10 }}>Turn the tracker <strong>off</strong> if you don&rsquo;t use the bump / ready function &mdash; otherwise customers would see a status that never advances. Remember to press <strong>Save changes</strong>.</p>
+                </div>
+
+                <div className="card" style={card}>
+                  <div className="group-title">Notifications &mdash; how customers are told</div>
+                  {(() => {
+                    const ns = notifyStatus || {};
+                    const ch = ns.readyChannel || 'app';
+                    const cr = ns.credits || {};
+                    const c = ns.smsCounts || {};
+                    return (
+                      <>
+                        <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 0 }}>When staff hit <strong>Notify</strong>, how should the customer be told their order&rsquo;s ready? The in-app tracker is free; SMS uses your Twilio (and, when metered, a credit).</p>
+                        <div className="avail-chipwrap" style={{ marginTop: 4 }}>
+                          {[['app', '📱 App only (free)'], ['sms', '✉️ SMS'], ['both', 'Both']].map(([v, lbl]) => (
+                            <button key={v} type="button" className={`chip${ch === v ? ' on' : ''}`} onClick={() => saveReadyChannel(v)}>{lbl}</button>
+                          ))}
+                        </div>
+                        {ch !== 'app' && ns.sms === false && (
+                          <p className="error-text" style={{ fontSize: 'var(--fs-sm)', marginTop: 8 }}>SMS isn&rsquo;t set up yet &mdash; add the Twilio env vars in Railway, or customers will only get the in-app tracker.</p>
+                        )}
+                        <div className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 12 }}>
+                          <strong>SMS sent</strong> &mdash; this month: <strong>{c.month ?? 0}</strong> · last 30 days: {c.last30 ?? 0} · all time: {c.total ?? 0}
+                        </div>
+
+                        <div style={{ marginTop: 14, borderTop: '1px dashed var(--line)', paddingTop: 12 }}>
+                          <label className="avail-switch">
+                            <input type="checkbox" checked={!!cr.enforce} onChange={(e) => saveCreditPolicy({ enforce: e.target.checked })} />
+                            <span>Meter SMS against a prepaid balance</span>
+                          </label>
+                          <p className="muted" style={{ fontSize: 'var(--fs-xs)', marginTop: 4 }}>Leave <strong>off</strong> for a single café on its own Twilio (unlimited). When <strong>on</strong>, each SMS uses one credit; at zero the SMS pauses and the free in-app tracker is used instead. Built for the future multi-tenant plan.</p>
+                          {cr.enforce && (
+                            <>
+                              <div style={{ marginTop: 8, fontSize: 'var(--fs-base)' }}>
+                                Balance: <strong>{cr.balance ?? 0}</strong> credit{(cr.balance ?? 0) === 1 ? '' : 's'}
+                                {cr.empty ? <span className="error-text"> &mdash; out of credits, SMS paused</span> : cr.low ? <span style={{ color: '#b8860b', fontWeight: 700 }}> &mdash; running low</span> : null}
+                              </div>
+                              <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                                <input type="number" min="0" value={creditTopUp} onChange={(e) => setCreditTopUp(e.target.value)} placeholder="Add credits" style={{ maxWidth: 150 }} />
+                                <button type="button" className="btn primary" disabled={notifyBusy || !parseInt(creditTopUp, 10)} onClick={topUpCredits}>{notifyBusy ? 'Adding…' : 'Add credits'}</button>
+                              </div>
+                              <label className="field" style={{ marginTop: 10, maxWidth: 240 }}>
+                                <span>Warn on the dashboard at/under</span>
+                                <input type="number" min="0" value={cr.lowAt ?? 20} onChange={(e) => saveCreditPolicy({ lowAt: Math.max(0, parseInt(e.target.value, 10) || 0) })} />
+                              </label>
+                            </>
+                          )}
+                        </div>
+                        <p className="muted" style={{ fontSize: 'var(--fs-xs)', marginTop: 10 }}>These save on their own &mdash; no need to press Save changes.</p>
+                      </>
+                    );
+                  })()}
                 </div>
 
                 <div className="card" style={card}>
