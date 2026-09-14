@@ -2327,16 +2327,26 @@ app.get('/api/admin/analytics/sales', async (req, res) => {
 app.get('/api/admin/analytics/app-sales', async (req, res) => {
   if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
   try {
+    const tz = (getSettings().contact && getSettings().contact.timezone) || 'Australia/Sydney';
+    // Two modes: a single venue-local DAY (date=YYYY-MM-DD, what the dashboard
+    // card uses — "today or the date you selected") or a rolling N-day window.
+    const dateParam = /^\d{4}-\d{2}-\d{2}$/.test(req.query.date || '') ? req.query.date : null;
     const days = Math.max(1, Math.min(366, parseInt(req.query.days, 10) || 1));
-    const cacheKey = `appsales|${days}`;
+    const cacheKey = dateParam ? `appsales|date|${dateParam}` : `appsales|days|${days}`;
     const cached = analyticsCache(cacheKey, 60_000);
     if (cached) return res.json(cached);
-    const tz = (getSettings().contact && getSettings().contact.timezone) || 'Australia/Sydney';
-    const startAt = new Date(Date.now() - days * 86400000).toISOString();
+    // For a specific date, scan from ~26h before its UTC midnight (covers the AU
+    // tz offset) and filter precisely by the venue-local day below.
+    const startAt = dateParam
+      ? new Date(new Date(dateParam + 'T00:00:00Z').getTime() - 26 * 3600000).toISOString()
+      : new Date(Date.now() - days * 86400000).toISOString();
+    // Bound the date view to ~2 days around the chosen day so a past date doesn't
+    // scan every order since; the precise venue-local day filter runs below.
+    const endAt = dateParam ? new Date(new Date(dateParam + 'T00:00:00Z').getTime() + 26 * 3600000).toISOString() : null;
     const stores = locations.active();
     const byDay = {};              // date -> { total, count }
     const byCust = new Map();      // customerId -> { total, count }
-    const recent = [];            // individual sales (trimmed later)
+    const collected = [];          // { o, storeName } — full orders for detail
     let total = 0, count = 0, guestTotal = 0, guestCount = 0;
     for (const store of stores) {
       let cursor; let pages = 0;
@@ -2345,7 +2355,7 @@ app.get('/api/admin/analytics/app-sales', async (req, res) => {
           method: 'POST',
           body: {
             location_ids: [store.squareLocationId], cursor,
-            query: { filter: { date_time_filter: { created_at: { start_at: startAt } }, state_filter: { states: ['COMPLETED', 'OPEN'] } }, sort: { sort_field: 'CREATED_AT', sort_order: 'DESC' } },
+            query: { filter: { date_time_filter: { created_at: { start_at: startAt, ...(endAt ? { end_at: endAt } : {}) } }, state_filter: { states: ['COMPLETED', 'OPEN'] } }, sort: { sort_field: 'CREATED_AT', sort_order: 'DESC' } },
             limit: 500,
           },
         }).catch(() => ({}));
@@ -2355,21 +2365,21 @@ app.get('/api/admin/analytics/app-sales', async (req, res) => {
           const paid = o.state === 'COMPLETED' || (Array.isArray(o.tenders) && o.tenders.length > 0);
           if (!paid || amt <= 0) continue;
           const day = dayInTz(o.created_at, tz);
+          if (dateParam && day !== dateParam) continue;   // only the chosen day
           const r = byDay[day] || (byDay[day] = { total: 0, count: 0 });
           r.total += amt; r.count += 1; total += amt; count += 1;
           const cid = o.customer_id || null;
           if (cid) { const c = byCust.get(cid) || { total: 0, count: 0 }; c.total += amt; c.count += 1; byCust.set(cid, c); }
           else { guestTotal += amt; guestCount += 1; }
-          recent.push({ at: o.created_at, amount: amt, customerId: cid, store: store.name });
+          if (collected.length < 200) collected.push({ o, storeName: store.name });
         }
         cursor = data.cursor; pages += 1;
       } while (cursor && pages < 12);
     }
     const ranked = [...byCust.entries()].sort((a, b) => b[1].total - a[1].total);
     const topIds = ranked.slice(0, 10).map(([id]) => id);
-    recent.sort((a, b) => new Date(b.at) - new Date(a.at));
-    const trimmed = recent.slice(0, 100);
-    const joinIds = [...new Set([...topIds, ...trimmed.map((r) => r.customerId).filter(Boolean)])];
+    collected.sort((a, b) => new Date(b.o.created_at) - new Date(a.o.created_at));
+    const joinIds = [...new Set([...topIds, ...collected.map((c) => c.o.customer_id).filter(Boolean)])];
     const custMap = new Map();
     for (let i = 0; i < joinIds.length; i += 100) {
       try {
@@ -2381,8 +2391,39 @@ app.get('/api/admin/analytics/app-sales', async (req, res) => {
     const phoneOf = (id) => { const c = id && custMap.get(id); return (c && c.phone_number) || ''; };
     const topCustomers = ranked.slice(0, 10).map(([id, v]) => ({ name: nameOf(id) || 'Guest', phone: phoneOf(id), total: v.total, count: v.count }));
     const daily = Object.keys(byDay).sort().map((date) => ({ date, ...byDay[date] }));
-    const sales = trimmed.map((r) => ({ at: r.at, amount: r.amount, store: r.store, name: r.customerId ? (nameOf(r.customerId) || 'Guest') : 'Guest', phone: r.customerId ? phoneOf(r.customerId) : '' }));
-    const payload = { days, currency: sq.CURRENCY, total, count, daily, topCustomers, best: topCustomers[0] || null, guestTotal, guestCount, sales };
+    // ── Per-order detail: items, payment method, and points used / earned. ──
+    const tenderMap = { CARD: 'Card', CASH: 'Cash', SQUARE_GIFT_CARD: 'Gift card', WALLET: 'Wallet', BANK_ACCOUNT: 'Bank', BUY_NOW_PAY_LATER: 'Afterpay', EXTERNAL: 'External', OTHER: 'Other' };
+    const tenderLabel = (o) => { const t = [...new Set((o.tenders || []).map((x) => tenderMap[x.type] || x.type).filter(Boolean))]; return t.join(', ') || (o.state === 'COMPLETED' ? 'Paid' : '—'); };
+    const detailList = collected.slice(0, dateParam ? 80 : 60);
+    // The loyalty "points earned" lookup is one call per order, so only do it for
+    // a bounded single-day view (where the owner is inspecting individual sales).
+    const wantPoints = !!dateParam && detailList.length <= 60;
+    const orders = [];
+    for (const { o, storeName } of detailList) {
+      const cid = o.customer_id || null;
+      let pointsEarned = null;
+      if (wantPoints) { try { const ev = await loyalty.eventsForOrder(o.id); pointsEarned = ev.earned; } catch { pointsEarned = null; } }
+      orders.push({
+        id: o.id,
+        at: o.created_at,
+        total: (o.total_money && o.total_money.amount) || 0,
+        amount: (o.total_money && o.total_money.amount) || 0,
+        store: storeName,
+        name: cid ? (nameOf(cid) || 'Guest') : 'Guest',
+        phone: cid ? phoneOf(cid) : '',
+        payment: tenderLabel(o),
+        freeCoffees: Number((o.metadata || {}).bc_loyfree) || 0,  // free coffees redeemed
+        pointsEarned,  // Stars accumulated (null when not looked up)
+        items: (o.line_items || []).map((li) => ({
+          qty: li.quantity || '1',
+          name: li.name || 'Item',
+          variation: li.variation_name || '',
+          modifiers: (li.modifiers || []).map((m) => m.name).filter(Boolean).join(', '),
+          amount: (li.total_money && li.total_money.amount) || 0,
+        })),
+      });
+    }
+    const payload = { date: dateParam, days: dateParam ? undefined : days, currency: sq.CURRENCY, total, count, daily, topCustomers, best: topCustomers[0] || null, guestTotal, guestCount, orders, sales: orders };
     analyticsCacheSet(cacheKey, payload);
     res.json(payload);
   } catch (e) { res.status(502).json({ error: e.message }); }
