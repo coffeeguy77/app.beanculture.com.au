@@ -4022,6 +4022,14 @@ export default function Admin({ onExit }) {
                         <input className="avail-sched-name" value={z.name || ''} placeholder="Station name (e.g. Kitchen)" onChange={(e) => updateKdsZone(z.id, { name: e.target.value })} />
                         <button type="button" className="avail-del" title="Delete station" onClick={() => removeKdsZone(z.id)}>✕</button>
                       </div>
+                      {s?.orderTracker !== false && (
+                        <label className="field" style={{ marginTop: 8 }}>
+                          <span style={{ fontSize: 'var(--fs-xs)' }}>Customer message when THIS station is bumped (optional)</span>
+                          <input type="text" maxLength={120} value={z.customerMessage || ''}
+                            placeholder="e.g. Your coffee’s ready — come grab it ☕ (blank = use the default above)"
+                            onChange={(e) => updateKdsZone(z.id, { customerMessage: e.target.value })} />
+                        </label>
+                      )}
                       <div className="avail-sched-cats" style={{ borderTop: 'none', paddingTop: 4 }}>
                         <div className="muted" style={{ fontSize: 'var(--fs-xs)', marginBottom: 4 }}>Menu categories on this station</div>
                         {kdsAppCatOptions.length === 0 && <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>No categories loaded yet.</span>}
@@ -4120,7 +4128,14 @@ export default function Admin({ onExit }) {
                     <input type="checkbox" checked={s?.orderTracker !== false} onChange={(e) => set({ orderTracker: e.target.checked })} />
                     <span>Show customers the live order tracker</span>
                   </label>
-                  <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 10 }}>Turn this <strong>off</strong> if you don&rsquo;t use the bump / ready function &mdash; otherwise customers would see a status that never advances. Remember to press <strong>Save changes</strong>.</p>
+                  <label className="field" style={{ marginTop: 12 }}>
+                    <span>Default &ldquo;ready&rdquo; message customers see</span>
+                    <input type="text" maxLength={120} value={s?.orderReadyMessage || ''}
+                      placeholder="Leave blank for the built-in wording (e.g. &ldquo;Order ready — come on in!&rdquo;)"
+                      onChange={(e) => set({ orderReadyMessage: e.target.value })} />
+                  </label>
+                  <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 6 }}>This is what customers read the moment their order is bumped. Leave it blank to use the built-in wording. You can give each <strong>station below</strong> its own message &mdash; so the coffee bar says one thing and the food kitchen another; whichever station is bumped decides what the customer sees.</p>
+                  <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 10 }}>Turn the tracker <strong>off</strong> if you don&rsquo;t use the bump / ready function &mdash; otherwise customers would see a status that never advances. Remember to press <strong>Save changes</strong>.</p>
                 </div>
 
                 <div className="card" style={card}>

@@ -49,6 +49,7 @@ function readyChime() {
 export default function ActiveOrderTracker({ paused }) {
   const [order, setOrder] = useState(readActiveOrder);
   const [status, setStatus] = useState('new');
+  const [msg, setMsg] = useState('');        // café's custom "ready" message, if any
   const [hintX, setHintX] = useState(false); // brief "tap again to close" nudge
   const chimedRef = useRef(false);
   const lastTapRef = useRef(0);
@@ -74,6 +75,13 @@ export default function ActiveOrderTracker({ paused }) {
         const d = await api.orderStatus(order.orderId);
         if (!alive || !d || !d.status) return;
         setStatus(d.status);
+        // A new bump can change the custom message (coffee → then food), so keep
+        // it in sync each poll. Re-chime when the message changes to a new one.
+        setMsg((prev) => {
+          const next = d.message || '';
+          if (d.status === 'ready' && next && next !== prev) chimedRef.current = false;
+          return next;
+        });
         if (d.status === 'ready' && !chimedRef.current) { chimedRef.current = true; readyChime(); }
         if (d.status === 'done') { clearActiveOrder(); setOrder(null); }
       } catch {}
@@ -86,9 +94,9 @@ export default function ActiveOrderTracker({ paused }) {
   if (!order || paused || status === 'done') return null;
   const l = LABELS[status] || LABELS.new;
   const label = status === 'ready'
-    ? (order.dineIn
+    ? (msg || (order.dineIn
         ? (order.table ? `Coming to table ${order.table} — sit tight!` : 'On its way to your table — sit tight!')
-        : 'Order ready — come on in!')
+        : 'Order ready — come on in!'))
     : l.t;
   const dismiss = () => { clearActiveOrder(); setOrder(null); };
   // Require a DOUBLE tap/click to close (two within 500ms), so an accidental
