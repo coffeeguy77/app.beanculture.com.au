@@ -144,11 +144,16 @@ function parseTicketMeta(order, cfg) {
   if (md.bc_name) customerName = String(md.bc_name).trim();
   else if (!appOrigin) customerName = tn || (recipient && recipient.display_name ? String(recipient.display_name).trim() : '');
   else { const takeM = tn.match(/takeaway\s+(.+)/i); if (takeM) customerName = takeM[1].trim(); }
+  // A pre-order (pay-now scheduled) carries a future pickup time. The kitchen
+  // should see it clearly and NOT be able to bump it until that time.
+  const pickup = fulfillment && fulfillment.pickup_details;
+  const scheduledAt = pickup && pickup.schedule_type === 'SCHEDULED' && pickup.pickup_at ? pickup.pickup_at : null;
   return {
     dineIn,
     table,
     customerName,
     fulfillmentType: fulfillment ? fulfillment.type : '',
+    scheduledAt,
     note,
   };
 }
@@ -209,6 +214,7 @@ function buildTickets(orders, varCat, states, cfg, now = Date.now()) {
       table: meta.table,
       customerName: meta.customerName,
       fulfillmentType: meta.fulfillmentType,
+      scheduledAt: meta.scheduledAt,
       note: meta.note,
       zoneItems,
       zoneStatus,

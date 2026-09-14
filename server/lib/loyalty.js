@@ -148,7 +148,10 @@ async function getCustomerLoyalty(phone) {
   const progress = balance % pointsPerReward;                   // cups filled toward the next
   return {
     active: true,
-    terminology: program.terminology,
+    // The app frames loyalty as a stamp card: each point is a "cup", and
+    // pointsPerReward cups = a free coffee. Present it that way everywhere,
+    // regardless of what the Square program calls its points.
+    terminology: { one: 'cup', other: 'cups' },
     balance,
     accountId: account ? account.id : null,
     // Stamp-card view:
@@ -162,6 +165,26 @@ async function getCustomerLoyalty(phone) {
       affordable: balance >= t.points,
     })),
   };
+}
+
+// Points earned / redeemed on ONE order — so the dashboard can show, per app
+// sale, whether points were accumulated (coffee earns Stars) or used (a free
+// coffee redemption). Best-effort; returns zeros if loyalty isn't reachable.
+async function eventsForOrder(orderId) {
+  if (!orderId) return { earned: 0, redeemed: 0 };
+  try {
+    const data = await squareFetch('/v2/loyalty/events/search', {
+      method: 'POST',
+      body: { query: { filter: { order_filter: { order_id: orderId } } }, limit: 30 },
+    });
+    let earned = 0, redeemed = 0;
+    for (const e of (data.events || data.loyalty_events || [])) {
+      if (e.accumulate_points) earned += (e.accumulate_points.points || 0);
+      else if (e.accumulate_promotion_points) earned += (e.accumulate_promotion_points.points || 0);
+      else if (e.create_reward && e.create_reward.points) redeemed += Math.abs(e.create_reward.points);
+    }
+    return { earned, redeemed };
+  } catch { return { earned: 0, redeemed: 0 }; }
 }
 
 // Balance + points ledger for one phone — for the app's "Points activity" popup.
@@ -352,4 +375,4 @@ async function adjustPoints({ accountId, points, reason }) {
   } catch (e) { console.error('[loyalty] adjust failed', e.message); return false; }
 }
 
-module.exports = { getProgram, getAccountByPhone, getAccountByCustomerId, accumulateForOrder, getBalance, accountHistory, getCustomerLoyalty, getCustomerHistory, createReward, deleteReward, listLoyaltyUsers, signupStats, enrollAccount, adjustPoints };
+module.exports = { getProgram, getAccountByPhone, getAccountByCustomerId, accumulateForOrder, getBalance, accountHistory, getCustomerLoyalty, getCustomerHistory, eventsForOrder, createReward, deleteReward, listLoyaltyUsers, signupStats, enrollAccount, adjustPoints };
