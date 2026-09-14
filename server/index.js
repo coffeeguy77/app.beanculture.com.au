@@ -1978,6 +1978,10 @@ app.get('/api/admin/kds/tickets', async (req, res) => {
 // so they never block the kitchen's bump.
 async function notifyOrderReady(orderId) {
   try {
+    // Channel choice (Admin → Kitchen Screen → Notifications). 'app' = the free
+    // in-app tracker only, so we send no SMS/email push here. 'sms'/'both' push.
+    const channel = (getSettings().notifications || {}).readyChannel || 'app';
+    if (channel !== 'sms' && channel !== 'both') return;
     const order = await orders.getOrder(orderId);
     if (!order) return;
     // Prefer the Square customer's contact; fall back to a phone/email captured
@@ -1992,7 +1996,7 @@ async function notifyOrderReady(orderId) {
     const store = getSettings().storeName || 'Bean Culture';
     const who = md.bc_name || (cust && cust.given_name) || '';
     const msg = `${who ? who + ', y' : 'Y'}our ${store} order is ready for collection ☕`;
-    if (phone && notify.smsConfigured) { await notify.sendSMS(phone, msg); return; }
+    if (phone && notify.smsConfigured) { await notify.sendSMS(phone, msg, { purpose: 'order_ready', orderId }); return; }
     if (email && notify.emailConfigured) { await notify.sendEmail(email, `Your ${store} order is ready`, msg); return; }
   } catch (e) { console.warn('[kds] ready-notify failed:', e.message); }
 }
@@ -2688,9 +2692,59 @@ app.post('/api/admin/loyalty/profile', async (req, res) => {
 });
 
 // ---- Admin: which broadcast channels are configured ----
-app.get('/api/admin/notify-status', (req, res) => {
+app.get('/api/admin/notify-status', async (req, res) => {
   if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
-  res.json({ sms: !!notify.smsConfigured, email: !!notify.emailConfigured });
+  const n = getSettings().notifications || {};
+  const cfg = n.smsCredits || {};
+  const enforce = !!cfg.enforce;
+  const lowAt = Number(cfg.lowAt) >= 0 ? Number(cfg.lowAt) : 20;
+  const [counts, balance] = await Promise.all([
+    db.smsCounts().catch(() => ({ total: 0, last30: 0, month: 0 })),
+    enforce ? db.smsCreditsGet().catch(() => 0) : Promise.resolve(null),
+  ]);
+  res.json({
+    sms: !!notify.smsConfigured,
+    email: !!notify.emailConfigured,
+    readyChannel: ['app', 'sms', 'both'].includes(n.readyChannel) ? n.readyChannel : 'app',
+    smsCounts: counts,
+    credits: { enforce, lowAt, balance, low: enforce && balance != null && balance <= lowAt, empty: enforce && balance != null && balance <= 0 },
+    dbEnabled: db.enabled,
+  });
+});
+
+// ---- Admin: set the order-ready notification channel + SMS credit policy ----
+// Read-modify-write of the overrides (safe partial save), like the POS options.
+app.post('/api/admin/notify-config', async (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  if (!db.enabled) return res.status(400).json({ error: 'A database is required to save this.' });
+  try {
+    const b = req.body || {};
+    const ov = db.getOverrides() || {};
+    ov.notifications = ov.notifications || {};
+    if (b.readyChannel !== undefined) {
+      if (!['app', 'sms', 'both'].includes(b.readyChannel)) return res.status(400).json({ error: 'Bad channel' });
+      ov.notifications.readyChannel = b.readyChannel;
+    }
+    if (b.enforce !== undefined || b.lowAt !== undefined) {
+      ov.notifications.smsCredits = { ...(ov.notifications.smsCredits || {}) };
+      if (b.enforce !== undefined) ov.notifications.smsCredits.enforce = b.enforce === true;
+      if (b.lowAt !== undefined) ov.notifications.smsCredits.lowAt = Math.max(0, parseInt(b.lowAt, 10) || 0);
+    }
+    await db.saveOverrides(ov);
+    res.json({ ok: true });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+// ---- Admin: top up (or adjust) the prepaid SMS credit balance ----
+app.post('/api/admin/sms-credits', async (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  if (!db.enabled) return res.status(400).json({ error: 'A database is required to store credits.' });
+  try {
+    const add = Math.round(Number((req.body || {}).add) || 0);
+    if (!add) return res.status(400).json({ error: 'Nothing to add' });
+    const balance = await db.smsCreditsAdd(add);
+    res.json({ ok: true, balance });
+  } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
 // ---- Admin: broadcast a message (SMS or email) to loyalty members ----
