@@ -398,8 +398,14 @@ const DEFAULTS = {
   // the bump / ready function — turn it OFF (Admin → Kitchen Screen) if you don't
   // bump orders, so customers aren't shown a status that never advances.
   orderTracker: true,
+  // The default message a customer sees in the tracker when their order is bumped
+  // "ready". Empty = the built-in wording ("Order ready — come on in!" / "Coming
+  // to table N"). Each Kitchen Screen station can override this with its own
+  // message (kds.zones[].customerMessage), so the coffee bar can say something
+  // different to the food kitchen — the station that was bumped drives the text.
+  orderReadyMessage: '',
   kds: {
-    zones: [],          // [{ id, name, categories:[displayName] }]
+    zones: [],          // [{ id, name, categories:[displayName], customerMessage }]
     lookbackHours: 8,   // how far back to pull live tickets
     amberMin: 6,        // ticket turns amber after this many minutes
     redMin: 12,         // ticket turns red after this many minutes
