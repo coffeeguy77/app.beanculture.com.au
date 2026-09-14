@@ -392,6 +392,12 @@ const DEFAULTS = {
     weekend: { enabled: false, percent: 10, days: [0, 6], publicHolidays: [], label: 'Weekend surcharge' },
     card: { enabled: false, percent: 1.5, label: 'Card surcharge' },
   },
+  // Customer order tracker: a persistent "your order" bar in the customer app
+  // that follows them around after checkout and flips to "Order ready" the moment
+  // staff bump the ticket on the kitchen screen. Only useful for cafés that use
+  // the bump / ready function — turn it OFF (Admin → Kitchen Screen) if you don't
+  // bump orders, so customers aren't shown a status that never advances.
+  orderTracker: true,
   kds: {
     zones: [],          // [{ id, name, categories:[displayName] }]
     lookbackHours: 8,   // how far back to pull live tickets
