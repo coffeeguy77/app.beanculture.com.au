@@ -3388,6 +3388,19 @@ body:has(.store-shell) { background: var(--bc-canvas-deep, #160f12); }
 .kds-btn.ready.on { background: #7a6200; color: #fff6d6; }
 .kds-btn.bump { background: #35b37e; color: #06231a; }
 .kds-btn.bump:active, .kds-btn.start:active, .kds-btn.ready:active { transform: scale(.98); }
+/* Notify (app orders): tell the customer it's ready without clearing the ticket.
+   After the first press it becomes a muted pill showing how long ago they were
+   told; tapping again reminds them. */
+.kds-btn.notify { background: #d9a300; color: #241c00; }
+.kds-btn.notify.sent { background: #2a343d; color: #bfe3d2; border: 1px solid #3c5a4c; font-size: 12.5px; line-height: 1.15; }
+.kds-btn.notify:active { transform: scale(.98); }
+/* Once the customer has been notified the ticket stays on the board but recedes
+   (dimmed) so staff can see at a glance it's handled — until they Bump it on
+   collection. The footer (Notify-again / Bump) stays fully lit and usable. */
+.kds-card { position: relative; }
+.kds-card.notified { border-left-color: #35b37e; }
+.kds-card.notified .kds-card-head, .kds-card.notified .kds-items { opacity: .45; }
+.kds-notified-tag { position: absolute; top: 0; right: 0; background: #35b37e; color: #06231a; font-size: 10.5px; font-weight: 800; padding: 3px 8px; border-bottom-left-radius: 10px; letter-spacing: .02em; z-index: 2; }
 
 /* Recall strip */
 .kds-recall { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 16px; background: #0e1216; border-top: 1px solid #222a32; }
