@@ -2728,8 +2728,85 @@ app.get('/api/birthday/offer', async (req, res) => {
   try {
     const el = await birthdayEligibility(req.query.customerId);
     const s = getSettings().birthday || {};
-    res.json({ ...el, terms: s.terms || '' });
+    res.json({ ...el, terms: s.terms || '', bannerImage: s.bannerImage || '' });
   } catch (e) { res.json({ eligible: false, reason: 'error' }); }
+});
+
+// Days until the next occurrence of a MM-DD birthday (0 = today).
+function daysUntilMMDD(todayMMDD, bMMDD) {
+  const [tm, td] = String(todayMMDD).split('-').map(Number);
+  const [bm, bd] = String(bMMDD).split('-').map(Number);
+  const t = Date.UTC(2001, (tm || 1) - 1, td || 1);
+  let b = Date.UTC(2001, (bm || 1) - 1, bd || 1);
+  if (b < t) b = Date.UTC(2002, (bm || 1) - 1, bd || 1);
+  return Math.round((b - t) / 86400000);
+}
+
+// Total paid spend + order count per customer over a window (cached).
+async function spendByCustomer(days = 365) {
+  const cacheKey = `spendcust|${days}`;
+  const cached = analyticsCache(cacheKey, 300000);
+  if (cached) return cached;
+  const since = new Date(Date.now() - days * 86400000).toISOString();
+  const map = {};
+  for (const store of locations.active()) {
+    let cursor; let pages = 0;
+    do {
+      const data = await sq.squareFetch('/v2/orders/search', {
+        method: 'POST',
+        body: { location_ids: [store.squareLocationId], cursor, query: { filter: { date_time_filter: { created_at: { start_at: since } }, state_filter: { states: ['COMPLETED', 'OPEN'] } } }, limit: 500 },
+      }).catch(() => ({}));
+      for (const o of (data.orders || [])) {
+        const cid = o.customer_id; if (!cid) continue;
+        const paid = o.state === 'COMPLETED' || (Array.isArray(o.tenders) && o.tenders.length > 0);
+        if (!paid) continue;
+        const e = map[cid] || (map[cid] = { cents: 0, orders: 0 });
+        e.cents += (o.total_money && o.total_money.amount) || 0; e.orders += 1;
+      }
+      cursor = data.cursor; pages += 1;
+    } while (cursor && pages < 20);
+  }
+  analyticsCacheSet(cacheKey, map);
+  return map;
+}
+
+// ---- Admin: birthday roster — who's next, who's spent the most, redeemed? ----
+app.get('/api/admin/birthdays', async (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const tz = (getSettings().contact && getSettings().contact.timezone) || 'Australia/Sydney';
+    const todayMMDD = todayMMDDInTz(tz);
+    const year = yearInTz(tz);
+    const [users, spend, redeemed] = await Promise.all([
+      loyalty.listLoyaltyUsers(),
+      spendByCustomer(365).catch(() => ({})),
+      db.birthdayRedeemedSet(year).catch(() => new Set()),
+    ]);
+    const rows = users.filter((u) => u.birthday && u.customerId).map((u) => {
+      const sp = spend[u.customerId] || { cents: 0, orders: 0 };
+      const daysUntil = daysUntilMMDD(todayMMDD, u.birthday);
+      return {
+        customerId: u.customerId, name: u.name || 'Member', phone: u.phone || '',
+        birthday: u.birthday, daysUntil, isToday: daysUntil === 0,
+        redeemedThisYear: redeemed.has(u.customerId),
+        spendCents: sp.cents, spendOrders: sp.orders,
+        points: u.points, lifetimePoints: u.lifetimePoints,
+      };
+    });
+    rows.sort((a, b) => a.daysUntil - b.daysUntil || b.spendCents - a.spendCents);
+    res.json({ rows, currency: sq.CURRENCY, year });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ---- Admin: set/correct a customer's birthday (bypasses the in-app lock) ----
+app.post('/api/admin/birthday/set', async (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const { customerId, birthday } = req.body || {};
+    if (!customerId) return res.status(400).json({ error: 'Missing customer' });
+    const saved = await customers.setBirthday(customerId, birthday);
+    res.json({ ok: true, birthday: saved });
+  } catch (e) { res.status(400).json({ error: e.message || 'Could not save.' }); }
 });
 
 // ---- Admin: customers enrolled via Square loyalty ----
