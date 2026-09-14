@@ -59,6 +59,8 @@ export const api = {
   adminDashboard: (pass, days = 30) => req(`/api/admin/dashboard?days=${days}&pass=${encodeURIComponent(pass || '')}`),
   // Admin: broadcast (SMS/email) to loyalty members
   adminNotifyStatus: (pass) => req(`/api/admin/notify-status?pass=${encodeURIComponent(pass || '')}`),
+  adminNotifyConfig: (pass, payload) => req(`/api/admin/notify-config?pass=${encodeURIComponent(pass || '')}`, { method: 'POST', body: JSON.stringify(payload) }),
+  adminSmsCredits: (pass, add) => req(`/api/admin/sms-credits?pass=${encodeURIComponent(pass || '')}`, { method: 'POST', body: JSON.stringify({ add }) }),
   adminBroadcast: (pass, payload) => req(`/api/admin/broadcast?pass=${encodeURIComponent(pass || '')}`, { method: 'POST', body: JSON.stringify(payload) }),
   adminBroadcastTest: (pass, payload) => req(`/api/admin/broadcast/test?pass=${encodeURIComponent(pass || '')}`, { method: 'POST', body: JSON.stringify(payload) }),
   // Customer messages (enquiry / feedback / catering) + spam capture
