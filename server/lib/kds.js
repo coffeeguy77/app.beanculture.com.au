@@ -19,6 +19,41 @@ const { getSettings } = require('./settings');
 
 const ALL_ZONE = '__all__';
 
+// Normalise a product name for matching a live order line against the names an
+// admin ticked/unticked in Advanced mode. The Advanced picker stores the app
+// menu display name (e.g. "Ham & Cheese Croissant"), while a live Square order
+// line carries Square's own name (e.g. "Ham and cheese croissant"), so a plain
+// lowercase/trim compare misses on "&"↔"and", punctuation and double spaces —
+// which is why an unticked item still routed to the station. Collapse all of
+// that to one canonical form on BOTH sides so the match is reliable.
+function normName(s) {
+  return String(s || '')
+    .toLowerCase()
+    .replace(/&/g, ' and ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+    .replace(/\s+/g, ' ');
+}
+
+// The set of names a line item could reasonably have been ticked under: its own
+// name, and (when it's a variation) the name with the variation folded in, in
+// either order, plus the variation alone. Any of these matching a station's
+// hidden/included list counts, so it works whether the café is selling the
+// croissant as a standalone product or as a variation of a parent "Croissant".
+function lineNameKeys(it) {
+  const nm = it && it.name ? String(it.name) : '';
+  const v = it && it.variation ? String(it.variation) : '';
+  const keys = new Set();
+  if (nm) keys.add(normName(nm));
+  if (v) {
+    keys.add(normName(v));
+    keys.add(normName(nm + ' ' + v));
+    keys.add(normName(v + ' ' + nm));
+  }
+  keys.delete('');
+  return keys;
+}
+
 // Where an order came from, by its Square source name. 'Bean Culture POS' is the
 // counter POS; 'Bean Culture App' is a customer self-order (app / walk-around QR).
 // The POS name also contains "bean culture", so POS must be tested FIRST — that
@@ -185,12 +220,16 @@ function buildTickets(orders, varCat, states, cfg, now = Date.now()) {
     const zoneItems = { [ALL_ZONE]: items };
     for (const z of zones) {
       const zcats = (z.categories || []).map((c) => String(c).toLowerCase());
-      const zitems = new Set((z.items || []).map((n) => String(n).trim().toLowerCase()));
-      const zhidden = new Set((z.hiddenItems || []).map((n) => String(n).trim().toLowerCase()));
+      const zitems = new Set((z.items || []).map((n) => normName(n)));
+      const zhidden = new Set((z.hiddenItems || []).map((n) => normName(n)));
       const mine = items.filter((it) => {
-        const nm = String(it.name || '').trim().toLowerCase();
-        if (zhidden.has(nm)) return false;   // unticked for this station
-        return it.categories.some((c) => zcats.includes(String(c).toLowerCase())) || zitems.has(nm);
+        const keys = lineNameKeys(it);
+        // Unticked for this station in Advanced mode → never route it here,
+        // whichever name form the admin unticked it under.
+        for (const k of keys) if (zhidden.has(k)) return false;
+        if (it.categories.some((c) => zcats.includes(String(c).toLowerCase()))) return true;
+        for (const k of keys) if (zitems.has(k)) return true;
+        return false;
       });
       if (mine.length) zoneItems[z.id] = mine;
     }
