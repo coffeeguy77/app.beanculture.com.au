@@ -938,10 +938,34 @@ function SessionView({ api2, cfg, currency, location, sessionId, table, onOrderI
               )}
             </div>
           ))}
-          {g.sharedShare > 0 && (
-            <div className="wtr-itemrow"><div className="wtr-iteminfo"><b>Share of shared tabs</b><div className="wtr-muted">{myShares.map(({ sh, party }) => `${sh.name} (${sh.mode === 'pct' ? party.weight + '%' : party.weight + (party.weight === 1 ? ' person' : ' people')})`).join(', ')}</div></div><div className="wtr-itemamt"><b>{formatMoney(g.sharedShare, cur)}</b></div></div>
-          )}
         </div>
+
+        {/* Full breakdown of every shared tab this group is on: what's on it, the
+            cost, and how this group's share compares to the others sharing it. */}
+        {myShares.map(({ sh, party }) => {
+          const shItems = (st.lines || []).filter((li) => li.tabId === sh.id);
+          return (
+            <div className="wtr-card" key={sh.id}>
+              <div className="wtr-card-h">{sh.name} · shared<span className="wtr-grp-owed">{formatMoney(party.amount, cur)}</span></div>
+              <div className="wtr-muted" style={{ fontSize: 12, marginBottom: 4 }}>{g.name}’s share of a {formatMoney(sh.total, cur)} tab, split {sh.mode === 'pct' ? 'by %' : 'by people'}.</div>
+              {shItems.map((li) => (
+                <div key={li.uid} className="wtr-liserow">
+                  <div className="wtr-lise-qty">{li.quantity}</div>
+                  <div className="wtr-lise-info"><div className="wtr-lise-name">{li.name}</div>{subParts(li.name, li.variation, li.modifiers).length > 0 && <div className="wtr-muted">{subParts(li.name, li.variation, li.modifiers).join(' · ')}</div>}</div>
+                  <div className="wtr-lise-amt">{formatMoney(li.amount, cur)}</div>
+                </div>
+              ))}
+              <div className="wtr-card-h" style={{ marginTop: 8, fontSize: 12 }}>Split between</div>
+              {(sh.parties || []).map((pp) => (
+                <div key={pp.id} className={`wtr-liserow ${pp.id === party.id ? 'wtr-mine' : ''}`}>
+                  <div className="wtr-lise-info"><div className="wtr-lise-name">{pp.name}{pp.id === party.id ? ' (this group)' : ''}</div><div className="wtr-muted">{sh.mode === 'pct' ? `${pp.weight}%` : `${pp.weight} ${pp.weight === 1 ? 'person' : 'people'}`}{pp.ref ? '' : ' · guest'}</div></div>
+                  <div className="wtr-lise-amt">{formatMoney(pp.amount, cur)}</div>
+                </div>
+              ))}
+            </div>
+          );
+        })}
+
         {!g.paid ? (
           <div className="wtr-actions">
             <button className="wtr-secondary" onClick={() => onOrderInto(g.id)}>+ Add items</button>
@@ -1345,6 +1369,8 @@ function WaiterStyle() {
     .wtr-lise-name{font-weight:700;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .wtr-lise-amt{font-weight:800;font-size:14px;flex:none;white-space:nowrap}
     .wtr-lise-move{flex:none;width:92px;max-width:92px;border:1px solid var(--line,#e5dee6);border-radius:8px;padding:6px;font-size:12px;background:var(--surface,#fff);color:inherit}
+    .wtr-liserow.wtr-mine{background:#eef7f3;border-radius:8px;padding:6px 8px;border-bottom:none}
+    .wtr-liserow.wtr-mine .wtr-lise-name{color:var(--brand,#0f6f59)}
     .wtr-menurow{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--surface,#fff);border:1px solid var(--line,#e5dee6);border-radius:10px;padding:13px 14px;cursor:pointer;text-align:left;width:100%;color:inherit}
     .wtr-menurow:active{background:#f0edf1}
     .wtr-menurow-name{font-weight:700;font-size:15px;display:flex;align-items:center;gap:8px}
