@@ -384,6 +384,54 @@ async function getOrder(orderId) {
   return data.order;
 }
 
+// Build Square line items for a cart of catalog products (variation id +
+// modifiers + note), applying POS-only price overrides the same way createOrder
+// does. Kept deliberately simple: the waiter tab only ever adds real menu items,
+// so there's no combo/coupon/PIF machinery here — just server-authoritative
+// lines Square re-prices from the ids. `startIdx` keeps uids unique when the
+// lines are appended to an order that already has some.
+function buildCatalogLines(cart, { posOverrideLocation, startIdx = 0 } = {}) {
+  return (Array.isArray(cart) ? cart : []).map((ci, i) => {
+    const n = startIdx + i;
+    if (ci.custom === true) {
+      const cl = customLineFor(ci, `li${n}`);
+      if (cl) { if (ci.note) cl.note = String(ci.note).slice(0, 500); return cl; }
+    }
+    const ov = posOverrideLocation ? posOverrideFor(ci.presetId, ci.variationId, posOverrideLocation) : null;
+    const li = ov
+      ? { uid: `li${n}`, name: ov.name, quantity: String(ci.quantity || 1), base_price_money: { amount: ov.price, currency: CURRENCY } }
+      : { uid: `li${n}`, catalog_object_id: ci.variationId, quantity: String(ci.quantity || 1) };
+    if (Array.isArray(ci.modifierIds) && ci.modifierIds.length) {
+      li.modifiers = ci.modifierIds.map((id) => ({ catalog_object_id: id }));
+    }
+    if (ci.note) li.note = String(ci.note).slice(0, 500);
+    return li;
+  }).filter(Boolean);
+}
+
+// Append line items to an EXISTING open order (a waiter tab getting another
+// round). Square's UpdateOrder is a sparse merge: sending only new line_items
+// adds them, keeping the ones already on the ticket. Version-checked so two
+// waiters adding to the same tab can't clobber each other (Square rejects a
+// stale version; the caller re-reads and retries). Returns the updated order.
+async function addToOrder(orderId, cart, { posOverrideLocation, squareLocationId } = {}) {
+  if (!Array.isArray(cart) || cart.length === 0) throw new Error('Nothing to add');
+  const cur = await getOrder(orderId);
+  if (!cur) throw new Error('Tab not found');
+  if (String(cur.state) !== 'OPEN') throw new Error('That tab is already closed');
+  const startIdx = (cur.line_items || []).length;
+  const lineItems = buildCatalogLines(cart, { posOverrideLocation, startIdx });
+  if (!lineItems.length) throw new Error('Nothing to add');
+  const data = await squareFetch(`/v2/orders/${orderId}`, {
+    method: 'PUT',
+    body: {
+      order: { location_id: squareLocationId || cur.location_id, version: cur.version, line_items: lineItems },
+      idempotency_key: idem(),
+    },
+  });
+  return data.order;
+}
+
 // Merge a few metadata keys onto an existing order (best-effort caller). Reads the
 // current version first so it never conflicts. Used to tag an order with how many
 // loyalty free coffees were redeemed (bc_loyfree) so order history can show it.
@@ -457,7 +505,7 @@ async function payZeroOrder(orderId, orderVersion) {
 // Record a CASH tender against an order (counter POS). Square's Payments API
 // accepts source_id 'CASH' with cash_details.buyer_supplied_money; autocomplete
 // settles the order so it reads as paid and reconciles in Square reporting.
-async function createCashPayment({ orderId, amountMoney, buyerSuppliedMoney, squareLocationId }) {
+async function createCashPayment({ orderId, amountMoney, buyerSuppliedMoney, squareLocationId, note }) {
   const body = {
     source_id: 'CASH',
     idempotency_key: idem(),
@@ -467,6 +515,8 @@ async function createCashPayment({ orderId, amountMoney, buyerSuppliedMoney, squ
     autocomplete: true,
     cash_details: { buyer_supplied_money: buyerSuppliedMoney || amountMoney },
   };
+  // A split-bill payer's name, so "who paid what" is legible on the payment/receipt.
+  if (note) body.note = String(note).slice(0, 500);
   const data = await squareFetch('/v2/payments', { method: 'POST', body });
   return data.payment;
 }
@@ -658,4 +708,4 @@ async function createReservationOrder({ name, phone, email, partySize, at, notes
   return data.order;
 }
 
-module.exports = { createOrder, getOrder, stampMeta, createPayment, authorizePayment, completePayment, cancelPayment, payZeroOrder, createCashPayment, cancelOrder, releaseHold, sweepHeldOrders, getHistory, createReservationOrder };
+module.exports = { createOrder, getOrder, addToOrder, buildCatalogLines, stampMeta, createPayment, authorizePayment, completePayment, cancelPayment, payZeroOrder, createCashPayment, cancelOrder, releaseHold, sweepHeldOrders, getHistory, createReservationOrder };

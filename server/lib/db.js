@@ -255,6 +255,24 @@ async function init(attempt = 1) {
     await pool.query('CREATE INDEX IF NOT EXISTS pos_payments_order ON pos_payments (square_order_id)');
     await pool.query('CREATE INDEX IF NOT EXISTS pos_payments_status ON pos_payments (status)');
 
+    // Waiter "sessions" — the billing overlay for a table that's split into
+    // group tabs + shared tabs. The table itself is ONE Square order (so the
+    // kitchen makes shared items once and the total always reconciles); this
+    // holds the split layer on top: the named group/shared tabs, which line is
+    // assigned to which tab, and each shared tab's weighted parties. Keyed by our
+    // own session id and linked to the Square order once the first item lands.
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS waiter_sessions (
+        id text primary key,
+        square_order_id text,
+        data jsonb not null default '{}'::jsonb,
+        created_at timestamptz default now(),
+        updated_at timestamptz default now()
+      )
+    `);
+    await pool.query('CREATE INDEX IF NOT EXISTS waiter_sessions_sqid ON waiter_sessions (square_order_id)');
+    await pool.query('CREATE INDEX IF NOT EXISTS waiter_sessions_updated ON waiter_sessions (updated_at)');
+
     // Versioned backups of the settings blob. Every save snapshots the PREVIOUS
     // settings here before overwriting, so a bad/partial save can always be
     // rolled back (this is the safety net behind the admin "Backups" panel).
@@ -1120,12 +1138,38 @@ async function posPaymentByOrder(squareOrderId) {
   return r.rows[0] || null;
 }
 
+// ── Waiter split-billing sessions (group tabs + shared tabs overlay) ──
+async function waiterSessionUpsert(id, squareOrderId, data) {
+  if (!pool) return null;
+  const r = await pool.query(
+    `INSERT INTO waiter_sessions (id, square_order_id, data)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (id) DO UPDATE SET
+       square_order_id = COALESCE(EXCLUDED.square_order_id, waiter_sessions.square_order_id),
+       data = EXCLUDED.data, updated_at = now()
+     RETURNING *`,
+    [id, squareOrderId || null, data || {}]
+  );
+  return r.rows[0];
+}
+async function waiterSessionGet(id) {
+  if (!pool) return null;
+  const r = await pool.query('SELECT * FROM waiter_sessions WHERE id = $1', [id]);
+  return r.rows[0] || null;
+}
+async function waiterSessionByOrder(squareOrderId) {
+  if (!pool) return null;
+  const r = await pool.query('SELECT * FROM waiter_sessions WHERE square_order_id = $1 ORDER BY updated_at DESC LIMIT 1', [squareOrderId]);
+  return r.rows[0] || null;
+}
+
 module.exports = {
   init, getOverrides, saveOverrides, listSettingsBackups, restoreSettingsBackup,
   kdsGetStates, kdsSetStatus, kdsNotify, kdsMarkPaid, kdsGetPaid,
   smsRecord, smsCounts, smsCreditsGet, smsCreditsAdd, smsCreditsConsume,
   birthdayRedeemedThisYear, birthdayClaim, birthdayUnclaim, birthdayRedeemedSet,
   posRecordOrder, posPaymentUpsert, posPaymentSetStatus, posPaymentGet, posPaymentByOrder,
+  waiterSessionUpsert, waiterSessionGet, waiterSessionByOrder,
   insertScheduled, listScheduledByCustomer, cancelScheduled, claimDue, updateScheduled,
   track, getAnalytics,
   insertMessage, listMessages, markMessageHandled, deleteMessage,

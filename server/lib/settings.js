@@ -460,6 +460,18 @@ const DEFAULTS = {
     // The register's own fulfilment-method toggle, when staff use it, overrides
     // this. See server/lib/kds.js parseTicketMeta.
     dineInKeywords: ['have here', 'dine in', 'for here', 'eat in'],
+    // ── Waiter mode: a portable table-service register (/waiter). A waiter opens
+    //    a tab on a table, adds items (which hit the kitchen), and later settles
+    //    it by card on a dedicated second Terminal, by cash, or leaves it open to
+    //    settle later. Gated by its own short PIN so a roaming phone never holds
+    //    the admin password. The waiter Terminal is deliberately separate from
+    //    the counter POS reader so the two never fight over one device.
+    waiterEnabled: false,
+    waiterPin: '',                 // 4–8 digit PIN staff type to open waiter mode
+    waiterTables: [],              // preset table labels to tap, e.g. ['1','2','Courtyard 3']
+    waiterTerminalDeviceId: '',    // the dedicated second reader for table service
+    waiterTerminalName: '',        // friendly name of that reader
+    waiterTerminalByLocation: {},  // per-store waiter readers: { [locationId]: { deviceId, name } }
   },
   // ── Smart Campaigns: contextual merchandising driven by rules (Weather first;
   //    future: time, holidays, stock, loyalty…). A single server-side resolver
