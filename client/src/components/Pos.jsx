@@ -1290,11 +1290,11 @@ function WaiterSettings({ cfg, posLoc, multiStore, storeName, pass }) {
     const dev = (devices || []).find((d) => d.id === id);
     try { await save({ terminalDeviceId: id, terminalName: dev ? dev.name : '', locationId: multiStore ? posLoc : undefined }, id ? 'Waiter terminal set' : 'Waiter terminal cleared'); } catch {}
   };
-  const url = `${window.location.origin}/waiter`;
+  const url = `${window.location.origin}/foh`;
   return (
     <div className="pos-set-block pos-set-span">
       <div className="pos-set-label">Waiter mode — table service{storeName ? ` · ${storeName}` : ''}</div>
-      <p className="pos-set-hint">A portable register your floor staff open on their own phone at <b>/waiter</b>. They unlock with a short PIN (never the admin password), open a tab on a table, send items to the kitchen, then settle — full, split by item, an even share, or by percentage — on a <b>dedicated</b> card Terminal.</p>
+      <p className="pos-set-hint">A portable register your floor staff open on their own phone at <b>/foh</b>. They unlock with a short PIN (never the admin password), open a tab on a table, send items to the kitchen, then settle — full, split by item, an even share, or by percentage — on a <b>dedicated</b> card Terminal. Tip: open /foh on the phone and “Add to Home Screen” for an <b>FOH</b> app icon.</p>
       <div className="pos-set-row">
         <span className={`pos-set-status${enabled ? ' on' : ''}`}>● {enabled ? 'Waiter mode is on' : 'Waiter mode is off'}</span>
         <button className="pos-btn primary" onClick={toggle}>{enabled ? 'Turn off' : 'Turn on'}</button>
@@ -1326,7 +1326,7 @@ function WaiterSettings({ cfg, posLoc, multiStore, storeName, pass }) {
 
           <div className="pos-set-label" style={{ marginTop: 10 }}>Open waiter mode</div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-            <button type="button" className="pos-btn ghost" onClick={() => window.open(url, '_blank', 'noopener')}>Open /waiter ↗</button>
+            <button type="button" className="pos-btn ghost" onClick={() => window.open(url, '_blank', 'noopener')}>Open /foh ↗</button>
             <button type="button" className="pos-btn ghost" onClick={() => { try { navigator.clipboard.writeText(url); } catch {} }}>Copy link</button>
             <span className="pos-set-hint" style={{ flexBasis: '100%', wordBreak: 'break-all', marginTop: 4 }}>{url}</span>
           </div>
@@ -1389,8 +1389,8 @@ function SettingsSheet({ cfg, posLoc, multiStore, curTerm, theme, onTheme, idleS
         </div>
 
         <div className="pos-set-block">
-          <div className="pos-set-label">Customer display</div>
-          <p className="pos-set-hint">Open <b>/display</b> on a second screen (tablet, phone or monitor) facing the customer to show their order live as you build it, and a thank-you when paid. Pair it by matching this code.</p>
+          <div className="pos-set-label">Customer display (CDS)</div>
+          <p className="pos-set-hint">Open <b>/display</b> on a second screen (tablet, phone or monitor) facing the customer to show their order live as you build it, and a thank-you when paid. Pair it by matching this code. On that screen, “Add to Home Screen” to install the <b>CDS</b> app icon — it reopens straight to <i>this</i> location’s display.</p>
           <input className="pos-name" style={{ width: '100%' }} value={displayCode || ''}
             onChange={(e) => onDisplayCode && onDisplayCode(e.target.value.replace(/[^a-zA-Z0-9_-]/g, ''))}
             placeholder={`Code (default: ${posLoc || 'main'})`} />
