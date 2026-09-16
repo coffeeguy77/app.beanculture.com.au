@@ -2189,8 +2189,48 @@ app.get('/api/waiter/tabs', async (req, res) => {
         })),
       });
     }
+    // Merge in OPEN TABLES that have no active order (a table the waiter has
+    // opened but not ordered on yet, or one that's been settled but not cleared).
+    // A table with a live order shows its order row; the empty marker is hidden.
+    try {
+      const rawLoc = req.query.location || '';
+      const opens = await db.openTablesList(rawLoc);
+      const taken = new Set(tabs.map((t) => String(t.table || '').trim().toLowerCase()));
+      for (const e of opens) {
+        const key = String(e.table_label || '').trim().toLowerCase();
+        if (taken.has(key)) continue;   // a live order already represents this table
+        tabs.push({
+          openId: e.id, empty: true,
+          sessionId: e.session_id || '', mode: e.mode || 'together',
+          by: e.opened_by || '', table: e.table_label || '', name: '',
+          createdAt: e.created_at, total: 0, currency: sq.CURRENCY, itemCount: 0, items: [],
+        });
+      }
+    } catch (e) { console.warn('[waiter] open tables merge failed:', e.message); }
     res.json({ tabs, currency: sq.CURRENCY });
   } catch (e) { res.status(502).json({ error: e.message }); }
+});
+
+// Mark a table taken (before any order). Idempotent per (location, table).
+app.post('/api/waiter/table/open', async (req, res) => {
+  const pos = waiterAuth(req);
+  if (!pos) return res.status(401).json({ error: 'Wrong PIN, or waiter mode is off.' });
+  if (!db.enabled) return res.json({ ok: true });   // no DB → open tables just aren't tracked
+  try {
+    const { table, mode, sessionId, locationId, by } = req.body || {};
+    if (!String(table || '').trim()) return res.status(400).json({ error: 'Pick a table first.' });
+    const row = await db.openTableUpsert({ location: locationId || '', tableLabel: String(table).trim(), mode: mode === 'groups' ? 'groups' : 'together', sessionId: sessionId || '', openedBy: String((req.body && req.body.by) || by || '').slice(0, 40) });
+    res.json({ ok: true, openId: row ? row.id : '' });
+  } catch (e) { res.status(502).json({ error: e.message }); }
+});
+
+// Close/clear a table (removes the "taken" marker). Used for an empty table, or
+// once a party has left and paid.
+app.post('/api/waiter/table/close', async (req, res) => {
+  const pos = waiterAuth(req);
+  if (!pos) return res.status(401).json({ error: 'Wrong PIN, or waiter mode is off.' });
+  try { if (req.body && req.body.openId) await db.openTableClose(req.body.openId); res.json({ ok: true }); }
+  catch (e) { res.status(502).json({ error: e.message }); }
 });
 
 // Open a new tab (no tabId) or add another round to an existing one (tabId set).
