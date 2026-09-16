@@ -329,6 +329,9 @@ function Home({ api2, cfg, currency, location, waiterName, setErr, onOpenTab, on
           </button>
         ))}
       </div>
+      {/* Build stamp — so staff (and support) can confirm this device is running
+          the current version. If this is missing or old, reinstall the app. */}
+      <div className="wtr-buildstamp">v47b · {(typeof window !== 'undefined' && window.__BUILD__ ? String(window.__BUILD__).slice(0, 7) : 'dev')}</div>
     </div>
   );
 }
@@ -699,9 +702,10 @@ function Split({ api2, cfg, currency, location, ctx, setErr, onDone, onBack }) {
         <div className="wtr-tabhead-t">Split · Table {tab.table || ctx.table}</div>
         <div className="wtr-tabhead-total">{formatMoney(tab.remaining, cur)} <span className="wtr-muted">left</span></div>
       </div>
+      {tab.paid > 0 && <div className="wtr-paidnote">{formatMoney(tab.paid, cur)} already paid · {formatMoney(tab.remaining, cur)} left</div>}
       {tab.payments && tab.payments.length > 0 && (
         <div className="wtr-paidlist">
-          {tab.payments.map((p, i) => <div key={i} className="wtr-paidchip">{p.name || 'Paid'} · {formatMoney(p.amount, cur)} <span className="wtr-muted">{p.tender}</span></div>)}
+          {tab.payments.map((p, i) => <div key={i} className="wtr-paidchip">{p.name || 'Paid'} · {formatMoney(p.amount, cur)}{p.tender ? ` · ${p.tender}` : ''}</div>)}
         </div>
       )}
 
@@ -741,6 +745,10 @@ function SplitByItem({ tab, cur, settledUids, busy, hasTerminal, payments, onPay
   const selected = tab.items.filter((it) => !isPaid(it) && ticked.has(key(it)));
   const amount = Math.min(selected.reduce((s, it) => s + it.amount, 0), tab.remaining);
   const allPaid = tab.items.length > 0 && tab.items.every(isPaid);
+  // Money taken as an amount (Even / % / Custom / Settle) isn't tied to any item,
+  // so it can't tick one — surface it here so a partly-paid tab isn't confusing.
+  const itemisedPaid = tab.items.filter(isPaid).reduce((s, it) => s + it.amount, 0);
+  const byAmountPaid = Math.max(0, (tab.paid || 0) - itemisedPaid);
 
   const pay = async (tender, cashGiven) => {
     const ok = await onPay({ amount, who, tender, cashGiven, markUids: [...ticked] });
@@ -750,6 +758,7 @@ function SplitByItem({ tab, cur, settledUids, busy, hasTerminal, payments, onPay
   return (
     <div className="wtr-card">
       <div className="wtr-card-h">Tick what they’re paying for</div>
+      {byAmountPaid > 0 && !allPaid && <div className="wtr-muted" style={{ fontSize: 12, marginBottom: 6 }}>{formatMoney(byAmountPaid, cur)} was paid by amount (Even / Custom), so it isn’t marked against a specific item.</div>}
       <div className="wtr-itemlist">
         {tab.items.length === 0 && <div className="wtr-muted">No items on this tab.</div>}
         {allPaid && <div className="wtr-paidnote">All items paid.</div>}
@@ -1498,6 +1507,7 @@ function WaiterStyle() {
     .wtr-pad button{height:64px;border-radius:14px;border:1px solid var(--line,#e7dfe4);background:var(--surface,#fff);font-size:22px;font-weight:700;cursor:pointer;color:inherit}
     .wtr-pad-ok{background:var(--brand,#7a2e57)!important;color:#fff!important}
     .wtr-topspacer{width:36px;flex:none}
+    .wtr-buildstamp{text-align:center;font-size:11px;color:var(--muted,#8a8189);opacity:.7;margin-top:14px;letter-spacing:.03em}
     `}</style>
   );
 }
