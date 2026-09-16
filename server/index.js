@@ -23,6 +23,7 @@ const notify = require('./lib/notify');
 const payItForward = require('./lib/payItForward');
 const kds = require('./lib/kds');
 const terminal = require('./lib/terminal');
+const waiterSplit = require('./lib/waiterSplit');
 const locations = require('./lib/locations');
 const surcharges = require('./lib/surcharges');
 
@@ -33,6 +34,18 @@ function posTerminalFor(pos, locId) {
   const perLoc = locId && map[locId];
   if (perLoc && perLoc.deviceId) return { deviceId: perLoc.deviceId, name: perLoc.name || 'Terminal' };
   return { deviceId: pos.terminalDeviceId || '', name: pos.terminalName || 'Terminal' };
+}
+// The DEDICATED waiter reader for a store (table service). Kept separate from the
+// counter POS terminal so the two never contend for one device. Falls back: this
+// store's waiter reader → the global waiter reader → (last resort) the store's
+// counter POS reader, so a single-terminal café can still take a card at the
+// table before it buys a second unit.
+function waiterTerminalFor(pos, locId) {
+  const map = (pos && pos.waiterTerminalByLocation) || {};
+  const perLoc = locId && map[locId];
+  if (perLoc && perLoc.deviceId) return { deviceId: perLoc.deviceId, name: perLoc.name || 'Waiter Terminal' };
+  if (pos.waiterTerminalDeviceId) return { deviceId: pos.waiterTerminalDeviceId, name: pos.waiterTerminalName || 'Waiter Terminal' };
+  return posTerminalFor(pos, locId);
 }
 const weather = require('./lib/weather');
 const smartCampaigns = require('./lib/smartCampaigns');
@@ -1464,6 +1477,13 @@ app.get('/api/pos/config', (req, res) => {
     terminalSkipReceipt: p.terminalSkipReceipt !== false, // skip the post-payment receipt screen (default on)
     // "Dine in" keyword trigger — words that flip a counter order to DINE IN.
     dineInKeywords: Array.isArray(p.dineInKeywords) ? p.dineInKeywords : [],
+    // Waiter mode (portable table-service register) — for the admin settings UI.
+    waiterEnabled: p.waiterEnabled === true,
+    hasWaiterPin: !!p.waiterPin,
+    waiterTables: Array.isArray(p.waiterTables) ? p.waiterTables : [],
+    waiterTerminalDeviceId: p.waiterTerminalDeviceId || '',
+    waiterTerminalName: p.waiterTerminalName || '',
+    waiterTerminalByLocation: p.waiterTerminalByLocation || {},
     dbEnabled: db.enabled,
   });
 });
@@ -1969,6 +1989,562 @@ app.post('/api/pos/terminal/disconnect', async (req, res) => {
     }
     await db.saveOverrides(ov);
     res.json({ ok: true });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Waiter mode (/waiter) — a portable table-service register. Unlike the counter
+// POS (which is gated by the full admin password), waiter mode is gated by its
+// own short PIN so a roaming phone never has to hold the admin password. A waiter
+// opens a tab on a table, adds items (which go straight to the kitchen), then
+// settles by card on the dedicated waiter Terminal, by cash, or leaves the tab
+// open to settle later. All money moves are server-mediated via Square.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Validate the waiter PIN sent with a request. Returns the pos settings when OK,
+// or null. Reads the PIN from body or query so both GET and POST calls work.
+function waiterAuth(req) {
+  const pos = getSettings().pos || {};
+  // The counter POS (already admin-authed) can manage tables too — it doesn't
+  // need the waiter PIN, and it works even before waiter mode is switched on.
+  if (adminOk(req)) return pos;
+  if (!pos.waiterEnabled) return null;
+  const set = String(pos.waiterPin || '').trim();
+  if (!set) return null; // no PIN configured → mode is effectively locked
+  const given = String((req.body && req.body.pin) || req.query.pin || '').trim();
+  if (given && given === set) return pos;
+  return null;
+}
+
+// What a waiter device needs to run: store list, preset tables, whether a card
+// reader is available, currency and logo. Never leaks the admin password or the
+// PIN back.
+app.get('/api/waiter/config', (req, res) => {
+  const pos = waiterAuth(req);
+  if (!pos) return res.status(401).json({ error: 'Wrong PIN, or waiter mode is off.' });
+  const s = getSettings();
+  const locId = req.query.location || '';
+  const term = waiterTerminalFor(pos, locId);
+  res.json({
+    storeName: s.storeName || 'Bean Culture',
+    logo: (s.theme && (s.theme.logo || s.theme.logoUrl)) || (s.contact && s.contact.logo) || s.logoUrl || '',
+    currency: sq.CURRENCY,
+    locations: locations.publicList(),
+    tables: Array.isArray(pos.waiterTables) ? pos.waiterTables : [],
+    hasTerminal: !!term.deviceId,
+    terminalName: term.name || 'Terminal',
+  });
+});
+
+// Open tabs for a store: every OPEN Square order this app tagged as a waiter tab.
+// Square has no metadata filter on SearchOrders, so we pull recent OPEN orders
+// and keep the ones marked bc_waiter (same pattern as the held-order sweep).
+app.get('/api/waiter/tabs', async (req, res) => {
+  const pos = waiterAuth(req);
+  if (!pos) return res.status(401).json({ error: 'Wrong PIN, or waiter mode is off.' });
+  try {
+    const squareLocationId = locations.squareIdFor(req.query.location);
+    const startAt = new Date(Date.now() - 24 * 3600000).toISOString();
+    const data = await sq.squareFetch('/v2/orders/search', {
+      method: 'POST',
+      body: {
+        location_ids: [squareLocationId],
+        query: {
+          filter: { date_time_filter: { created_at: { start_at: startAt } }, state_filter: { states: ['OPEN'] } },
+          sort: { sort_field: 'CREATED_AT', sort_order: 'DESC' },
+        },
+        limit: 100,
+      },
+    });
+    const tabs = [];
+    for (const o of (data.orders || [])) {
+      const md = o.metadata || {};
+      if (md.bc_waiter !== '1') continue;
+      tabs.push({
+        tabId: o.id,
+        sessionId: md.bc_session || '',   // set → this is a split (group-tab) table
+        by: md.bc_by || '',               // the waiter who opened it (for "my tables")
+        table: md.bc_booth || o.ticket_name || '',
+        name: md.bc_name || '',
+        createdAt: o.created_at,
+        total: (o.total_money && o.total_money.amount) || 0,
+        currency: (o.total_money && o.total_money.currency) || sq.CURRENCY,
+        itemCount: (o.line_items || []).reduce((n, li) => n + (Number(li.quantity) || 1), 0),
+        items: (o.line_items || []).map((li) => ({
+          name: li.name || 'Item', variation: li.variation_name || '',
+          quantity: li.quantity || '1', amount: (li.total_money && li.total_money.amount) || 0,
+          modifiers: (li.modifiers || []).map((m) => m.name).filter(Boolean),
+        })),
+      });
+    }
+    res.json({ tabs, currency: sq.CURRENCY });
+  } catch (e) { res.status(502).json({ error: e.message }); }
+});
+
+// Open a new tab (no tabId) or add another round to an existing one (tabId set).
+// Either way the items land on an OPEN Square order that the kitchen sees now.
+app.post('/api/waiter/tab', async (req, res) => {
+  const pos = waiterAuth(req);
+  if (!pos) return res.status(401).json({ error: 'Wrong PIN, or waiter mode is off.' });
+  try {
+    const { cart, table, name, tabId, locationId } = req.body || {};
+    if (!Array.isArray(cart) || cart.length === 0) return res.status(400).json({ error: 'Add at least one item.' });
+    const squareLocationId = locations.squareIdFor(locationId);
+    const posOverrideLocation = locationId || undefined;
+    if (tabId) {
+      const order = await orders.addToOrder(tabId, cart, { posOverrideLocation, squareLocationId });
+      return res.json({ tabId: order.id, total: (order.total_money && order.total_money.amount) || 0, currency: (order.total_money && order.total_money.currency) || sq.CURRENCY });
+    }
+    if (!String(table || '').trim()) return res.status(400).json({ error: 'Pick a table first.' });
+    const order = await orders.createOrder({
+      cart, dineIn: true, table: String(table).trim(), name: name ? String(name).trim() : '',
+      source: 'Bean Culture Waiter', squareLocationId,
+      appLocationId: (locations.resolve(locationId) || {}).id || undefined,
+      posOverrideLocation,
+      // A tab is a live table order: it must reach the kitchen immediately, so it
+      // is never held for payment (payment comes later when the tab is settled).
+      holdForPayment: false,
+    });
+    // Tag it as a waiter tab so it shows in the tab list (and only there).
+    try { await orders.stampMeta(order.id, { bc_waiter: '1' }); } catch (e) { console.warn('[waiter] tag failed:', e.message); }
+    res.json({ tabId: order.id, total: (order.total_money && order.total_money.amount) || 0, currency: (order.total_money && order.total_money.currency) || sq.CURRENCY });
+  } catch (e) { res.status(502).json({ error: e.message }); }
+});
+
+// Settle a tab. tender 'cash' takes a Square CASH payment (closes the order);
+// 'card' starts a Terminal checkout on the waiter reader (client then polls
+// /api/waiter/checkout/:id). Leaving the tab open needs no call — the order just
+// stays OPEN until it's settled.
+app.post('/api/waiter/tab/close', async (req, res) => {
+  const pos = waiterAuth(req);
+  if (!pos) return res.status(401).json({ error: 'Wrong PIN, or waiter mode is off.' });
+  try {
+    const { tabId, tender, cashGiven, locationId } = req.body || {};
+    if (!tabId) return res.status(400).json({ error: 'Missing tab.' });
+    if (!['cash', 'card'].includes(tender)) return res.status(400).json({ error: 'Choose cash or card.' });
+    const order = await orders.getOrder(tabId);
+    if (!order) return res.status(404).json({ error: 'Tab not found.' });
+    if (String(order.state) !== 'OPEN') return res.status(400).json({ error: 'That tab is already settled.' });
+    const amount = (order.total_money && order.total_money.amount) || 0;
+    const currency = (order.total_money && order.total_money.currency) || sq.CURRENCY;
+    if (!(amount > 0)) return res.status(400).json({ error: 'This tab has nothing to pay.' });
+    const squareLocationId = locations.squareIdFor(locationId) || order.location_id;
+
+    if (tender === 'card') {
+      const term = waiterTerminalFor(pos, locationId);
+      if (!term.deviceId) return res.status(400).json({ error: 'No waiter Terminal is set. Pair one in POS setup → Waiter mode.' });
+      try {
+        const checkout = await terminal.createCheckout({
+          amountMoney: { amount, currency }, deviceId: term.deviceId, orderId: tabId, referenceId: tabId,
+          note: `Table ${(order.metadata && order.metadata.bc_booth) || ''}`.trim().slice(0, 60) || 'Waiter tab',
+          showItemizedCart: pos.terminalShowCart === true, skipReceipt: pos.terminalSkipReceipt !== false,
+        });
+        try { await db.posPaymentUpsert({ checkoutId: checkout.id, squareOrderId: tabId, deviceId: term.deviceId, amount, status: 'waiting' }); } catch {}
+        return res.json({ tender: 'card', checkoutId: checkout.id, tabId, total: amount, currency, status: 'waiting', terminalName: term.name || 'Terminal' });
+      } catch (e) {
+        console.warn('[waiter] terminal checkout FAILED:', e.message);
+        return res.status(502).json({ error: `Could not start the card payment: ${e.message}` });
+      }
+    }
+    // Cash → CASH payment against the tab; Square marks the order paid & closed.
+    const given = Math.max(amount, Math.round(Number(cashGiven) || amount));
+    const payment = await orders.createCashPayment({
+      orderId: tabId, amountMoney: { amount, currency },
+      buyerSuppliedMoney: { amount: given, currency }, squareLocationId,
+    });
+    try {
+      if (db.enabled && typeof db.posRecordOrder === 'function') {
+        await db.posRecordOrder({ squareOrderId: tabId, squarePaymentId: payment ? payment.id : null, source: 'Bean Culture Waiter', tender: 'cash', amount, status: 'paid', deviceName: 'Waiter' });
+      }
+    } catch {}
+    res.json({ tender: 'cash', tabId, total: amount, currency, change: Math.max(0, given - amount), status: 'paid', paymentId: payment ? payment.id : null });
+  } catch (e) { res.status(502).json({ error: e.message }); }
+});
+
+// One tab's live money state, for the split-bill workspace: total, how much has
+// already been paid (sum of tenders), what's left, and each payment taken so far
+// with its payer name (from the tender/payment note). Recomputed from Square each
+// call so the "remaining" a split works against is always authoritative.
+app.get('/api/waiter/tab/:id', async (req, res) => {
+  const pos = waiterAuth(req);
+  if (!pos) return res.status(401).json({ error: 'Wrong PIN, or waiter mode is off.' });
+  try {
+    const order = await orders.getOrder(req.params.id);
+    if (!order) return res.status(404).json({ error: 'Tab not found.' });
+    const total = (order.total_money && order.total_money.amount) || 0;
+    const tenders = order.tenders || [];
+    const paid = tenders.reduce((s, t) => s + ((t.amount_money && t.amount_money.amount) || 0), 0);
+    res.json({
+      tabId: order.id,
+      state: order.state,
+      table: (order.metadata && order.metadata.bc_booth) || order.ticket_name || '',
+      total, paid, remaining: Math.max(0, total - paid),
+      currency: (order.total_money && order.total_money.currency) || sq.CURRENCY,
+      items: (order.line_items || []).map((li) => ({
+        uid: li.uid || '', name: li.name || 'Item', variation: li.variation_name || '',
+        quantity: li.quantity || '1',
+        amount: (li.total_money && li.total_money.amount) || 0,
+        modifiers: (li.modifiers || []).map((m) => m.name).filter(Boolean),
+      })),
+      payments: tenders.map((t) => ({
+        amount: (t.amount_money && t.amount_money.amount) || 0,
+        tender: (t.type || '').toLowerCase(),
+        name: (t.note || '').replace(/^Split:\s*/i, '') || '',
+      })),
+    });
+  } catch (e) { res.status(502).json({ error: e.message }); }
+});
+
+// Take ONE payment toward a tab — the heart of split billing. `amount` is the
+// slice being paid now (one person's items, an even share, a percentage…), and
+// the optional `payerName` is written onto the payment so "who paid what" is
+// legible afterwards. Cash settles instantly; card returns a checkoutId to poll.
+// The order stays OPEN until the running total of payments covers it, then Square
+// closes it — so any number of split payments compose naturally.
+app.post('/api/waiter/tab/pay', async (req, res) => {
+  const pos = waiterAuth(req);
+  if (!pos) return res.status(401).json({ error: 'Wrong PIN, or waiter mode is off.' });
+  try {
+    const { tabId, amount, tender, cashGiven, payerName, locationId } = req.body || {};
+    if (!tabId) return res.status(400).json({ error: 'Missing tab.' });
+    if (!['cash', 'card'].includes(tender)) return res.status(400).json({ error: 'Choose cash or card.' });
+    const want = Math.round(Number(amount) || 0);
+    if (!(want > 0)) return res.status(400).json({ error: 'Enter an amount to pay.' });
+    const order = await orders.getOrder(tabId);
+    if (!order) return res.status(404).json({ error: 'Tab not found.' });
+    if (String(order.state) !== 'OPEN') return res.status(400).json({ error: 'That tab is already settled.' });
+    const total = (order.total_money && order.total_money.amount) || 0;
+    const paid = (order.tenders || []).reduce((s, t) => s + ((t.amount_money && t.amount_money.amount) || 0), 0);
+    const remaining = Math.max(0, total - paid);
+    if (want > remaining) return res.status(400).json({ error: `Only ${(remaining / 100).toFixed(2)} left to pay on this tab.` });
+    const currency = (order.total_money && order.total_money.currency) || sq.CURRENCY;
+    const squareLocationId = locations.squareIdFor(locationId) || order.location_id;
+    const who = String(payerName || '').trim().slice(0, 60);
+    const note = who ? `Split: ${who}` : 'Split';
+
+    if (tender === 'card') {
+      const term = waiterTerminalFor(pos, locationId);
+      if (!term.deviceId) return res.status(400).json({ error: 'No waiter Terminal is set. Pair one in POS setup → Waiter mode.' });
+      try {
+        const checkout = await terminal.createCheckout({
+          amountMoney: { amount: want, currency }, deviceId: term.deviceId, orderId: tabId, referenceId: tabId,
+          note, showItemizedCart: pos.terminalShowCart === true, skipReceipt: pos.terminalSkipReceipt !== false,
+        });
+        try { await db.posPaymentUpsert({ checkoutId: checkout.id, squareOrderId: tabId, deviceId: term.deviceId, amount: want, status: 'waiting' }); } catch {}
+        return res.json({ tender: 'card', checkoutId: checkout.id, tabId, amount: want, currency, status: 'waiting', payerName: who, terminalName: term.name || 'Terminal' });
+      } catch (e) {
+        console.warn('[waiter] split card checkout FAILED:', e.message);
+        return res.status(502).json({ error: `Could not start the card payment: ${e.message}` });
+      }
+    }
+    const given = Math.max(want, Math.round(Number(cashGiven) || want));
+    const payment = await orders.createCashPayment({
+      orderId: tabId, amountMoney: { amount: want, currency },
+      buyerSuppliedMoney: { amount: given, currency }, squareLocationId, note,
+    });
+    try {
+      if (db.enabled && typeof db.posRecordOrder === 'function') {
+        await db.posRecordOrder({ squareOrderId: tabId, squarePaymentId: payment ? payment.id : null, source: 'Bean Culture Waiter', tender: 'cash', amount: want, status: 'paid', deviceName: `Waiter${who ? ' · ' + who : ''}` });
+      }
+    } catch {}
+    res.json({ tender: 'cash', tabId, amount: want, currency, change: Math.max(0, given - want), status: 'paid', payerName: who, paymentId: payment ? payment.id : null });
+  } catch (e) { res.status(502).json({ error: e.message }); }
+});
+
+// Poll a waiter card checkout. Unlike the counter POS, a cancelled/declined card
+// must NOT delete the tab — the food is already ordered — it just stays open to
+// try again or settle another way.
+app.get('/api/waiter/checkout/:id', async (req, res) => {
+  const pos = waiterAuth(req);
+  if (!pos) return res.status(401).json({ error: 'Wrong PIN, or waiter mode is off.' });
+  try {
+    const c = await terminal.getCheckout(req.params.id);
+    const phase = terminal.phaseOf(c);
+    const paymentId = (c.payment_ids && c.payment_ids[0]) || null;
+    if (phase === 'paid') {
+      await db.posPaymentSetStatus(req.params.id, 'paid', paymentId).catch(() => {});
+      const orderId = req.query.tabId || null;
+      if (orderId) {
+        try { await db.posRecordOrder({ squareOrderId: orderId, squarePaymentId: paymentId, source: 'Bean Culture Waiter', tender: 'card', amount: (c.amount_money && c.amount_money.amount) || 0, status: 'paid', deviceName: 'Waiter' }); } catch {}
+      }
+    } else if (phase === 'canceled') {
+      await db.posPaymentSetStatus(req.params.id, 'canceled', null).catch(() => {});
+      // Deliberately do NOT cancel the order — the tab stays open.
+    }
+    res.json({ status: phase, paymentId, amount: (c.amount_money && c.amount_money.amount) || 0 });
+  } catch (e) { res.status(502).json({ error: e.message }); }
+});
+
+// Cancel an in-progress waiter card checkout (staff pressed Cancel). Tab stays open.
+app.post('/api/waiter/checkout/:id/cancel', async (req, res) => {
+  const pos = waiterAuth(req);
+  if (!pos) return res.status(401).json({ error: 'Wrong PIN, or waiter mode is off.' });
+  try {
+    const c = await terminal.cancelCheckout(req.params.id);
+    await db.posPaymentSetStatus(req.params.id, terminal.phaseOf(c), null).catch(() => {});
+    res.json({ status: terminal.phaseOf(c) });
+  } catch (e) { res.status(502).json({ error: e.message }); }
+});
+
+// ── Split-billing "sessions": group tabs + shared tabs on ONE table order ─────
+// The table is one Square order; the overlay (groups, shared tabs, line→tab
+// assignment, weighted parties) lives in our DB and is turned into per-group /
+// per-person amounts by waiterSplit. Each group settles as one partial payment.
+
+const emptyOrder = (currency) => ({ total_money: { amount: 0, currency: currency || sq.CURRENCY }, line_items: [], tenders: [], state: 'OPEN' });
+
+async function loadSessionRow(idOrOrder) {
+  let row = await db.waiterSessionGet(idOrOrder);
+  if (!row) row = await db.waiterSessionByOrder(idOrOrder);
+  return row;
+}
+
+// Build the full response for a session: the editable overlay + the computed
+// split state (reading the live Square order when one exists yet).
+async function sessionResponse(row, pos, locId) {
+  const data = row.data || {};
+  let order = null;
+  if (row.square_order_id) { try { order = await orders.getOrder(row.square_order_id); } catch {} }
+  const state = waiterSplit.computeSession(data, order || emptyOrder(sq.CURRENCY));
+  const term = waiterTerminalFor(pos, locId || data.locationId);
+  return {
+    sessionId: row.id,
+    tabId: row.square_order_id || '',
+    table: data.table || '',
+    overlay: { groups: data.groups || [], shared: data.shared || [], assign: data.assign || {}, paid: data.paid || {} },
+    state,
+    hasTerminal: !!term.deviceId,
+    terminalName: term.name || 'Terminal',
+    currency: state.currency,
+  };
+}
+
+// Create a new split table (no items yet).
+app.post('/api/waiter/session', async (req, res) => {
+  const pos = waiterAuth(req);
+  if (!pos) return res.status(401).json({ error: 'Wrong PIN, or waiter mode is off.' });
+  if (!db.enabled) return res.status(400).json({ error: 'A database is required for split billing.' });
+  try {
+    const { table, locationId } = req.body || {};
+    if (!String(table || '').trim()) return res.status(400).json({ error: 'Pick a table first.' });
+    const id = require('crypto').randomUUID();
+    const data = { table: String(table).trim(), locationId: locationId || '', mode: 'groups', groups: [], shared: [], assign: {}, paid: {} };
+    const row = await db.waiterSessionUpsert(id, null, data);
+    res.json(await sessionResponse(row, pos, locationId));
+  } catch (e) { res.status(502).json({ error: e.message }); }
+});
+
+// Read a session (by our session id, or by the Square order id from the tab list).
+app.get('/api/waiter/session/:id', async (req, res) => {
+  const pos = waiterAuth(req);
+  if (!pos) return res.status(401).json({ error: 'Wrong PIN, or waiter mode is off.' });
+  try {
+    const row = await loadSessionRow(req.params.id);
+    if (!row) return res.status(404).json({ error: 'Table session not found.' });
+    res.json(await sessionResponse(row, pos, req.query.location));
+  } catch (e) { res.status(502).json({ error: e.message }); }
+});
+
+// Replace the tab DEFINITIONS (add/rename/remove a group or shared tab, edit a
+// shared tab's parties/weights). Does not touch line assignment or payments.
+app.post('/api/waiter/session/tabs', async (req, res) => {
+  const pos = waiterAuth(req);
+  if (!pos) return res.status(401).json({ error: 'Wrong PIN, or waiter mode is off.' });
+  try {
+    const { sessionId, groups, shared } = req.body || {};
+    const row = await loadSessionRow(sessionId);
+    if (!row) return res.status(404).json({ error: 'Table session not found.' });
+    const data = row.data || {};
+    if (Array.isArray(groups)) data.groups = groups.slice(0, 40).map((g) => ({ id: String(g.id || require('crypto').randomUUID()), name: String(g.name || 'Group').slice(0, 40), people: Math.max(1, Math.min(99, Math.round(Number(g.people) || 1))) }));
+    if (Array.isArray(shared)) data.shared = shared.slice(0, 20).map((s) => ({
+      id: String(s.id || require('crypto').randomUUID()), name: String(s.name || 'Shared').slice(0, 40),
+      mode: s.mode === 'pct' ? 'pct' : 'parts',
+      parties: (Array.isArray(s.parties) ? s.parties : []).slice(0, 40).map((p) => ({ id: String(p.id || require('crypto').randomUUID()), ref: p.ref || null, name: String(p.name || '').slice(0, 40), weight: Math.max(0, Number(p.weight) || 0) })),
+    }));
+    const updated = await db.waiterSessionUpsert(row.id, row.square_order_id, data);
+    res.json(await sessionResponse(updated, pos, req.body.locationId));
+  } catch (e) { res.status(502).json({ error: e.message }); }
+});
+
+// Order a round INTO a group tab. Creates the table's Square order on the first
+// round, appends on later ones. Each line carries the group name so the kitchen
+// ticket tells the runner whose it is, and the new lines are assigned to that tab.
+app.post('/api/waiter/session/order', async (req, res) => {
+  const pos = waiterAuth(req);
+  if (!pos) return res.status(401).json({ error: 'Wrong PIN, or waiter mode is off.' });
+  try {
+    const { sessionId, tabId, cart, locationId } = req.body || {};
+    const by = String((req.body && req.body.by) || '').trim().slice(0, 40);
+    if (!Array.isArray(cart) || cart.length === 0) return res.status(400).json({ error: 'Add at least one item.' });
+    const row = await loadSessionRow(sessionId);
+    if (!row) return res.status(404).json({ error: 'Table session not found.' });
+    const data = row.data || {};
+    const tab = (data.groups || []).find((g) => g.id === tabId) || (data.shared || []).find((s) => s.id === tabId);
+    if (!tab) return res.status(400).json({ error: 'Choose which tab these items go on.' });
+    const squareLocationId = locations.squareIdFor(locationId || data.locationId);
+    const posOverrideLocation = (locationId || data.locationId) || undefined;
+    // Prefix each line's note with the tab name (kitchen/runner sees the group).
+    const labelled = cart.map((ci) => ({ ...ci, note: `${tab.name}${ci.note ? ' · ' + ci.note : ''}`.slice(0, 500) }));
+
+    let order;
+    if (!row.square_order_id) {
+      order = await orders.createOrder({
+        cart: labelled, dineIn: true, table: String(data.table || '').trim(), name: '',
+        source: 'Bean Culture Waiter', squareLocationId,
+        appLocationId: (locations.resolve(locationId || data.locationId) || {}).id || undefined,
+        posOverrideLocation, holdForPayment: false,
+      });
+      try { await orders.stampMeta(order.id, { bc_waiter: '1', bc_session: row.id, bc_by: by || '' }); } catch (e) { console.warn('[waiter] tag failed:', e.message); }
+      if (by && !data.openedBy) data.openedBy = by;
+    } else {
+      order = await orders.addToOrder(row.square_order_id, labelled, { posOverrideLocation, squareLocationId });
+    }
+    // Assign the newly-added lines (the last cart.length of them) to this tab, and
+    // record which waiter added each one (attribution).
+    const newLines = (order.line_items || []).slice(-cart.length);
+    data.assign = data.assign || {};
+    data.addedBy = data.addedBy || {};
+    for (const li of newLines) if (li.uid) { data.assign[li.uid] = tabId; if (by) data.addedBy[li.uid] = by; }
+    const updated = await db.waiterSessionUpsert(row.id, order.id, data);
+    res.json(await sessionResponse(updated, pos, locationId));
+  } catch (e) { res.status(502).json({ error: e.message }); }
+});
+
+// Move a single line to a different tab (fix a mis-tap, or shift a shared item).
+app.post('/api/waiter/session/assign', async (req, res) => {
+  const pos = waiterAuth(req);
+  if (!pos) return res.status(401).json({ error: 'Wrong PIN, or waiter mode is off.' });
+  try {
+    const { sessionId, lineUid, tabId } = req.body || {};
+    const row = await loadSessionRow(sessionId);
+    if (!row) return res.status(404).json({ error: 'Table session not found.' });
+    const data = row.data || {};
+    data.assign = data.assign || {};
+    if (tabId) data.assign[lineUid] = tabId; else delete data.assign[lineUid];
+    const updated = await db.waiterSessionUpsert(row.id, row.square_order_id, data);
+    res.json(await sessionResponse(updated, pos, req.body.locationId));
+  } catch (e) { res.status(502).json({ error: e.message }); }
+});
+
+// Settle ONE payer — a group (its items + its share of shared tabs) or an ad-hoc
+// shared-item guest — as a single partial payment against the table order.
+app.post('/api/waiter/session/pay', async (req, res) => {
+  const pos = waiterAuth(req);
+  if (!pos) return res.status(401).json({ error: 'Wrong PIN, or waiter mode is off.' });
+  try {
+    const { sessionId, payerId, tender, cashGiven, locationId } = req.body || {};
+    const by = String((req.body && req.body.by) || '').trim().slice(0, 40);
+    if (!['cash', 'card'].includes(tender)) return res.status(400).json({ error: 'Choose cash or card.' });
+    const row = await loadSessionRow(sessionId);
+    if (!row || !row.square_order_id) return res.status(404).json({ error: 'This table has no items yet.' });
+    const data = row.data || {};
+    const order = await orders.getOrder(row.square_order_id);
+    if (!order) return res.status(404).json({ error: 'Table order not found.' });
+    const session = waiterSplit.computeSession(data, order);
+    const left = Math.round(waiterSplit.remainingFor(session, payerId));
+    if (!(left > 0)) return res.status(400).json({ error: 'That tab is already paid.' });
+    // A partial amount lets a group pay part cash + part card. Default is the
+    // whole of what they have left; never more than that, or the table balance.
+    const want = req.body && req.body.amount != null ? Math.round(Number(req.body.amount) || 0) : left;
+    const amount = Math.min(Math.max(0, want), left, session.remaining);
+    if (!(amount > 0)) return res.status(400).json({ error: 'Enter an amount to pay.' });
+    const g = session.groups.find((x) => x.id === payerId);
+    const a = session.adhoc.find((x) => x.id === payerId);
+    const who = (g && g.name) || (a && a.name) || '';
+    const note = `${g ? 'Grp' : 'Split'}: ${who}${by ? ' (' + by + ')' : ''}`.slice(0, 60);
+    const currency = session.currency;
+    const squareLocationId = locations.squareIdFor(locationId || data.locationId) || order.location_id;
+
+    if (tender === 'card') {
+      const term = waiterTerminalFor(pos, locationId || data.locationId);
+      if (!term.deviceId) return res.status(400).json({ error: 'No waiter Terminal is set. Pair one in POS setup → Waiter mode.' });
+      const checkout = await terminal.createCheckout({
+        amountMoney: { amount, currency }, deviceId: term.deviceId, orderId: order.id, referenceId: order.id,
+        note, showItemizedCart: pos.terminalShowCart === true, skipReceipt: pos.terminalSkipReceipt !== false,
+      });
+      try { await db.posPaymentUpsert({ checkoutId: checkout.id, squareOrderId: order.id, deviceId: term.deviceId, amount, status: 'waiting' }); } catch {}
+      return res.json({ tender: 'card', checkoutId: checkout.id, sessionId: row.id, payerId, amount, currency, status: 'waiting', payerName: who, terminalName: term.name || 'Terminal' });
+    }
+    // Cash: record the actual note tendered so change is on the record (Square
+    // stores buyer_supplied_money + change_back_money) — no "what did I hand you?".
+    const given = Math.max(amount, Math.round(Number(cashGiven) || amount));
+    const payment = await orders.createCashPayment({ orderId: order.id, amountMoney: { amount, currency }, buyerSuppliedMoney: { amount: given, currency }, squareLocationId, note });
+    data.paidByPayer = data.paidByPayer || {};
+    data.paidByPayer[payerId] = (Number(data.paidByPayer[payerId]) || 0) + amount;
+    await db.waiterSessionUpsert(row.id, order.id, data);
+    try { if (db.enabled && typeof db.posRecordOrder === 'function') await db.posRecordOrder({ squareOrderId: order.id, squarePaymentId: payment ? payment.id : null, source: 'Bean Culture Waiter', tender: 'cash', amount, status: 'paid', deviceName: `Waiter${who ? ' · ' + who : ''}${by ? ' / ' + by : ''}` }); } catch {}
+    res.json({ tender: 'cash', sessionId: row.id, payerId, amount, currency, tendered: given, change: Math.max(0, given - amount), status: 'paid', payerName: who });
+  } catch (e) { res.status(502).json({ error: e.message }); }
+});
+
+// Mark a payer settled after a successful CARD payment (the client calls this
+// once the Terminal checkout completes).
+app.post('/api/waiter/session/mark-paid', async (req, res) => {
+  const pos = waiterAuth(req);
+  if (!pos) return res.status(401).json({ error: 'Wrong PIN, or waiter mode is off.' });
+  try {
+    const { sessionId, payerId, amount } = req.body || {};
+    const row = await loadSessionRow(sessionId);
+    if (!row) return res.status(404).json({ error: 'Table session not found.' });
+    const data = row.data || {};
+    data.paidByPayer = data.paidByPayer || {};
+    if (payerId) {
+      // A specific amount (a card partial) adds to what this payer has paid;
+      // without one, treat it as "settle whatever is left" for this payer.
+      if (amount != null) data.paidByPayer[payerId] = (Number(data.paidByPayer[payerId]) || 0) + Math.max(0, Math.round(Number(amount) || 0));
+      else if (row.square_order_id) {
+        try {
+          const order = await orders.getOrder(row.square_order_id);
+          const session = waiterSplit.computeSession(data, order);
+          const owed = waiterSplit.owedFor(session, payerId);
+          data.paidByPayer[payerId] = owed;
+        } catch { data.paidByPayer[payerId] = (Number(data.paidByPayer[payerId]) || 0); }
+      }
+    }
+    const updated = await db.waiterSessionUpsert(row.id, row.square_order_id, data);
+    res.json(await sessionResponse(updated, pos, req.body.locationId));
+  } catch (e) { res.status(502).json({ error: e.message }); }
+});
+
+// Admin: save waiter-mode settings (enable, PIN, preset tables, waiter Terminal).
+app.post('/api/pos/waiter-settings', async (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  if (!db.enabled) return res.status(400).json({ error: 'A database is required to save waiter settings.' });
+  try {
+    const b = req.body || {};
+    const ov = db.getOverrides() || {};
+    ov.pos = ov.pos || {};
+    if (b.enabled !== undefined) ov.pos.waiterEnabled = b.enabled === true;
+    if (b.pin !== undefined) {
+      const next = String(b.pin || '').trim();
+      if (next && !/^\d{4,8}$/.test(next)) return res.status(400).json({ error: 'Waiter PIN must be 4–8 digits.' });
+      ov.pos.waiterPin = next;
+    }
+    if (b.tables !== undefined) {
+      const raw = Array.isArray(b.tables) ? b.tables : String(b.tables || '').split(/[\n,]/);
+      const seen = new Set(); const list = [];
+      for (const t of raw) {
+        const v = String(t || '').trim().slice(0, 40);
+        if (v && !seen.has(v.toLowerCase())) { seen.add(v.toLowerCase()); list.push(v); }
+        if (list.length >= 100) break;
+      }
+      ov.pos.waiterTables = list;
+    }
+    if (b.terminalDeviceId !== undefined) {
+      const dev = String(b.terminalDeviceId || '');
+      const nm = String(b.terminalName || '').slice(0, 60);
+      if (b.locationId) {
+        const m = { ...(ov.pos.waiterTerminalByLocation || {}) };
+        if (dev) m[b.locationId] = { deviceId: dev, name: nm }; else delete m[b.locationId];
+        ov.pos.waiterTerminalByLocation = m;
+      } else {
+        ov.pos.waiterTerminalDeviceId = dev;
+        ov.pos.waiterTerminalName = nm;
+      }
+    }
+    await db.saveOverrides(ov);
+    const p = ov.pos;
+    res.json({ ok: true, waiterEnabled: !!p.waiterEnabled, hasWaiterPin: !!p.waiterPin, waiterTables: p.waiterTables || [], waiterTerminalDeviceId: p.waiterTerminalDeviceId || '', waiterTerminalName: p.waiterTerminalName || '' });
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
