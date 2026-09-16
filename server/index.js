@@ -2172,6 +2172,21 @@ app.get('/api/waiter/tabs', async (req, res) => {
     for (const o of (data.orders || [])) {
       const md = o.metadata || {};
       if (md.bc_waiter !== '1') continue;
+      const total = (o.total_money && o.total_money.amount) || 0;
+      const tenderPaid = (o.tenders || []).reduce((s, t) => s + ((t.amount_money && t.amount_money.amount) || 0), 0);
+      // What's still owing at a glance. A split table's remaining comes from its
+      // billing overlay; a plain tab subtracts Square tenders plus any standalone
+      // (partial) captures. Falls back to the full total if a lookup fails.
+      let remaining = Math.max(0, total - tenderPaid);
+      try {
+        if (md.bc_session) {
+          const row = await db.waiterSessionByOrder(o.id);
+          if (row) remaining = waiterSplit.computeSession(row.data || {}, o).remaining;
+          else remaining = Math.max(0, total - tenderPaid - (await db.posPaidTotalForOrder(o.id)));
+        } else {
+          remaining = Math.max(0, total - tenderPaid - (await db.posPaidTotalForOrder(o.id)));
+        }
+      } catch {}
       tabs.push({
         tabId: o.id,
         sessionId: md.bc_session || '',   // set → this is a split (group-tab) table
@@ -2179,7 +2194,9 @@ app.get('/api/waiter/tabs', async (req, res) => {
         table: md.bc_booth || o.ticket_name || '',
         name: md.bc_name || '',
         createdAt: o.created_at,
-        total: (o.total_money && o.total_money.amount) || 0,
+        total,
+        remaining,
+        paid: Math.max(0, total - remaining),
         currency: (o.total_money && o.total_money.currency) || sq.CURRENCY,
         itemCount: (o.line_items || []).reduce((n, li) => n + (Number(li.quantity) || 1), 0),
         items: (o.line_items || []).map((li) => ({
@@ -2328,7 +2345,13 @@ app.get('/api/waiter/tab/:id', async (req, res) => {
     if (!order) return res.status(404).json({ error: 'Tab not found.' });
     const total = (order.total_money && order.total_money.amount) || 0;
     const tenders = order.tenders || [];
-    const paid = tenders.reduce((s, t) => s + ((t.amount_money && t.amount_money.amount) || 0), 0);
+    const tenderPaid = tenders.reduce((s, t) => s + ((t.amount_money && t.amount_money.amount) || 0), 0);
+    // Partial split payments are standalone captures (not Square tenders) — pull them
+    // in so the balance drops and each shows up with its payer name and tender.
+    let captures = [];
+    try { if (db.enabled) captures = await db.posPaymentsPaidForOrder(order.id); } catch {}
+    const capturePaid = captures.reduce((s, c) => s + (Number(c.amount) || 0), 0);
+    const paid = Math.min(total, tenderPaid + capturePaid);
     res.json({
       tabId: order.id,
       state: order.state,
@@ -2341,11 +2364,18 @@ app.get('/api/waiter/tab/:id', async (req, res) => {
         amount: (li.total_money && li.total_money.amount) || 0,
         modifiers: (li.modifiers || []).map((m) => m.name).filter(Boolean),
       })),
-      payments: tenders.map((t) => ({
-        amount: (t.amount_money && t.amount_money.amount) || 0,
-        tender: (t.type || '').toLowerCase(),
-        name: (t.note || '').replace(/^Split:\s*/i, '') || '',
-      })),
+      payments: [
+        ...tenders.map((t) => ({
+          amount: (t.amount_money && t.amount_money.amount) || 0,
+          tender: (t.type || '').toLowerCase(),
+          name: (t.note || '').replace(/^Split:\s*/i, '') || '',
+        })),
+        ...captures.map((c) => ({
+          amount: Number(c.amount) || 0,
+          tender: (c.tender || 'card').toLowerCase(),
+          name: (c.note || '').replace(/^Split:\s*/i, '') || '',
+        })),
+      ],
     });
   } catch (e) { res.status(502).json({ error: e.message }); }
 });
@@ -2395,7 +2425,7 @@ app.post('/api/waiter/tab/pay', async (req, res) => {
           amountMoney: { amount: want, currency }, deviceId: term.deviceId, orderId: linkOrder ? tabId : undefined, referenceId: tabId,
           note, showItemizedCart: pos.terminalShowCart === true, skipReceipt: pos.terminalSkipReceipt !== false,
         });
-        try { await db.posPaymentUpsert({ checkoutId: checkout.id, squareOrderId: tabId, deviceId: term.deviceId, amount: want, status: 'waiting' }); } catch {}
+        try { await db.posPaymentUpsert({ checkoutId: checkout.id, squareOrderId: tabId, deviceId: term.deviceId, amount: want, status: 'waiting', note: who, tender: 'card' }); } catch {}
         return res.json({ tender: 'card', checkoutId: checkout.id, tabId, amount: want, currency, status: 'waiting', payerName: who, terminalName: term.name || 'Terminal' });
       } catch (e) {
         console.warn('[waiter] split card checkout FAILED:', 'device=' + term.deviceId, 'order=' + tabId, 'amount=' + want, e.message);
@@ -2415,7 +2445,7 @@ app.post('/api/waiter/tab/pay', async (req, res) => {
     }
     // A standalone (partial) cash capture isn't a Square tender, so record it here
     // too — that's what lets "remaining" subtract it and prevents a double-charge.
-    if (!linkOrder) { try { await db.posPaymentUpsert({ checkoutId: 'cash:' + ((payment && payment.id) || Date.now()), squareOrderId: tabId, deviceId: 'cash', amount: want, status: 'paid' }); } catch {} }
+    if (!linkOrder) { try { await db.posPaymentUpsert({ checkoutId: 'cash:' + ((payment && payment.id) || Date.now()), squareOrderId: tabId, deviceId: 'cash', amount: want, status: 'paid', note: who, tender: 'cash' }); } catch {} }
     try {
       if (db.enabled && typeof db.posRecordOrder === 'function') {
         await db.posRecordOrder({ squareOrderId: tabId, squarePaymentId: payment ? payment.id : null, source: 'Bean Culture Waiter', tender: 'cash', amount: want, status: 'paid', deviceName: `Waiter${who ? ' · ' + who : ''}` });
@@ -4165,7 +4195,10 @@ app.get('*', async (req, res) => {
       body = homeBody(await seoMenu(), req);
     }
   } catch { /* fall back to base head */ }
-  let html = indexHtml().replace('</head>', `    ${head}\n  </head>`);
+  // Stamp the LOADED page with the running deploy id so the client can tell when
+  // it's stale (a resumed home-screen PWA on an old bundle) and reload itself.
+  const buildTag = `<script>window.__BUILD__=${JSON.stringify(BUILD_ID)};</script>`;
+  let html = indexHtml().replace('</head>', `    ${head}\n    ${buildTag}\n  </head>`);
   if (title) html = html.replace(/<title>[\s\S]*?<\/title>/i, `<title>${seoEsc(title)}</title>`);
   if (body) html = html.replace('<div id="root">', `<div id="root">${body}`);
   if (isKds) html = kdsShell(html);
