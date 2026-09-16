@@ -3438,6 +3438,7 @@ body:has(.store-shell) { background: var(--bc-canvas-deep, #160f12); }
 .kds-badge.unrouted { background: #e0a008; color: #241c00; }
 .kds-badge.dinein { background: #2b6cb0; color: #fff; }
 .kds-badge.takeaway { background: #33404b; color: #cfd8e2; }
+.kds-badge.waiter { background: #0f6f59; color: #fff; text-transform: none; letter-spacing: 0; }
 .kds-age { font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; color: #9aa6b2; flex: none; }
 .kds-age.lvl-green { color: #7fd1a6; }
 .kds-age.lvl-amber { color: #f0b429; }
