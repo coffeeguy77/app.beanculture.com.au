@@ -666,12 +666,12 @@ function Split({ api2, cfg, currency, location, ctx, setErr, onDone, onBack }) {
 
   // Take one split payment of `amount`, named `who`, via `tender`. Marks the
   // ticked items settled on success (item mode). Always re-reads the tab after.
-  async function takePayment({ amount, who, tender, markUids }) {
+  async function takePayment({ amount, who, tender, cashGiven, markUids }) {
     const amt = Math.round(amount);
     if (!(amt > 0)) { setErr('Nothing to pay for that.'); return false; }
     setBusy(true); setErr('');
     try {
-      const d = await api2.pay({ tabId: ctx.tabId, amount: amt, tender, payerName: who || '', locationId: location });
+      const d = await api2.pay({ tabId: ctx.tabId, amount: amt, tender, payerName: who || '', cashGiven, locationId: location });
       if (tender === 'card' && d.checkoutId) { setCard({ ...d }); const ok = await cardPoll.wait(d.checkoutId); setCard(null); if (!ok) { await load(); return false; } }
       if (markUids && markUids.length) setSettledUids((s) => { const n = new Set(s); markUids.forEach((u) => n.add(u)); return n; });
       const fresh = await api2.tab(ctx.tabId);
@@ -739,8 +739,8 @@ function SplitByItem({ tab, cur, settledUids, busy, hasTerminal, payments, onPay
   const selected = avail.filter((it) => ticked.has(key(it)));
   const amount = Math.min(selected.reduce((s, it) => s + it.amount, 0), tab.remaining);
 
-  const pay = async (tender) => {
-    const ok = await onPay({ amount, who, tender, markUids: [...ticked] });
+  const pay = async (tender, cashGiven) => {
+    const ok = await onPay({ amount, who, tender, cashGiven, markUids: [...ticked] });
     if (ok) { setTicked(new Set()); setWho(''); }
   };
 
@@ -772,7 +772,7 @@ function SplitEven({ tab, cur, busy, hasTerminal, payments, onPay }) {
   const [who, setWho] = useState('');
   const left = Math.max(1, n - paidCount);
   const share = Math.round(tab.remaining / left);
-  const pay = async (tender) => { const ok = await onPay({ amount: share, who, tender }); if (ok) { setPaidCount((c) => c + 1); setWho(''); } };
+  const pay = async (tender, cashGiven) => { const ok = await onPay({ amount: share, who, tender, cashGiven }); if (ok) { setPaidCount((c) => c + 1); setWho(''); } };
   return (
     <div className="wtr-card">
       <div className="wtr-card-h">Split evenly</div>
@@ -806,7 +806,8 @@ function SplitPct({ tab, cur, busy, hasTerminal, payments, onPay }) {
   };
   const pctSum = rows.reduce((s, x) => s + (Number(x.pct) || 0), 0);
 
-  const pay = async (i, tender) => { const ok = await onPay({ amount: amountFor(i), who: rows[i].name, tender }); if (ok) setRows((r) => r.map((x, j) => j === i ? { ...x, paid: true } : x)); };
+  const [cashRow, setCashRow] = useState(null);   // which row is paying cash (opens keypad)
+  const pay = async (i, tender, cashGiven) => { const ok = await onPay({ amount: amountFor(i), who: rows[i].name, tender, cashGiven }); if (ok) setRows((r) => r.map((x, j) => j === i ? { ...x, paid: true } : x)); };
 
   return (
     <div className="wtr-card">
@@ -819,13 +820,14 @@ function SplitPct({ tab, cur, busy, hasTerminal, payments, onPay }) {
           <div className="wtr-pctamt">{formatMoney(amountFor(i), cur)}</div>
           {row.paid ? <span className="wtr-pctpaid">✓ paid</span> : (
             <div className="wtr-pctbtns">
-              {(!payments || payments.cash !== false) && <button disabled={busy} onClick={() => pay(i, 'cash')}>Cash</button>}
+              {(!payments || payments.cash !== false) && <button disabled={busy} onClick={() => setCashRow(i)}>Cash</button>}
               {(!payments || payments.card !== false) && <button disabled={busy || !hasTerminal} onClick={() => pay(i, 'card')}>Card</button>}
             </div>
           )}
         </div>
       ))}
       <button className="wtr-mini wtr-addrow" onClick={addRow}>+ Add person</button>
+      {cashRow != null && <PayDialog target={{ payerId: '', name: rows[cashRow].name || 'Cash', remaining: amountFor(cashRow) }} cur={cur} busy={busy} hasTerminal={hasTerminal} payments={payments} cashOnly onCancel={() => setCashRow(null)} onPay={({ cashGiven }) => { const i = cashRow; setCashRow(null); pay(i, 'cash', cashGiven); }} />}
     </div>
   );
 }
@@ -1252,10 +1254,12 @@ function SharedEditor({ shared, groups, onSave, onClose }) {
 // A cash/card pay button pair with the amount baked in.
 function PayRow({ amount, cur, busy, hasTerminal, payments, onPay, disabled }) {
   const pm = payments || { card: true, cash: true };
+  const [cashOpen, setCashOpen] = useState(false);
   return (
     <div className="wtr-payrow">
-      {pm.cash !== false && <button className="wtr-secondary" disabled={busy || disabled || amount <= 0} onClick={() => onPay('cash')}>Cash · {formatMoney(amount, cur)}</button>}
+      {pm.cash !== false && <button className="wtr-secondary" disabled={busy || disabled || amount <= 0} onClick={() => setCashOpen(true)}>Cash · {formatMoney(amount, cur)}</button>}
       {pm.card !== false && <button className="wtr-primary" disabled={busy || disabled || amount <= 0 || !hasTerminal} onClick={() => onPay('card')}>Card · {formatMoney(amount, cur)}</button>}
+      {cashOpen && <PayDialog target={{ payerId: '', name: 'Cash', remaining: amount }} cur={cur} busy={busy} hasTerminal={hasTerminal} payments={payments} cashOnly onCancel={() => setCashOpen(false)} onPay={({ cashGiven }) => { setCashOpen(false); onPay('cash', cashGiven); }} />}
     </div>
   );
 }
