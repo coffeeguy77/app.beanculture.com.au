@@ -258,6 +258,9 @@ async function init(attempt = 1) {
     // tenders, so the tab view and table list can show them and reduce the balance.
     await pool.query("ALTER TABLE pos_payments ADD COLUMN IF NOT EXISTS note text");
     await pool.query("ALTER TABLE pos_payments ADD COLUMN IF NOT EXISTS tender text");
+    // The specific line-item uids a "by item" split payment covered, so the item
+    // split view can keep those items marked paid (and by whom) across reloads.
+    await pool.query("ALTER TABLE pos_payments ADD COLUMN IF NOT EXISTS line_uids text");
 
     // Waiter "sessions" — the billing overlay for a table that's split into
     // group tabs + shared tabs. The table itself is ONE Square order (so the
@@ -1123,27 +1126,30 @@ async function posRecordOrder({ squareOrderId, squarePaymentId, source, tender, 
 }
 
 // ── Terminal checkout state (card payments) ──
-async function posPaymentUpsert({ checkoutId, squareOrderId, deviceId, amount, status, note, tender }) {
+async function posPaymentUpsert({ checkoutId, squareOrderId, deviceId, amount, status, note, tender, lineUids }) {
   if (!pool) return null;
+  const uids = Array.isArray(lineUids) ? lineUids.filter(Boolean).join(',') : (lineUids || null);
   const r = await pool.query(
-    `INSERT INTO pos_payments (checkout_id, square_order_id, device_id, amount, status, note, tender)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)
+    `INSERT INTO pos_payments (checkout_id, square_order_id, device_id, amount, status, note, tender, line_uids)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
      ON CONFLICT (checkout_id) DO UPDATE SET
        square_order_id = COALESCE(EXCLUDED.square_order_id, pos_payments.square_order_id),
        device_id = COALESCE(EXCLUDED.device_id, pos_payments.device_id),
        amount = EXCLUDED.amount, status = EXCLUDED.status,
        note = COALESCE(EXCLUDED.note, pos_payments.note),
-       tender = COALESCE(EXCLUDED.tender, pos_payments.tender), updated_at = now()
+       tender = COALESCE(EXCLUDED.tender, pos_payments.tender),
+       line_uids = COALESCE(EXCLUDED.line_uids, pos_payments.line_uids), updated_at = now()
      RETURNING *`,
-    [checkoutId, squareOrderId || null, deviceId || null, amount || 0, status || 'waiting', note || null, tender || null]
+    [checkoutId, squareOrderId || null, deviceId || null, amount || 0, status || 'waiting', note || null, tender || null, uids]
   );
   return r.rows[0];
 }
-// Every captured (paid) standalone waiter payment on an order — amount, payer note
-// and tender — so the tab view can list them and the balance can be reduced.
+// Every captured (paid) standalone waiter payment on an order — amount, payer note,
+// tender and any specific line uids it covered — so the tab view can list them,
+// reduce the balance, and keep paid items marked.
 async function posPaymentsPaidForOrder(squareOrderId) {
   if (!pool || !squareOrderId) return [];
-  const r = await pool.query("SELECT amount, note, tender FROM pos_payments WHERE square_order_id = $1 AND status = 'paid' ORDER BY created_at ASC", [squareOrderId]);
+  const r = await pool.query("SELECT amount, note, tender, line_uids FROM pos_payments WHERE square_order_id = $1 AND status = 'paid' ORDER BY created_at ASC", [squareOrderId]);
   return r.rows || [];
 }
 async function posPaymentSetStatus(checkoutId, status, squarePaymentId) {
