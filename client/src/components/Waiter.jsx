@@ -844,7 +844,7 @@ function SessionView({ api2, cfg, currency, location, sessionId, table, onOrderI
 
   async function reassign(lineUid, tabId) { if (!tabId) return; setBusy(true); try { setData(await api2.sessionAssign({ sessionId, lineUid, tabId, locationId: location })); } catch (e) { setErr(e.message); } finally { setBusy(false); } }
 
-  const partySummary = (sh) => (sh.parties || []).map((p) => `${p.name} ${sh.mode === 'pct' ? p.weight + '%' : '×' + p.weight}`).join(', ') || 'no one yet';
+  const partySummary = (sh) => (sh.parties || []).map((p) => `${p.name} ${sh.mode === 'pct' ? p.weight + '%' : p.weight + (p.weight === 1 ? ' person' : ' people')}`).join(', ') || 'no one yet';
   const allTabs = [...groups.map((g) => ({ id: g.id, name: g.name })), ...shared.map((s) => ({ id: s.id, name: s.name }))];
   const openPay = (payerId, name, remaining) => setPayTarget({ payerId, name, remaining });
 
@@ -862,6 +862,52 @@ function SessionView({ api2, cfg, currency, location, sessionId, table, onOrderI
 
   // Itemised view of one group's tab — check before paying, dispute a line, and
   // (if wrong) move it. A move must pick a real destination — never limbo.
+  // Itemised view of a SHARED tab — what's on it, and how it splits among the
+  // people/parties sharing it (each party's amount). Items can be moved too.
+  if (viewing && shared.find((x) => x.id === viewing)) {
+    const sh = shared.find((x) => x.id === viewing);
+    const myLines = (st.lines || []).filter((li) => li.tabId === sh.id);
+    const moveTargets = allTabs.filter((t) => t.id !== sh.id);
+    const parties = sh.parties || [];
+    return (
+      <div className="wtr-body">
+        <div className="wtr-tabhead"><div className="wtr-tabhead-t">{sh.name} · shared</div><div className="wtr-tabhead-total">{formatMoney(sh.total, cur)}</div></div>
+        <div className="wtr-card">
+          <div className="wtr-card-h">On this shared tab<button className={`wtr-mini ${moveMode ? 'on' : ''}`} onClick={() => setMoveMode((v) => !v)}>{moveMode ? 'Done moving' : '⇄ Move'}</button></div>
+          {myLines.length === 0 && <div className="wtr-muted">No items on this shared tab yet.</div>}
+          {myLines.map((li) => (
+            <div key={li.uid} className="wtr-liserow">
+              <div className="wtr-lise-qty">{li.quantity}</div>
+              <div className="wtr-lise-info"><div className="wtr-lise-name">{li.name}</div>{subParts(li.name, li.variation, li.modifiers).length > 0 && <div className="wtr-muted">{subParts(li.name, li.variation, li.modifiers).join(' · ')}</div>}</div>
+              <div className="wtr-lise-amt">{formatMoney(li.amount, cur)}</div>
+              {moveMode && (
+                <select className="wtr-lise-move" value="" onChange={(e) => reassign(li.uid, e.target.value)}>
+                  <option value="">Move…</option>
+                  {moveTargets.map((t) => <option key={t.id} value={t.id}>→ {t.name}</option>)}
+                </select>
+              )}
+            </div>
+          ))}
+        </div>
+        <div className="wtr-card">
+          <div className="wtr-card-h">Who’s paying for it · split {sh.mode === 'pct' ? 'by %' : 'by people'}</div>
+          {parties.length === 0 && <div className="wtr-muted">No one added yet — tap “Who shares?” to set it up.</div>}
+          {parties.map((p) => (
+            <div key={p.id} className="wtr-liserow">
+              <div className="wtr-lise-info"><div className="wtr-lise-name">{p.name}</div><div className="wtr-muted">{sh.mode === 'pct' ? `${p.weight}%` : `${p.weight} ${p.weight === 1 ? 'person' : 'people'}`}{p.ref ? '' : ' · guest'}</div></div>
+              <div className="wtr-lise-amt">{formatMoney(p.amount, cur)}{!p.ref && p.paid ? ' ✓' : ''}</div>
+            </div>
+          ))}
+        </div>
+        <div className="wtr-actions">
+          <button className="wtr-secondary" onClick={() => onOrderInto(sh.id)}>+ Add items</button>
+          <button className="wtr-secondary" onClick={() => setEditShared(sh.id)}>Who shares?</button>
+        </div>
+        <button className="wtr-ghost wtr-back" onClick={() => setViewing(null)}>‹ Back to table</button>
+      </div>
+    );
+  }
+
   if (viewing) {
     const g = groups.find((x) => x.id === viewing);
     if (!g) { setViewing(null); return null; }
@@ -893,7 +939,7 @@ function SessionView({ api2, cfg, currency, location, sessionId, table, onOrderI
             </div>
           ))}
           {g.sharedShare > 0 && (
-            <div className="wtr-itemrow"><div className="wtr-iteminfo"><b>Share of shared tabs</b><div className="wtr-muted">{myShares.map(({ sh, party }) => `${sh.name} (${sh.mode === 'pct' ? party.weight + '%' : party.weight + 'pt'})`).join(', ')}</div></div><div className="wtr-itemamt"><b>{formatMoney(g.sharedShare, cur)}</b></div></div>
+            <div className="wtr-itemrow"><div className="wtr-iteminfo"><b>Share of shared tabs</b><div className="wtr-muted">{myShares.map(({ sh, party }) => `${sh.name} (${sh.mode === 'pct' ? party.weight + '%' : party.weight + (party.weight === 1 ? ' person' : ' people')})`).join(', ')}</div></div><div className="wtr-itemamt"><b>{formatMoney(g.sharedShare, cur)}</b></div></div>
           )}
         </div>
         {!g.paid ? (
@@ -942,9 +988,10 @@ function SessionView({ api2, cfg, currency, location, sessionId, table, onOrderI
             <div><b>{sh.name}</b> <span className="wtr-muted">· shared</span></div>
             <div className="wtr-grp-owed">{formatMoney(sh.total, cur)}</div>
           </div>
-          <div className="wtr-muted wtr-grp-break">Split {sh.mode === 'pct' ? 'by %' : 'by parts'}: {partySummary(sh)}</div>
+          <div className="wtr-muted wtr-grp-break">Split {sh.mode === 'pct' ? 'by %' : 'by people'}: {partySummary(sh)}</div>
           <div className="wtr-grp-btns">
             <button className="wtr-secondary" onClick={() => onOrderInto(sh.id)}>+ Items</button>
+            <button className="wtr-secondary" onClick={() => { setMoveMode(false); setViewing(sh.id); }}>View order{(() => { const n = (st.lines || []).filter((li) => li.tabId === sh.id).reduce((s, li) => s + (Number(li.quantity) || 1), 0); return n ? ` (${n})` : ''; })()}</button>
             <button className="wtr-secondary" onClick={() => setEditShared(sh.id)}>Who shares?</button>
           </div>
           {/* Ad-hoc guests on this shared tab pay their own share */}
@@ -1087,10 +1134,10 @@ function SharedEditor({ shared, groups, onSave, onClose }) {
     <div className="wtr-card">
       <div className="wtr-card-h">Who shares “{shared.name}”?</div>
       <div className="wtr-methods">
-        <button className={`wtr-method ${mode === 'parts' ? 'on' : ''}`} onClick={() => setMode('parts')}>By parts</button>
+        <button className={`wtr-method ${mode === 'parts' ? 'on' : ''}`} onClick={() => setMode('parts')}>By people</button>
         <button className={`wtr-method ${mode === 'pct' ? 'on' : ''}`} onClick={() => setMode('pct')}>By %</button>
       </div>
-      <div className="wtr-muted">Tap groups to include them; set parts (e.g. by head-count) or percentages. Add guests who aren’t in a group.</div>
+      <div className="wtr-muted">Tap groups to include them; set how many people from each (or percentages). Add guests who aren’t in a group.</div>
       <div className="wtr-tables">
         {groups.map((g) => <button key={g.id} className={`wtr-tablechip ${has(g.id) ? 'on' : ''}`} onClick={() => toggleGroup(g)}>{g.name}</button>)}
       </div>
@@ -1098,7 +1145,7 @@ function SharedEditor({ shared, groups, onSave, onClose }) {
         <div key={i} className="wtr-pctrow">
           {p.ref ? <div className="wtr-pctname"><b>{p.name}</b></div>
             : <input className="wtr-input wtr-pctname" placeholder={`Guest ${i + 1}`} value={p.name} onChange={(e) => setGuestName(i, e.target.value)} />}
-          <div className="wtr-pctpct"><input type="number" value={p.weight} onChange={(e) => setWeight(i, e.target.value)} />{mode === 'pct' ? '%' : 'pt'}</div>
+          <div className="wtr-pctpct"><input type="number" value={p.weight} onChange={(e) => setWeight(i, e.target.value)} />{mode === 'pct' ? '%' : 'ppl'}</div>
           <button className="wtr-x" onClick={() => removeParty(i)}>✕</button>
         </div>
       ))}
