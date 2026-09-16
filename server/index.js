@@ -2382,13 +2382,14 @@ app.post('/api/waiter/tab/pay', async (req, res) => {
     const squareLocationId = locations.squareIdFor(locationId) || order.location_id;
     const who = String(payerName || '').trim().slice(0, 60);
     const note = who ? `Split: ${who}` : 'Split';
+    // Link the order only when this one payment settles the ENTIRE order (Square's
+    // rule for both card checkouts and cash payments); any split/partial is taken
+    // standalone and reconciled via the captured-payment total on this order.
+    const linkOrder = total > 0 && want === total;
 
     if (tender === 'card') {
       const term = waiterTerminalFor(pos, locationId);
       if (!term.deviceId) return res.status(400).json({ error: 'No waiter Terminal is set. Pair one in POS setup → Waiter mode.' });
-      // Link the order only when this one tap pays the ENTIRE order (Square's rule);
-      // any split/partial is taken standalone and reconciled via the capture total.
-      const linkOrder = total > 0 && want === total;
       try {
         const checkout = await terminal.createCheckout({
           amountMoney: { amount: want, currency }, deviceId: term.deviceId, orderId: linkOrder ? tabId : undefined, referenceId: tabId,
@@ -2405,13 +2406,16 @@ app.post('/api/waiter/tab/pay', async (req, res) => {
     let payment;
     try {
       payment = await orders.createCashPayment({
-        orderId: tabId, amountMoney: { amount: want, currency },
+        orderId: linkOrder ? tabId : undefined, amountMoney: { amount: want, currency },
         buyerSuppliedMoney: { amount: given, currency }, squareLocationId, note,
       });
     } catch (e) {
       console.warn('[waiter] split cash payment FAILED:', 'order=' + tabId, 'amount=' + want, e.message);
       return res.status(502).json({ error: `Could not record the cash payment: ${e.message}` });
     }
+    // A standalone (partial) cash capture isn't a Square tender, so record it here
+    // too — that's what lets "remaining" subtract it and prevents a double-charge.
+    if (!linkOrder) { try { await db.posPaymentUpsert({ checkoutId: 'cash:' + ((payment && payment.id) || Date.now()), squareOrderId: tabId, deviceId: 'cash', amount: want, status: 'paid' }); } catch {} }
     try {
       if (db.enabled && typeof db.posRecordOrder === 'function') {
         await db.posRecordOrder({ squareOrderId: tabId, squarePaymentId: payment ? payment.id : null, source: 'Bean Culture Waiter', tender: 'cash', amount: want, status: 'paid', deviceName: `Waiter${who ? ' · ' + who : ''}` });
@@ -2625,16 +2629,17 @@ app.post('/api/waiter/session/pay', async (req, res) => {
     const note = `${g ? 'Grp' : 'Split'}: ${who}${by ? ' (' + by + ')' : ''}`.slice(0, 60);
     const currency = session.currency;
     const squareLocationId = locations.squareIdFor(locationId || data.locationId) || order.location_id;
+    // Square rejects BOTH a Terminal checkout and a cash payment that is linked to
+    // an order but doesn't pay it in full. A split pays one payer's share (a
+    // partial), so we link the order only on a single full-table settlement and
+    // otherwise take the money standalone — the paidByPayer overlay tracks the
+    // split and drives "remaining", not the Square tenders.
+    const orderTotal = (order.total_money && order.total_money.amount) || 0;
+    const linkOrder = orderTotal > 0 && amount === orderTotal;
 
     if (tender === 'card') {
       const term = waiterTerminalFor(pos, locationId || data.locationId);
       if (!term.deviceId) return res.status(400).json({ error: 'No waiter Terminal is set. Pair one in POS setup → Waiter mode.' });
-      // Square's Terminal API rejects a checkout linked to an order unless it pays
-      // the WHOLE order in one go. A split pays one payer's share (a partial), so
-      // we take it as a standalone card capture — the paidByPayer overlay tracks
-      // the split, and remaining is computed from that, not the Square tenders.
-      const orderTotal = (order.total_money && order.total_money.amount) || 0;
-      const linkOrder = orderTotal > 0 && amount === orderTotal;
       let checkout;
       try {
         checkout = await terminal.createCheckout({
@@ -2653,7 +2658,7 @@ app.post('/api/waiter/session/pay', async (req, res) => {
     const given = Math.max(amount, Math.round(Number(cashGiven) || amount));
     let payment;
     try {
-      payment = await orders.createCashPayment({ orderId: order.id, amountMoney: { amount, currency }, buyerSuppliedMoney: { amount: given, currency }, squareLocationId, note });
+      payment = await orders.createCashPayment({ orderId: linkOrder ? order.id : undefined, amountMoney: { amount, currency }, buyerSuppliedMoney: { amount: given, currency }, squareLocationId, note });
     } catch (e) {
       console.warn('[waiter] session cash payment FAILED:', 'order=' + order.id, 'amount=' + amount, e.message);
       return res.status(502).json({ error: `Could not record the cash payment: ${e.message}` });
