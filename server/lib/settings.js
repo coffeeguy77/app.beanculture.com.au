@@ -481,6 +481,15 @@ const DEFAULTS = {
     waiterEnabledByLocation: {},   // { [locationId]: true|false }
     waiterPinByLocation: {},       // { [locationId]: '1234' }
     waiterTablesByLocation: {},    // { [locationId]: ['1','2',...] }
+    // PIN model:
+    //   'single' — one shared PIN (waiterPin), each waiter types their name on login.
+    //   'staff'  — a roster of {name, pin}; the PIN identifies the waiter and fills
+    //              their name automatically. Roster PINs are never shown back to the
+    //              client (masked) so staff can't read each other's codes.
+    waiterPinMode: 'single',
+    waiterPinModeByLocation: {},   // { [locationId]: 'single'|'staff' }
+    waiterStaff: [],               // [{ id, name, pin }] — the global roster
+    waiterStaffByLocation: {},     // { [locationId]: [{ id, name, pin }] }
   },
   // ── Smart Campaigns: contextual merchandising driven by rules (Weather first;
   //    future: time, holidays, stock, loyalty…). A single server-side resolver
