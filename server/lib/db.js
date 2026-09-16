@@ -254,6 +254,10 @@ async function init(attempt = 1) {
     `);
     await pool.query('CREATE INDEX IF NOT EXISTS pos_payments_order ON pos_payments (square_order_id)');
     await pool.query('CREATE INDEX IF NOT EXISTS pos_payments_status ON pos_payments (status)');
+    // Payer name + tender for standalone (partial/split) captures that aren't Square
+    // tenders, so the tab view and table list can show them and reduce the balance.
+    await pool.query("ALTER TABLE pos_payments ADD COLUMN IF NOT EXISTS note text");
+    await pool.query("ALTER TABLE pos_payments ADD COLUMN IF NOT EXISTS tender text");
 
     // Waiter "sessions" — the billing overlay for a table that's split into
     // group tabs + shared tabs. The table itself is ONE Square order (so the
@@ -1119,19 +1123,28 @@ async function posRecordOrder({ squareOrderId, squarePaymentId, source, tender, 
 }
 
 // ── Terminal checkout state (card payments) ──
-async function posPaymentUpsert({ checkoutId, squareOrderId, deviceId, amount, status }) {
+async function posPaymentUpsert({ checkoutId, squareOrderId, deviceId, amount, status, note, tender }) {
   if (!pool) return null;
   const r = await pool.query(
-    `INSERT INTO pos_payments (checkout_id, square_order_id, device_id, amount, status)
-     VALUES ($1, $2, $3, $4, $5)
+    `INSERT INTO pos_payments (checkout_id, square_order_id, device_id, amount, status, note, tender)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
      ON CONFLICT (checkout_id) DO UPDATE SET
        square_order_id = COALESCE(EXCLUDED.square_order_id, pos_payments.square_order_id),
        device_id = COALESCE(EXCLUDED.device_id, pos_payments.device_id),
-       amount = EXCLUDED.amount, status = EXCLUDED.status, updated_at = now()
+       amount = EXCLUDED.amount, status = EXCLUDED.status,
+       note = COALESCE(EXCLUDED.note, pos_payments.note),
+       tender = COALESCE(EXCLUDED.tender, pos_payments.tender), updated_at = now()
      RETURNING *`,
-    [checkoutId, squareOrderId || null, deviceId || null, amount || 0, status || 'waiting']
+    [checkoutId, squareOrderId || null, deviceId || null, amount || 0, status || 'waiting', note || null, tender || null]
   );
   return r.rows[0];
+}
+// Every captured (paid) standalone waiter payment on an order — amount, payer note
+// and tender — so the tab view can list them and the balance can be reduced.
+async function posPaymentsPaidForOrder(squareOrderId) {
+  if (!pool || !squareOrderId) return [];
+  const r = await pool.query("SELECT amount, note, tender FROM pos_payments WHERE square_order_id = $1 AND status = 'paid' ORDER BY created_at ASC", [squareOrderId]);
+  return r.rows || [];
 }
 async function posPaymentSetStatus(checkoutId, status, squarePaymentId) {
   if (!pool) return null;
@@ -1220,7 +1233,7 @@ module.exports = {
   kdsGetStates, kdsSetStatus, kdsNotify, kdsMarkPaid, kdsGetPaid,
   smsRecord, smsCounts, smsCreditsGet, smsCreditsAdd, smsCreditsConsume,
   birthdayRedeemedThisYear, birthdayClaim, birthdayUnclaim, birthdayRedeemedSet,
-  posRecordOrder, posPaymentUpsert, posPaymentSetStatus, posPaymentGet, posPaymentByOrder, posPaidTotalForOrder,
+  posRecordOrder, posPaymentUpsert, posPaymentSetStatus, posPaymentGet, posPaymentByOrder, posPaidTotalForOrder, posPaymentsPaidForOrder,
   waiterSessionUpsert, waiterSessionGet, waiterSessionByOrder,
   openTableUpsert, openTablesList, openTableClose,
   insertScheduled, listScheduledByCustomer, cancelScheduled, claimDue, updateScheduled,
