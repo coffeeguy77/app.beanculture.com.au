@@ -1593,7 +1593,21 @@ app.get('/api/pos/display/state', (req, res) => {
   const storeName = s.storeName || 'Bean Culture';
   const logo = (s.theme && (s.theme.logo || s.theme.logoUrl)) || (s.contact && s.contact.logo) || '';
   const fresh = hit && (Date.now() - hit.at < 90000);
-  res.json({ storeName, logo, currency: sq.CURRENCY, ...(fresh ? hit.data : { cart: [], total: 0, name: '', status: 'idle', change: 0 }) });
+  // CDS idle look + adverts: any hero/banner slide flagged `cds` becomes an idle
+  // advert. Sent every poll so the display picks up changes without a reload.
+  const cdsCfg = s.cds || {};
+  const ads = (Array.isArray(s.hero) ? s.hero : [])
+    .filter((h) => h && h.cds)
+    .map((h) => ({ image: h.image || '', bg: h.bg || '', title: h.title || '', subtitle: h.subtitle || '', textColor: h.textColor || '#ffffff', fit: h.fit || 'cover' }));
+  const cds = {
+    welcomeTitle: cdsCfg.welcomeTitle || 'Welcome',
+    welcomeSub: cdsCfg.welcomeSub || '',
+    logo: cdsCfg.logo || logo || '',
+    adIntervalSec: Number(cdsCfg.adIntervalSec) > 0 ? Number(cdsCfg.adIntervalSec) : 6,
+    ratio: s.heroRatio || '3 / 2',
+    ads,
+  };
+  res.json({ storeName, logo, currency: sq.CURRENCY, cds, ...(fresh ? hit.data : { cart: [], total: 0, name: '', status: 'idle', change: 0 }) });
 });
 
 // Enable/disable the payment methods a store's POS offers (Card / Cash / Unpaid).
