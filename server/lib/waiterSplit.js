@@ -120,12 +120,28 @@ function computeSession(overlay, order) {
     };
   });
 
-  // Reflect a fully-settled group onto its parties inside shared tabs — a group
-  // settles as one lump (covering its shares), so once it's paid, its slice of a
-  // shared tab should read as paid in the breakdown too.
-  const groupPaidMap = {};
-  for (const g of groupsOut) groupPaidMap[g.id] = g.paid;
-  for (const sh of sharedOut) for (const p of (sh.parties || [])) if (p.ref) p.paid = !!groupPaidMap[p.ref];
+  // Reflect settlement onto each shared tab: an ad-hoc guest pays their own share
+  // directly; a group-party is covered as its group pays down (proportionally, so
+  // the shared tab's "left" shrinks with each payment, and reads fully paid once
+  // the group has settled). Also roll each shared tab up into a paidTotal / left.
+  const groupById = {};
+  for (const g of groupsOut) groupById[g.id] = g;
+  for (const sh of sharedOut) {
+    let shPaid = 0;
+    for (const p of (sh.parties || [])) {
+      if (p.ref) {
+        const g = groupById[p.ref];
+        const frac = g && g.owed > 0 ? Math.min(1, g.paidAmount / g.owed) : 0;
+        p.paidAmount = Math.min(p.amount, Math.round(p.amount * frac));
+        p.remaining = Math.max(0, p.amount - p.paidAmount);
+        p.paid = !!(g && g.paid);
+      }
+      shPaid += p.paidAmount || 0;
+    }
+    sh.paidTotal = shPaid;
+    sh.remaining = Math.max(0, sh.total - shPaid);
+    sh.paid = sh.total > 0 && shPaid >= sh.total;
+  }
 
   // Items not assigned to any tab yet — must be handled before the tab is settled.
   const assignedIds = new Set([...groups.map((g) => g.id), ...shared.map((s) => s.id)]);
