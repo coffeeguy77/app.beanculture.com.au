@@ -14,6 +14,7 @@ import { useItemConfig, itemIsQuickAdd, buildQuickCartItem, itemHasOptions } fro
 const PIN_KEY = 'bc-waiter-pin';
 const LOC_KEY = 'bc-waiter-location';
 const NAME_KEY = 'bc-waiter-name';
+const NAV_KEY = 'bc-waiter-nav';
 
 // Waiter API. `auth` is { pin } for a floor device or { pass } when the counter
 // POS (admin) is managing tables. `by` (the waiter's name) is stamped onto every
@@ -55,6 +56,17 @@ function deviceId() {
   } catch { return 'anon'; }
 }
 
+// Don't show a variation name that just repeats the item name (e.g. a single
+// "Fritters" variation on a "Fritters" item) — only real options like "Small".
+const cleanVar = (name, v) => { const vv = String(v || '').trim(); return vv && vv.toLowerCase() !== String(name || '').trim().toLowerCase() ? vv : ''; };
+const subParts = (name, variation, mods) => [cleanVar(name, variation), ...(mods || [])].filter(Boolean);
+
+// The in-progress order (draft cart) is kept in localStorage so a page reload —
+// iOS pull-to-refresh, the PWA reloading itself, a stray swipe — never loses a
+// half-built order (bad news at the end of a big table). Cleared once it's sent.
+function loadCart(key) { try { return JSON.parse(localStorage.getItem('bc-waiter-cart-' + key) || '[]') || []; } catch { return []; } }
+function saveCart(key, cart) { try { if (cart && cart.length) localStorage.setItem('bc-waiter-cart-' + key, JSON.stringify(cart)); else localStorage.removeItem('bc-waiter-cart-' + key); } catch {} }
+
 // Stroke icons (site-wide rule: no emoji / filled icons).
 const Svg = (p) => <svg viewBox="0 0 24 24" width={p.s || 20} height={p.s || 20} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{p.children}</svg>;
 const IconCard = (p) => <Svg s={p.s}><rect x="2.5" y="5" width="19" height="14" rx="2.5" /><path d="M2.5 9.5h19" /></Svg>;
@@ -80,6 +92,19 @@ export default function Waiter({ onExit, adminPass, actorName }) {
   // Unlock on mount: the POS (admin) opens straight in; a floor device unlocks
   // with its saved PIN if there is one, else shows the keypad.
   useEffect(() => { if (isAdmin) unlock(); else if (pin && !authed) unlock(); /* eslint-disable-next-line */ }, []);
+
+  // Remember where the waiter was (screen + table/tab) so a reload — iOS pull to
+  // refresh, the PWA reloading — drops them back onto the exact order they were
+  // building, not the home screen. Restored once, after everything's ready.
+  const restoredRef = useRef(false);
+  useEffect(() => { try { if (authed && (waiterName || isAdmin)) localStorage.setItem(NAV_KEY, JSON.stringify({ screen, ctx })); } catch {} }, [screen, ctx, authed, waiterName, isAdmin]);
+  useEffect(() => {
+    if (restoredRef.current) return;
+    if (authed && cfg && menu && (waiterName || isAdmin)) {
+      restoredRef.current = true;
+      try { const n = JSON.parse(localStorage.getItem(NAV_KEY) || 'null'); if (n && n.screen && n.screen !== 'home') { if (n.ctx) setCtx(n.ctx); setScreen(n.screen); } } catch {}
+    }
+  }, [authed, cfg, menu, waiterName, isAdmin]);
 
   async function unlock(tryPin) {
     setErr('');
@@ -108,7 +133,7 @@ export default function Waiter({ onExit, adminPass, actorName }) {
   }
   function lock() {
     if (isAdmin) { onExit && onExit(); return; }
-    try { localStorage.removeItem(PIN_KEY); } catch {}
+    try { localStorage.removeItem(PIN_KEY); localStorage.removeItem(NAV_KEY); } catch {}
     setAuthed(false); setPin(''); setCfg(null); setScreen('home');
   }
 
@@ -145,6 +170,7 @@ export default function Waiter({ onExit, adminPass, actorName }) {
       {screen === 'home' && <Home {...common} waiterName={waiterName} onOpenTab={openExisting} onNewTab={startNewTab} />}
       {screen === 'setup' && <SetupChoice {...common} table={ctx.table} onTogether={() => setScreen('build')} onSplit={startSplit} onCancel={goHome} />}
       {screen === 'build' && <Build {...common} title={ctx.groupId ? 'Add to tab' : (ctx.tabId ? 'Add to' : 'New tab')} label={ctx.table}
+        cartKey={`${ctx.sessionId || ''}|${ctx.groupId || ''}|${ctx.tabId || ''}|${ctx.table || ''}`}
         submit={(cart) => ctx.sessionId
           ? api2.sessionOrder({ sessionId: ctx.sessionId, tabId: ctx.groupId, cart, locationId: location })
           : api2.send({ cart, tabId: ctx.tabId || undefined, table: ctx.table || undefined, locationId: location })}
@@ -265,11 +291,12 @@ function Home({ api2, cfg, currency, location, waiterName, setErr, onOpenTab, on
 }
 
 // ── Build: add items (this round) then send to the kitchen ───────────────────
-function Build({ menu, currency, title, label, setErr, submit, onDone, onCancel }) {
+function Build({ menu, currency, title, label, cartKey, setErr, submit, onDone, onCancel }) {
   const cats = menu.categories || [];
   const [activeCat, setActiveCat] = useState((cats[0] || {}).category || null);
   const [q, setQ] = useState('');
-  const [cart, setCart] = useState([]);
+  const [cart, setCart] = useState(() => loadCart(cartKey || 'x'));
+  useEffect(() => { saveCart(cartKey || 'x', cart); }, [cart, cartKey]);
   const [sheetItem, setSheetItem] = useState(null); // menu item being configured
   const [editKey, setEditKey] = useState(null);     // cart line being edited
   const [sending, setSending] = useState(false);
@@ -299,7 +326,7 @@ function Build({ menu, currency, title, label, setErr, submit, onDone, onCancel 
   async function send() {
     if (!cart.length) return;
     setSending(true); setErr('');
-    try { const d = await submit(cart); onDone(d || {}); }
+    try { const d = await submit(cart); saveCart(cartKey || 'x', []); onDone(d || {}); }
     catch (e) { setErr(e.message); setConfirming(false); } finally { setSending(false); }
   }
 
@@ -310,7 +337,7 @@ function Build({ menu, currency, title, label, setErr, submit, onDone, onCancel 
         <button className="wtr-ghost" onClick={onCancel}>Cancel</button>
       </div>
 
-      <input className="wtr-input" placeholder="Search the menu…" value={q} onChange={(e) => setQ(e.target.value)} />
+      <input className="wtr-input wtr-search" placeholder="Search the menu…" value={q} onChange={(e) => setQ(e.target.value)} />
       {!query && (
         <div className="wtr-catnav">
           {cats.map((c) => <button key={c.category} className={`wtr-catbtn ${activeCat === c.category ? 'on' : ''}`} onClick={() => setActiveCat(c.category)}>{c.category}</button>)}
@@ -349,7 +376,7 @@ function Build({ menu, currency, title, label, setErr, submit, onDone, onCancel 
                 <span className="wtr-cart-qty">{x.quantity}</span>
                 <span className="wtr-cart-info">
                   <span className="wtr-cart-name">{x.itemName}</span>
-                  {[x.variationName, ...(x.modifierNames || [])].filter(Boolean).length > 0 && <span className="wtr-cart-sub">{[x.variationName, ...(x.modifierNames || [])].filter(Boolean).join(' · ')}</span>}
+                  {subParts(x.itemName, x.variationName, x.modifierNames).length > 0 && <span className="wtr-cart-sub">{subParts(x.itemName, x.variationName, x.modifierNames).join(' · ')}</span>}
                   {x.note && <span className="wtr-cart-sub note">“{x.note}”</span>}
                 </span>
                 <span className="wtr-cart-amt">{formatMoney(x.unitPrice * x.quantity, currency)}</span>
@@ -377,7 +404,7 @@ function Build({ menu, currency, title, label, setErr, submit, onDone, onCancel 
               {cart.map((x) => (
                 <div key={x.key} className="wtr-itemrow">
                   <div className="wtr-round-qtybadge">{x.quantity}</div>
-                  <div className="wtr-iteminfo"><div>{x.itemName}</div><div className="wtr-muted">{[x.variationName, ...(x.modifierNames || [])].filter(Boolean).join(' · ')}{x.note ? ` · “${x.note}”` : ''}</div></div>
+                  <div className="wtr-iteminfo"><div>{x.itemName}</div><div className="wtr-muted">{subParts(x.itemName, x.variationName, x.modifierNames).join(' · ')}{x.note ? ` · “${x.note}”` : ''}</div></div>
                   <div className="wtr-itemamt">{formatMoney(x.unitPrice * x.quantity, currency)}</div>
                 </div>
               ))}
@@ -455,7 +482,7 @@ function WaiterLineEdit({ line, currency, onQty, onNote, onRemove, onClose }) {
     <div className="wtr-scrim" onClick={onClose}>
       <div className="wtr-dialog" onClick={(e) => e.stopPropagation()}>
         <div className="wtr-card-h">{line.itemName}</div>
-        {[line.variationName, ...(line.modifierNames || [])].filter(Boolean).length > 0 && <div className="wtr-muted">{[line.variationName, ...(line.modifierNames || [])].filter(Boolean).join(' · ')}</div>}
+        {subParts(line.itemName, line.variationName, line.modifierNames).length > 0 && <div className="wtr-muted">{subParts(line.itemName, line.variationName, line.modifierNames).join(' · ')}</div>}
         <div className="wtr-row wtr-people">
           <span>Quantity</span>
           <div className="wtr-qty"><button onClick={() => onQty(Math.max(1, line.quantity - 1))}>−</button><span>{line.quantity}</span><button onClick={() => onQty(line.quantity + 1)}>+</button></div>
@@ -488,7 +515,7 @@ function TabView({ api2, currency, ctx, setErr, onAdd, onSettle, onBack }) {
         {tab.items.map((it, i) => (
           <div key={i} className="wtr-itemrow">
             <div className="wtr-itemqty">{it.quantity}×</div>
-            <div className="wtr-iteminfo"><div>{it.name}</div><div className="wtr-muted">{[it.variation, ...(it.modifiers || [])].filter(Boolean).join(' · ')}</div></div>
+            <div className="wtr-iteminfo"><div>{it.name}</div><div className="wtr-muted">{subParts(it.name, it.variation, it.modifiers).join(' · ')}</div></div>
             <div className="wtr-itemamt">{formatMoney(it.amount, tab.currency || currency)}</div>
           </div>
         ))}
@@ -658,7 +685,7 @@ function SplitByItem({ tab, cur, settledUids, busy, hasTerminal, payments, onPay
         {avail.map((it) => (
           <label key={key(it)} className="wtr-tickrow">
             <input type="checkbox" checked={ticked.has(key(it))} onChange={() => toggle(it)} />
-            <div className="wtr-iteminfo"><div>{it.quantity}× {it.name}</div><div className="wtr-muted">{[it.variation, ...(it.modifiers || [])].filter(Boolean).join(' · ')}</div></div>
+            <div className="wtr-iteminfo"><div>{it.quantity}× {it.name}</div><div className="wtr-muted">{subParts(it.name, it.variation, it.modifiers).join(' · ')}</div></div>
             <div className="wtr-itemamt">{formatMoney(it.amount, cur)}</div>
           </label>
         ))}
@@ -833,7 +860,7 @@ function SessionView({ api2, cfg, currency, location, sessionId, table, onOrderI
               <div className="wtr-lise-qty">{li.quantity}</div>
               <div className="wtr-lise-info">
                 <div className="wtr-lise-name">{li.name}</div>
-                {[li.variation, ...(li.modifiers || [])].filter(Boolean).length > 0 && <div className="wtr-muted">{[li.variation, ...(li.modifiers || [])].filter(Boolean).join(' · ')}</div>}
+                {subParts(li.name, li.variation, li.modifiers).length > 0 && <div className="wtr-muted">{subParts(li.name, li.variation, li.modifiers).join(' · ')}</div>}
               </div>
               <div className="wtr-lise-amt">{formatMoney(li.amount, cur)}</div>
               <select className="wtr-lise-move" value="" onChange={(e) => reassign(li.uid, e.target.value)}>
@@ -918,7 +945,7 @@ function SessionView({ api2, cfg, currency, location, sessionId, table, onOrderI
           {st.lines.map((li) => (
             <div key={li.uid} className={`wtr-liserow ${li.tabId ? '' : 'wtr-unassigned'}`}>
               <div className="wtr-lise-qty">{li.quantity}</div>
-              <div className="wtr-lise-info"><div className="wtr-lise-name">{li.name}</div>{[li.variation, ...(li.modifiers || [])].filter(Boolean).length > 0 && <div className="wtr-muted">{[li.variation, ...(li.modifiers || [])].filter(Boolean).join(' · ')}</div>}</div>
+              <div className="wtr-lise-info"><div className="wtr-lise-name">{li.name}</div>{subParts(li.name, li.variation, li.modifiers).length > 0 && <div className="wtr-muted">{subParts(li.name, li.variation, li.modifiers).join(' · ')}</div>}</div>
               <div className="wtr-lise-amt">{formatMoney(li.amount, cur)}</div>
               <select className="wtr-lise-move" value={li.tabId || ''} onChange={(e) => reassign(li.uid, e.target.value)}>
                 <option value="" disabled>{li.tabId ? (allTabs.find((t) => t.id === li.tabId) || {}).name : 'Assign…'}</option>
@@ -1119,8 +1146,10 @@ function WaiterStyle() {
     /* Waiter mode uses its OWN fixed, high-contrast palette so a store's theme
        (e.g. a blue storefront) can never wash the screen out or hide buttons. */
     .wtr-root{--bg:#f3f1f4;--surface:#ffffff;--text:#1a151d;--muted:#6b646f;--line:#e5dee6;--brand:#0f6f59;
-      position:fixed;inset:0;background:#f3f1f4;color:#1a151d;font-family:inherit;display:flex;flex-direction:column;z-index:60;overflow:hidden}
+      position:fixed;inset:0;background:#f3f1f4;color:#1a151d;font-family:inherit;display:flex;flex-direction:column;z-index:60;overflow:hidden;overscroll-behavior:none}
     .wtr-root *{-webkit-tap-highlight-color:transparent}
+    .wtr-body{overscroll-behavior:contain}
+    .wtr-cart-list{overscroll-behavior:contain}
     .wtr-center{align-items:center;justify-content:center}
     .wtr-spin{width:34px;height:34px;border:3px solid var(--line,#e7dfe4);border-top-color:var(--brand,#7a2e57);border-radius:50%;animation:wtrspin .8s linear infinite}
     @keyframes wtrspin{to{transform:rotate(360deg)}}
@@ -1238,7 +1267,8 @@ function WaiterStyle() {
     .wtr-menulist{display:flex;flex-direction:column;gap:2px;flex:1;min-height:0}
     /* Build screen: fixed header/search, scrolling menu, cart pinned at bottom */
     .wtr-build{overflow:hidden !important;padding-bottom:0 !important}
-    .wtr-menuscroll{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:3px;padding-bottom:8px}
+    .wtr-search{flex:none;padding:9px 12px;font-size:14px;margin-bottom:2px}
+    .wtr-menuscroll{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;display:flex;flex-direction:column;gap:3px;padding-bottom:8px}
     .wtr-cart{margin:0 -14px -14px;background:var(--surface,#fff);border-top:1px solid var(--line,#e5dee6);box-shadow:0 -8px 22px rgba(0,0,0,.10);display:flex;flex-direction:column;max-height:30vh;padding:8px 14px 12px}
     .wtr-cart.expanded{max-height:calc(100vh - 150px)}
     .wtr-cart-head{display:flex;justify-content:space-between;align-items:center;font-weight:800;font-size:13px;padding:2px 0 6px}
