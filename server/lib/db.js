@@ -1153,6 +1153,17 @@ async function posPaymentByOrder(squareOrderId) {
   const r = await pool.query('SELECT * FROM pos_payments WHERE square_order_id = $1 ORDER BY created_at DESC LIMIT 1', [squareOrderId]);
   return r.rows[0] || null;
 }
+// Total of COMPLETED card checkouts we captured against an order but did NOT link
+// to it in Square (partial waiter/table card payments — Square's Terminal API
+// won't attach a partial checkout to an order, so they're taken standalone and
+// reconciled here). Lets the tab flow subtract them so a partial card can't be
+// double-charged. Full one-tap settlements are linked (a real Square tender) and
+// complete the order, so they never sit on an OPEN order for this to double-count.
+async function posPaidTotalForOrder(squareOrderId) {
+  if (!pool || !squareOrderId) return 0;
+  const r = await pool.query("SELECT COALESCE(SUM(amount),0) AS total FROM pos_payments WHERE square_order_id = $1 AND status = 'paid'", [squareOrderId]);
+  return Number(r.rows[0] && r.rows[0].total) || 0;
+}
 
 // ── Waiter split-billing sessions (group tabs + shared tabs overlay) ──
 async function waiterSessionUpsert(id, squareOrderId, data) {
@@ -1209,7 +1220,7 @@ module.exports = {
   kdsGetStates, kdsSetStatus, kdsNotify, kdsMarkPaid, kdsGetPaid,
   smsRecord, smsCounts, smsCreditsGet, smsCreditsAdd, smsCreditsConsume,
   birthdayRedeemedThisYear, birthdayClaim, birthdayUnclaim, birthdayRedeemedSet,
-  posRecordOrder, posPaymentUpsert, posPaymentSetStatus, posPaymentGet, posPaymentByOrder,
+  posRecordOrder, posPaymentUpsert, posPaymentSetStatus, posPaymentGet, posPaymentByOrder, posPaidTotalForOrder,
   waiterSessionUpsert, waiterSessionGet, waiterSessionByOrder,
   openTableUpsert, openTablesList, openTableClose,
   insertScheduled, listScheduledByCustomer, cancelScheduled, claimDue, updateScheduled,
