@@ -2297,9 +2297,19 @@ app.post('/api/waiter/tab/close', async (req, res) => {
     const order = await orders.getOrder(tabId);
     if (!order) return res.status(404).json({ error: 'Tab not found.' });
     if (String(order.state) !== 'OPEN') return res.status(400).json({ error: 'That tab is already settled.' });
-    const amount = (order.total_money && order.total_money.amount) || 0;
+    const total = (order.total_money && order.total_money.amount) || 0;
     const currency = (order.total_money && order.total_money.currency) || sq.CURRENCY;
-    if (!(amount > 0)) return res.status(400).json({ error: 'This tab has nothing to pay.' });
+    // Settle only the BALANCE. Earlier split payments are standalone captures (not
+    // Square tenders), so the order still reads its full total — subtract both the
+    // real tenders and our captures, or the terminal would ask for the whole bill
+    // again (and cash would double-charge).
+    const tenderPaid = (order.tenders || []).reduce((s, t) => s + ((t.amount_money && t.amount_money.amount) || 0), 0);
+    let captured = 0;
+    try { if (db.enabled) captured = await db.posPaidTotalForOrder(tabId); } catch {}
+    const amount = Math.max(0, total - tenderPaid - captured);
+    if (!(amount > 0)) return res.status(400).json({ error: 'This tab is already fully paid.' });
+    const linkOrder = amount === total;   // link the order only when nothing's been paid yet
+    const noteLabel = `Table ${(order.metadata && order.metadata.bc_booth) || ''}`.trim().slice(0, 60) || 'Waiter tab';
     const squareLocationId = locations.squareIdFor(locationId) || order.location_id;
 
     if (tender === 'card') {
@@ -2307,23 +2317,30 @@ app.post('/api/waiter/tab/close', async (req, res) => {
       if (!term.deviceId) return res.status(400).json({ error: 'No waiter Terminal is set. Pair one in POS setup → Waiter mode.' });
       try {
         const checkout = await terminal.createCheckout({
-          amountMoney: { amount, currency }, deviceId: term.deviceId, orderId: tabId, referenceId: tabId,
-          note: `Table ${(order.metadata && order.metadata.bc_booth) || ''}`.trim().slice(0, 60) || 'Waiter tab',
-          showItemizedCart: pos.terminalShowCart === true, skipReceipt: pos.terminalSkipReceipt !== false,
+          amountMoney: { amount, currency }, deviceId: term.deviceId, orderId: linkOrder ? tabId : undefined, referenceId: tabId,
+          note: noteLabel, showItemizedCart: pos.terminalShowCart === true, skipReceipt: pos.terminalSkipReceipt !== false,
         });
-        try { await db.posPaymentUpsert({ checkoutId: checkout.id, squareOrderId: tabId, deviceId: term.deviceId, amount, status: 'waiting' }); } catch {}
+        try { await db.posPaymentUpsert({ checkoutId: checkout.id, squareOrderId: tabId, deviceId: term.deviceId, amount, status: 'waiting', note: noteLabel, tender: 'card' }); } catch {}
         return res.json({ tender: 'card', checkoutId: checkout.id, tabId, total: amount, currency, status: 'waiting', terminalName: term.name || 'Terminal' });
       } catch (e) {
-        console.warn('[waiter] terminal checkout FAILED:', e.message);
+        console.warn('[waiter] settle card checkout FAILED:', 'order=' + tabId, 'amount=' + amount, e.message);
         return res.status(502).json({ error: `Could not start the card payment: ${e.message}` });
       }
     }
-    // Cash → CASH payment against the tab; Square marks the order paid & closed.
+    // Cash → the balance. Link (and let Square close the order) only if it's the
+    // whole bill; a partial balance is a standalone capture, reconciled by us.
     const given = Math.max(amount, Math.round(Number(cashGiven) || amount));
-    const payment = await orders.createCashPayment({
-      orderId: tabId, amountMoney: { amount, currency },
-      buyerSuppliedMoney: { amount: given, currency }, squareLocationId,
-    });
+    let payment;
+    try {
+      payment = await orders.createCashPayment({
+        orderId: linkOrder ? tabId : undefined, amountMoney: { amount, currency },
+        buyerSuppliedMoney: { amount: given, currency }, squareLocationId, note: noteLabel,
+      });
+    } catch (e) {
+      console.warn('[waiter] settle cash FAILED:', 'order=' + tabId, 'amount=' + amount, e.message);
+      return res.status(502).json({ error: `Could not record the cash payment: ${e.message}` });
+    }
+    if (!linkOrder) { try { await db.posPaymentUpsert({ checkoutId: 'cash:' + ((payment && payment.id) || Date.now()), squareOrderId: tabId, deviceId: 'cash', amount, status: 'paid', note: noteLabel, tender: 'cash' }); } catch {} }
     try {
       if (db.enabled && typeof db.posRecordOrder === 'function') {
         await db.posRecordOrder({ squareOrderId: tabId, squarePaymentId: payment ? payment.id : null, source: 'Bean Culture Waiter', tender: 'cash', amount, status: 'paid', deviceName: 'Waiter' });
@@ -2372,7 +2389,7 @@ app.get('/api/waiter/tab/:id', async (req, res) => {
         })),
         ...captures.map((c) => ({
           amount: Number(c.amount) || 0,
-          tender: (c.tender || 'card').toLowerCase(),
+          tender: (c.tender || '').toLowerCase(),   // never assume card — show the real tender (blank if unknown legacy row)
           name: (c.note || '').replace(/^Split:\s*/i, '') || '',
         })),
       ],
