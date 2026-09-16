@@ -41,7 +41,18 @@ function waiterApi(auth, by) {
     sessionAssign: (body) => post('/api/waiter/session/assign', body),
     sessionPay: (body) => post('/api/waiter/session/pay', body, true),
     sessionMarkPaid: (body) => post('/api/waiter/session/mark-paid', body),
+    claimName: (body) => post('/api/waiter/claim-name', body),
   };
+}
+
+// A stable per-device id so the name-dedup registry can tell one waiter phone
+// from another (and let the same phone re-claim its own name).
+function deviceId() {
+  try {
+    let v = localStorage.getItem('bc-waiter-cid');
+    if (!v) { v = (crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2)); localStorage.setItem('bc-waiter-cid', v); }
+    return v;
+  } catch { return 'anon'; }
 }
 
 // Stroke icons (site-wide rule: no emoji / filled icons).
@@ -82,10 +93,19 @@ export default function Waiter({ onExit, adminPass, actorName }) {
       const m = await api.getMenu(loc);
       setCfg(c); setMenu(m); setAuthed(true);
       if (!isAdmin && tryPin != null) try { localStorage.setItem(PIN_KEY, tryPin); } catch {}
+      // In staff mode the PIN identifies the waiter — take the name the server
+      // resolved and skip the name prompt entirely.
+      if (!isAdmin && c.pinMode === 'staff') setWaiterName(c.waiterName || 'Waiter');
     } catch (e) { setErr(e.message || 'Wrong PIN'); setAuthed(false); }
   }
 
   function saveName(n) { const v = String(n || '').trim().slice(0, 40); setWaiterName(v); try { localStorage.setItem(NAME_KEY, v); } catch {} }
+  // Single-PIN mode: claim the typed name so two "Tim"s on a shift become Tim/Tim2.
+  async function submitName(n) {
+    let v = String(n || '').trim().slice(0, 40); if (!v) return;
+    try { const r = await api2.claimName({ name: v, location, cid: deviceId() }); if (r && r.name) v = r.name; } catch {}
+    saveName(v);
+  }
   function lock() {
     if (isAdmin) { onExit && onExit(); return; }
     try { localStorage.removeItem(PIN_KEY); } catch {}
@@ -101,10 +121,11 @@ export default function Waiter({ onExit, adminPass, actorName }) {
     if (isAdmin) return <div className="wtr-root wtr-center"><WaiterStyle />{err ? <div className="wtr-err">{err}</div> : <div className="wtr-spin" />}</div>;
     return <PinGate pin={pin} setPin={setPin} onSubmit={(p) => unlock(p)} err={err} onExit={onExit} />;
   }
-  // A floor waiter identifies themselves once (per device) so their orders and
-  // payments are attributed to them. The POS passes its own actor name.
-  if (!waiterName) return <NameGate onSubmit={saveName} onExit={onExit} />;
-  if (!cfg || !menu) return <div className="wtr-root wtr-center"><div className="wtr-spin" /></div>;
+  if (!cfg || !menu) return <div className="wtr-root wtr-center"><WaiterStyle /><div className="wtr-spin" /></div>;
+  // In single-PIN mode a floor waiter types their name once (per device) so their
+  // orders and payments are attributed to them. In staff mode the PIN already
+  // identifies them, so this is skipped.
+  if (!waiterName && !isAdmin && cfg.pinMode !== 'staff') return <NameGate onSubmit={submitName} onExit={onExit} />;
 
   const currency = cfg.currency || 'AUD';
   const common = { api2, cfg, menu, currency, location, setErr };
@@ -113,16 +134,11 @@ export default function Waiter({ onExit, adminPass, actorName }) {
     <div className="wtr-root">
       <WaiterStyle />
       <header className="wtr-top">
-        <button className="wtr-ghost" onClick={() => (screen === 'home' ? onExit && onExit() : goHome())}>‹ {screen === 'home' ? (isAdmin ? 'POS' : 'Exit') : 'Tables'}</button>
-        <div className="wtr-title">{cfg.storeName || 'Waiter'}{waiterName ? <button className="wtr-who" title="Switch waiter" onClick={() => { if (!isAdmin) saveName(''); }}> · {waiterName} ⇄</button> : ''}</div>
-        <div className="wtr-top-right">
-          {(cfg.locations || []).length > 1 && (
-            <select className="wtr-loc" value={location} onChange={(e) => changeLocation(e.target.value)}>
-              {(cfg.locations || []).map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
-            </select>
-          )}
-          <button className="wtr-ghost wtr-iconbtn" onClick={lock} title={isAdmin ? 'Back to POS' : 'Lock'}>{isAdmin ? <IconBack /> : <IconLock />}</button>
-        </div>
+        {screen === 'home'
+          ? (isAdmin ? <button className="wtr-ghost wtr-iconbtn" onClick={() => onExit && onExit()} title="Back to POS"><IconBack /></button> : <span className="wtr-topspacer" />)
+          : <button className="wtr-ghost" onClick={goHome}>‹ Tables</button>}
+        <div className="wtr-title">{cfg.storeName || 'Waiter'}{waiterName ? <button className="wtr-who" title="Switch waiter" onClick={() => { if (isAdmin) return; if (cfg.pinMode === 'staff') lock(); else saveName(''); }}> · {waiterName} ⇄</button> : ''}</div>
+        <button className="wtr-ghost wtr-iconbtn" onClick={lock} title={isAdmin ? 'Back to POS' : 'Lock / switch'}>{isAdmin ? <IconBack /> : <IconLock />}</button>
       </header>
       {err && <div className="wtr-err" onClick={() => setErr('')}>{err} · tap to dismiss</div>}
 
@@ -163,7 +179,7 @@ function PinGate({ pin, setPin, onSubmit, err, onExit }) {
       <div className="wtr-pin">
         <div className="wtr-pin-title">Waiter mode</div>
         <div className="wtr-pin-sub">Enter your staff PIN</div>
-        <div className="wtr-pin-dots">{Array.from({ length: Math.max(4, v.length) }).map((_, i) => <span key={i} className={i < v.length ? 'on' : ''} />)}</div>
+        <div className="wtr-pin-shown">{v || <span className="wtr-muted">enter PIN</span>}</div>
         {err && <div className="wtr-pin-err">{err}</div>}
         <div className="wtr-pad">
           {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => <button key={n} onClick={() => press(String(n))}>{n}</button>)}
@@ -171,7 +187,6 @@ function PinGate({ pin, setPin, onSubmit, err, onExit }) {
           <button onClick={() => press('0')}>0</button>
           <button className="wtr-pad-ok" onClick={() => { setPin(v); onSubmit(v); }}>→</button>
         </div>
-        <button className="wtr-ghost wtr-pin-exit" onClick={() => onExit && onExit()}>‹ Back to store</button>
       </div>
     </div>
   );
@@ -188,7 +203,6 @@ function NameGate({ onSubmit, onExit }) {
         <div className="wtr-pin-sub">Your name goes on the orders and payments you take, so the team can see who did what.</div>
         <input className="wtr-input" style={{ textAlign: 'center', fontSize: 18 }} placeholder="Your name" value={v} onChange={(e) => setV(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && v.trim() && onSubmit(v)} autoFocus />
         <button className="wtr-primary" style={{ width: '100%' }} disabled={!v.trim()} onClick={() => onSubmit(v)}>Start serving</button>
-        <button className="wtr-ghost" onClick={() => onExit && onExit()}>‹ Back to store</button>
       </div>
     </div>
   );
@@ -210,10 +224,10 @@ function Home({ api2, cfg, currency, location, waiterName, setErr, onOpenTab, on
 
   return (
     <div className="wtr-body">
-      <button className="wtr-primary wtr-new" onClick={() => setPicking((p) => !p)}>+ New tab</button>
+      <button className={`wtr-primary wtr-new ${picking ? 'wtr-new-open' : ''}`} onClick={() => setPicking((p) => !p)}>{picking ? 'Close' : '+ New Table'}</button>
       {picking && (
         <div className="wtr-card">
-          <div className="wtr-card-h">Pick a table</div>
+          <div className="wtr-card-h">Pick a table<button className="wtr-ghost" onClick={() => setPicking(false)}>Close</button></div>
           {presets.length > 0 && (
             <div className="wtr-tables">
               {presets.map((t) => <button key={t} className="wtr-tablechip" onClick={() => startTable(t)}>{t}</button>)}
@@ -260,16 +274,19 @@ function Build({ menu, currency, title, label, setErr, submit, onDone, onCancel 
   const [editKey, setEditKey] = useState(null);     // cart line being edited
   const [sending, setSending] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [expanded, setExpanded] = useState(false);
 
   const query = q.trim().toLowerCase();
   const items = query
     ? cats.flatMap((c) => c.items || []).filter((it) => (it.name || '').toLowerCase().includes(query))
     : (((cats.find((c) => c.category === activeCat) || cats[0] || {}).items) || []);
 
+  // Newest item on top: a new line goes to the front; adding one already there
+  // bumps its quantity and floats it back to the top.
   const addLine = (line) => setCart((r) => {
     const i = r.findIndex((x) => x.key === line.key);
-    if (i >= 0) { const c = [...r]; c[i] = { ...c[i], quantity: c[i].quantity + line.quantity }; return c; }
-    return [...r, line];
+    if (i >= 0) { const merged = { ...r[i], quantity: r[i].quantity + line.quantity }; return [merged, ...r.slice(0, i), ...r.slice(i + 1)]; }
+    return [line, ...r];
   });
   const tap = (item) => { if (itemIsQuickAdd(item)) addLine(buildQuickCartItem(item)); else setSheetItem(item); };
   const setLineQty = (key, qv) => setCart((r) => r.map((x) => x.key === key ? { ...x, quantity: Math.max(1, qv) } : x));
@@ -300,8 +317,9 @@ function Build({ menu, currency, title, label, setErr, submit, onDone, onCancel 
         </div>
       )}
 
-      {/* Menu as a readable LIST (no image tiles). Tap to add. */}
-      <div className="wtr-menulist">
+      {/* Menu as a readable LIST (no image tiles), in its own scroll area so it
+          never hides behind the cart. */}
+      <div className="wtr-menuscroll">
         {items.length === 0 && <div className="wtr-muted">No items.</div>}
         {items.map((it) => {
           const base = (it.variations || [])[0]?.price || 0;
@@ -318,20 +336,23 @@ function Build({ menu, currency, title, label, setErr, submit, onDone, onCancel 
         })}
       </div>
 
-      {/* Editable cart — build the whole order, read it back, then send once. */}
+      {/* Editable cart pinned to the bottom (max 30%), newest first. Expandable. */}
       {cart.length > 0 && (
-        <div className="wtr-round">
-          <div className="wtr-round-head">Order · {count} item{count === 1 ? '' : 's'} <span className="wtr-muted">tap a line to edit</span></div>
-          <div className="wtr-round-list">
+        <div className={`wtr-cart ${expanded ? 'expanded' : ''}`}>
+          <div className="wtr-cart-head">
+            <span>Order · {count} item{count === 1 ? '' : 's'}</span>
+            <button className="wtr-cart-expand" onClick={() => setExpanded((v) => !v)}>{expanded ? 'Contract ▾' : 'Expand ▴'}</button>
+          </div>
+          <div className="wtr-cart-list">
             {cart.map((x) => (
-              <button key={x.key} className="wtr-round-line" onClick={() => setEditKey(x.key)}>
-                <div className="wtr-round-qtybadge">{x.quantity}</div>
-                <div className="wtr-round-info">
-                  <div className="wtr-round-name">{x.itemName}</div>
-                  {[x.variationName, ...(x.modifierNames || [])].filter(Boolean).length > 0 && <div className="wtr-muted">{[x.variationName, ...(x.modifierNames || [])].filter(Boolean).join(' · ')}</div>}
-                  {x.note && <div className="wtr-notechip">“{x.note}”</div>}
-                </div>
-                <div className="wtr-round-amt">{formatMoney(x.unitPrice * x.quantity, currency)}</div>
+              <button key={x.key} className="wtr-cart-line" onClick={() => setEditKey(x.key)}>
+                <span className="wtr-cart-qty">{x.quantity}</span>
+                <span className="wtr-cart-info">
+                  <span className="wtr-cart-name">{x.itemName}</span>
+                  {[x.variationName, ...(x.modifierNames || [])].filter(Boolean).length > 0 && <span className="wtr-cart-sub">{[x.variationName, ...(x.modifierNames || [])].filter(Boolean).join(' · ')}</span>}
+                  {x.note && <span className="wtr-cart-sub note">“{x.note}”</span>}
+                </span>
+                <span className="wtr-cart-amt">{formatMoney(x.unitPrice * x.quantity, currency)}</span>
               </button>
             ))}
           </div>
@@ -808,13 +829,14 @@ function SessionView({ api2, cfg, currency, location, sessionId, table, onOrderI
           <div className="wtr-card-h">Their items — tap Move to dispute</div>
           {myLines.length === 0 && <div className="wtr-muted">No items on this tab yet.</div>}
           {myLines.map((li) => (
-            <div key={li.uid} className="wtr-itemrow wtr-dispute">
-              <div className="wtr-iteminfo">
-                <div>{li.quantity}× {li.name}</div>
-                <div className="wtr-muted">{[li.variation, ...(li.modifiers || [])].filter(Boolean).join(' · ')}{li.by ? ` · by ${li.by}` : ''}</div>
+            <div key={li.uid} className="wtr-liserow">
+              <div className="wtr-lise-qty">{li.quantity}</div>
+              <div className="wtr-lise-info">
+                <div className="wtr-lise-name">{li.name}</div>
+                {[li.variation, ...(li.modifiers || [])].filter(Boolean).length > 0 && <div className="wtr-muted">{[li.variation, ...(li.modifiers || [])].filter(Boolean).join(' · ')}</div>}
               </div>
-              <div className="wtr-itemamt">{formatMoney(li.amount, cur)}</div>
-              <select className="wtr-input wtr-assign" value="" onChange={(e) => reassign(li.uid, e.target.value)}>
+              <div className="wtr-lise-amt">{formatMoney(li.amount, cur)}</div>
+              <select className="wtr-lise-move" value="" onChange={(e) => reassign(li.uid, e.target.value)}>
                 <option value="">Move…</option>
                 {moveTargets.map((t) => <option key={t.id} value={t.id}>→ {t.name}</option>)}
               </select>
@@ -894,11 +916,12 @@ function SessionView({ api2, cfg, currency, location, sessionId, table, onOrderI
         <div className="wtr-card">
           <div className="wtr-card-h">Items · assign each to a tab</div>
           {st.lines.map((li) => (
-            <div key={li.uid} className={`wtr-itemrow ${li.tabId ? '' : 'wtr-unassigned'}`}>
-              <div className="wtr-iteminfo"><div>{li.quantity}× {li.name}</div><div className="wtr-muted">{[li.variation, ...(li.modifiers || [])].filter(Boolean).join(' · ')}{li.by ? ` · by ${li.by}` : ''}</div></div>
-              <div className="wtr-itemamt">{formatMoney(li.amount, cur)}</div>
-              <select className="wtr-input wtr-assign" value={li.tabId || ''} onChange={(e) => reassign(li.uid, e.target.value)}>
-                <option value="" disabled>{li.tabId ? 'On: ' + (allTabs.find((t) => t.id === li.tabId) || {}).name : 'Assign to…'}</option>
+            <div key={li.uid} className={`wtr-liserow ${li.tabId ? '' : 'wtr-unassigned'}`}>
+              <div className="wtr-lise-qty">{li.quantity}</div>
+              <div className="wtr-lise-info"><div className="wtr-lise-name">{li.name}</div>{[li.variation, ...(li.modifiers || [])].filter(Boolean).length > 0 && <div className="wtr-muted">{[li.variation, ...(li.modifiers || [])].filter(Boolean).join(' · ')}</div>}</div>
+              <div className="wtr-lise-amt">{formatMoney(li.amount, cur)}</div>
+              <select className="wtr-lise-move" value={li.tabId || ''} onChange={(e) => reassign(li.uid, e.target.value)}>
+                <option value="" disabled>{li.tabId ? (allTabs.find((t) => t.id === li.tabId) || {}).name : 'Assign…'}</option>
                 {allTabs.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
               </select>
             </div>
@@ -1152,7 +1175,8 @@ function WaiterStyle() {
     .wtr-itemrow,.wtr-tickrow{display:flex;align-items:center;gap:10px}
     .wtr-itemqty{font-weight:800;color:var(--muted,#8a8189);min-width:26px}
     .wtr-iteminfo{flex:1;min-width:0;font-size:14px}
-    .wtr-itemamt{font-weight:700}
+    .wtr-iteminfo>div:first-child{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .wtr-itemamt{font-weight:700;flex:none;white-space:nowrap}
     .wtr-tickrow{background:var(--bg,#faf7f8);border:1px solid var(--line,#e7dfe4);border-radius:10px;padding:8px 10px;cursor:pointer}
     .wtr-tickrow input{width:20px;height:20px}
     .wtr-paidnote{background:#eef7ef;color:#276b3a;border-radius:10px;padding:8px 12px;font-size:13px;font-weight:700}
@@ -1212,6 +1236,29 @@ function WaiterStyle() {
     .wtr-pay-i{display:inline-flex}
     /* Menu list view (no image tiles) */
     .wtr-menulist{display:flex;flex-direction:column;gap:2px;flex:1;min-height:0}
+    /* Build screen: fixed header/search, scrolling menu, cart pinned at bottom */
+    .wtr-build{overflow:hidden !important;padding-bottom:0 !important}
+    .wtr-menuscroll{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:3px;padding-bottom:8px}
+    .wtr-cart{margin:0 -14px -14px;background:var(--surface,#fff);border-top:1px solid var(--line,#e5dee6);box-shadow:0 -8px 22px rgba(0,0,0,.10);display:flex;flex-direction:column;max-height:30vh;padding:8px 14px 12px}
+    .wtr-cart.expanded{max-height:calc(100vh - 150px)}
+    .wtr-cart-head{display:flex;justify-content:space-between;align-items:center;font-weight:800;font-size:13px;padding:2px 0 6px}
+    .wtr-cart-expand{background:none;border:none;color:var(--brand,#0f6f59);font-weight:800;font-size:13px;cursor:pointer;padding:4px}
+    .wtr-cart-list{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:5px;margin-bottom:8px}
+    .wtr-cart-line{display:flex;align-items:center;gap:9px;width:100%;text-align:left;background:var(--bg,#f3f1f4);border:1px solid var(--line,#e5dee6);border-radius:9px;padding:7px 9px;cursor:pointer;color:inherit}
+    .wtr-cart-qty{min-width:24px;height:24px;flex:none;border-radius:7px;background:var(--brand,#0f6f59);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:13px}
+    .wtr-cart-info{flex:1;min-width:0;display:flex;flex-direction:column}
+    .wtr-cart-name{font-weight:700;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .wtr-cart-sub{font-size:12px;color:var(--muted,#6b646f);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .wtr-cart-sub.note{color:var(--brand,#0f6f59)}
+    .wtr-cart-amt{font-weight:800;font-size:14px;flex:none;white-space:nowrap}
+    /* Compact item rows with a Move/assign control (group detail, review items) */
+    .wtr-liserow{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--line,#e5dee6)}
+    .wtr-liserow:last-child{border-bottom:none}
+    .wtr-lise-qty{min-width:22px;height:22px;flex:none;border-radius:6px;background:var(--bg,#eee);color:var(--muted,#6b646f);font-weight:800;font-size:12px;display:inline-flex;align-items:center;justify-content:center}
+    .wtr-lise-info{flex:1;min-width:0}
+    .wtr-lise-name{font-weight:700;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .wtr-lise-amt{font-weight:800;font-size:14px;flex:none;white-space:nowrap}
+    .wtr-lise-move{flex:none;width:92px;max-width:92px;border:1px solid var(--line,#e5dee6);border-radius:8px;padding:6px;font-size:12px;background:var(--surface,#fff);color:inherit}
     .wtr-menurow{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--surface,#fff);border:1px solid var(--line,#e5dee6);border-radius:10px;padding:13px 14px;cursor:pointer;text-align:left;width:100%;color:inherit}
     .wtr-menurow:active{background:#f0edf1}
     .wtr-menurow-name{font-weight:700;font-size:15px;display:flex;align-items:center;gap:8px}
@@ -1231,14 +1278,12 @@ function WaiterStyle() {
     .wtr-pin{display:flex;flex-direction:column;align-items:center;gap:12px;max-width:300px}
     .wtr-pin-title{font-weight:800;font-size:20px}
     .wtr-pin-sub{color:var(--muted,#8a8189);font-size:14px}
-    .wtr-pin-dots{display:flex;gap:10px}
-    .wtr-pin-dots span{width:12px;height:12px;border-radius:50%;border:2px solid var(--line,#c8bcc4)}
-    .wtr-pin-dots span.on{background:var(--brand,#7a2e57);border-color:var(--brand,#7a2e57)}
+    .wtr-pin-shown{font-size:30px;font-weight:800;letter-spacing:6px;min-height:38px;color:var(--brand,#0f6f59)}
     .wtr-pin-err{color:#a11;font-size:13px}
     .wtr-pad{display:grid;grid-template-columns:repeat(3,72px);gap:12px}
     .wtr-pad button{height:64px;border-radius:14px;border:1px solid var(--line,#e7dfe4);background:var(--surface,#fff);font-size:22px;font-weight:700;cursor:pointer;color:inherit}
     .wtr-pad-ok{background:var(--brand,#7a2e57)!important;color:#fff!important}
-    .wtr-pin-exit{margin-top:6px}
+    .wtr-topspacer{width:36px;flex:none}
     `}</style>
   );
 }

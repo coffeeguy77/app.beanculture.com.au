@@ -1274,9 +1274,18 @@ function WaiterSettings({ cfg, posLoc, multiStore, storeName, pass }) {
   const initEnabled = enPer != null ? !!enPer : (cfg.waiterEnabled === true);
   const initHasPin = ((cfg.waiterHasPinByLocation || {})[posLoc]) || (enPer == null && !!cfg.hasWaiterPin);
   const initTables = (Array.isArray((cfg.waiterTablesByLocation || {})[posLoc]) ? cfg.waiterTablesByLocation[posLoc] : (cfg.waiterTables || []));
+  const initMode = ((cfg.waiterPinModeByLocation || {})[posLoc]) || cfg.waiterPinMode || 'single';
+  const initPinVal = (multiStore ? ((cfg.waiterPinByLoc || {})[posLoc] || '') : (cfg.waiterPin || ''));
+  const initStaff = ((multiStore ? (cfg.waiterStaffByLocation || {})[posLoc] : cfg.waiterStaff) || []).map((s) => ({ id: s.id, name: s.name }));
+  const initSusp = (((cfg.waiterSuspendedByLocation || {})[posLoc]) != null) ? !!cfg.waiterSuspendedByLocation[posLoc] : (cfg.waiterSuspended === true);
   const [enabled, setEnabled] = useState(initEnabled);
+  const [suspended, setSuspended] = useState(initSusp);
   const [hasPin, setHasPin] = useState(initHasPin);
-  const [pin, setPin] = useState('');
+  const [pin, setPin] = useState(initPinVal);
+  const [mode, setMode] = useState(initMode === 'staff' ? 'staff' : 'single');
+  const [staff, setStaff] = useState(initStaff);
+  const [nsName, setNsName] = useState('');
+  const [nsPin, setNsPin] = useState('');
   const [tables, setTables] = useState(initTables.join(', '));
   const [devices, setDevices] = useState(null);
   const [termId, setTermId] = useState((perLoc && perLoc.deviceId) || cfg.waiterTerminalDeviceId || '');
@@ -1289,7 +1298,23 @@ function WaiterSettings({ cfg, posLoc, multiStore, storeName, pass }) {
     catch (e) { setErr(e.message || 'Could not save'); throw e; }
   };
   const toggle = async () => { const next = !enabled; setEnabled(next); try { await save({ enabled: next }, next ? 'Waiter mode on' : 'Waiter mode off'); } catch { setEnabled(!next); } };
-  const savePin = async () => { const v = pin.trim(); if (!/^\d{4,8}$/.test(v)) { setErr('PIN must be 4–8 digits.'); return; } try { await save({ pin: v }, 'PIN saved'); setHasPin(true); setPin(''); } catch {} };
+  const toggleSuspend = async () => { const next = !suspended; setSuspended(next); try { await save({ suspended: next }, next ? 'Logins suspended' : 'Logins resumed'); } catch { setSuspended(!next); } };
+  const savePin = async () => { const v = pin.trim(); if (!/^\d{4,8}$/.test(v)) { setErr('PIN must be 4–8 digits.'); return; } try { await save({ pin: v }, 'PIN saved'); setHasPin(true); } catch {} };
+  const setModeSave = async (m) => { const prev = mode; setMode(m); try { await save({ pinMode: m }, m === 'staff' ? 'Staff PIN mode' : '1-PIN mode'); } catch { setMode(prev); } };
+  const applyStaff = async (list, okMsg) => { try { const r = await save({ staff: list }, okMsg); if (r && Array.isArray(r.waiterStaff)) setStaff(r.waiterStaff.map((s) => ({ id: s.id, name: s.name }))); } catch {} };
+  const addStaff = async () => {
+    const name = nsName.trim(); const p = nsPin.trim();
+    if (!name) { setErr('Enter a staff name.'); return; }
+    if (!/^\d{4,8}$/.test(p)) { setErr('That staff PIN must be 4–8 digits.'); return; }
+    await applyStaff([...staff.map((s) => ({ id: s.id, name: s.name })), { name, pin: p }], 'Staff added');
+    setNsName(''); setNsPin('');
+  };
+  const removeStaff = async (id) => { await applyStaff(staff.filter((s) => s.id !== id).map((s) => ({ id: s.id, name: s.name })), 'Removed'); };
+  const resetStaffPin = async (id) => {
+    const p = (prompt('New 4–8 digit PIN for this staff member:') || '').replace(/\D/g, '');
+    if (!/^\d{4,8}$/.test(p)) { if (p) setErr('PIN must be 4–8 digits.'); return; }
+    await applyStaff(staff.map((s) => s.id === id ? { id: s.id, name: s.name, pin: p } : { id: s.id, name: s.name }), 'PIN reset');
+  };
   const saveTables = async () => { try { const r = await save({ tables }, 'Tables saved'); if (r && Array.isArray(r.waiterTables)) setTables(r.waiterTables.join(', ')); } catch {} };
   const loadDevices = async () => { try { const d = await api.posTerminalDevices(pass); setDevices(d.devices || []); } catch (e) { setErr(e.message); setDevices([]); } };
   const pickTerminal = async (id) => {
@@ -1297,23 +1322,60 @@ function WaiterSettings({ cfg, posLoc, multiStore, storeName, pass }) {
     const dev = (devices || []).find((d) => d.id === id);
     try { await save({ terminalDeviceId: id, terminalName: dev ? dev.name : '' }, id ? 'Waiter terminal set' : 'Waiter terminal cleared'); } catch {}
   };
-  const url = `${window.location.origin}/foh`;
+  const url = `${window.location.origin}/waiter`;
   return (
     <div className="pos-set-block pos-set-span">
       <div className="pos-set-label">Waiter mode — table service{multiStore && storeName ? ` · ${storeName}` : ''}</div>
-      <p className="pos-set-hint">A portable register your floor staff open on their own phone at <b>/foh</b>. They unlock with a short PIN (never the admin password), open a tab on a table, send items to the kitchen, then settle — full or split — on a <b>dedicated</b> card Terminal.{multiStore ? ' These settings apply to the store selected above, and each store keeps its own PIN, tables, terminal and cash/card. A waiter typing a store’s PIN lands in that store.' : ''} Cash/card availability comes from <b>Payment methods</b> above. Tip: open /foh and “Add to Home Screen” for the <b>FOH</b> app icon.</p>
+      <p className="pos-set-hint">A portable register your floor staff open on their own phone at <b>/waiter</b>. They unlock with a short PIN (never the admin password), open a tab on a table, send items to the kitchen, then settle — full or split — on a <b>dedicated</b> card Terminal.{multiStore ? ' These settings apply to the store selected above, and each store keeps its own PIN, tables, terminal and cash/card. A waiter typing a store’s PIN lands in that store.' : ''} Cash/card availability comes from <b>Payment methods</b> above. Tip: open /waiter and “Add to Home Screen” for the <b>FOH</b> app icon.</p>
       <div className="pos-set-row">
         <span className={`pos-set-status${enabled ? ' on' : ''}`}>● {enabled ? 'Waiter mode is on' : 'Waiter mode is off'}</span>
         <button className="pos-btn primary" onClick={toggle}>{enabled ? 'Turn off' : 'Turn on'}</button>
       </div>
+      {enabled && (
+        <div className="pos-set-row" style={suspended ? { background: '#fdecef', borderRadius: 10, padding: '8px 10px' } : undefined}>
+          <span className={`pos-set-status${suspended ? '' : ' on'}`} style={suspended ? { color: '#a11', fontWeight: 800 } : undefined}>{suspended ? '⛔ Logins SUSPENDED — nobody can sign in' : 'Emergency: suspend all logins here'}</span>
+          <button className="pos-btn" style={{ background: suspended ? '#2f7d55' : '#b1483f', color: '#fff' }} onClick={toggleSuspend}>{suspended ? 'Resume' : 'Suspend'}</button>
+        </div>
+      )}
 
       {enabled && (
         <>
-          <div className="pos-set-label" style={{ marginTop: 10 }}>Staff PIN {hasPin ? '· set' : '· not set yet'}</div>
-          <div className="pos-set-row" style={{ gap: 8 }}>
-            <input className="pos-set-select" inputMode="numeric" type="password" placeholder={hasPin ? 'Change PIN (4–8 digits)' : 'Set PIN (4–8 digits)'} value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 8))} style={{ flex: 1 }} />
-            <button className="pos-btn primary" disabled={pin.length < 4} onClick={savePin}>Save PIN</button>
+          <div className="pos-set-label" style={{ marginTop: 10 }}>Login</div>
+          <div className="pos-idle-opts">
+            <button type="button" className={`pos-idle-opt${mode === 'single' ? ' on' : ''}`} onClick={() => setModeSave('single')}>1 PIN (ask name)</button>
+            <button type="button" className={`pos-idle-opt${mode === 'staff' ? ' on' : ''}`} onClick={() => setModeSave('staff')}>Staff PINs</button>
           </div>
+
+          {mode === 'single' ? (
+            <>
+              <p className="pos-set-hint">One shared PIN. Each waiter types their name when they log in (two “Tim”s on a shift become Tim &amp; Tim2). The PIN is shown here so you always know it.</p>
+              <div className="pos-set-row" style={{ gap: 8 }}>
+                <input className="pos-set-select" inputMode="numeric" type="text" placeholder="Set PIN (4–8 digits)" value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 8))} style={{ flex: 1 }} />
+                <button className="pos-btn primary" disabled={pin.length < 4} onClick={savePin}>Save PIN</button>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="pos-set-hint">Each staff member has their own PIN. They log in with it and their name fills in automatically — no typing. PINs are <b>hidden</b> here so staff can’t read each other’s codes; use “Reset” to change one.</p>
+              <div className="pos-refund-list" style={{ marginTop: 4 }}>
+                {staff.length === 0 && <p className="pos-set-hint">No staff yet — add your first below.</p>}
+                {staff.map((s) => (
+                  <div key={s.id} className="pos-set-row" style={{ background: 'var(--pos-surface)', border: '1px solid var(--pos-line)', borderRadius: 10, padding: '8px 10px' }}>
+                    <span className="pos-set-status">{s.name} · PIN ••••</span>
+                    <span style={{ display: 'flex', gap: 6 }}>
+                      <button className="pos-btn ghost" onClick={() => resetStaffPin(s.id)}>Reset PIN</button>
+                      <button className="pos-btn ghost" onClick={() => removeStaff(s.id)}>Remove</button>
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <div className="pos-set-row" style={{ gap: 8, marginTop: 6 }}>
+                <input className="pos-set-select" placeholder="Staff name" value={nsName} onChange={(e) => setNsName(e.target.value)} style={{ flex: 1 }} />
+                <input className="pos-set-select" inputMode="numeric" type="text" placeholder="PIN" value={nsPin} onChange={(e) => setNsPin(e.target.value.replace(/\D/g, '').slice(0, 8))} style={{ width: 90 }} />
+                <button className="pos-btn primary" disabled={!nsName.trim() || nsPin.length < 4} onClick={addStaff}>Add</button>
+              </div>
+            </>
+          )}
 
           <div className="pos-set-label" style={{ marginTop: 10 }}>Preset tables</div>
           <p className="pos-set-hint">Tables staff can tap when opening a tab. Comma or new-line separated. They can also type a custom table or name at any time.</p>
@@ -1333,7 +1395,7 @@ function WaiterSettings({ cfg, posLoc, multiStore, storeName, pass }) {
 
           <div className="pos-set-label" style={{ marginTop: 10 }}>Open waiter mode</div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-            <button type="button" className="pos-btn ghost" onClick={() => window.open(url, '_blank', 'noopener')}>Open /foh ↗</button>
+            <button type="button" className="pos-btn ghost" onClick={() => window.open(url, '_blank', 'noopener')}>Open /waiter ↗</button>
             <button type="button" className="pos-btn ghost" onClick={() => { try { navigator.clipboard.writeText(url); } catch {} }}>Copy link</button>
             <span className="pos-set-hint" style={{ flexBasis: '100%', wordBreak: 'break-all', marginTop: 4 }}>{url}</span>
           </div>

@@ -532,6 +532,7 @@ export default function Kds({ onExit, embedded, location, onControls }) {
                   {t.posOrigin && <span className="kds-badge pos">POS</span>}
                   {unrouted && <span className="kds-badge unrouted" title="An item here didn’t match this station’s categories — check the station routing.">ALL</span>}
                   <span className={`kds-badge ${t.dineIn ? 'dinein' : 'takeaway'}`}>{t.dineIn ? (t.table ? (/^\d+$/.test(String(t.table).trim()) ? `T${t.table}` : t.table) : 'Dine-in') : 'Takeaway'}</span>
+                  {t.waiterBy && <span className="kds-badge waiter">by {t.waiterBy}</span>}
                 </div>
                 <div className={`kds-age lvl-${lvl}`}>{fmtAge(sec)}</div>
               </div>
