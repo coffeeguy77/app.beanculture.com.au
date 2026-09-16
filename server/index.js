@@ -2615,10 +2615,16 @@ app.post('/api/waiter/session/pay', async (req, res) => {
     if (tender === 'card') {
       const term = waiterTerminalFor(pos, locationId || data.locationId);
       if (!term.deviceId) return res.status(400).json({ error: 'No waiter Terminal is set. Pair one in POS setup → Waiter mode.' });
-      const checkout = await terminal.createCheckout({
-        amountMoney: { amount, currency }, deviceId: term.deviceId, orderId: order.id, referenceId: order.id,
-        note, showItemizedCart: pos.terminalShowCart === true, skipReceipt: pos.terminalSkipReceipt !== false,
-      });
+      let checkout;
+      try {
+        checkout = await terminal.createCheckout({
+          amountMoney: { amount, currency }, deviceId: term.deviceId, orderId: order.id, referenceId: order.id,
+          note, showItemizedCart: pos.terminalShowCart === true, skipReceipt: pos.terminalSkipReceipt !== false,
+        });
+      } catch (e) {
+        console.warn('[waiter] session card checkout FAILED:', 'device=' + term.deviceId, 'order=' + order.id, e.message);
+        return res.status(502).json({ error: `Could not start the card payment: ${e.message}` });
+      }
       try { await db.posPaymentUpsert({ checkoutId: checkout.id, squareOrderId: order.id, deviceId: term.deviceId, amount, status: 'waiting' }); } catch {}
       return res.json({ tender: 'card', checkoutId: checkout.id, sessionId: row.id, payerId, amount, currency, status: 'waiting', payerName: who, terminalName: term.name || 'Terminal' });
     }
