@@ -36,16 +36,26 @@ export default function PosDisplay() {
   const cds = (state && state.cds) || {};
   const ads = cds.ads || [];
   const idle = !hasOrder && status !== 'paid';
+  const [reset, setReset] = useState(0);       // bumped on a manual swipe to restart auto-rotate
+  const touch = useRef(0);
 
-  // Rotate idle adverts.
+  const nextAd = () => { if (ads.length) { setAdIdx((i) => (i + 1) % ads.length); setReset((k) => k + 1); } };
+  const prevAd = () => { if (ads.length) { setAdIdx((i) => (i - 1 + ads.length) % ads.length); setReset((k) => k + 1); } };
+
+  // Auto-rotate idle adverts (restarts whenever the customer swipes).
   useEffect(() => {
-    if (!idle || ads.length < 2) { setAdIdx(0); return; }
+    if (!idle || ads.length < 2) { setAdIdx((i) => (idle ? i : 0)); return; }
     const iv = setInterval(() => setAdIdx((i) => (i + 1) % ads.length), (cds.adIntervalSec || 6) * 1000);
     return () => clearInterval(iv);
-  }, [idle, ads.length, cds.adIntervalSec]);
+  }, [idle, ads.length, cds.adIntervalSec, reset]);
+
+  const onTouchStart = (e) => { touch.current = e.touches[0].clientX; };
+  const onTouchEnd = (e) => { const dx = e.changedTouches[0].clientX - touch.current; if (Math.abs(dx) > 45) { dx < 0 ? nextAd() : prevAd(); } };
 
   return (
-    <div className="cd-root" style={{ pointerEvents: 'none', userSelect: 'none' }}>
+    // No `pointer-events:none` — the customer can swipe the banners and scroll a
+    // long order — but there are no links/buttons, so nothing is "clickable".
+    <div className="cd-root" style={{ userSelect: 'none' }}>
       {offline && <div className="cd-offline">Reconnecting…</div>}
 
       {status === 'paid' ? (
@@ -79,17 +89,24 @@ export default function PosDisplay() {
           </div>
         </div>
       ) : ads.length > 0 ? (
-        // Idle adverts (banners flagged "Show on CDS").
+        // Idle adverts (banners flagged "Show on CDS"). Swipe to change.
         (() => {
           const ad = ads[adIdx % ads.length] || ads[0];
           return (
-            <div className="cd-ad" style={ad.image ? undefined : { background: ad.bg || 'var(--cd-bg, #16265e)' }}>
-              {ad.image && <img className="cd-ad-img" src={ad.image} alt="" />}
+            <div className="cd-ad" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd} style={ad.image ? undefined : { background: ad.bg || 'var(--cd-bg, #16265e)' }}>
+              {ad.image && <img className="cd-ad-img" src={ad.image} alt="" draggable="false" />}
               {(ad.title || ad.subtitle) && (
                 <div className="cd-ad-cap" style={{ color: ad.textColor || '#fff' }}>
                   {ad.title && <div className="cd-ad-title">{ad.title}</div>}
                   {ad.subtitle && <div className="cd-ad-sub">{ad.subtitle}</div>}
                 </div>
+              )}
+              {ads.length > 1 && (
+                <>
+                  <button className="cd-ad-nav left" onClick={prevAd} aria-label="Previous">‹</button>
+                  <button className="cd-ad-nav right" onClick={nextAd} aria-label="Next">›</button>
+                  <div className="cd-ad-dots">{ads.map((_, i) => <span key={i} className={i === (adIdx % ads.length) ? 'on' : ''} />)}</div>
+                </>
               )}
             </div>
           );
