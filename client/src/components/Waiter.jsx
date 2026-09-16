@@ -930,9 +930,9 @@ function SessionView({ api2, cfg, currency, location, sessionId, table, onOrderI
           <div className="wtr-card-h">Who’s paying for it · split {sh.mode === 'pct' ? 'by %' : 'by people'}</div>
           {parties.length === 0 && <div className="wtr-muted">No one added yet — tap “Who shares?” to set it up.</div>}
           {parties.map((p) => (
-            <div key={p.id} className="wtr-liserow">
-              <div className="wtr-lise-info"><div className="wtr-lise-name">{p.name}</div><div className="wtr-muted">{sh.mode === 'pct' ? `${p.weight}%` : `${p.weight} ${p.weight === 1 ? 'person' : 'people'}`}{p.ref ? '' : ' · guest'}</div></div>
-              <div className="wtr-lise-amt">{formatMoney(p.amount, cur)}{!p.ref && p.paid ? ' ✓' : ''}</div>
+            <div key={p.id} className={`wtr-liserow ${p.paid ? 'paid' : ''}`}>
+              <div className="wtr-lise-info"><div className={`wtr-lise-name ${p.paid ? 'wtr-strike' : ''}`}>{p.name}</div><div className="wtr-muted">{sh.mode === 'pct' ? `${p.weight}%` : `${p.weight} ${p.weight === 1 ? 'person' : 'people'}`}{p.ref ? '' : ' · guest'}</div></div>
+              <div className="wtr-lise-amt">{p.paid && <span className="wtr-paidbadge">PAID</span>}<span className={p.paid ? 'wtr-strike' : ''}>{formatMoney(p.amount, cur)}</span></div>
             </div>
           ))}
         </div>
@@ -994,9 +994,9 @@ function SessionView({ api2, cfg, currency, location, sessionId, table, onOrderI
               ))}
               <div className="wtr-card-h" style={{ marginTop: 8, fontSize: 12 }}>Split between</div>
               {(sh.parties || []).map((pp) => (
-                <div key={pp.id} className={`wtr-liserow ${pp.id === party.id ? 'wtr-mine' : ''}`}>
-                  <div className="wtr-lise-info"><div className="wtr-lise-name">{pp.name}{pp.id === party.id ? ' (this group)' : ''}</div><div className="wtr-muted">{sh.mode === 'pct' ? `${pp.weight}%` : `${pp.weight} ${pp.weight === 1 ? 'person' : 'people'}`}{pp.ref ? '' : ' · guest'}</div></div>
-                  <div className="wtr-lise-amt">{formatMoney(pp.amount, cur)}</div>
+                <div key={pp.id} className={`wtr-liserow ${pp.id === party.id ? 'wtr-mine' : ''} ${pp.paid ? 'paid' : ''}`}>
+                  <div className="wtr-lise-info"><div className={`wtr-lise-name ${pp.paid ? 'wtr-strike' : ''}`}>{pp.name}{pp.id === party.id ? ' (this group)' : ''}</div><div className="wtr-muted">{sh.mode === 'pct' ? `${pp.weight}%` : `${pp.weight} ${pp.weight === 1 ? 'person' : 'people'}`}{pp.ref ? '' : ' · guest'}</div></div>
+                  <div className="wtr-lise-amt">{pp.paid && <span className="wtr-paidbadge">PAID</span>}<span className={pp.paid ? 'wtr-strike' : ''}>{formatMoney(pp.amount, cur)}</span></div>
                 </div>
               ))}
             </div>
@@ -1057,9 +1057,9 @@ function SessionView({ api2, cfg, currency, location, sessionId, table, onOrderI
           </div>
           {/* Ad-hoc guests on this shared tab pay their own share */}
           {(sh.parties || []).filter((p) => !p.ref).map((p) => (
-            <div key={p.id} className="wtr-adhoc">
-              <span>{p.name} · {formatMoney(p.amount, cur)}{p.paidAmount > 0 && !p.paid ? ` (${formatMoney(p.remaining, cur)} left)` : ''}</span>
-              {p.paid ? <span className="wtr-pctpaid">✓</span> : (
+            <div key={p.id} className={`wtr-adhoc ${p.paid ? 'paid' : ''}`}>
+              <span className={p.paid ? 'wtr-strike' : ''}>{p.name} · {formatMoney(p.amount, cur)}{p.paidAmount > 0 && !p.paid ? ` (${formatMoney(p.remaining, cur)} left)` : ''}</span>
+              {p.paid ? <span className="wtr-paidbadge">PAID</span> : (
                 <button className="wtr-mini" disabled={busy || p.remaining <= 0} onClick={() => openPay(p.id, p.name, p.remaining)}>Pay</button>
               )}
             </div>
@@ -1355,6 +1355,10 @@ function WaiterStyle() {
     .wtr-pctbtns{display:flex;gap:4px}
     .wtr-pctbtns button{border:1px solid var(--brand,#7a2e57);color:var(--brand,#7a2e57);background:var(--surface,#fff);border-radius:8px;padding:8px 10px;font-weight:800;font-size:12px;cursor:pointer}
     .wtr-pctpaid{color:#276b3a;font-weight:800;font-size:13px}
+    .wtr-paidbadge{display:inline-block;background:#276b3a;color:#fff;border-radius:999px;padding:2px 8px;font-size:11px;font-weight:800;letter-spacing:.03em;margin-right:6px;vertical-align:middle}
+    .wtr-strike{text-decoration:line-through;opacity:.55}
+    .wtr-adhoc.paid{opacity:.75}
+    .wtr-liserow.paid .wtr-lise-amt{white-space:nowrap}
     .wtr-mini{border:1px solid var(--line,#e7dfe4);background:var(--bg,#fff);border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;color:inherit}
     .wtr-addrow{align-self:flex-start}
     .wtr-warn{background:#fff6e6;color:#8a5a00;border-radius:8px;padding:6px 10px;font-size:12px}
