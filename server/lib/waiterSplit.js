@@ -120,13 +120,27 @@ function computeSession(overlay, order) {
     };
   });
 
+  // Reflect a fully-settled group onto its parties inside shared tabs — a group
+  // settles as one lump (covering its shares), so once it's paid, its slice of a
+  // shared tab should read as paid in the breakdown too.
+  const groupPaidMap = {};
+  for (const g of groupsOut) groupPaidMap[g.id] = g.paid;
+  for (const sh of sharedOut) for (const p of (sh.parties || [])) if (p.ref) p.paid = !!groupPaidMap[p.ref];
+
   // Items not assigned to any tab yet — must be handled before the tab is settled.
   const assignedIds = new Set([...groups.map((g) => g.id), ...shared.map((s) => s.id)]);
   const unassignedTotal = lineItems.reduce((s, li) => s + (assignedIds.has(assign[li.uid]) ? 0 : ((li.total_money && li.total_money.amount) || 0)), 0);
 
   const total = (order && order.total_money && order.total_money.amount) || 0;
   const tenders = (order && order.tenders) || [];
-  const paidAmount = tenders.reduce((s, t) => s + ((t.amount_money && t.amount_money.amount) || 0), 0);
+  const tenderPaid = tenders.reduce((s, t) => s + ((t.amount_money && t.amount_money.amount) || 0), 0);
+  // Partial split payments (cash or card) are now taken as STANDALONE captures, so
+  // they aren't Square tenders — the running total each payer has paid lives in the
+  // overlay (paidByPayer). Sum what every payer has paid: groups (which also cover
+  // their group-ref shares) plus ad-hoc shared guests. Fall back to tenders for a
+  // table settled in one linked full payment, whichever is greater (never both).
+  const collected = groupsOut.reduce((s, g) => s + (g.paidAmount || 0), 0) + adhoc.reduce((s, a) => s + (a.paidAmount || 0), 0);
+  const paidAmount = Math.min(total, Math.max(tenderPaid, collected));
 
   return {
     currency, total, paid: paidAmount, remaining: Math.max(0, total - paidAmount),
