@@ -1317,6 +1317,10 @@ function WaiterSettings({ cfg, posLoc, multiStore, storeName, pass }) {
   };
   const saveTables = async () => { try { const r = await save({ tables }, 'Tables saved'); if (r && Array.isArray(r.waiterTables)) setTables(r.waiterTables.join(', ')); } catch {} };
   const loadDevices = async () => { try { const d = await api.posTerminalDevices(pass); setDevices(d.devices || []); } catch (e) { setErr(e.message); setDevices([]); } };
+  // Load the reader list as soon as the panel opens so the saved waiter terminal
+  // shows selected in the dropdown — otherwise it reset to "Choose a terminal"
+  // every time, which looked like the choice hadn't saved (it had).
+  useEffect(() => { loadDevices(); /* eslint-disable-next-line */ }, []);
   const pickTerminal = async (id) => {
     setTermId(id);
     const dev = (devices || []).find((d) => d.id === id);
@@ -1389,6 +1393,9 @@ function WaiterSettings({ cfg, posLoc, multiStore, storeName, pass }) {
           ) : (
             <select className="pos-set-select" value={termId} onChange={(e) => pickTerminal(e.target.value)}>
               <option value="">— None (card at table off) —</option>
+              {termId && !devices.some((d) => d.id === termId) && (
+                <option value={termId}>{(perLoc && perLoc.name) || cfg.waiterTerminalName || 'Saved terminal'} · offline?</option>
+              )}
               {devices.map((d) => <option key={d.id} value={d.id}>{d.name}{d.status ? ` · ${d.status}` : ''}</option>)}
             </select>
           )}
