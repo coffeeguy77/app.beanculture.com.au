@@ -18,6 +18,7 @@ import ThemePicker from './components/ThemePicker.jsx';
 import Admin from './components/Admin.jsx';
 import Kds from './components/Kds.jsx';
 import Pos from './components/Pos.jsx';
+import Waiter from './components/Waiter.jsx';
 import LiveOrderStatus from './components/LiveOrderStatus.jsx';
 import ActiveOrderTracker, { saveActiveOrder } from './components/ActiveOrderTracker.jsx';
 import { BirthdayOverlay } from './components/Birthday.jsx';
@@ -458,6 +459,7 @@ export default function App() {
     if (p === '/admin') setView('admin');
     else if (p === '/kds' || p === '/bump') setView('kds');
     else if (p === '/pos') setView('pos');
+    else if (p === '/waiter') setView('waiter');
   }, []);
 
   // Pay It Forward claim deep link: /gift/:token
@@ -996,6 +998,8 @@ export default function App() {
   if (view === 'kds') return <Kds onExit={() => { window.history.pushState({}, '', '/'); setView('home'); }} />;
 
   if (view === 'pos') return <Pos onExit={() => { window.history.pushState({}, '', '/'); setView('home'); }} />;
+
+  if (view === 'waiter') return <Waiter onExit={() => { window.history.pushState({}, '', '/'); setView('home'); }} />;
 
   if (view === 'gift' && giftToken) {
     return (
