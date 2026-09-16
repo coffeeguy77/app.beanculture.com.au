@@ -510,11 +510,15 @@ async function createCashPayment({ orderId, amountMoney, buyerSuppliedMoney, squ
     source_id: 'CASH',
     idempotency_key: idem(),
     amount_money: amountMoney,
-    order_id: orderId,
     location_id: squareLocationId || LOCATION_ID,
     autocomplete: true,
     cash_details: { buyer_supplied_money: buyerSuppliedMoney || amountMoney },
   };
+  // Link to the order ONLY when caller passes one. Square rejects a linked+
+  // autocompleted payment that is less than the order total (ORDER_TOTAL_MISMATCH),
+  // so a partial split cash payment is taken standalone (no order_id) and
+  // reconciled by the app, exactly like a partial card capture.
+  if (orderId) body.order_id = orderId;
   // A split-bill payer's name, so "who paid what" is legible on the payment/receipt.
   if (note) body.note = String(note).slice(0, 500);
   const data = await squareFetch('/v2/payments', { method: 'POST', body });

@@ -49,24 +49,24 @@ async function listDevices() {
 // amountMoney: { amount, currency }; deviceId: paired reader; orderId associates
 // the resulting payment with our Square order so it reads as paid + reconciles.
 async function createCheckout({ amountMoney, deviceId, orderId, referenceId, note, showItemizedCart, skipReceipt }) {
+  const device_options = {
+    device_id: deviceId,
+    // Skip the post-payment receipt screen so the Terminal returns to ready
+    // straight after the tap, instead of hanging on Print / No receipt. Skipped
+    // by default; a POS setting can turn the receipt prompt back on.
+    skip_receipt_screen: skipReceipt !== false,
+    collect_signature: false,
+  };
+  // The Terminal's "confirm & pay" itemisation screen. Square ONLY allows this
+  // option when the checkout is linked to an order — sending it on an unlinked
+  // (partial / split) checkout is rejected outright — so only set it when we have
+  // an order to link. Off by default; a POS setting turns it on.
+  if (orderId) device_options.show_itemized_cart = showItemizedCart === true;
   const checkout = {
     amount_money: amountMoney,
     reference_id: (referenceId || '').slice(0, 40) || undefined,
     note: (note || 'Bean Culture POS').slice(0, 500),
-    device_options: {
-      device_id: deviceId,
-      // Skip the post-payment receipt screen so the Terminal returns to ready
-      // straight after the tap, instead of hanging on Print / No receipt. Skipped
-      // by default; a POS setting can turn the receipt prompt back on.
-      skip_receipt_screen: skipReceipt !== false,
-      collect_signature: false,
-      // The Terminal's "confirm & pay" itemisation screen. Defaults to TRUE in
-      // Square (only when an order is linked). Off by default here so pressing
-      // Charge jumps straight to the amount + tap prompt; a POS setting turns the
-      // customer-facing confirm screen back on. (Belongs in device_options — the
-      // old bug was setting it at the top level, which Square rejects.)
-      show_itemized_cart: showItemizedCart === true,
-    },
+    device_options,
     deadline_duration: 'PT5M', // customer has 5 minutes to tap/insert
   };
   // Associate the payment with our Square order so it reconciles.
