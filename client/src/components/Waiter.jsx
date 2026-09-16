@@ -671,7 +671,7 @@ function Split({ api2, cfg, currency, location, ctx, setErr, onDone, onBack }) {
     if (!(amt > 0)) { setErr('Nothing to pay for that.'); return false; }
     setBusy(true); setErr('');
     try {
-      const d = await api2.pay({ tabId: ctx.tabId, amount: amt, tender, payerName: who || '', cashGiven, locationId: location });
+      const d = await api2.pay({ tabId: ctx.tabId, amount: amt, tender, payerName: who || '', cashGiven, lineUids: markUids || [], locationId: location });
       if (tender === 'card' && d.checkoutId) { setCard({ ...d }); const ok = await cardPoll.wait(d.checkoutId); setCard(null); if (!ok) { await load(); return false; } }
       if (markUids && markUids.length) setSettledUids((s) => { const n = new Set(s); markUids.forEach((u) => n.add(u)); return n; });
       const fresh = await api2.tab(ctx.tabId);
@@ -733,11 +733,14 @@ function Split({ api2, cfg, currency, location, ctx, setErr, onDone, onBack }) {
 function SplitByItem({ tab, cur, settledUids, busy, hasTerminal, payments, onPay }) {
   const [ticked, setTicked] = useState(() => new Set());
   const [who, setWho] = useState('');
-  const avail = tab.items.filter((it) => !settledUids.has(it.uid || it.name));
   const key = (it) => it.uid || it.name;
+  // An item is paid if the server says so (persisted, survives reload) OR it was
+  // just settled on this device (instant feedback before the refetch lands).
+  const isPaid = (it) => it.paid || settledUids.has(key(it));
   const toggle = (it) => setTicked((s) => { const n = new Set(s); const k = key(it); n.has(k) ? n.delete(k) : n.add(k); return n; });
-  const selected = avail.filter((it) => ticked.has(key(it)));
+  const selected = tab.items.filter((it) => !isPaid(it) && ticked.has(key(it)));
   const amount = Math.min(selected.reduce((s, it) => s + it.amount, 0), tab.remaining);
+  const allPaid = tab.items.length > 0 && tab.items.every(isPaid);
 
   const pay = async (tender, cashGiven) => {
     const ok = await onPay({ amount, who, tender, cashGiven, markUids: [...ticked] });
@@ -746,10 +749,17 @@ function SplitByItem({ tab, cur, settledUids, busy, hasTerminal, payments, onPay
 
   return (
     <div className="wtr-card">
-      <div className="wtr-card-h">Tick what they're paying for</div>
+      <div className="wtr-card-h">Tick what they’re paying for</div>
       <div className="wtr-itemlist">
-        {avail.length === 0 && <div className="wtr-muted">All items assigned. {tab.remaining > 0 ? 'Use another method for the rest.' : 'All paid!'}</div>}
-        {avail.map((it) => (
+        {tab.items.length === 0 && <div className="wtr-muted">No items on this tab.</div>}
+        {allPaid && <div className="wtr-paidnote">All items paid.</div>}
+        {tab.items.map((it) => isPaid(it) ? (
+          <div key={key(it)} className="wtr-tickrow wtr-itempaid">
+            <span className="wtr-paidbadge">PAID</span>
+            <div className="wtr-iteminfo"><div className="wtr-strike">{it.quantity}× {it.name}</div><div className="wtr-muted">{it.paidBy ? `by ${it.paidBy}` : ''}{it.paidBy && it.paidTender ? ' · ' : ''}{it.paidTender || ''}</div></div>
+            <div className="wtr-itemamt wtr-strike">{formatMoney(it.amount, cur)}</div>
+          </div>
+        ) : (
           <label key={key(it)} className="wtr-tickrow">
             <input type="checkbox" checked={ticked.has(key(it))} onChange={() => toggle(it)} />
             <div className="wtr-iteminfo"><div>{it.quantity}× {it.name}</div><div className="wtr-muted">{subParts(it.name, it.variation, it.modifiers).join(' · ')}</div></div>
@@ -757,8 +767,10 @@ function SplitByItem({ tab, cur, settledUids, busy, hasTerminal, payments, onPay
           </label>
         ))}
       </div>
-      <input className="wtr-input" placeholder="Name on this payment (optional)" value={who} onChange={(e) => setWho(e.target.value)} />
-      <PayRow amount={amount} cur={cur} busy={busy} hasTerminal={hasTerminal} payments={payments} onPay={pay} disabled={amount <= 0} />
+      {!allPaid && <>
+        <input className="wtr-input" placeholder="Name on this payment (optional)" value={who} onChange={(e) => setWho(e.target.value)} />
+        <PayRow amount={amount} cur={cur} busy={busy} hasTerminal={hasTerminal} payments={payments} onPay={pay} disabled={amount <= 0} />
+      </>}
     </div>
   );
 }
@@ -1390,6 +1402,8 @@ function WaiterStyle() {
     .wtr-pctpaid{color:#276b3a;font-weight:800;font-size:13px}
     .wtr-paidbadge{display:inline-block;background:#276b3a;color:#fff;border-radius:999px;padding:2px 8px;font-size:11px;font-weight:800;letter-spacing:.03em;margin-right:6px;vertical-align:middle}
     .wtr-strike{text-decoration:line-through;opacity:.55}
+    .wtr-itempaid{opacity:.9;align-items:center;gap:8px}
+    .wtr-itempaid .wtr-paidbadge{flex:none}
     .wtr-adhoc.paid{opacity:.75}
     .wtr-liserow.paid .wtr-lise-amt{white-space:nowrap}
     .wtr-mini{border:1px solid var(--line,#e7dfe4);background:var(--bg,#fff);border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;color:inherit}
