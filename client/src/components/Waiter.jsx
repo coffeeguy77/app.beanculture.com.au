@@ -652,8 +652,9 @@ function Settle({ api2, cfg, currency, location, ctx, setErr, onSplit, onDone, o
 // ── Split workspace: by item / even / percentage ─────────────────────────────
 function Split({ api2, cfg, currency, location, ctx, setErr, onDone, onBack }) {
   const [tab, setTab] = useState(null);
-  const [method, setMethod] = useState('item');       // item | even | pct
+  const [method, setMethod] = useState('item');       // item | even | pct | custom
   const [settledUids, setSettledUids] = useState(() => new Set());
+  const [payOpen, setPayOpen] = useState(false);      // custom-amount pay dialog
   const [card, setCard] = useState(null);
   const [busy, setBusy] = useState(false);
   const cardPoll = useCardPoll(api2, ctx.tabId, location, setErr);
@@ -705,7 +706,7 @@ function Split({ api2, cfg, currency, location, ctx, setErr, onDone, onBack }) {
       )}
 
       <div className="wtr-methods">
-        {[['item', 'By item'], ['even', 'Even split'], ['pct', 'Percentage']].map(([k, label]) => (
+        {[['item', 'By item'], ['even', 'Even split'], ['pct', 'Percentage'], ['custom', 'Custom']].map(([k, label]) => (
           <button key={k} className={`wtr-method ${method === k ? 'on' : ''}`} onClick={() => setMethod(k)}>{label}</button>
         ))}
       </div>
@@ -713,6 +714,15 @@ function Split({ api2, cfg, currency, location, ctx, setErr, onDone, onBack }) {
       {method === 'item' && <SplitByItem tab={tab} cur={cur} settledUids={settledUids} busy={busy} hasTerminal={cfg.hasTerminal} payments={cfg.payments} onPay={takePayment} />}
       {method === 'even' && <SplitEven tab={tab} cur={cur} busy={busy} hasTerminal={cfg.hasTerminal} payments={cfg.payments} onPay={takePayment} />}
       {method === 'pct' && <SplitPct tab={tab} cur={cur} busy={busy} hasTerminal={cfg.hasTerminal} payments={cfg.payments} onPay={takePayment} />}
+      {method === 'custom' && (
+        <div className="wtr-card">
+          <div className="wtr-card-h">Custom amount</div>
+          <p className="wtr-muted">Take any amount toward this table — type the amount, choose cash or card, and (for cash) tap the note handed over to get the change.</p>
+          <button className="wtr-primary" disabled={tab.remaining <= 0} onClick={() => setPayOpen(true)}>Choose amount &amp; pay · {formatMoney(tab.remaining, cur)} left</button>
+        </div>
+      )}
+
+      {payOpen && <PayDialog target={{ payerId: '', name: `Table ${tab.table || ctx.table}`, remaining: tab.remaining }} cur={cur} busy={busy} hasTerminal={cfg.hasTerminal} payments={cfg.payments} onCancel={() => setPayOpen(false)} onPay={async ({ amount, tender }) => { setPayOpen(false); await takePayment({ amount, who: '', tender }); }} />}
 
       <button className="wtr-ghost wtr-back" onClick={onBack}>‹ Back</button>
     </div>
@@ -1101,23 +1111,26 @@ function PayDialog({ target, cur, busy, hasTerminal, cashOnly, payments, onCance
   const cashOk = pay.cash;
   const [tender, setTender] = useState(cashOnly ? 'cash' : (cardOk ? 'card' : 'cash'));
   const [amtStr, setAmtStr] = useState(((target.remaining || 0) / 100).toFixed(2));
-  const [givenStr, setGivenStr] = useState('');
+  const [givenC, setGivenC] = useState(0);           // cash received, in cents (keypad builds it)
   const amount = cashOnly ? target.remaining : Math.round((parseFloat(amtStr) || 0) * 100);
-  const given = Math.round((parseFloat(givenStr) || 0) * 100);
-  const overMax = amount > target.remaining;
-  const change = tender === 'cash' && given > 0 ? Math.max(0, given - amount) : 0;
+  const overMax = !cashOnly && amount > target.remaining;
+  const change = Math.max(0, givenC - amount);
+  const short = tender === 'cash' && givenC > 0 && givenC < amount;
   const partial = !cashOnly && amount > 0 && amount < target.remaining;
-  const go = () => onPay({ amount, tender, cashGiven: tender === 'cash' ? given || amount : undefined });
-  // Cash quick-tender: Exact, plus the round notes at or above the amount.
-  const presets = (() => {
-    const out = [{ label: 'Exact', v: amount }];
-    for (const note of [5, 10, 20, 50, 100, 200]) { const c = note * 100; if (c >= amount) out.push({ label: `$${note}`, v: c }); }
-    return out.slice(0, 6);
-  })();
+  const go = () => onPay({ amount, tender, cashGiven: tender === 'cash' ? (givenC || amount) : undefined });
+  // Cash quick-tender: Exact, then the AUD notes AT OR ABOVE the amount — the next
+  // notes a customer would hand over. Capped at $100 (never suggest $200), and no
+  // note smaller than the bill (they can't cover it). $9 → Exact,$10,$20,$50,$100.
+  const notes = [5, 10, 20, 50, 100].map((n) => n * 100).filter((c) => c >= amount);
+  const quick = [{ label: 'Exact', v: amount }, ...notes.map((c) => ({ label: `$${c / 100}`, v: c }))];
+  const keyIn = (d) => setGivenC((c) => Math.min(c * 10 + d, 99999999));
+  const key00 = () => setGivenC((c) => Math.min(c * 100, 99999999));
+  const back = () => setGivenC((c) => Math.floor(c / 10));
   const showToggle = !cashOnly && cardOk && cashOk;
   return (
     <div className="wtr-scrim" onClick={onCancel}>
       <div className="wtr-dialog" onClick={(e) => e.stopPropagation()}>
+        <button className="wtr-dialog-x" onClick={onCancel} aria-label="Close"><IconX s={18} /></button>
         <div className="wtr-card-h">{cashOnly ? 'Cash' : 'Pay'} · {target.name}</div>
         <div className="wtr-muted">{formatMoney(target.remaining, cur)} {cashOnly ? 'to pay' : 'left on this tab'}.</div>
         {showToggle && (
@@ -1138,17 +1151,29 @@ function PayDialog({ target, cur, busy, hasTerminal, cashOnly, payments, onCance
         {overMax && <div className="wtr-warn">That’s more than the {formatMoney(target.remaining, cur)} left.</div>}
         {tender === 'cash' && (
           <>
-            <label className="wtr-fieldlabel">Cash received (for change)</label>
+            <label className="wtr-fieldlabel">Cash received</label>
             <div className="wtr-chips">
-              {presets.map((p, i) => <button key={i} className={`wtr-chip ${given === p.v ? 'on' : ''}`} onClick={() => setGivenStr((p.v / 100).toFixed(2))}>{p.label}</button>)}
+              {quick.map((p, i) => <button key={i} className={`wtr-chip ${givenC === p.v ? 'on' : ''}`} onClick={() => setGivenC(p.v)}>{p.label}</button>)}
             </div>
-            <input className="wtr-input" inputMode="decimal" placeholder="Or type the exact amount handed over" value={givenStr} onChange={(e) => setGivenStr(e.target.value.replace(/[^\d.]/g, ''))} />
-            {given > 0 && <div className="wtr-changeline">Change: <b>{formatMoney(change, cur)}</b> <span className="wtr-muted">(paid {formatMoney(given, cur)} for {formatMoney(amount, cur)})</span></div>}
+            <div className="wtr-cashshow">
+              <span className="wtr-muted">Received</span>
+              <b>{formatMoney(givenC, cur)}</b>
+              {givenC > 0 && <button className="wtr-cashclear" onClick={() => setGivenC(0)} aria-label="Clear cash"><IconX s={15} /></button>}
+            </div>
+            <div className="wtr-pad wtr-cashpad">
+              {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => <button key={n} onClick={() => keyIn(n)}>{n}</button>)}
+              <button onClick={key00}>00</button>
+              <button onClick={() => keyIn(0)}>0</button>
+              <button className="wtr-pad-min" onClick={back} aria-label="Backspace">⌫</button>
+            </div>
+            {givenC > 0 && (short
+              ? <div className="wtr-warn">Short by {formatMoney(amount - givenC, cur)} — add more or Clear.</div>
+              : <div className="wtr-changeline">Change: <b>{formatMoney(change, cur)}</b> <span className="wtr-muted">(received {formatMoney(givenC, cur)} for {formatMoney(amount, cur)})</span></div>)}
           </>
         )}
         <div className="wtr-payrow">
           <button className="wtr-secondary" onClick={onCancel}>Cancel</button>
-          <button className="wtr-primary" disabled={busy || amount <= 0 || overMax || (tender === 'card' && !cardOk)} onClick={go}>
+          <button className="wtr-primary" disabled={busy || amount <= 0 || overMax || short || (tender === 'card' && !cardOk)} onClick={go}>
             {tender === 'card' ? 'Charge card' : 'Take cash'} · {formatMoney(amount, cur)}
           </button>
         </div>
@@ -1389,6 +1414,13 @@ function WaiterStyle() {
     @media(min-width:520px){.wtr-scrim{align-items:center}.wtr-dialog{border-radius:16px}}
     .wtr-fieldlabel{font-size:12px;font-weight:700;color:var(--muted,#8a8189);margin-top:2px}
     .wtr-changeline{background:#eef7ef;color:#276b3a;border-radius:8px;padding:8px 10px;font-size:14px}
+    .wtr-dialog-x{position:absolute;top:10px;right:12px;width:34px;height:34px;border:0;background:none;color:var(--muted,#8a8189);display:flex;align-items:center;justify-content:center;cursor:pointer;border-radius:8px}
+    .wtr-dialog{position:relative}
+    .wtr-cashshow{display:flex;align-items:center;gap:10px;background:var(--bg,#faf7f8);border-radius:10px;padding:10px 12px;font-size:18px}
+    .wtr-cashshow b{margin-left:auto;font-size:22px}
+    .wtr-cashclear{margin-left:0;width:30px;height:30px;border:1px solid var(--line,#e7dfe4);background:var(--surface,#fff);border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:inherit}
+    .wtr-cashpad{grid-template-columns:repeat(3,1fr);gap:8px;margin-top:2px}
+    .wtr-cashpad button{height:52px;border-radius:12px;font-size:20px}
     .wtr-iconbtn{display:inline-flex;align-items:center;justify-content:center}
     .wtr-pay-i{display:inline-flex}
     /* Menu list view (no image tiles) */
