@@ -273,6 +273,22 @@ async function init(attempt = 1) {
     await pool.query('CREATE INDEX IF NOT EXISTS waiter_sessions_sqid ON waiter_sessions (square_order_id)');
     await pool.query('CREATE INDEX IF NOT EXISTS waiter_sessions_updated ON waiter_sessions (updated_at)');
 
+    // Open tables: a table is "taken" the moment a waiter opens it, before any
+    // order is sent, so the floor can see it's occupied. It stays listed (even
+    // with no active order) until a waiter explicitly closes it.
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS waiter_open_tables (
+        id text primary key,
+        location text default '',
+        table_label text,
+        mode text default 'together',
+        session_id text,
+        opened_by text,
+        created_at timestamptz default now()
+      )
+    `);
+    await pool.query('CREATE INDEX IF NOT EXISTS waiter_open_loc ON waiter_open_tables (location)');
+
     // Versioned backups of the settings blob. Every save snapshots the PREVIOUS
     // settings here before overwriting, so a bad/partial save can always be
     // rolled back (this is the safety net behind the admin "Backups" panel).
@@ -1163,6 +1179,31 @@ async function waiterSessionByOrder(squareOrderId) {
   return r.rows[0] || null;
 }
 
+// ── Open tables (occupied markers) ──
+async function openTableUpsert({ location, tableLabel, mode, sessionId, openedBy }) {
+  if (!pool) return null;
+  const loc = location || '';
+  // One entry per (location, table): reopening a table doesn't duplicate it.
+  const ex = await pool.query('SELECT * FROM waiter_open_tables WHERE location = $1 AND lower(table_label) = lower($2) LIMIT 1', [loc, tableLabel || '']);
+  if (ex.rows[0]) {
+    const r = await pool.query('UPDATE waiter_open_tables SET mode = COALESCE($2, mode), session_id = COALESCE($3, session_id) WHERE id = $1 RETURNING *', [ex.rows[0].id, mode || null, sessionId || null]);
+    return r.rows[0];
+  }
+  const id = require('crypto').randomUUID();
+  const r = await pool.query('INSERT INTO waiter_open_tables (id, location, table_label, mode, session_id, opened_by) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *', [id, loc, tableLabel || '', mode || 'together', sessionId || null, openedBy || '']);
+  return r.rows[0];
+}
+async function openTablesList(location) {
+  if (!pool) return [];
+  const r = await pool.query('SELECT * FROM waiter_open_tables WHERE location = $1 ORDER BY created_at ASC', [location || '']);
+  return r.rows;
+}
+async function openTableClose(id) {
+  if (!pool) return null;
+  await pool.query('DELETE FROM waiter_open_tables WHERE id = $1', [id]);
+  return true;
+}
+
 module.exports = {
   init, getOverrides, saveOverrides, listSettingsBackups, restoreSettingsBackup,
   kdsGetStates, kdsSetStatus, kdsNotify, kdsMarkPaid, kdsGetPaid,
@@ -1170,6 +1211,7 @@ module.exports = {
   birthdayRedeemedThisYear, birthdayClaim, birthdayUnclaim, birthdayRedeemedSet,
   posRecordOrder, posPaymentUpsert, posPaymentSetStatus, posPaymentGet, posPaymentByOrder,
   waiterSessionUpsert, waiterSessionGet, waiterSessionByOrder,
+  openTableUpsert, openTablesList, openTableClose,
   insertScheduled, listScheduledByCustomer, cancelScheduled, claimDue, updateScheduled,
   track, getAnalytics,
   insertMessage, listMessages, markMessageHandled, deleteMessage,
