@@ -466,12 +466,21 @@ const DEFAULTS = {
     //    settle later. Gated by its own short PIN so a roaming phone never holds
     //    the admin password. The waiter Terminal is deliberately separate from
     //    the counter POS reader so the two never fight over one device.
+    // These are the GLOBAL defaults / fallback. Each store can override any of
+    // them via the *ByLocation maps below (Admin → POS → Waiter mode, per store),
+    // so a cafe and a Tulip Farm each run their own waiter setup. A store with no
+    // override inherits the global value.
     waiterEnabled: false,
     waiterPin: '',                 // 4–8 digit PIN staff type to open waiter mode
     waiterTables: [],              // preset table labels to tap, e.g. ['1','2','Courtyard 3']
     waiterTerminalDeviceId: '',    // the dedicated second reader for table service
     waiterTerminalName: '',        // friendly name of that reader
     waiterTerminalByLocation: {},  // per-store waiter readers: { [locationId]: { deviceId, name } }
+    // Per-store overrides. A store's PIN also SELECTS that store at login: a
+    // waiter typing the Tulip Farm PIN lands in the Tulip Farm.
+    waiterEnabledByLocation: {},   // { [locationId]: true|false }
+    waiterPinByLocation: {},       // { [locationId]: '1234' }
+    waiterTablesByLocation: {},    // { [locationId]: ['1','2',...] }
   },
   // ── Smart Campaigns: contextual merchandising driven by rules (Weather first;
   //    future: time, holidays, stock, loyalty…). A single server-side resolver
