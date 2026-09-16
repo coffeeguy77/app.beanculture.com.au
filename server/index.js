@@ -2369,17 +2369,29 @@ app.get('/api/waiter/tab/:id', async (req, res) => {
     try { if (db.enabled) captures = await db.posPaymentsPaidForOrder(order.id); } catch {}
     const capturePaid = captures.reduce((s, c) => s + (Number(c.amount) || 0), 0);
     const paid = Math.min(total, tenderPaid + capturePaid);
+    // Which line items have been paid, and by whom — from the uids each "by item"
+    // capture recorded — so the item split view keeps them marked across reloads.
+    const paidByUid = {};
+    for (const c of captures) {
+      for (const u of String(c.line_uids || '').split(',').filter(Boolean)) {
+        if (!paidByUid[u]) paidByUid[u] = { name: (c.note || '').replace(/^Split:\s*/i, '') || '', tender: (c.tender || '').toLowerCase() };
+      }
+    }
     res.json({
       tabId: order.id,
       state: order.state,
       table: (order.metadata && order.metadata.bc_booth) || order.ticket_name || '',
       total, paid, remaining: Math.max(0, total - paid),
       currency: (order.total_money && order.total_money.currency) || sq.CURRENCY,
+      paidUids: Object.keys(paidByUid),
       items: (order.line_items || []).map((li) => ({
         uid: li.uid || '', name: li.name || 'Item', variation: li.variation_name || '',
         quantity: li.quantity || '1',
         amount: (li.total_money && li.total_money.amount) || 0,
         modifiers: (li.modifiers || []).map((m) => m.name).filter(Boolean),
+        paid: !!paidByUid[li.uid || ''],
+        paidBy: (paidByUid[li.uid || ''] && paidByUid[li.uid || ''].name) || '',
+        paidTender: (paidByUid[li.uid || ''] && paidByUid[li.uid || ''].tender) || '',
       })),
       payments: [
         ...tenders.map((t) => ({
@@ -2408,6 +2420,7 @@ app.post('/api/waiter/tab/pay', async (req, res) => {
   if (!pos) return res.status(401).json({ error: 'Wrong PIN, or waiter mode is off.' });
   try {
     const { tabId, amount, tender, cashGiven, payerName, locationId } = req.body || {};
+    const lineUids = Array.isArray(req.body && req.body.lineUids) ? req.body.lineUids.filter(Boolean).map(String) : [];
     if (!tabId) return res.status(400).json({ error: 'Missing tab.' });
     if (!['cash', 'card'].includes(tender)) return res.status(400).json({ error: 'Choose cash or card.' });
     { const pm = paymentsFor(pos, locationId); if (tender === 'cash' && !pm.cash) return res.status(400).json({ error: 'Cash is turned off for this store.' }); if (tender === 'card' && !pm.card) return res.status(400).json({ error: 'Card is turned off for this store.' }); }
@@ -2442,7 +2455,7 @@ app.post('/api/waiter/tab/pay', async (req, res) => {
           amountMoney: { amount: want, currency }, deviceId: term.deviceId, orderId: linkOrder ? tabId : undefined, referenceId: tabId,
           note, showItemizedCart: pos.terminalShowCart === true, skipReceipt: pos.terminalSkipReceipt !== false,
         });
-        try { await db.posPaymentUpsert({ checkoutId: checkout.id, squareOrderId: tabId, deviceId: term.deviceId, amount: want, status: 'waiting', note: who, tender: 'card' }); } catch {}
+        try { await db.posPaymentUpsert({ checkoutId: checkout.id, squareOrderId: tabId, deviceId: term.deviceId, amount: want, status: 'waiting', note: who, tender: 'card', lineUids }); } catch {}
         return res.json({ tender: 'card', checkoutId: checkout.id, tabId, amount: want, currency, status: 'waiting', payerName: who, terminalName: term.name || 'Terminal' });
       } catch (e) {
         console.warn('[waiter] split card checkout FAILED:', 'device=' + term.deviceId, 'order=' + tabId, 'amount=' + want, e.message);
@@ -2462,7 +2475,7 @@ app.post('/api/waiter/tab/pay', async (req, res) => {
     }
     // A standalone (partial) cash capture isn't a Square tender, so record it here
     // too — that's what lets "remaining" subtract it and prevents a double-charge.
-    if (!linkOrder) { try { await db.posPaymentUpsert({ checkoutId: 'cash:' + ((payment && payment.id) || Date.now()), squareOrderId: tabId, deviceId: 'cash', amount: want, status: 'paid', note: who, tender: 'cash' }); } catch {} }
+    if (!linkOrder) { try { await db.posPaymentUpsert({ checkoutId: 'cash:' + ((payment && payment.id) || Date.now()), squareOrderId: tabId, deviceId: 'cash', amount: want, status: 'paid', note: who, tender: 'cash', lineUids }); } catch {} }
     try {
       if (db.enabled && typeof db.posRecordOrder === 'function') {
         await db.posRecordOrder({ squareOrderId: tabId, squarePaymentId: payment ? payment.id : null, source: 'Bean Culture Waiter', tender: 'cash', amount: want, status: 'paid', deviceName: `Waiter${who ? ' · ' + who : ''}` });
