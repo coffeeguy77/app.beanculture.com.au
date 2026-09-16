@@ -47,6 +47,25 @@ function waiterTerminalFor(pos, locId) {
   if (pos.waiterTerminalDeviceId) return { deviceId: pos.waiterTerminalDeviceId, name: pos.waiterTerminalName || 'Waiter Terminal' };
   return posTerminalFor(pos, locId);
 }
+// A store's effective waiter settings: its own per-store override if set, else
+// the global default. Keeps single-store setups working unchanged.
+function effectiveWaiter(pos, locId) {
+  pos = pos || {};
+  const enPer = (pos.waiterEnabledByLocation || {})[locId];
+  const pinPer = (pos.waiterPinByLocation || {})[locId];
+  const tblPer = (pos.waiterTablesByLocation || {})[locId];
+  return {
+    enabled: enPer != null ? !!enPer : (pos.waiterEnabled === true),
+    pin: (pinPer != null && pinPer !== '') ? String(pinPer) : String(pos.waiterPin || ''),
+    tables: Array.isArray(tblPer) ? tblPer : (Array.isArray(pos.waiterTables) ? pos.waiterTables : []),
+  };
+}
+// A store's enabled payment methods for the register/waiter (card/cash), from the
+// per-store map with a sensible default of both on.
+function paymentsFor(pos, locId) {
+  const x = ((pos && pos.paymentsByLocation) || {})[locId];
+  return { card: !x || x.card !== false, cash: !x || x.cash !== false, unpaid: !x || x.unpaid !== false };
+}
 const weather = require('./lib/weather');
 const smartCampaigns = require('./lib/smartCampaigns');
 
@@ -1478,12 +1497,17 @@ app.get('/api/pos/config', (req, res) => {
     // "Dine in" keyword trigger — words that flip a counter order to DINE IN.
     dineInKeywords: Array.isArray(p.dineInKeywords) ? p.dineInKeywords : [],
     // Waiter mode (portable table-service register) — for the admin settings UI.
+    // Global defaults + per-store overrides so each store can be configured on its
+    // own. PINs are sent as booleans (has-a-pin), never the codes themselves.
     waiterEnabled: p.waiterEnabled === true,
     hasWaiterPin: !!p.waiterPin,
     waiterTables: Array.isArray(p.waiterTables) ? p.waiterTables : [],
     waiterTerminalDeviceId: p.waiterTerminalDeviceId || '',
     waiterTerminalName: p.waiterTerminalName || '',
     waiterTerminalByLocation: p.waiterTerminalByLocation || {},
+    waiterEnabledByLocation: p.waiterEnabledByLocation || {},
+    waiterTablesByLocation: p.waiterTablesByLocation || {},
+    waiterHasPinByLocation: Object.fromEntries(Object.entries(p.waiterPinByLocation || {}).map(([k, v]) => [k, !!v])),
     dbEnabled: db.enabled,
   });
 });
@@ -2003,34 +2027,53 @@ app.post('/api/pos/terminal/disconnect', async (req, res) => {
 
 // Validate the waiter PIN sent with a request. Returns the pos settings when OK,
 // or null. Reads the PIN from body or query so both GET and POST calls work.
-function waiterAuth(req) {
+// Resolve a waiter request. Returns { pos, locationId } on success (locationId is
+// the store the PIN belongs to — a per-store PIN selects its store at login), or
+// null. The counter POS (admin) bypasses the PIN and can manage any store.
+function waiterAuthEx(req) {
   const pos = getSettings().pos || {};
-  // The counter POS (already admin-authed) can manage tables too — it doesn't
-  // need the waiter PIN, and it works even before waiter mode is switched on.
-  if (adminOk(req)) return pos;
-  if (!pos.waiterEnabled) return null;
-  const set = String(pos.waiterPin || '').trim();
-  if (!set) return null; // no PIN configured → mode is effectively locked
+  if (adminOk(req)) return { pos, locationId: req.query.location || (req.body && req.body.locationId) || '' };
   const given = String((req.body && req.body.pin) || req.query.pin || '').trim();
-  if (given && given === set) return pos;
+  if (!given) return null;
+  const reqLoc = req.query.location || (req.body && req.body.locationId) || '';
+  // If the caller already knows its store, the PIN must match THAT store's PIN.
+  if (reqLoc) {
+    const e = effectiveWaiter(pos, reqLoc);
+    return (e.enabled && e.pin && given === e.pin) ? { pos, locationId: reqLoc } : null;
+  }
+  // No store yet (fresh login): accept the PIN if it matches ANY enabled store's
+  // PIN (or the global one), and return that store so the app locks onto it.
+  let ids = [];
+  try { ids = locations.publicList().map((l) => l.id); } catch {}
+  for (const lid of [...ids, '']) {
+    const e = effectiveWaiter(pos, lid);
+    if (e.enabled && e.pin && given === e.pin) return { pos, locationId: lid };
+  }
   return null;
 }
+function waiterAuth(req) { const r = waiterAuthEx(req); return r ? r.pos : null; }
 
 // What a waiter device needs to run: store list, preset tables, whether a card
 // reader is available, currency and logo. Never leaks the admin password or the
 // PIN back.
 app.get('/api/waiter/config', (req, res) => {
-  const pos = waiterAuth(req);
-  if (!pos) return res.status(401).json({ error: 'Wrong PIN, or waiter mode is off.' });
+  const auth = waiterAuthEx(req);
+  if (!auth) return res.status(401).json({ error: 'Wrong PIN, or waiter mode is off.' });
+  const pos = auth.pos;
   const s = getSettings();
-  const locId = req.query.location || '';
+  // The store the PIN resolved to (per-store PIN selects the store at login).
+  const locId = auth.locationId || req.query.location || '';
   const term = waiterTerminalFor(pos, locId);
+  const eff = effectiveWaiter(pos, locId);
+  const pay = paymentsFor(pos, locId);
   res.json({
     storeName: s.storeName || 'Bean Culture',
     logo: (s.theme && (s.theme.logo || s.theme.logoUrl)) || (s.contact && s.contact.logo) || s.logoUrl || '',
     currency: sq.CURRENCY,
     locations: locations.publicList(),
-    tables: Array.isArray(pos.waiterTables) ? pos.waiterTables : [],
+    location: locId,                       // the app should lock onto this store
+    tables: eff.tables,
+    payments: { card: pay.card, cash: pay.cash },  // per-store cash/card availability
     hasTerminal: !!term.deviceId,
     terminalName: term.name || 'Terminal',
   });
@@ -2122,6 +2165,7 @@ app.post('/api/waiter/tab/close', async (req, res) => {
     const { tabId, tender, cashGiven, locationId } = req.body || {};
     if (!tabId) return res.status(400).json({ error: 'Missing tab.' });
     if (!['cash', 'card'].includes(tender)) return res.status(400).json({ error: 'Choose cash or card.' });
+    { const pm = paymentsFor(pos, locationId); if (tender === 'cash' && !pm.cash) return res.status(400).json({ error: 'Cash is turned off for this store.' }); if (tender === 'card' && !pm.card) return res.status(400).json({ error: 'Card is turned off for this store.' }); }
     const order = await orders.getOrder(tabId);
     if (!order) return res.status(404).json({ error: 'Tab not found.' });
     if (String(order.state) !== 'OPEN') return res.status(400).json({ error: 'That tab is already settled.' });
@@ -2208,6 +2252,7 @@ app.post('/api/waiter/tab/pay', async (req, res) => {
     const { tabId, amount, tender, cashGiven, payerName, locationId } = req.body || {};
     if (!tabId) return res.status(400).json({ error: 'Missing tab.' });
     if (!['cash', 'card'].includes(tender)) return res.status(400).json({ error: 'Choose cash or card.' });
+    { const pm = paymentsFor(pos, locationId); if (tender === 'cash' && !pm.cash) return res.status(400).json({ error: 'Cash is turned off for this store.' }); if (tender === 'card' && !pm.card) return res.status(400).json({ error: 'Card is turned off for this store.' }); }
     const want = Math.round(Number(amount) || 0);
     if (!(want > 0)) return res.status(400).json({ error: 'Enter an amount to pay.' });
     const order = await orders.getOrder(tabId);
@@ -2438,6 +2483,7 @@ app.post('/api/waiter/session/pay', async (req, res) => {
     const row = await loadSessionRow(sessionId);
     if (!row || !row.square_order_id) return res.status(404).json({ error: 'This table has no items yet.' });
     const data = row.data || {};
+    { const pm = paymentsFor(pos, locationId || data.locationId); if (tender === 'cash' && !pm.cash) return res.status(400).json({ error: 'Cash is turned off for this store.' }); if (tender === 'card' && !pm.card) return res.status(400).json({ error: 'Card is turned off for this store.' }); }
     const order = await orders.getOrder(row.square_order_id);
     if (!order) return res.status(404).json({ error: 'Table order not found.' });
     const session = waiterSplit.computeSession(data, order);
@@ -2512,13 +2558,20 @@ app.post('/api/pos/waiter-settings', async (req, res) => {
   if (!db.enabled) return res.status(400).json({ error: 'A database is required to save waiter settings.' });
   try {
     const b = req.body || {};
+    const loc = b.locationId ? String(b.locationId) : '';   // '' = the global default
     const ov = db.getOverrides() || {};
     ov.pos = ov.pos || {};
-    if (b.enabled !== undefined) ov.pos.waiterEnabled = b.enabled === true;
+    const setMap = (key, val) => { const m = { ...(ov.pos[key] || {}) }; if (val === undefined) delete m[loc]; else m[loc] = val; ov.pos[key] = m; };
+
+    if (b.enabled !== undefined) {
+      if (loc) setMap('waiterEnabledByLocation', b.enabled === true);
+      else ov.pos.waiterEnabled = b.enabled === true;
+    }
     if (b.pin !== undefined) {
       const next = String(b.pin || '').trim();
       if (next && !/^\d{4,8}$/.test(next)) return res.status(400).json({ error: 'Waiter PIN must be 4–8 digits.' });
-      ov.pos.waiterPin = next;
+      if (loc) setMap('waiterPinByLocation', next || undefined);   // empty clears the override → falls back to global
+      else ov.pos.waiterPin = next;
     }
     if (b.tables !== undefined) {
       const raw = Array.isArray(b.tables) ? b.tables : String(b.tables || '').split(/[\n,]/);
@@ -2528,14 +2581,15 @@ app.post('/api/pos/waiter-settings', async (req, res) => {
         if (v && !seen.has(v.toLowerCase())) { seen.add(v.toLowerCase()); list.push(v); }
         if (list.length >= 100) break;
       }
-      ov.pos.waiterTables = list;
+      if (loc) setMap('waiterTablesByLocation', list);
+      else ov.pos.waiterTables = list;
     }
     if (b.terminalDeviceId !== undefined) {
       const dev = String(b.terminalDeviceId || '');
       const nm = String(b.terminalName || '').slice(0, 60);
-      if (b.locationId) {
+      if (loc) {
         const m = { ...(ov.pos.waiterTerminalByLocation || {}) };
-        if (dev) m[b.locationId] = { deviceId: dev, name: nm }; else delete m[b.locationId];
+        if (dev) m[loc] = { deviceId: dev, name: nm }; else delete m[loc];
         ov.pos.waiterTerminalByLocation = m;
       } else {
         ov.pos.waiterTerminalDeviceId = dev;
@@ -2543,8 +2597,8 @@ app.post('/api/pos/waiter-settings', async (req, res) => {
       }
     }
     await db.saveOverrides(ov);
-    const p = ov.pos;
-    res.json({ ok: true, waiterEnabled: !!p.waiterEnabled, hasWaiterPin: !!p.waiterPin, waiterTables: p.waiterTables || [], waiterTerminalDeviceId: p.waiterTerminalDeviceId || '', waiterTerminalName: p.waiterTerminalName || '' });
+    const p = ov.pos; const eff = effectiveWaiter(p, loc);
+    res.json({ ok: true, locationId: loc, waiterEnabled: eff.enabled, hasWaiterPin: !!eff.pin, waiterTables: eff.tables });
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
