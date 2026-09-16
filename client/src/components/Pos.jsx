@@ -1266,11 +1266,18 @@ function CashUpModal({ pass, posLoc, currency, onClose }) {
 // dedicated card Terminal, separate from the counter. Set-up lives here beside
 // the counter POS settings the owner already knows.
 function WaiterSettings({ cfg, posLoc, multiStore, storeName, pass }) {
+  // Every setting is per store (with a global fallback). When there are multiple
+  // stores we scope saves to the selected one; a single-store cafe saves globally.
+  const loc = multiStore ? posLoc : undefined;
   const perLoc = (cfg.waiterTerminalByLocation || {})[posLoc];
-  const [enabled, setEnabled] = useState(cfg.waiterEnabled === true);
-  const [hasPin, setHasPin] = useState(!!cfg.hasWaiterPin);
+  const enPer = (cfg.waiterEnabledByLocation || {})[posLoc];
+  const initEnabled = enPer != null ? !!enPer : (cfg.waiterEnabled === true);
+  const initHasPin = ((cfg.waiterHasPinByLocation || {})[posLoc]) || (enPer == null && !!cfg.hasWaiterPin);
+  const initTables = (Array.isArray((cfg.waiterTablesByLocation || {})[posLoc]) ? cfg.waiterTablesByLocation[posLoc] : (cfg.waiterTables || []));
+  const [enabled, setEnabled] = useState(initEnabled);
+  const [hasPin, setHasPin] = useState(initHasPin);
   const [pin, setPin] = useState('');
-  const [tables, setTables] = useState((cfg.waiterTables || []).join(', '));
+  const [tables, setTables] = useState(initTables.join(', '));
   const [devices, setDevices] = useState(null);
   const [termId, setTermId] = useState((perLoc && perLoc.deviceId) || cfg.waiterTerminalDeviceId || '');
   const [msg, setMsg] = useState('');
@@ -1278,7 +1285,7 @@ function WaiterSettings({ cfg, posLoc, multiStore, storeName, pass }) {
   const flash = (m) => { setMsg(m); setTimeout(() => setMsg(''), 2000); };
   const save = async (body, okMsg) => {
     setErr('');
-    try { const r = await api.posSaveWaiter(pass, body); if (okMsg) flash(okMsg); return r; }
+    try { const r = await api.posSaveWaiter(pass, { locationId: loc, ...body }); if (okMsg) flash(okMsg); return r; }
     catch (e) { setErr(e.message || 'Could not save'); throw e; }
   };
   const toggle = async () => { const next = !enabled; setEnabled(next); try { await save({ enabled: next }, next ? 'Waiter mode on' : 'Waiter mode off'); } catch { setEnabled(!next); } };
@@ -1288,13 +1295,13 @@ function WaiterSettings({ cfg, posLoc, multiStore, storeName, pass }) {
   const pickTerminal = async (id) => {
     setTermId(id);
     const dev = (devices || []).find((d) => d.id === id);
-    try { await save({ terminalDeviceId: id, terminalName: dev ? dev.name : '', locationId: multiStore ? posLoc : undefined }, id ? 'Waiter terminal set' : 'Waiter terminal cleared'); } catch {}
+    try { await save({ terminalDeviceId: id, terminalName: dev ? dev.name : '' }, id ? 'Waiter terminal set' : 'Waiter terminal cleared'); } catch {}
   };
   const url = `${window.location.origin}/foh`;
   return (
     <div className="pos-set-block pos-set-span">
-      <div className="pos-set-label">Waiter mode — table service{storeName ? ` · ${storeName}` : ''}</div>
-      <p className="pos-set-hint">A portable register your floor staff open on their own phone at <b>/foh</b>. They unlock with a short PIN (never the admin password), open a tab on a table, send items to the kitchen, then settle — full, split by item, an even share, or by percentage — on a <b>dedicated</b> card Terminal. Tip: open /foh on the phone and “Add to Home Screen” for an <b>FOH</b> app icon.</p>
+      <div className="pos-set-label">Waiter mode — table service{multiStore && storeName ? ` · ${storeName}` : ''}</div>
+      <p className="pos-set-hint">A portable register your floor staff open on their own phone at <b>/foh</b>. They unlock with a short PIN (never the admin password), open a tab on a table, send items to the kitchen, then settle — full or split — on a <b>dedicated</b> card Terminal.{multiStore ? ' These settings apply to the store selected above, and each store keeps its own PIN, tables, terminal and cash/card. A waiter typing a store’s PIN lands in that store.' : ''} Cash/card availability comes from <b>Payment methods</b> above. Tip: open /foh and “Add to Home Screen” for the <b>FOH</b> app icon.</p>
       <div className="pos-set-row">
         <span className={`pos-set-status${enabled ? ' on' : ''}`}>● {enabled ? 'Waiter mode is on' : 'Waiter mode is off'}</span>
         <button className="pos-btn primary" onClick={toggle}>{enabled ? 'Turn off' : 'Turn on'}</button>
@@ -1460,7 +1467,7 @@ function SettingsSheet({ cfg, posLoc, multiStore, curTerm, theme, onTheme, idleS
           </div>
         </div>
 
-        <WaiterSettings cfg={cfg} posLoc={posLoc} multiStore={multiStore} storeName={storeName} pass={pass} />
+        <WaiterSettings key={posLoc} cfg={cfg} posLoc={posLoc} multiStore={multiStore} storeName={storeName} pass={pass} />
 
         <div className="pos-set-block">
           <div className="pos-set-label">Refunds</div>

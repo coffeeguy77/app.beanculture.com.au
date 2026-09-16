@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { api, formatMoney, imgUrl } from '../api.js';
-import ItemModal from './ItemModal.jsx';
-import { itemIsQuickAdd, buildQuickCartItem } from '../hooks/useItemConfig.js';
+import { api, formatMoney } from '../api.js';
+import { useItemConfig, itemIsQuickAdd, buildQuickCartItem, itemHasOptions } from '../hooks/useItemConfig.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Waiter mode — a portable table-service register. A waiter unlocks with a short
@@ -75,9 +74,11 @@ export default function Waiter({ onExit, adminPass, actorName }) {
     setErr('');
     try {
       const c = await waiterApi(isAdmin ? { pass: adminPass } : { pin: tryPin != null ? tryPin : pin }).config(location);
-      let loc = location;
+      // A per-store PIN selects its store: the server tells us which one.
+      let loc = c.location || location;
       const locs = c.locations || [];
-      if (locs.length && !locs.some((l) => l.id === loc)) { loc = locs[0].id; setLocation(loc); try { localStorage.setItem(LOC_KEY, loc); } catch {} }
+      if (locs.length && !locs.some((l) => l.id === loc)) { loc = locs[0].id; }
+      setLocation(loc); try { localStorage.setItem(LOC_KEY, loc); } catch {}
       const m = await api.getMenu(loc);
       setCfg(c); setMenu(m); setAuthed(true);
       if (!isAdmin && tryPin != null) try { localStorage.setItem(PIN_KEY, tryPin); } catch {}
@@ -113,7 +114,7 @@ export default function Waiter({ onExit, adminPass, actorName }) {
       <WaiterStyle />
       <header className="wtr-top">
         <button className="wtr-ghost" onClick={() => (screen === 'home' ? onExit && onExit() : goHome())}>‹ {screen === 'home' ? (isAdmin ? 'POS' : 'Exit') : 'Tables'}</button>
-        <div className="wtr-title">{cfg.storeName || 'Waiter'}{waiterName ? <span className="wtr-who"> · {waiterName}</span> : ''}</div>
+        <div className="wtr-title">{cfg.storeName || 'Waiter'}{waiterName ? <button className="wtr-who" title="Switch waiter" onClick={() => { if (!isAdmin) saveName(''); }}> · {waiterName} ⇄</button> : ''}</div>
         <div className="wtr-top-right">
           {(cfg.locations || []).length > 1 && (
             <select className="wtr-loc" value={location} onChange={(e) => changeLocation(e.target.value)}>
@@ -253,28 +254,36 @@ function Home({ api2, cfg, currency, location, waiterName, setErr, onOpenTab, on
 function Build({ menu, currency, title, label, setErr, submit, onDone, onCancel }) {
   const cats = menu.categories || [];
   const [activeCat, setActiveCat] = useState((cats[0] || {}).category || null);
-  const [round, setRound] = useState([]);
-  const [modalItem, setModalItem] = useState(null);
+  const [q, setQ] = useState('');
+  const [cart, setCart] = useState([]);
+  const [sheetItem, setSheetItem] = useState(null); // menu item being configured
+  const [editKey, setEditKey] = useState(null);     // cart line being edited
   const [sending, setSending] = useState(false);
-  const items = ((cats.find((c) => c.category === activeCat) || cats[0] || {}).items) || [];
+  const [confirming, setConfirming] = useState(false);
 
-  const addLine = (line) => setRound((r) => {
+  const query = q.trim().toLowerCase();
+  const items = query
+    ? cats.flatMap((c) => c.items || []).filter((it) => (it.name || '').toLowerCase().includes(query))
+    : (((cats.find((c) => c.category === activeCat) || cats[0] || {}).items) || []);
+
+  const addLine = (line) => setCart((r) => {
     const i = r.findIndex((x) => x.key === line.key);
     if (i >= 0) { const c = [...r]; c[i] = { ...c[i], quantity: c[i].quantity + line.quantity }; return c; }
     return [...r, line];
   });
-  const tap = (item) => { if (itemIsQuickAdd(item)) addLine(buildQuickCartItem(item)); else setModalItem(item); };
-  const setQty = (key, d) => setRound((r) => r.map((x) => x.key === key ? { ...x, quantity: Math.max(1, x.quantity + d) } : x));
-  const remove = (key) => setRound((r) => r.filter((x) => x.key !== key));
-  const roundTotal = round.reduce((s, x) => s + x.unitPrice * x.quantity, 0);
+  const tap = (item) => { if (itemIsQuickAdd(item)) addLine(buildQuickCartItem(item)); else setSheetItem(item); };
+  const setLineQty = (key, qv) => setCart((r) => r.map((x) => x.key === key ? { ...x, quantity: Math.max(1, qv) } : x));
+  const setLineNote = (key, note) => setCart((r) => r.map((x) => x.key === key ? { ...x, note } : x));
+  const remove = (key) => setCart((r) => r.filter((x) => x.key !== key));
+  const total = cart.reduce((s, x) => s + x.unitPrice * x.quantity, 0);
+  const count = cart.reduce((s, x) => s + x.quantity, 0);
+  const editing = cart.find((x) => x.key === editKey);
 
   async function send() {
-    if (!round.length) return;
+    if (!cart.length) return;
     setSending(true); setErr('');
-    try {
-      const d = await submit(round);
-      onDone(d || {});
-    } catch (e) { setErr(e.message); } finally { setSending(false); }
+    try { const d = await submit(cart); onDone(d || {}); }
+    catch (e) { setErr(e.message); setConfirming(false); } finally { setSending(false); }
   }
 
   return (
@@ -283,45 +292,160 @@ function Build({ menu, currency, title, label, setErr, submit, onDone, onCancel 
         <div className="wtr-build-table">{title} · {label}</div>
         <button className="wtr-ghost" onClick={onCancel}>Cancel</button>
       </div>
-      <div className="wtr-catnav">
-        {cats.map((c) => <button key={c.category} className={`wtr-catbtn ${activeCat === c.category ? 'on' : ''}`} onClick={() => setActiveCat(c.category)}>{c.category}</button>)}
-      </div>
-      <div className="wtr-grid">
-        {items.map((it) => (
-          <button key={it.id} className="wtr-tile" onClick={() => tap(it)}>
-            {it.image ? <img src={imgUrl(it.image, 160)} alt="" /> : <div className="wtr-tile-noimg" />}
-            <div className="wtr-tile-name">{it.name}</div>
-            <div className="wtr-tile-price">{formatMoney((it.variations || [])[0]?.price || 0, currency)}{(it.variations || []).length > 1 ? '+' : ''}</div>
-          </button>
-        ))}
+
+      <input className="wtr-input" placeholder="Search the menu…" value={q} onChange={(e) => setQ(e.target.value)} />
+      {!query && (
+        <div className="wtr-catnav">
+          {cats.map((c) => <button key={c.category} className={`wtr-catbtn ${activeCat === c.category ? 'on' : ''}`} onClick={() => setActiveCat(c.category)}>{c.category}</button>)}
+        </div>
+      )}
+
+      {/* Menu as a readable LIST (no image tiles). Tap to add. */}
+      <div className="wtr-menulist">
+        {items.length === 0 && <div className="wtr-muted">No items.</div>}
+        {items.map((it) => {
+          const base = (it.variations || [])[0]?.price || 0;
+          const inCart = cart.filter((x) => x.itemId === (it.presetSourceItemId || it.id)).reduce((s, x) => s + x.quantity, 0);
+          return (
+            <button key={it.id} className="wtr-menurow" onClick={() => tap(it)}>
+              <div className="wtr-menurow-name">{it.name}{inCart > 0 && <span className="wtr-incart">{inCart}</span>}</div>
+              <div className="wtr-menurow-right">
+                <span className="wtr-menurow-price">{formatMoney(base, currency)}{itemHasOptions(it) ? '+' : ''}</span>
+                <span className="wtr-menurow-add">＋</span>
+              </div>
+            </button>
+          );
+        })}
       </div>
 
-      {round.length > 0 && (
+      {/* Editable cart — build the whole order, read it back, then send once. */}
+      {cart.length > 0 && (
         <div className="wtr-round">
+          <div className="wtr-round-head">Order · {count} item{count === 1 ? '' : 's'} <span className="wtr-muted">tap a line to edit</span></div>
           <div className="wtr-round-list">
-            {round.map((x) => (
-              <div key={x.key} className="wtr-round-line">
+            {cart.map((x) => (
+              <button key={x.key} className="wtr-round-line" onClick={() => setEditKey(x.key)}>
+                <div className="wtr-round-qtybadge">{x.quantity}</div>
                 <div className="wtr-round-info">
                   <div className="wtr-round-name">{x.itemName}</div>
-                  <div className="wtr-muted">{[x.variationName, ...(x.modifierNames || [])].filter(Boolean).join(' · ')}{x.note ? ` · ${x.note}` : ''}</div>
-                </div>
-                <div className="wtr-qty">
-                  <button onClick={() => setQty(x.key, -1)}>−</button><span>{x.quantity}</span><button onClick={() => setQty(x.key, +1)}>+</button>
+                  {[x.variationName, ...(x.modifierNames || [])].filter(Boolean).length > 0 && <div className="wtr-muted">{[x.variationName, ...(x.modifierNames || [])].filter(Boolean).join(' · ')}</div>}
+                  {x.note && <div className="wtr-notechip">“{x.note}”</div>}
                 </div>
                 <div className="wtr-round-amt">{formatMoney(x.unitPrice * x.quantity, currency)}</div>
-                <button className="wtr-x" onClick={() => remove(x.key)}>✕</button>
-              </div>
+              </button>
             ))}
           </div>
-          <button className="wtr-primary wtr-send" disabled={sending} onClick={send}>
-            {sending ? 'Sending…' : `Send to kitchen · ${formatMoney(roundTotal, currency)}`}
+          <button className="wtr-primary wtr-send" disabled={sending} onClick={() => setConfirming(true)}>
+            Review &amp; send · {formatMoney(total, currency)}
           </button>
         </div>
       )}
 
-      {modalItem && (
-        <ItemModal item={modalItem} currency={currency} onClose={() => setModalItem(null)} onAdd={(line) => { addLine(line); setModalItem(null); }} />
+      {sheetItem && <WaiterItemSheet item={sheetItem} currency={currency} onCancel={() => setSheetItem(null)} onAdd={(line) => { addLine(line); setSheetItem(null); }} />}
+
+      {editing && <WaiterLineEdit line={editing} currency={currency}
+        onQty={(qv) => setLineQty(editing.key, qv)} onNote={(n) => setLineNote(editing.key, n)}
+        onRemove={() => { remove(editing.key); setEditKey(null); }} onClose={() => setEditKey(null)} />}
+
+      {confirming && (
+        <div className="wtr-scrim" onClick={() => setConfirming(false)}>
+          <div className="wtr-dialog" onClick={(e) => e.stopPropagation()}>
+            <div className="wtr-card-h">Read back the order</div>
+            <div className="wtr-muted">Confirm with the table, then send it all to the kitchen as one order.</div>
+            <div className="wtr-round-list">
+              {cart.map((x) => (
+                <div key={x.key} className="wtr-itemrow">
+                  <div className="wtr-round-qtybadge">{x.quantity}</div>
+                  <div className="wtr-iteminfo"><div>{x.itemName}</div><div className="wtr-muted">{[x.variationName, ...(x.modifierNames || [])].filter(Boolean).join(' · ')}{x.note ? ` · “${x.note}”` : ''}</div></div>
+                  <div className="wtr-itemamt">{formatMoney(x.unitPrice * x.quantity, currency)}</div>
+                </div>
+              ))}
+            </div>
+            <div className="wtr-payrow">
+              <button className="wtr-secondary" onClick={() => setConfirming(false)}>Keep editing</button>
+              <button className="wtr-primary" disabled={sending} onClick={send}>{sending ? 'Sending…' : `Send · ${formatMoney(total, currency)}`}</button>
+            </div>
+          </div>
+        </div>
       )}
+    </div>
+  );
+}
+
+// Readable item-options sheet (variations, add-ons, a note) — waiter-native, so
+// it always renders in the high-contrast waiter theme (not the customer app's).
+function WaiterItemSheet({ item, currency, onAdd, onCancel }) {
+  const c = useItemConfig(item);
+  const variations = (item.variations || []).filter(Boolean);
+  return (
+    <div className="wtr-scrim" onClick={onCancel}>
+      <div className="wtr-dialog" onClick={(e) => e.stopPropagation()}>
+        <div className="wtr-card-h">{item.name}</div>
+        {variations.length > 1 && (
+          <>
+            <div className="wtr-fieldlabel">Size / option</div>
+            <div className="wtr-chips">
+              {variations.map((v) => (
+                <button key={v.id} className={`wtr-chip ${c.variationId === v.id ? 'on' : ''}`} disabled={v.soldOut} onClick={() => c.setVariationId(v.id)}>
+                  {v.name || 'Standard'}{v.price ? ` · ${formatMoney(v.price, currency)}` : ''}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+        {(item.modifierGroups || []).map((g) => (
+          (g.modifiers || []).length > 0 && (
+            <div key={g.id}>
+              <div className="wtr-fieldlabel">{g.name}{(g.min || 0) > 0 ? ' · required' : ''}{c.unmetGroups.includes(g) ? ' — pick one' : ''}</div>
+              <div className="wtr-chips">
+                {(g.modifiers || []).map((m) => {
+                  const on = (c.selected[g.id] && c.selected[g.id].has(m.id));
+                  return (
+                    <button key={m.id} className={`wtr-chip ${on ? 'on' : ''} ${c.unmetGroups.includes(g) ? 'need' : ''}`} onClick={() => c.toggleModifier(g, m)}>
+                      {m.name}{m.price ? ` +${formatMoney(m.price, currency)}` : ''}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )
+        ))}
+        <div className="wtr-fieldlabel">Note for the kitchen</div>
+        <input className="wtr-input" placeholder="e.g. no onion, extra hot" value={c.note} onChange={(e) => c.setNote(e.target.value)} />
+        <div className="wtr-row wtr-people">
+          <span>Quantity</span>
+          <div className="wtr-qty"><button onClick={() => c.setQty(Math.max(1, c.qty - 1))}>−</button><span>{c.qty}</span><button onClick={() => c.setQty(c.qty + 1)}>+</button></div>
+        </div>
+        <div className="wtr-payrow">
+          <button className="wtr-secondary" onClick={onCancel}>Cancel</button>
+          <button className="wtr-primary" disabled={!c.canAdd} onClick={() => onAdd(c.buildCartItem())}>
+            {c.canAdd ? `Add · ${formatMoney(c.unitPrice * c.qty, currency)}` : 'Choose options'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Edit a line already in the cart: change quantity, add/adjust a kitchen note, or
+// remove it. (To change size/add-ons, remove and re-add.)
+function WaiterLineEdit({ line, currency, onQty, onNote, onRemove, onClose }) {
+  return (
+    <div className="wtr-scrim" onClick={onClose}>
+      <div className="wtr-dialog" onClick={(e) => e.stopPropagation()}>
+        <div className="wtr-card-h">{line.itemName}</div>
+        {[line.variationName, ...(line.modifierNames || [])].filter(Boolean).length > 0 && <div className="wtr-muted">{[line.variationName, ...(line.modifierNames || [])].filter(Boolean).join(' · ')}</div>}
+        <div className="wtr-row wtr-people">
+          <span>Quantity</span>
+          <div className="wtr-qty"><button onClick={() => onQty(Math.max(1, line.quantity - 1))}>−</button><span>{line.quantity}</span><button onClick={() => onQty(line.quantity + 1)}>+</button></div>
+        </div>
+        <div className="wtr-fieldlabel">Note for the kitchen</div>
+        <input className="wtr-input" placeholder="e.g. well done, allergy: nuts" value={line.note || ''} onChange={(e) => onNote(e.target.value)} />
+        <div className="wtr-payrow">
+          <button className="wtr-secondary wtr-danger" onClick={onRemove}>Remove</button>
+          <button className="wtr-primary" onClick={onClose}>Done · {formatMoney(line.unitPrice * line.quantity, currency)}</button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -401,17 +525,21 @@ function Settle({ api2, cfg, currency, location, ctx, setErr, onSplit, onDone, o
       ) : (
         <>
           <div className="wtr-paygrid">
-            <button className="wtr-pay" disabled={busy || !cfg.hasTerminal} onClick={payCard}>
-              <span className="wtr-pay-i"><IconCard s={26} /></span>Card{!cfg.hasTerminal ? ' (no reader)' : ''}
-            </button>
-            <button className="wtr-pay" disabled={busy} onClick={() => setCashOpen(true)}><span className="wtr-pay-i"><IconCash s={26} /></span>Cash</button>
+            {(cfg.payments ? cfg.payments.card !== false : true) && (
+              <button className="wtr-pay" disabled={busy || !cfg.hasTerminal} onClick={payCard}>
+                <span className="wtr-pay-i"><IconCard s={26} /></span>Card{!cfg.hasTerminal ? ' (no reader)' : ''}
+              </button>
+            )}
+            {(cfg.payments ? cfg.payments.cash !== false : true) && (
+              <button className="wtr-pay" disabled={busy} onClick={() => setCashOpen(true)}><span className="wtr-pay-i"><IconCash s={26} /></span>Cash</button>
+            )}
           </div>
           <button className="wtr-primary wtr-split" onClick={onSplit}>Split the bill</button>
           <button className="wtr-secondary" onClick={onDone}>Leave open</button>
           <button className="wtr-ghost wtr-back" onClick={onBack}>‹ Back</button>
         </>
       )}
-      {cashOpen && <PayDialog target={{ payerId: '', name: tab.table || ctx.table || 'Table', remaining }} cur={tab.currency || currency} busy={busy} hasTerminal={cfg.hasTerminal} cashOnly onCancel={() => setCashOpen(false)} onPay={({ cashGiven }) => { setCashOpen(false); payCash(cashGiven); }} />}
+      {cashOpen && <PayDialog target={{ payerId: '', name: tab.table || ctx.table || 'Table', remaining }} cur={tab.currency || currency} busy={busy} hasTerminal={cfg.hasTerminal} payments={cfg.payments} cashOnly onCancel={() => setCashOpen(false)} onPay={({ cashGiven }) => { setCashOpen(false); payCash(cashGiven); }} />}
     </div>
   );
 }
@@ -477,9 +605,9 @@ function Split({ api2, cfg, currency, location, ctx, setErr, onDone, onBack }) {
         ))}
       </div>
 
-      {method === 'item' && <SplitByItem tab={tab} cur={cur} settledUids={settledUids} busy={busy} hasTerminal={cfg.hasTerminal} onPay={takePayment} />}
-      {method === 'even' && <SplitEven tab={tab} cur={cur} busy={busy} hasTerminal={cfg.hasTerminal} onPay={takePayment} />}
-      {method === 'pct' && <SplitPct tab={tab} cur={cur} busy={busy} hasTerminal={cfg.hasTerminal} onPay={takePayment} />}
+      {method === 'item' && <SplitByItem tab={tab} cur={cur} settledUids={settledUids} busy={busy} hasTerminal={cfg.hasTerminal} payments={cfg.payments} onPay={takePayment} />}
+      {method === 'even' && <SplitEven tab={tab} cur={cur} busy={busy} hasTerminal={cfg.hasTerminal} payments={cfg.payments} onPay={takePayment} />}
+      {method === 'pct' && <SplitPct tab={tab} cur={cur} busy={busy} hasTerminal={cfg.hasTerminal} payments={cfg.payments} onPay={takePayment} />}
 
       <button className="wtr-ghost wtr-back" onClick={onBack}>‹ Back</button>
     </div>
@@ -487,7 +615,7 @@ function Split({ api2, cfg, currency, location, ctx, setErr, onDone, onBack }) {
 }
 
 // Pay for the exact items a person had.
-function SplitByItem({ tab, cur, settledUids, busy, hasTerminal, onPay }) {
+function SplitByItem({ tab, cur, settledUids, busy, hasTerminal, payments, onPay }) {
   const [ticked, setTicked] = useState(() => new Set());
   const [who, setWho] = useState('');
   const avail = tab.items.filter((it) => !settledUids.has(it.uid || it.name));
@@ -515,7 +643,7 @@ function SplitByItem({ tab, cur, settledUids, busy, hasTerminal, onPay }) {
         ))}
       </div>
       <input className="wtr-input" placeholder="Name on this payment (optional)" value={who} onChange={(e) => setWho(e.target.value)} />
-      <PayRow amount={amount} cur={cur} busy={busy} hasTerminal={hasTerminal} onPay={pay} disabled={amount <= 0} />
+      <PayRow amount={amount} cur={cur} busy={busy} hasTerminal={hasTerminal} payments={payments} onPay={pay} disabled={amount <= 0} />
     </div>
   );
 }
@@ -523,7 +651,7 @@ function SplitByItem({ tab, cur, settledUids, busy, hasTerminal, onPay }) {
 // Everyone pays an equal share (e.g. 12 people → each a twelfth). Shares are
 // computed against what's LEFT and how many payers remain, so rounding always
 // lands exactly on the total.
-function SplitEven({ tab, cur, busy, hasTerminal, onPay }) {
+function SplitEven({ tab, cur, busy, hasTerminal, payments, onPay }) {
   const [n, setN] = useState(2);
   const [paidCount, setPaidCount] = useState(0);
   const [who, setWho] = useState('');
@@ -539,7 +667,7 @@ function SplitEven({ tab, cur, busy, hasTerminal, onPay }) {
       </div>
       <div className="wtr-evenline">Each pays <b>{formatMoney(share, cur)}</b> · {paidCount} of {n} paid</div>
       <input className="wtr-input" placeholder={`Name (optional) — person ${Math.min(n, paidCount + 1)}`} value={who} onChange={(e) => setWho(e.target.value)} />
-      <PayRow amount={share} cur={cur} busy={busy} hasTerminal={hasTerminal} onPay={pay} />
+      <PayRow amount={share} cur={cur} busy={busy} hasTerminal={hasTerminal} payments={payments} onPay={pay} />
     </div>
   );
 }
@@ -547,7 +675,7 @@ function SplitEven({ tab, cur, busy, hasTerminal, onPay }) {
 // Custom percentages (starts even, edit any row). Each share is a % of the whole
 // tab; paying reduces the balance. The last unpaid share always fills the exact
 // remaining so cents never go missing.
-function SplitPct({ tab, cur, busy, hasTerminal, onPay }) {
+function SplitPct({ tab, cur, busy, hasTerminal, payments, onPay }) {
   const [rows, setRows] = useState(() => [{ name: '', pct: 50, paid: false }, { name: '', pct: 50, paid: false }]);
   const setPct = (i, val) => setRows((r) => r.map((x, j) => j === i ? { ...x, pct: Math.max(0, Math.min(100, Number(val) || 0)) } : x));
   const setName = (i, val) => setRows((r) => r.map((x, j) => j === i ? { ...x, name: val } : x));
@@ -576,8 +704,8 @@ function SplitPct({ tab, cur, busy, hasTerminal, onPay }) {
           <div className="wtr-pctamt">{formatMoney(amountFor(i), cur)}</div>
           {row.paid ? <span className="wtr-pctpaid">✓ paid</span> : (
             <div className="wtr-pctbtns">
-              <button disabled={busy} onClick={() => pay(i, 'cash')}>Cash</button>
-              <button disabled={busy || !hasTerminal} onClick={() => pay(i, 'card')}>Card</button>
+              {(!payments || payments.cash !== false) && <button disabled={busy} onClick={() => pay(i, 'cash')}>Cash</button>}
+              {(!payments || payments.card !== false) && <button disabled={busy || !hasTerminal} onClick={() => pay(i, 'card')}>Card</button>}
             </div>
           )}
         </div>
@@ -604,7 +732,7 @@ function SetupChoice({ table, onTogether, onSplit, onCancel }) {
 }
 
 // ── Split workspace: group tabs + shared tabs on one table ───────────────────
-function SessionView({ api2, currency, location, sessionId, table, onOrderInto, onBack, setErr }) {
+function SessionView({ api2, cfg, currency, location, sessionId, table, onOrderInto, onBack, setErr }) {
   const [data, setData] = useState(null);
   const [busy, setBusy] = useState(false);
   const [card, setCard] = useState(null);
@@ -703,7 +831,7 @@ function SessionView({ api2, currency, location, sessionId, table, onOrderInto, 
           </div>
         ) : <div className="wtr-paidnote">✓ This tab is fully paid.</div>}
         <button className="wtr-ghost wtr-back" onClick={() => setViewing(null)}>‹ Back to table</button>
-        {payTarget && <PayDialog target={payTarget} cur={cur} busy={busy} hasTerminal={data.hasTerminal} onCancel={() => setPayTarget(null)} onPay={(opts) => pay(payTarget.payerId, opts)} />}
+        {payTarget && <PayDialog target={payTarget} cur={cur} busy={busy} hasTerminal={data.hasTerminal} payments={cfg.payments} onCancel={() => setPayTarget(null)} onPay={(opts) => pay(payTarget.payerId, opts)} />}
       </div>
     );
   }
@@ -790,7 +918,7 @@ function SessionView({ api2, currency, location, sessionId, table, onOrderInto, 
         onClose={() => setEditShared(null)}
         onSave={async (updated) => { await saveTabs(null, data.overlay.shared.map((s) => s.id === updated.id ? updated : s)); setEditShared(null); }} />}
 
-      {payTarget && <PayDialog target={payTarget} cur={cur} busy={busy} hasTerminal={data.hasTerminal} onCancel={() => setPayTarget(null)} onPay={(opts) => pay(payTarget.payerId, opts)} />}
+      {payTarget && <PayDialog target={payTarget} cur={cur} busy={busy} hasTerminal={data.hasTerminal} payments={cfg.payments} onCancel={() => setPayTarget(null)} onPay={(opts) => pay(payTarget.payerId, opts)} />}
 
       <button className="wtr-ghost wtr-back" onClick={onBack}>‹ Back to tables</button>
     </div>
@@ -800,8 +928,11 @@ function SessionView({ api2, currency, location, sessionId, table, onOrderInto, 
 // Pay dialog for a group or guest: pay the whole balance or a part (so a bill can
 // go part cash + part card), and for cash enter what was handed over so the
 // change is calculated and recorded — no "what note did you give me?".
-function PayDialog({ target, cur, busy, hasTerminal, cashOnly, onCancel, onPay }) {
-  const [tender, setTender] = useState(cashOnly ? 'cash' : 'card');
+function PayDialog({ target, cur, busy, hasTerminal, cashOnly, payments, onCancel, onPay }) {
+  const pay = payments || { card: true, cash: true };
+  const cardOk = !cashOnly && pay.card && hasTerminal;
+  const cashOk = pay.cash;
+  const [tender, setTender] = useState(cashOnly ? 'cash' : (cardOk ? 'card' : 'cash'));
   const [amtStr, setAmtStr] = useState(((target.remaining || 0) / 100).toFixed(2));
   const [givenStr, setGivenStr] = useState('');
   const amount = cashOnly ? target.remaining : Math.round((parseFloat(amtStr) || 0) * 100);
@@ -810,17 +941,25 @@ function PayDialog({ target, cur, busy, hasTerminal, cashOnly, onCancel, onPay }
   const change = tender === 'cash' && given > 0 ? Math.max(0, given - amount) : 0;
   const partial = !cashOnly && amount > 0 && amount < target.remaining;
   const go = () => onPay({ amount, tender, cashGiven: tender === 'cash' ? given || amount : undefined });
+  // Cash quick-tender: Exact, plus the round notes at or above the amount.
+  const presets = (() => {
+    const out = [{ label: 'Exact', v: amount }];
+    for (const note of [5, 10, 20, 50, 100, 200]) { const c = note * 100; if (c >= amount) out.push({ label: `$${note}`, v: c }); }
+    return out.slice(0, 6);
+  })();
+  const showToggle = !cashOnly && cardOk && cashOk;
   return (
     <div className="wtr-scrim" onClick={onCancel}>
       <div className="wtr-dialog" onClick={(e) => e.stopPropagation()}>
         <div className="wtr-card-h">{cashOnly ? 'Cash' : 'Pay'} · {target.name}</div>
         <div className="wtr-muted">{formatMoney(target.remaining, cur)} {cashOnly ? 'to pay' : 'left on this tab'}.</div>
-        {!cashOnly && (
+        {showToggle && (
           <div className="wtr-methods">
-            <button className={`wtr-method ${tender === 'card' ? 'on' : ''}`} disabled={!hasTerminal} onClick={() => setTender('card')}>Card{!hasTerminal ? ' (no reader)' : ''}</button>
+            <button className={`wtr-method ${tender === 'card' ? 'on' : ''}`} onClick={() => setTender('card')}>Card</button>
             <button className={`wtr-method ${tender === 'cash' ? 'on' : ''}`} onClick={() => setTender('cash')}>Cash</button>
           </div>
         )}
+        {!cashOnly && !cardOk && cashOk && <div className="wtr-muted">{pay.card ? 'No card reader here' : 'Card is off for this store'} — taking cash.</div>}
         {!cashOnly && <>
           <label className="wtr-fieldlabel">Amount to pay now</label>
           <div className="wtr-row">
@@ -833,13 +972,16 @@ function PayDialog({ target, cur, busy, hasTerminal, cashOnly, onCancel, onPay }
         {tender === 'cash' && (
           <>
             <label className="wtr-fieldlabel">Cash received (for change)</label>
-            <input className="wtr-input" inputMode="decimal" placeholder="e.g. 50.00" value={givenStr} onChange={(e) => setGivenStr(e.target.value.replace(/[^\d.]/g, ''))} />
+            <div className="wtr-chips">
+              {presets.map((p, i) => <button key={i} className={`wtr-chip ${given === p.v ? 'on' : ''}`} onClick={() => setGivenStr((p.v / 100).toFixed(2))}>{p.label}</button>)}
+            </div>
+            <input className="wtr-input" inputMode="decimal" placeholder="Or type the exact amount handed over" value={givenStr} onChange={(e) => setGivenStr(e.target.value.replace(/[^\d.]/g, ''))} />
             {given > 0 && <div className="wtr-changeline">Change: <b>{formatMoney(change, cur)}</b> <span className="wtr-muted">(paid {formatMoney(given, cur)} for {formatMoney(amount, cur)})</span></div>}
           </>
         )}
         <div className="wtr-payrow">
           <button className="wtr-secondary" onClick={onCancel}>Cancel</button>
-          <button className="wtr-primary" disabled={busy || amount <= 0 || overMax || (tender === 'card' && !hasTerminal)} onClick={go}>
+          <button className="wtr-primary" disabled={busy || amount <= 0 || overMax || (tender === 'card' && !cardOk)} onClick={go}>
             {tender === 'card' ? 'Charge card' : 'Take cash'} · {formatMoney(amount, cur)}
           </button>
         </div>
@@ -916,11 +1058,12 @@ function SharedEditor({ shared, groups, onSave, onClose }) {
 }
 
 // A cash/card pay button pair with the amount baked in.
-function PayRow({ amount, cur, busy, hasTerminal, onPay, disabled }) {
+function PayRow({ amount, cur, busy, hasTerminal, payments, onPay, disabled }) {
+  const pm = payments || { card: true, cash: true };
   return (
     <div className="wtr-payrow">
-      <button className="wtr-secondary" disabled={busy || disabled || amount <= 0} onClick={() => onPay('cash')}>Cash · {formatMoney(amount, cur)}</button>
-      <button className="wtr-primary" disabled={busy || disabled || amount <= 0 || !hasTerminal} onClick={() => onPay('card')}>Card · {formatMoney(amount, cur)}</button>
+      {pm.cash !== false && <button className="wtr-secondary" disabled={busy || disabled || amount <= 0} onClick={() => onPay('cash')}>Cash · {formatMoney(amount, cur)}</button>}
+      {pm.card !== false && <button className="wtr-primary" disabled={busy || disabled || amount <= 0 || !hasTerminal} onClick={() => onPay('card')}>Card · {formatMoney(amount, cur)}</button>}
     </div>
   );
 }
@@ -950,7 +1093,11 @@ function useCardPoll(api2, tabId, location, setErr) {
 function WaiterStyle() {
   return (
     <style>{`
-    .wtr-root{position:fixed;inset:0;background:var(--bg,#faf7f8);color:var(--text,#1c1720);font-family:inherit;display:flex;flex-direction:column;z-index:60;overflow:hidden}
+    /* Waiter mode uses its OWN fixed, high-contrast palette so a store's theme
+       (e.g. a blue storefront) can never wash the screen out or hide buttons. */
+    .wtr-root{--bg:#f3f1f4;--surface:#ffffff;--text:#1a151d;--muted:#6b646f;--line:#e5dee6;--brand:#0f6f59;
+      position:fixed;inset:0;background:#f3f1f4;color:#1a151d;font-family:inherit;display:flex;flex-direction:column;z-index:60;overflow:hidden}
+    .wtr-root *{-webkit-tap-highlight-color:transparent}
     .wtr-center{align-items:center;justify-content:center}
     .wtr-spin{width:34px;height:34px;border:3px solid var(--line,#e7dfe4);border-top-color:var(--brand,#7a2e57);border-radius:50%;animation:wtrspin .8s linear infinite}
     @keyframes wtrspin{to{transform:rotate(360deg)}}
@@ -1049,7 +1196,7 @@ function WaiterStyle() {
     .wtr-adhoc{display:flex;justify-content:space-between;align-items:center;background:var(--bg,#faf7f8);border-radius:8px;padding:7px 10px;font-size:13px}
     .wtr-tablechip.on{background:var(--brand,#7a2e57);color:#fff}
     .wtr-assign{flex-basis:100%;margin-top:4px;padding:8px}
-    .wtr-who{font-weight:500;opacity:.8;font-size:13px}
+    .wtr-who{font-weight:500;opacity:.85;font-size:13px;background:none;border:none;color:inherit;cursor:pointer;padding:0}
     .wtr-sec-row{display:flex;justify-content:space-between;align-items:center;margin-top:4px}
     .wtr-seg{display:flex;border:1px solid var(--line,#e7dfe4);border-radius:8px;overflow:hidden}
     .wtr-seg button{border:none;background:var(--surface,#fff);color:inherit;padding:6px 14px;font-weight:700;font-size:13px;cursor:pointer}
@@ -1063,6 +1210,24 @@ function WaiterStyle() {
     .wtr-changeline{background:#eef7ef;color:#276b3a;border-radius:8px;padding:8px 10px;font-size:14px}
     .wtr-iconbtn{display:inline-flex;align-items:center;justify-content:center}
     .wtr-pay-i{display:inline-flex}
+    /* Menu list view (no image tiles) */
+    .wtr-menulist{display:flex;flex-direction:column;gap:2px;flex:1;min-height:0}
+    .wtr-menurow{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--surface,#fff);border:1px solid var(--line,#e5dee6);border-radius:10px;padding:13px 14px;cursor:pointer;text-align:left;width:100%;color:inherit}
+    .wtr-menurow:active{background:#f0edf1}
+    .wtr-menurow-name{font-weight:700;font-size:15px;display:flex;align-items:center;gap:8px}
+    .wtr-incart{background:var(--brand,#0f6f59);color:#fff;font-size:12px;font-weight:800;min-width:20px;height:20px;border-radius:10px;display:inline-flex;align-items:center;justify-content:center;padding:0 6px}
+    .wtr-menurow-right{display:flex;align-items:center;gap:12px}
+    .wtr-menurow-price{color:var(--muted,#6b646f);font-weight:700;font-size:14px}
+    .wtr-menurow-add{width:30px;height:30px;border-radius:8px;background:var(--brand,#0f6f59);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:20px;font-weight:700}
+    .wtr-round-head{font-weight:800;font-size:13px;display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+    .wtr-round-line{display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:var(--bg,#f3f1f4);border:1px solid var(--line,#e5dee6);border-radius:10px;padding:8px 10px;cursor:pointer;color:inherit}
+    .wtr-round-qtybadge{min-width:26px;height:26px;border-radius:8px;background:var(--brand,#0f6f59);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;flex:none}
+    .wtr-notechip{font-size:12.5px;color:var(--brand,#0f6f59);font-weight:600;margin-top:2px}
+    .wtr-chips{display:flex;flex-wrap:wrap;gap:8px}
+    .wtr-chip{border:1.5px solid var(--line,#e5dee6);background:var(--surface,#fff);color:inherit;border-radius:10px;padding:10px 12px;font-weight:700;font-size:14px;cursor:pointer}
+    .wtr-chip.on{background:var(--brand,#0f6f59);color:#fff;border-color:var(--brand,#0f6f59)}
+    .wtr-chip.need{border-color:#c9902b}
+    .wtr-danger{color:#b1483f;border-color:#e6c0bc}
     .wtr-pin{display:flex;flex-direction:column;align-items:center;gap:12px;max-width:300px}
     .wtr-pin-title{font-weight:800;font-size:20px}
     .wtr-pin-sub{color:var(--muted,#8a8189);font-size:14px}
