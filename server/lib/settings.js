@@ -303,6 +303,16 @@ const DEFAULTS = {
   // Banner auto-scroll: on/off and speed (seconds between slides).
   heroAutoplay: true,
   heroInterval: 5,
+  // Customer Display (CDS) — the second screen at /display. Its idle look (logo +
+  // greeting) and which banners double as its idle adverts. A banner shows on the
+  // CDS when its `cds` flag is on; while an order is being built, the live cart
+  // takes over, and the adverts return when the counter is idle.
+  cds: {
+    welcomeTitle: 'Welcome',
+    welcomeSub: '',       // blank → the store name
+    logo: '',             // optional CDS-specific logo (falls back to the store logo)
+    adIntervalSec: 6,     // seconds between idle adverts
+  },
   // Maximum storefront width on large screens (px). Caps the whole customer
   // site (header, hero, order bar, content) so nothing over-stretches on wide
   // monitors. Use the string 'full' for an uncapped, edge-to-edge layout.
