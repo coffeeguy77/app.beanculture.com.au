@@ -323,9 +323,9 @@ function Home({ api2, cfg, currency, location, waiterName, setErr, onOpenTab, on
           <button key={t.tabId} className="wtr-tab" onClick={() => onOpenTab({ tabId: t.tabId, table: t.table, sessionId: t.sessionId })}>
             <div className="wtr-tab-l">
               <div className="wtr-tab-table">Table {t.table}{t.name ? ` · ${t.name}` : ''}{t.sessionId ? ' · split' : ''}</div>
-              <div className="wtr-muted">{t.itemCount} item{t.itemCount === 1 ? '' : 's'}{t.by ? ` · ${t.by}` : ''}</div>
+              <div className="wtr-muted">{t.itemCount} item{t.itemCount === 1 ? '' : 's'}{t.by ? ` · ${t.by}` : ''}{t.remaining != null && t.paid > 0 && t.remaining > 0 ? ` · ${formatMoney(t.paid, t.currency || currency)} paid` : ''}</div>
             </div>
-            <div className="wtr-tab-total">{formatMoney(t.total, t.currency || currency)}</div>
+            <div className="wtr-tab-total">{formatMoney(t.remaining != null ? t.remaining : t.total, t.currency || currency)}{t.remaining != null && t.remaining <= 0 ? <span className="wtr-tab-badge" style={{ marginLeft: 6 }}>PAID</span> : (t.paid > 0 ? <span className="wtr-muted" style={{ display: 'block', fontSize: 11, fontWeight: 600 }}>left</span> : null)}</div>
           </button>
         ))}
       </div>
