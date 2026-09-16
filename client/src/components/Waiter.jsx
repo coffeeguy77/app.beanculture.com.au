@@ -43,6 +43,8 @@ function waiterApi(auth, by) {
     sessionPay: (body) => post('/api/waiter/session/pay', body, true),
     sessionMarkPaid: (body) => post('/api/waiter/session/mark-paid', body),
     claimName: (body) => post('/api/waiter/claim-name', body),
+    tableOpen: (body) => post('/api/waiter/table/open', body, true),
+    tableClose: (body) => post('/api/waiter/table/close', body),
   };
 }
 
@@ -75,6 +77,7 @@ const IconLock = (p) => <Svg s={p.s}><rect x="5" y="11" width="14" height="9" rx
 const IconBack = (p) => <Svg s={p.s}><path d="M15 5l-7 7 7 7" /></Svg>;
 const IconSplit = (p) => <Svg s={p.s}><path d="M6 3v6a3 3 0 0 0 3 3h6a3 3 0 0 1 3 3v6" /><path d="M14 6l4-3 4 3" transform="translate(-4 0)" /></Svg>;
 const IconSearch = (p) => <Svg s={p.s}><circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" /></Svg>;
+const IconX = (p) => <Svg s={p.s}><path d="M6 6l12 12M18 6L6 18" /></Svg>;
 
 export default function Waiter({ onExit, adminPass, actorName }) {
   const isAdmin = !!adminPass;
@@ -172,8 +175,8 @@ export default function Waiter({ onExit, adminPass, actorName }) {
       </header>
       {err && <div className="wtr-err" onClick={() => setErr('')}>{err} · tap to dismiss</div>}
 
-      {screen === 'home' && <Home {...common} waiterName={waiterName} onOpenTab={openExisting} onNewTab={startNewTab} />}
-      {screen === 'setup' && <SetupChoice {...common} table={ctx.table} onTogether={() => setScreen('build')} onSplit={startSplit} onCancel={goHome} />}
+      {screen === 'home' && <Home {...common} waiterName={waiterName} onOpenTab={openExisting} onNewTab={startNewTab} onOpenEmpty={onOpenEmpty} />}
+      {screen === 'setup' && <SetupChoice {...common} table={ctx.table} onTogether={startTogether} onSplit={startSplit} onCancel={goHome} />}
       {screen === 'build' && <Build {...common} title={ctx.groupId ? 'Add to tab' : (ctx.tabId ? 'Add to' : 'New tab')} label={ctx.table}
         cartKey={`${ctx.sessionId || ''}|${ctx.groupId || ''}|${ctx.tabId || ''}|${ctx.table || ''}`}
         submit={(cart) => ctx.sessionId
@@ -194,9 +197,24 @@ export default function Waiter({ onExit, adminPass, actorName }) {
   function openExisting({ tabId, table, sessionId }) { if (sessionId) return openSession(sessionId, table); setCtx({ tabId, table, sessionId: '', groupId: '' }); setScreen('tab'); }
   function openSession(sessionId, table) { setCtx({ tabId: '', table, sessionId, groupId: '' }); setScreen('session'); }
   function afterSend({ tabId, table }) { setCtx({ tabId, table, sessionId: '', groupId: '' }); setScreen('tab'); }
+  // Reopen a table that's been marked taken but has no order yet: a split table
+  // resumes its session; a one-tab table jumps straight to building the order.
+  function onOpenEmpty(t) {
+    if (t.sessionId) return openSession(t.sessionId, t.table);
+    setCtx({ tabId: '', table: t.table, sessionId: '', groupId: '' }); setScreen('build');
+  }
+  // Choosing "All together" marks the table taken up front, so the floor knows
+  // it's occupied even before the first item is sent to the kitchen.
+  async function startTogether() {
+    try { await api2.tableOpen({ table: ctx.table, mode: 'together', locationId: location }); } catch {}
+    setScreen('build');
+  }
   async function startSplit() {
-    try { const d = await api2.sessionCreate({ table: ctx.table, locationId: location }); openSession(d.sessionId, ctx.table); }
-    catch (e) { setErr(e.message); }
+    try {
+      const d = await api2.sessionCreate({ table: ctx.table, locationId: location });
+      try { await api2.tableOpen({ table: ctx.table, mode: 'groups', sessionId: d.sessionId, locationId: location }); } catch {}
+      openSession(d.sessionId, ctx.table);
+    } catch (e) { setErr(e.message); }
   }
 }
 
@@ -240,13 +258,20 @@ function NameGate({ onSubmit, onExit }) {
 }
 
 // ── Home: open tabs + new tab ────────────────────────────────────────────────
-function Home({ api2, cfg, currency, location, waiterName, setErr, onOpenTab, onNewTab }) {
+function Home({ api2, cfg, currency, location, waiterName, setErr, onOpenTab, onNewTab, onOpenEmpty }) {
   const [tabs, setTabs] = useState(null);
   const [table, setTable] = useState('');
   const [picking, setPicking] = useState(false);
   const [mine, setMine] = useState(false);
+  const [closing, setClosing] = useState('');
 
   const load = async () => { try { const d = await api2.tabs(location); setTabs(d.tabs || []); } catch (e) { setErr(e.message); setTabs([]); } };
+  // Clear a table that has no order (an empty marker) so it stops showing taken.
+  const closeEmpty = async (t) => {
+    setClosing(t.openId);
+    try { await api2.tableClose({ openId: t.openId }); await load(); }
+    catch (e) { setErr(e.message); } finally { setClosing(''); }
+  };
   useEffect(() => { load(); const iv = setInterval(load, 12000); return () => clearInterval(iv); /* eslint-disable-next-line */ }, [location]);
 
   const presets = cfg.tables || [];
@@ -281,7 +306,20 @@ function Home({ api2, cfg, currency, location, waiterName, setErr, onOpenTab, on
       {tabs === null && <div className="wtr-muted">Loading…</div>}
       {tabs && shown.length === 0 && <div className="wtr-muted">{mine ? 'None of your tables are open.' : 'No open tables. Start one above.'}</div>}
       <div className="wtr-tablist">
-        {shown.map((t) => (
+        {shown.map((t) => t.empty ? (
+          // A table marked taken but with no order yet. Tap to start ordering;
+          // the ✕ clears it (party left, or opened by mistake).
+          <div key={t.openId} className="wtr-tab wtr-tab-empty">
+            <button className="wtr-tab-main" onClick={() => onOpenEmpty(t)}>
+              <div className="wtr-tab-l">
+                <div className="wtr-tab-table">Table {t.table}{t.mode === 'groups' ? ' · split' : ''}</div>
+                <div className="wtr-muted">Open · no order yet{t.by ? ` · ${t.by}` : ''}</div>
+              </div>
+              <span className="wtr-tab-badge">Taken</span>
+            </button>
+            <button className="wtr-tab-close" title="Close table" disabled={closing === t.openId} onClick={() => closeEmpty(t)}><IconX s={18} /></button>
+          </div>
+        ) : (
           <button key={t.tabId} className="wtr-tab" onClick={() => onOpenTab({ tabId: t.tabId, table: t.table, sessionId: t.sessionId })}>
             <div className="wtr-tab-l">
               <div className="wtr-tab-table">Table {t.table}{t.name ? ` · ${t.name}` : ''}{t.sessionId ? ' · split' : ''}</div>
@@ -555,6 +593,7 @@ function Settle({ api2, cfg, currency, location, ctx, setErr, onSplit, onDone, o
   const [tab, setTab] = useState(null);
   const [card, setCard] = useState(null);   // active card checkout {checkoutId,...}
   const [busy, setBusy] = useState(false);
+  const [cashOpen, setCashOpen] = useState(false);
   const load = async () => { try { setTab(await api2.tab(ctx.tabId)); } catch (e) { setErr(e.message); } };
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [ctx.tabId]);
 
@@ -562,8 +601,6 @@ function Settle({ api2, cfg, currency, location, ctx, setErr, onSplit, onDone, o
 
   if (!tab) return <div className="wtr-body"><div className="wtr-muted">Loading…</div></div>;
   const remaining = tab.remaining;
-
-  const [cashOpen, setCashOpen] = useState(false);
 
   async function payCard() {
     setBusy(true); setErr('');
@@ -1253,6 +1290,12 @@ function WaiterStyle() {
     .wtr-tab{display:flex;align-items:center;justify-content:space-between;background:var(--surface,#fff);border:1px solid var(--line,#e7dfe4);border-radius:12px;padding:14px;cursor:pointer;text-align:left}
     .wtr-tab-table{font-weight:800;font-size:15px}
     .wtr-tab-total{font-weight:800;font-size:16px;color:var(--brand,#7a2e57)}
+    .wtr-tab-empty{padding:0;overflow:hidden;border-style:dashed;background:var(--surface,#fff)}
+    .wtr-tab-main{flex:1;display:flex;align-items:center;justify-content:space-between;gap:10px;background:none;border:0;padding:14px;cursor:pointer;text-align:left;color:inherit;font:inherit}
+    .wtr-tab-badge{font-weight:800;font-size:12px;letter-spacing:.03em;text-transform:uppercase;color:var(--brand,#7a2e57);border:1.5px solid var(--brand,#7a2e57);border-radius:999px;padding:3px 10px;white-space:nowrap}
+    .wtr-tab-close{flex:none;align-self:stretch;display:flex;align-items:center;justify-content:center;width:52px;background:none;border:0;border-left:1px solid var(--line,#e7dfe4);color:var(--muted,#8a7f86);cursor:pointer}
+    .wtr-tab-close:disabled{opacity:.5;cursor:default}
+    .wtr-tab-close:active{background:rgba(0,0,0,.05)}
     .wtr-build-head{display:flex;justify-content:space-between;align-items:center}
     .wtr-build-table{font-weight:800}
     .wtr-catnav{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px}
