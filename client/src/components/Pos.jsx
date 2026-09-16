@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { api, formatMoney, imgUrl, comboDiscountFor } from '../api.js';
 import { useItemConfig, itemHasOptions, buildQuickCartItem } from '../hooks/useItemConfig.js';
 import Kds from './Kds.jsx';
+import Waiter from './Waiter.jsx';
 import ComboModal from './ComboModal.jsx';
 import Logo from './Logo.jsx';
 
@@ -244,6 +245,7 @@ export default function Pos({ onExit }) {
   const [cardPay, setCardPay] = useState(() => { try { return JSON.parse(localStorage.getItem('bc-pos-active-checkout') || 'null'); } catch { return null; } });
   const [showSetup, setShowSetup] = useState(false);    // card-terminal pairing modal
   const [showSettings, setShowSettings] = useState(false); // the ⚙ settings sheet
+  const [showTables, setShowTables] = useState(false);     // table-service (waiter) workspace, admin-authed
   const [kdsControls, setKdsControls] = useState(null);    // controls surfaced by the embedded KDS
   const [posLoc, setPosLoc] = useState(() => { try { return localStorage.getItem('bc-pos-location') || ''; } catch { return ''; } });
   const [theme, setTheme] = useState(() => { try { return localStorage.getItem(THEME_KEY) || 'plum'; } catch { return 'plum'; } });
@@ -680,10 +682,16 @@ export default function Pos({ onExit }) {
             <button className="pos-icon" title="Refresh" onClick={kdsControls.refresh}><IcoRefresh /></button>
           </div>
         )}
+        {cfg.waiterEnabled && (
+          <button className="pos-icon" title="Table service" onClick={() => setShowTables(true)}>
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="4" width="7" height="7" rx="1.5" /><rect x="14" y="4" width="7" height="7" rx="1.5" /><rect x="3" y="15" width="7" height="5" rx="1.5" /><rect x="14" y="15" width="7" height="5" rx="1.5" /></svg>
+          </button>
+        )}
         <button className="pos-icon" title="Settings" onClick={() => setShowSettings(true)}><IcoGear /></button>
       </div>
     </header>
   );
+  const tablesOverlay = showTables ? <Waiter adminPass={pass} actorName={cfg.deviceName || 'Counter'} onExit={() => setShowTables(false)} /> : null;
 
   // ── KDS mode: the live kitchen screen, hosted under the persistent POS header.
   //    No second bar and no second store selector — the KDS follows the store
@@ -692,6 +700,7 @@ export default function Pos({ onExit }) {
     return (
       <div className="pos-root" data-theme={theme}>
         {header}
+        {tablesOverlay}
         <div className="pos-kds-host"><Kds embedded location={posLoc} onControls={setKdsControls} onExit={() => setMode('register')} /></div>
         {showSettings && (
           <SettingsSheet
@@ -715,6 +724,7 @@ export default function Pos({ onExit }) {
   return (
     <div className="pos-root" data-theme={theme}>
       {header}
+      {tablesOverlay}
       <div className={`pos-body${configureMode ? ' configuring' : ''}`}>
         {/* Left: category rail (browse) OR return rail (configure) */}
         {configureMode ? (
@@ -1252,6 +1262,82 @@ function CashUpModal({ pass, posLoc, currency, onClose }) {
   );
 }
 
+// Waiter mode — a portable, PIN-gated table-service register (/waiter) with a
+// dedicated card Terminal, separate from the counter. Set-up lives here beside
+// the counter POS settings the owner already knows.
+function WaiterSettings({ cfg, posLoc, multiStore, storeName, pass }) {
+  const perLoc = (cfg.waiterTerminalByLocation || {})[posLoc];
+  const [enabled, setEnabled] = useState(cfg.waiterEnabled === true);
+  const [hasPin, setHasPin] = useState(!!cfg.hasWaiterPin);
+  const [pin, setPin] = useState('');
+  const [tables, setTables] = useState((cfg.waiterTables || []).join(', '));
+  const [devices, setDevices] = useState(null);
+  const [termId, setTermId] = useState((perLoc && perLoc.deviceId) || cfg.waiterTerminalDeviceId || '');
+  const [msg, setMsg] = useState('');
+  const [err, setErr] = useState('');
+  const flash = (m) => { setMsg(m); setTimeout(() => setMsg(''), 2000); };
+  const save = async (body, okMsg) => {
+    setErr('');
+    try { const r = await api.posSaveWaiter(pass, body); if (okMsg) flash(okMsg); return r; }
+    catch (e) { setErr(e.message || 'Could not save'); throw e; }
+  };
+  const toggle = async () => { const next = !enabled; setEnabled(next); try { await save({ enabled: next }, next ? 'Waiter mode on' : 'Waiter mode off'); } catch { setEnabled(!next); } };
+  const savePin = async () => { const v = pin.trim(); if (!/^\d{4,8}$/.test(v)) { setErr('PIN must be 4–8 digits.'); return; } try { await save({ pin: v }, 'PIN saved'); setHasPin(true); setPin(''); } catch {} };
+  const saveTables = async () => { try { const r = await save({ tables }, 'Tables saved'); if (r && Array.isArray(r.waiterTables)) setTables(r.waiterTables.join(', ')); } catch {} };
+  const loadDevices = async () => { try { const d = await api.posTerminalDevices(pass); setDevices(d.devices || []); } catch (e) { setErr(e.message); setDevices([]); } };
+  const pickTerminal = async (id) => {
+    setTermId(id);
+    const dev = (devices || []).find((d) => d.id === id);
+    try { await save({ terminalDeviceId: id, terminalName: dev ? dev.name : '', locationId: multiStore ? posLoc : undefined }, id ? 'Waiter terminal set' : 'Waiter terminal cleared'); } catch {}
+  };
+  const url = `${window.location.origin}/waiter`;
+  return (
+    <div className="pos-set-block pos-set-span">
+      <div className="pos-set-label">Waiter mode — table service{storeName ? ` · ${storeName}` : ''}</div>
+      <p className="pos-set-hint">A portable register your floor staff open on their own phone at <b>/waiter</b>. They unlock with a short PIN (never the admin password), open a tab on a table, send items to the kitchen, then settle — full, split by item, an even share, or by percentage — on a <b>dedicated</b> card Terminal.</p>
+      <div className="pos-set-row">
+        <span className={`pos-set-status${enabled ? ' on' : ''}`}>● {enabled ? 'Waiter mode is on' : 'Waiter mode is off'}</span>
+        <button className="pos-btn primary" onClick={toggle}>{enabled ? 'Turn off' : 'Turn on'}</button>
+      </div>
+
+      {enabled && (
+        <>
+          <div className="pos-set-label" style={{ marginTop: 10 }}>Staff PIN {hasPin ? '· set' : '· not set yet'}</div>
+          <div className="pos-set-row" style={{ gap: 8 }}>
+            <input className="pos-set-select" inputMode="numeric" type="password" placeholder={hasPin ? 'Change PIN (4–8 digits)' : 'Set PIN (4–8 digits)'} value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 8))} style={{ flex: 1 }} />
+            <button className="pos-btn primary" disabled={pin.length < 4} onClick={savePin}>Save PIN</button>
+          </div>
+
+          <div className="pos-set-label" style={{ marginTop: 10 }}>Preset tables</div>
+          <p className="pos-set-hint">Tables staff can tap when opening a tab. Comma or new-line separated. They can also type a custom table or name at any time.</p>
+          <textarea className="pos-set-select" rows={2} placeholder="1, 2, 3, 4, Courtyard 1, Bar 2" value={tables} onChange={(e) => setTables(e.target.value)} />
+          <div className="pos-set-row"><span /><button className="pos-btn primary" onClick={saveTables}>Save tables</button></div>
+
+          <div className="pos-set-label" style={{ marginTop: 10 }}>Waiter card terminal (dedicated)</div>
+          <p className="pos-set-hint">The second Terminal the floor carries — kept separate from the counter reader. Pair a new Terminal from the counter’s <b>Card terminal → Set up</b> above, then choose it here.</p>
+          {devices === null ? (
+            <button className="pos-btn ghost" onClick={loadDevices}>Choose a terminal</button>
+          ) : (
+            <select className="pos-set-select" value={termId} onChange={(e) => pickTerminal(e.target.value)}>
+              <option value="">— None (card at table off) —</option>
+              {devices.map((d) => <option key={d.id} value={d.id}>{d.name}{d.status ? ` · ${d.status}` : ''}</option>)}
+            </select>
+          )}
+
+          <div className="pos-set-label" style={{ marginTop: 10 }}>Open waiter mode</div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            <button type="button" className="pos-btn ghost" onClick={() => window.open(url, '_blank', 'noopener')}>Open /waiter ↗</button>
+            <button type="button" className="pos-btn ghost" onClick={() => { try { navigator.clipboard.writeText(url); } catch {} }}>Copy link</button>
+            <span className="pos-set-hint" style={{ flexBasis: '100%', wordBreak: 'break-all', marginTop: 4 }}>{url}</span>
+          </div>
+        </>
+      )}
+      {msg && <div className="pos-set-hint" style={{ color: 'var(--pos-brand, #7a2e57)', fontWeight: 700 }}>{msg}</div>}
+      {err && <div className="pos-err">{err}</div>}
+    </div>
+  );
+}
+
 function SettingsSheet({ cfg, posLoc, multiStore, curTerm, theme, onTheme, idleSec, onIdle, pass, onPayments, onSwitchStore, onOpenTerminal, onExit, onClose, displayCode, onDisplayCode }) {
   const idleOpts = [{ v: 0, t: 'Never' }, { v: 30, t: '30s' }, { v: 60, t: '60s' }, { v: 120, t: '2 min' }, { v: 300, t: '5 min' }];
   const [showRefund, setShowRefund] = useState(false);
@@ -1373,6 +1459,8 @@ function SettingsSheet({ cfg, posLoc, multiStore, curTerm, theme, onTheme, idleS
             <button className="pos-btn primary" onClick={onOpenTerminal}>{termOn ? 'Manage' : 'Set up'}</button>
           </div>
         </div>
+
+        <WaiterSettings cfg={cfg} posLoc={posLoc} multiStore={multiStore} storeName={storeName} pass={pass} />
 
         <div className="pos-set-block">
           <div className="pos-set-label">Refunds</div>
