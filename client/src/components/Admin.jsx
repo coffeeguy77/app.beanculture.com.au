@@ -5185,6 +5185,18 @@ export default function Admin({ onExit }) {
               <div className="card" style={card}>
                 <div className="group-title">Banners (hero carousel)</div>
                 <p className="muted" style={{ fontSize: 'var(--fs-xs)', margin: '0 0 10px' }}>Recommended image: <strong>1200 × 800px</strong> (3:2). Images are stretched to fill the banner — nothing is cropped, so design to this shape.</p>
+
+                <div style={{ border: '1px solid var(--line)', borderRadius: 12, padding: 12, margin: '0 0 14px', background: 'var(--admin-surface-2, #f7f2f4)' }}>
+                  <div className="group-title" style={{ margin: '0 0 4px' }}>Customer Display (CDS)</div>
+                  <p className="muted" style={{ fontSize: 'var(--fs-xs)', margin: '0 0 8px' }}>The second screen at <b>/display</b>. When the counter is idle it shows this logo + greeting, or rotates any banner below that you tick <b>“Show on Customer Display”</b>. While an order is being built, the live cart takes over.</p>
+                  <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginBottom: 8 }}>
+                    {s.cds && s.cds.logo ? <img src={s.cds.logo} alt="" style={{ height: 46, borderRadius: 8, background: '#fff', padding: 4 }} /> : <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>No CDS logo (uses your store logo)</span>}
+                    <label className="btn ghost" style={{ cursor: 'pointer' }}>Upload logo<input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files[0]; if (f) uploadImage(f, (url) => set({ cds: { ...(s.cds || {}), logo: url } }), 'cds'); }} /></label>
+                    {s.cds && s.cds.logo && <button className="link" style={{ color: '#c0392b' }} onClick={() => set({ cds: { ...(s.cds || {}), logo: '' } })}>Remove</button>}
+                  </div>
+                  <input style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 10, marginBottom: 6 }} value={(s.cds && s.cds.welcomeTitle) ?? 'Welcome'} onChange={(e) => set({ cds: { ...(s.cds || {}), welcomeTitle: e.target.value } })} placeholder="Welcome heading" />
+                  <input style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 10 }} value={(s.cds && s.cds.welcomeSub) || ''} onChange={(e) => set({ cds: { ...(s.cds || {}), welcomeSub: e.target.value } })} placeholder="Sub text (blank = store name)" />
+                </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', margin: '2px 0 12px', paddingBottom: 12, borderBottom: '1px solid var(--line)' }}>
                   <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
                     <input type="checkbox" checked={s.heroAutoplay !== false} onChange={(e) => set({ heroAutoplay: e.target.checked })} />
@@ -5226,6 +5238,9 @@ export default function Admin({ onExit }) {
                       <input style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 10, marginBottom: 6 }} value={sl.title || ''} onChange={(e) => updSlide(i, { title: e.target.value })} placeholder="Title" />
                       <input style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 10, marginBottom: 6 }} value={sl.subtitle || ''} onChange={(e) => updSlide(i, { subtitle: e.target.value })} placeholder="Subtitle" />
                       <input style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 10, marginBottom: 6 }} value={sl.cta || ''} onChange={(e) => updSlide(i, { cta: e.target.value })} placeholder="Button text (optional)" />
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '2px 0 8px', fontSize: 'var(--fs-sm)', fontWeight: 600 }} title="Also show this banner as an idle advert on the Customer Display (CDS) screen.">
+                        <input type="checkbox" checked={!!sl.cds} onChange={(e) => updSlide(i, { cds: e.target.checked })} /> Show on Customer Display (CDS)
+                      </label>
                       <div style={{ ...row, marginBottom: 6 }}>
                         <select value={sl.link?.type || 'scroll'} onChange={(e) => updSlide(i, { link: { ...sl.link, type: e.target.value } })} style={{ padding: 8, borderRadius: 10, border: '1px solid var(--line)' }}>
                           {LINK_TYPES.map((t) => <option key={t} value={t}>{LINK_TYPE_LABELS[t] || t}</option>)}

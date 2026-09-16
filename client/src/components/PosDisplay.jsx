@@ -1,15 +1,17 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { formatMoney } from '../api.js';
 
-// Customer-facing display: a second screen (tablet / phone / monitor) that mirrors
-// the POS's live order as staff build it, then shows a thank-you when paid. It
-// polls a per-station channel the POS pushes to — no login, just a station code
-// shared with the POS (?s=<code> in the URL). Standalone route: /display.
+// Customer-facing display (CDS): a second screen (tablet / phone / monitor) that
+// mirrors the POS's live order as staff build it, shows a thank-you when paid,
+// and — when the counter is idle — cycles the store's chosen adverts (any banner
+// flagged for the CDS) or a branded welcome. Polls a per-station channel the POS
+// pushes to. Standalone route: /display?s=<code>. Purely a display: no taps.
 export default function PosDisplay() {
   const params = new URLSearchParams(window.location.search);
   const station = params.get('s') || params.get('station') || 'main';
   const [state, setState] = useState(null);
   const [offline, setOffline] = useState(false);
+  const [adIdx, setAdIdx] = useState(0);
   const timer = useRef(null);
 
   useEffect(() => {
@@ -31,15 +33,20 @@ export default function PosDisplay() {
   const status = state ? state.status : 'idle';
   const cart = (state && state.cart) || [];
   const hasOrder = cart.length > 0;
+  const cds = (state && state.cds) || {};
+  const ads = cds.ads || [];
+  const idle = !hasOrder && status !== 'paid';
+
+  // Rotate idle adverts.
+  useEffect(() => {
+    if (!idle || ads.length < 2) { setAdIdx(0); return; }
+    const iv = setInterval(() => setAdIdx((i) => (i + 1) % ads.length), (cds.adIntervalSec || 6) * 1000);
+    return () => clearInterval(iv);
+  }, [idle, ads.length, cds.adIntervalSec]);
 
   return (
-    <div className="cd-root">
-      <div className="cd-head">
-        {state && state.logo
-          ? <img className="cd-logo" src={state.logo} alt="" />
-          : <div className="cd-store">{storeName}</div>}
-        {offline && <div className="cd-offline">Reconnecting…</div>}
-      </div>
+    <div className="cd-root" style={{ pointerEvents: 'none', userSelect: 'none' }}>
+      {offline && <div className="cd-offline">Reconnecting…</div>}
 
       {status === 'paid' ? (
         <div className="cd-center">
@@ -71,10 +78,28 @@ export default function PosDisplay() {
             <span>{formatMoney(state.total, currency)}</span>
           </div>
         </div>
+      ) : ads.length > 0 ? (
+        // Idle adverts (banners flagged "Show on CDS").
+        (() => {
+          const ad = ads[adIdx % ads.length] || ads[0];
+          return (
+            <div className="cd-ad" style={ad.image ? undefined : { background: ad.bg || 'var(--cd-bg, #16265e)' }}>
+              {ad.image && <img className="cd-ad-img" src={ad.image} alt="" style={{ objectFit: ad.fit === 'contain' ? 'contain' : 'cover' }} />}
+              {(ad.title || ad.subtitle) && (
+                <div className="cd-ad-cap" style={{ color: ad.textColor || '#fff' }}>
+                  {ad.title && <div className="cd-ad-title">{ad.title}</div>}
+                  {ad.subtitle && <div className="cd-ad-sub">{ad.subtitle}</div>}
+                </div>
+              )}
+            </div>
+          );
+        })()
       ) : (
+        // Branded welcome: logo above the greeting.
         <div className="cd-center">
-          <div className="cd-welcome">Welcome</div>
-          <div className="cd-welcome-sub">{storeName}</div>
+          {cds.logo && <img className="cd-welcome-logo" src={cds.logo} alt="" />}
+          <div className="cd-welcome">{cds.welcomeTitle || 'Welcome'}</div>
+          <div className="cd-welcome-sub">{cds.welcomeSub || storeName}</div>
         </div>
       )}
     </div>

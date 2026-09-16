@@ -337,13 +337,16 @@ function Build({ menu, currency, title, label, cartKey, setErr, submit, onDone, 
   }
 
   const closeSearch = () => { setSearching(false); setQ(''); };
+  // Cancelling discards this draft (so re-opening the table starts fresh); a
+  // reload — which is what the saved cart protects against — restores it instead.
+  const cancel = () => { saveCart(cartKey || 'x', []); onCancel(); };
   return (
     <div className={`wtr-body wtr-build ${expanded ? 'cart-expanded' : ''}`}>
       <div className="wtr-build-head">
         <div className="wtr-build-table">{title} · {label}</div>
         <div className="wtr-head-actions">
           <button className="wtr-ghost wtr-iconbtn" title="Search" onClick={() => setSearching(true)}><IconSearch /></button>
-          <button className="wtr-ghost" onClick={onCancel}>Cancel</button>
+          <button className="wtr-ghost" onClick={cancel}>Cancel</button>
         </div>
       </div>
 
@@ -365,7 +368,9 @@ function Build({ menu, currency, title, label, cartKey, setErr, submit, onDone, 
         {items.length === 0 && <div className="wtr-muted">No items.</div>}
         {items.map((it) => {
           const base = (it.variations || [])[0]?.price || 0;
-          const inCart = cart.filter((x) => x.itemId === (it.presetSourceItemId || it.id)).reduce((s, x) => s + x.quantity, 0);
+          // How many of THIS item are already in the cart — matched by name so it
+          // never falls back to a shared/blank id and shows the same total on all.
+          const inCart = cart.filter((x) => x.itemName === it.name).reduce((s, x) => s + x.quantity, 0);
           return (
             <button key={it.id} className="wtr-menurow" onClick={() => tap(it)}>
               <div className="wtr-menurow-name">{it.name}{inCart > 0 && <span className="wtr-incart">{inCart}</span>}</div>
@@ -801,8 +806,8 @@ function SessionView({ api2, cfg, currency, location, sessionId, table, onOrderI
   const [card, setCard] = useState(null);
   const [adding, setAdding] = useState(false);      // add-tab editor open
   const [editShared, setEditShared] = useState(null); // shared tab being configured
-  const [showItems, setShowItems] = useState(false);
   const [viewing, setViewing] = useState(null);     // group id whose itemised tab is open
+  const [moveMode, setMoveMode] = useState(false);  // show the per-line "move" dropdowns
   const [payTarget, setPayTarget] = useState(null); // { payerId, name, remaining } being paid
   const cardPoll = useCardPoll(api2, data && data.tabId, location, setErr);
 
@@ -868,7 +873,8 @@ function SessionView({ api2, cfg, currency, location, sessionId, table, onOrderI
         <div className="wtr-tabhead"><div className="wtr-tabhead-t">{g.name}’s tab</div><div className="wtr-tabhead-total">{formatMoney(g.owed, cur)}</div></div>
         {g.paidAmount > 0 && <div className="wtr-paidnote">{formatMoney(g.paidAmount, cur)} paid · {formatMoney(g.remaining, cur)} left</div>}
         <div className="wtr-card">
-          <div className="wtr-card-h">Their items — tap Move to dispute</div>
+          <div className="wtr-card-h">Their order<button className={`wtr-mini ${moveMode ? 'on' : ''}`} onClick={() => setMoveMode((v) => !v)} title="Move items to dispute">{moveMode ? 'Done moving' : '⇄ Move'}</button></div>
+          {moveMode && <div className="wtr-muted" style={{ fontSize: 12 }}>Pick a destination to move a disputed item to another tab.</div>}
           {myLines.length === 0 && <div className="wtr-muted">No items on this tab yet.</div>}
           {myLines.map((li) => (
             <div key={li.uid} className="wtr-liserow">
@@ -878,10 +884,12 @@ function SessionView({ api2, cfg, currency, location, sessionId, table, onOrderI
                 {subParts(li.name, li.variation, li.modifiers).length > 0 && <div className="wtr-muted">{subParts(li.name, li.variation, li.modifiers).join(' · ')}</div>}
               </div>
               <div className="wtr-lise-amt">{formatMoney(li.amount, cur)}</div>
-              <select className="wtr-lise-move" value="" onChange={(e) => reassign(li.uid, e.target.value)}>
-                <option value="">Move…</option>
-                {moveTargets.map((t) => <option key={t.id} value={t.id}>→ {t.name}</option>)}
-              </select>
+              {moveMode && (
+                <select className="wtr-lise-move" value="" onChange={(e) => reassign(li.uid, e.target.value)}>
+                  <option value="">Move…</option>
+                  {moveTargets.map((t) => <option key={t.id} value={t.id}>→ {t.name}</option>)}
+                </select>
+              )}
             </div>
           ))}
           {g.sharedShare > 0 && (
@@ -907,7 +915,7 @@ function SessionView({ api2, cfg, currency, location, sessionId, table, onOrderI
         <div className="wtr-tabhead-total">{formatMoney(st.remaining, cur)} <span className="wtr-muted">left</span></div>
       </div>
       {st.total > 0 && st.remaining <= 0 && <div className="wtr-paidnote">All settled — {formatMoney(st.total, cur)} paid. <button className="wtr-ghost" onClick={onBack}>Close table ›</button></div>}
-      {st.unassignedTotal > 0 && <div className="wtr-warn">{formatMoney(st.unassignedTotal, cur)} of items aren’t on a tab yet — tap “Items” to assign them.</div>}
+      {st.unassignedTotal > 0 && <div className="wtr-warn">{formatMoney(st.unassignedTotal, cur)} of items aren’t on a tab yet — open a group’s “View order”, tap Move, and assign them.</div>}
 
       {/* Group tabs */}
       {groups.map((g) => (
@@ -920,7 +928,7 @@ function SessionView({ api2, cfg, currency, location, sessionId, table, onOrderI
           {g.paid ? <div className="wtr-pctpaid">✓ Paid</div> : (
             <div className="wtr-grp-btns">
               <button className="wtr-secondary" onClick={() => onOrderInto(g.id)}>+ Items</button>
-              <button className="wtr-secondary" onClick={() => setViewing(g.id)}>View</button>
+              <button className="wtr-secondary" onClick={() => { setMoveMode(false); setViewing(g.id); }}>View order{(() => { const n = (st.lines || []).filter((li) => li.tabId === g.id).reduce((s, li) => s + (Number(li.quantity) || 1), 0); return n ? ` (${n})` : ''; })()}</button>
               <button className="wtr-primary" disabled={busy || g.remaining <= 0} onClick={() => openPay(g.id, g.name, g.remaining)}>Pay {g.remaining > 0 ? formatMoney(g.remaining, cur) : ''}</button>
             </div>
           )}
@@ -952,24 +960,6 @@ function SessionView({ api2, cfg, currency, location, sessionId, table, onOrderI
       ))}
 
       <button className="wtr-secondary" onClick={() => setAdding(true)}>+ Add tab</button>
-      {(st.lines || []).length > 0 && <button className="wtr-ghost" onClick={() => setShowItems((s) => !s)}>{showItems ? 'Hide items' : `Review items (${st.lines.length})`}</button>}
-
-      {showItems && (
-        <div className="wtr-card">
-          <div className="wtr-card-h">Items · assign each to a tab</div>
-          {st.lines.map((li) => (
-            <div key={li.uid} className={`wtr-liserow ${li.tabId ? '' : 'wtr-unassigned'}`}>
-              <div className="wtr-lise-qty">{li.quantity}</div>
-              <div className="wtr-lise-info"><div className="wtr-lise-name">{li.name}</div>{subParts(li.name, li.variation, li.modifiers).length > 0 && <div className="wtr-muted">{subParts(li.name, li.variation, li.modifiers).join(' · ')}</div>}</div>
-              <div className="wtr-lise-amt">{formatMoney(li.amount, cur)}</div>
-              <select className="wtr-lise-move" value={li.tabId || ''} onChange={(e) => reassign(li.uid, e.target.value)}>
-                <option value="" disabled>{li.tabId ? (allTabs.find((t) => t.id === li.tabId) || {}).name : 'Assign…'}</option>
-                {allTabs.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-              </select>
-            </div>
-          ))}
-        </div>
-      )}
 
       {adding && <AddTabEditor onCancel={() => setAdding(false)} onAdd={async (tab) => {
         if (tab.kind === 'group') await saveTabs([...data.overlay.groups, { name: tab.name, people: tab.people }], null);
