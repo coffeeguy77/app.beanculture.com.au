@@ -3782,7 +3782,14 @@ body:has(.store-shell) { background: var(--bc-canvas-deep, #160f12); }
 .cd-head { flex: none; display: flex; align-items: center; justify-content: space-between; padding: 3vh 4vw 0; }
 .cd-store { font-family: 'Fraunces', Georgia, serif; font-size: clamp(24px, 4vw, 48px); font-weight: 700; color: var(--pos-accent, #d9a441); }
 .cd-logo { max-height: clamp(40px, 8vh, 96px); max-width: 60vw; object-fit: contain; }
-.cd-offline { font-size: 14px; color: var(--pos-muted, #9a8f8a); }
+.cd-offline { position: absolute; top: 10px; right: 14px; font-size: 14px; color: var(--pos-muted, #9a8f8a); z-index: 3; }
+.cd-welcome-logo { max-height: 28vh; max-width: 70vw; object-fit: contain; margin-bottom: 1vh; }
+.cd-ad { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.cd-ad-img { width: 100%; height: 100%; }
+.cd-ad-cap { position: absolute; left: 0; right: 0; bottom: 0; padding: 5vh 6vw; text-align: center;
+  background: linear-gradient(to top, rgba(0,0,0,.55), rgba(0,0,0,0)); }
+.cd-ad-title { font-family: 'Fraunces', Georgia, serif; font-size: clamp(30px, 6vw, 80px); font-weight: 700; line-height: 1.05; }
+.cd-ad-sub { font-size: clamp(16px, 3vw, 38px); margin-top: 1vh; }
 .cd-center { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 1.5vh; padding: 4vw; }
 .cd-welcome { font-family: 'Fraunces', Georgia, serif; font-size: clamp(40px, 9vw, 120px); font-weight: 700; }
 .cd-welcome-sub { font-size: clamp(18px, 3vw, 36px); color: var(--pos-muted, #b7aca6); }
