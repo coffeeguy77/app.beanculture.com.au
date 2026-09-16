@@ -187,6 +187,7 @@ function parseTicketMeta(order, cfg) {
     dineIn,
     table,
     customerName,
+    waiterBy: md.bc_by ? String(md.bc_by).trim().slice(0, 40) : '',  // the waiter who took it
     fulfillmentType: fulfillment ? fulfillment.type : '',
     scheduledAt,
     note,
@@ -252,6 +253,7 @@ function buildTickets(orders, varCat, states, cfg, now = Date.now()) {
       dineIn: meta.dineIn,
       table: meta.table,
       customerName: meta.customerName,
+      waiterBy: meta.waiterBy,
       fulfillmentType: meta.fulfillmentType,
       scheduledAt: meta.scheduledAt,
       note: meta.note,

@@ -490,6 +490,10 @@ const DEFAULTS = {
     waiterPinModeByLocation: {},   // { [locationId]: 'single'|'staff' }
     waiterStaff: [],               // [{ id, name, pin }] — the global roster
     waiterStaffByLocation: {},     // { [locationId]: [{ id, name, pin }] }
+    // Emergency kill switch — suspend a location's waiter logins without losing
+    // its PINs/roster/tables (e.g. if a device or code is compromised).
+    waiterSuspended: false,
+    waiterSuspendedByLocation: {}, // { [locationId]: true }
   },
   // ── Smart Campaigns: contextual merchandising driven by rules (Weather first;
   //    future: time, holidays, stock, loyalty…). A single server-side resolver
