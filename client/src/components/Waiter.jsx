@@ -908,7 +908,10 @@ function SessionView({ api2, cfg, currency, location, sessionId, table, onOrderI
     const parties = sh.parties || [];
     return (
       <div className="wtr-body">
-        <div className="wtr-tabhead"><div className="wtr-tabhead-t">{sh.name} · shared</div><div className="wtr-tabhead-total">{formatMoney(sh.total, cur)}</div></div>
+        <div className="wtr-tabhead"><div className="wtr-tabhead-t">{sh.name} · shared</div><div className="wtr-tabhead-total">{formatMoney(sh.remaining != null ? sh.remaining : sh.total, cur)}{!sh.paid && ' left'}</div></div>
+        {sh.paidTotal > 0 && (sh.paid
+          ? <div className="wtr-paidnote">✓ Fully paid — {formatMoney(sh.total, cur)}</div>
+          : <div className="wtr-paidnote">{formatMoney(sh.paidTotal, cur)} paid · {formatMoney(sh.remaining, cur)} left of {formatMoney(sh.total, cur)}</div>)}
         <div className="wtr-card">
           <div className="wtr-card-h">On this shared tab<button className={`wtr-mini ${moveMode ? 'on' : ''}`} onClick={() => setMoveMode((v) => !v)}>{moveMode ? 'Done moving' : '⇄ Move'}</button></div>
           {myLines.length === 0 && <div className="wtr-muted">No items on this shared tab yet.</div>}
@@ -1044,12 +1047,13 @@ function SessionView({ api2, cfg, currency, location, sessionId, table, onOrderI
 
       {/* Shared tabs */}
       {shared.map((sh) => (
-        <div key={sh.id} className="wtr-card wtr-shared">
+        <div key={sh.id} className={`wtr-card wtr-shared ${sh.paid ? 'paid' : ''}`}>
           <div className="wtr-grp-head">
             <div><b>{sh.name}</b> <span className="wtr-muted">· shared</span></div>
-            <div className="wtr-grp-owed">{formatMoney(sh.total, cur)}</div>
+            <div className="wtr-grp-owed">{sh.paid && <span className="wtr-paidbadge">PAID</span>}{formatMoney(sh.remaining != null ? sh.remaining : sh.total, cur)}</div>
           </div>
           <div className="wtr-muted wtr-grp-break">Split {sh.mode === 'pct' ? 'by %' : 'by people'}: {partySummary(sh)}</div>
+          {sh.paidTotal > 0 && !sh.paid && <div className="wtr-muted wtr-grp-break">{formatMoney(sh.paidTotal, cur)} paid · {formatMoney(sh.remaining, cur)} left of {formatMoney(sh.total, cur)}</div>}
           <div className="wtr-grp-btns">
             <button className="wtr-secondary" onClick={() => onOrderInto(sh.id)}>+ Items</button>
             <button className="wtr-secondary" onClick={() => { setMoveMode(false); setViewing(sh.id); }}>View order{(() => { const n = (st.lines || []).filter((li) => li.tabId === sh.id).reduce((s, li) => s + (Number(li.quantity) || 1), 0); return n ? ` (${n})` : ''; })()}</button>
@@ -1369,6 +1373,7 @@ function WaiterStyle() {
     .wtr-grp-btns{display:flex;gap:6px}
     .wtr-grp-btns>*{flex:1;padding:11px 8px;font-size:13px}
     .wtr-shared{border-style:dashed}
+    .wtr-shared.paid{opacity:.6}
     .wtr-adhoc{display:flex;justify-content:space-between;align-items:center;background:var(--bg,#faf7f8);border-radius:8px;padding:7px 10px;font-size:13px}
     .wtr-tablechip.on{background:var(--brand,#7a2e57);color:#fff}
     .wtr-assign{flex-basis:100%;margin-top:4px;padding:8px}
