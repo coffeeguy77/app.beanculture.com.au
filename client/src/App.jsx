@@ -334,7 +334,13 @@ export default function App() {
   const [dockH, setDockH] = useState(0);
   const [scrolled, setScrolled] = useState(false);
 
-  const buildRef = useRef(null); // live build id, to detect a new deploy
+  // The build id of the CURRENTLY LOADED page (injected into index.html by the
+  // server at request time). We compare THIS against the live /api/config build —
+  // if they differ, this device is running a stale bundle (classic home-screen PWA
+  // that resumed a cached page) and must reload. Seeding from the loaded page (not
+  // from the first API call) is the whole point: otherwise it only ever compares
+  // the live build to itself and never notices a stale bundle.
+  const buildRef = useRef((typeof window !== 'undefined' && window.__BUILD__) || null);
   // Load config + menu; apply theme (saved user theme wins over store default).
   useEffect(() => {
     api.getConfig()
@@ -437,20 +443,24 @@ export default function App() {
     if (first) setActiveGroup([first.category]);
   }, [menu, config, activeGroup]);
 
-  // Auto-update: when the tab is re-shown, check the live build id and refresh
-  // config/menu. If a NEW deploy is live, reload once so nobody is stuck stale.
+  // Auto-update: reload once whenever the live deploy differs from the build this
+  // page was served as. Runs when the tab is re-shown AND on a slow interval, so a
+  // device that stays in the foreground all shift (a waiter's FOH phone, a POS)
+  // still picks up new deploys instead of sitting stale until it's reinstalled.
   useEffect(() => {
-    const onVisible = () => {
-      if (document.visibilityState !== 'visible') return;
+    let reloading = false;
+    const check = (alsoRefresh) => {
       api.getConfig().then((cfg) => {
-        if (buildRef.current && cfg.build && cfg.build !== buildRef.current) { window.location.reload(); return; }
-        buildRef.current = cfg.build || buildRef.current;
-        setConfig(cfg);
+        const loaded = buildRef.current;
+        if (!reloading && loaded && cfg.build && cfg.build !== loaded) { reloading = true; window.location.reload(); return; }
+        if (!loaded) buildRef.current = cfg.build || loaded;   // first ever load, no injected id
+        if (alsoRefresh) { setConfig(cfg); api.getMenu(locationId).then(setMenu).catch(() => {}); }
       }).catch(() => {});
-      api.getMenu(locationId).then(setMenu).catch(() => {});
     };
+    const onVisible = () => { if (document.visibilityState === 'visible') check(true); };
     document.addEventListener('visibilitychange', onVisible);
-    return () => document.removeEventListener('visibilitychange', onVisible);
+    const iv = setInterval(() => check(false), 60000);   // catch deploys without a background/refocus
+    return () => { document.removeEventListener('visibilitychange', onVisible); clearInterval(iv); };
   }, []);
 
   // Admin route
@@ -459,7 +469,7 @@ export default function App() {
     if (p === '/admin') setView('admin');
     else if (p === '/kds' || p === '/bump') setView('kds');
     else if (p === '/pos') setView('pos');
-    else if (p === '/waiter') setView('waiter');
+    else if (p === '/foh' || p === '/waiter') setView('waiter');
   }, []);
 
   // Pay It Forward claim deep link: /gift/:token
