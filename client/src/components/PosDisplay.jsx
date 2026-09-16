@@ -84,7 +84,7 @@ export default function PosDisplay() {
           const ad = ads[adIdx % ads.length] || ads[0];
           return (
             <div className="cd-ad" style={ad.image ? undefined : { background: ad.bg || 'var(--cd-bg, #16265e)' }}>
-              {ad.image && <img className="cd-ad-img" src={ad.image} alt="" style={{ objectFit: ad.fit === 'contain' ? 'contain' : 'cover' }} />}
+              {ad.image && <img className="cd-ad-img" src={ad.image} alt="" />}
               {(ad.title || ad.subtitle) && (
                 <div className="cd-ad-cap" style={{ color: ad.textColor || '#fff' }}>
                   {ad.title && <div className="cd-ad-title">{ad.title}</div>}
