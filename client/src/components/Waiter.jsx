@@ -74,6 +74,7 @@ const IconCash = (p) => <Svg s={p.s}><rect x="2.5" y="6" width="19" height="12" 
 const IconLock = (p) => <Svg s={p.s}><rect x="5" y="11" width="14" height="9" rx="2" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></Svg>;
 const IconBack = (p) => <Svg s={p.s}><path d="M15 5l-7 7 7 7" /></Svg>;
 const IconSplit = (p) => <Svg s={p.s}><path d="M6 3v6a3 3 0 0 0 3 3h6a3 3 0 0 1 3 3v6" /><path d="M14 6l4-3 4 3" transform="translate(-4 0)" /></Svg>;
+const IconSearch = (p) => <Svg s={p.s}><circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" /></Svg>;
 
 export default function Waiter({ onExit, adminPass, actorName }) {
   const isAdmin = !!adminPass;
@@ -133,8 +134,12 @@ export default function Waiter({ onExit, adminPass, actorName }) {
   }
   function lock() {
     if (isAdmin) { onExit && onExit(); return; }
-    try { localStorage.removeItem(PIN_KEY); localStorage.removeItem(NAV_KEY); } catch {}
-    setAuthed(false); setPin(''); setCfg(null); setScreen('home');
+    // Locking = "code back in as someone else": clear the PIN and the name so the
+    // next login re-establishes who's serving (single mode re-asks the name; staff
+    // mode gets it from whoever's PIN is entered). Simply closing the app does NOT
+    // lock, so a waiter who reopens it stays signed in as themselves.
+    try { localStorage.removeItem(PIN_KEY); localStorage.removeItem(NAV_KEY); localStorage.removeItem(NAME_KEY); } catch {}
+    setAuthed(false); setPin(''); setCfg(null); setScreen('home'); setWaiterName('');
   }
 
   async function changeLocation(id) {
@@ -162,7 +167,7 @@ export default function Waiter({ onExit, adminPass, actorName }) {
         {screen === 'home'
           ? (isAdmin ? <button className="wtr-ghost wtr-iconbtn" onClick={() => onExit && onExit()} title="Back to POS"><IconBack /></button> : <span className="wtr-topspacer" />)
           : <button className="wtr-ghost" onClick={goHome}>‹ Tables</button>}
-        <div className="wtr-title">{cfg.storeName || 'Waiter'}{waiterName ? <button className="wtr-who" title="Switch waiter" onClick={() => { if (isAdmin) return; if (cfg.pinMode === 'staff') lock(); else saveName(''); }}> · {waiterName} ⇄</button> : ''}</div>
+        <div className="wtr-title">{cfg.storeName || 'Waiter'}</div>
         <button className="wtr-ghost wtr-iconbtn" onClick={lock} title={isAdmin ? 'Back to POS' : 'Lock / switch'}>{isAdmin ? <IconBack /> : <IconLock />}</button>
       </header>
       {err && <div className="wtr-err" onClick={() => setErr('')}>{err} · tap to dismiss</div>}
@@ -302,8 +307,9 @@ function Build({ menu, currency, title, label, cartKey, setErr, submit, onDone, 
   const [sending, setSending] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const [searching, setSearching] = useState(false);
 
-  const query = q.trim().toLowerCase();
+  const query = searching ? q.trim().toLowerCase() : '';
   const items = query
     ? cats.flatMap((c) => c.items || []).filter((it) => (it.name || '').toLowerCase().includes(query))
     : (((cats.find((c) => c.category === activeCat) || cats[0] || {}).items) || []);
@@ -330,22 +336,31 @@ function Build({ menu, currency, title, label, cartKey, setErr, submit, onDone, 
     catch (e) { setErr(e.message); setConfirming(false); } finally { setSending(false); }
   }
 
+  const closeSearch = () => { setSearching(false); setQ(''); };
   return (
-    <div className="wtr-body wtr-build">
+    <div className={`wtr-body wtr-build ${expanded ? 'cart-expanded' : ''}`}>
       <div className="wtr-build-head">
         <div className="wtr-build-table">{title} · {label}</div>
-        <button className="wtr-ghost" onClick={onCancel}>Cancel</button>
+        <div className="wtr-head-actions">
+          <button className="wtr-ghost wtr-iconbtn" title="Search" onClick={() => setSearching(true)}><IconSearch /></button>
+          <button className="wtr-ghost" onClick={onCancel}>Cancel</button>
+        </div>
       </div>
 
-      <input className="wtr-input wtr-search" placeholder="Search the menu…" value={q} onChange={(e) => setQ(e.target.value)} />
-      {!query && (
+      {searching ? (
+        <div className="wtr-searchrow">
+          <IconSearch s={18} />
+          <input className="wtr-input wtr-search" autoFocus placeholder="Start typing an item…" value={q} onChange={(e) => setQ(e.target.value)} />
+          <button className="wtr-ghost" onClick={closeSearch}>Done</button>
+        </div>
+      ) : (
         <div className="wtr-catnav">
           {cats.map((c) => <button key={c.category} className={`wtr-catbtn ${activeCat === c.category ? 'on' : ''}`} onClick={() => setActiveCat(c.category)}>{c.category}</button>)}
         </div>
       )}
 
       {/* Menu as a readable LIST (no image tiles), in its own scroll area so it
-          never hides behind the cart. */}
+          never hides behind the cart. When searching, it's the predictive result. */}
       <div className="wtr-menuscroll">
         {items.length === 0 && <div className="wtr-muted">No items.</div>}
         {items.map((it) => {
@@ -368,7 +383,7 @@ function Build({ menu, currency, title, label, cartKey, setErr, submit, onDone, 
         <div className={`wtr-cart ${expanded ? 'expanded' : ''}`}>
           <div className="wtr-cart-head">
             <span>Order · {count} item{count === 1 ? '' : 's'}</span>
-            <button className="wtr-cart-expand" onClick={() => setExpanded((v) => !v)}>{expanded ? 'Contract ▾' : 'Expand ▴'}</button>
+            <button className="wtr-cart-expand" onClick={() => setExpanded((v) => !v)}>{expanded ? '⤡ 30%' : '⤢ Full screen'}</button>
           </div>
           <div className="wtr-cart-list">
             {cart.map((x) => (
@@ -1267,10 +1282,14 @@ function WaiterStyle() {
     .wtr-menulist{display:flex;flex-direction:column;gap:2px;flex:1;min-height:0}
     /* Build screen: fixed header/search, scrolling menu, cart pinned at bottom */
     .wtr-build{overflow:hidden !important;padding-bottom:0 !important}
-    .wtr-search{flex:none;padding:9px 12px;font-size:14px;margin-bottom:2px}
+    .wtr-head-actions{display:flex;align-items:center;gap:6px}
+    .wtr-searchrow{display:flex;align-items:center;gap:8px;background:var(--surface,#fff);border:1px solid var(--line,#e5dee6);border-radius:10px;padding:0 10px;flex:none}
+    .wtr-searchrow .wtr-search{border:none;padding:10px 4px;background:none;flex:1}
     .wtr-menuscroll{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;display:flex;flex-direction:column;gap:3px;padding-bottom:8px}
     .wtr-cart{margin:0 -14px -14px;background:var(--surface,#fff);border-top:1px solid var(--line,#e5dee6);box-shadow:0 -8px 22px rgba(0,0,0,.10);display:flex;flex-direction:column;max-height:30vh;padding:8px 14px 12px}
-    .wtr-cart.expanded{max-height:calc(100vh - 150px)}
+    /* Expanded cart = full screen: the menu/search collapse so the whole order shows */
+    .wtr-build.cart-expanded .wtr-menuscroll,.wtr-build.cart-expanded .wtr-searchrow,.wtr-build.cart-expanded .wtr-catnav{display:none}
+    .wtr-cart.expanded{max-height:none;flex:1;border-radius:0}
     .wtr-cart-head{display:flex;justify-content:space-between;align-items:center;font-weight:800;font-size:13px;padding:2px 0 6px}
     .wtr-cart-expand{background:none;border:none;color:var(--brand,#0f6f59);font-weight:800;font-size:13px;cursor:pointer;padding:4px}
     .wtr-cart-list{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:5px;margin-bottom:8px}
