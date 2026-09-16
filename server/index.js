@@ -54,10 +54,19 @@ function effectiveWaiter(pos, locId) {
   const enPer = (pos.waiterEnabledByLocation || {})[locId];
   const pinPer = (pos.waiterPinByLocation || {})[locId];
   const tblPer = (pos.waiterTablesByLocation || {})[locId];
+  const modePer = (pos.waiterPinModeByLocation || {})[locId];
+  const staffPer = (pos.waiterStaffByLocation || {})[locId];
+  const mode = (modePer === 'staff' || modePer === 'single') ? modePer : (pos.waiterPinMode === 'staff' ? 'staff' : 'single');
+  const staff = Array.isArray(staffPer) ? staffPer : (Array.isArray(pos.waiterStaff) ? pos.waiterStaff : []);
+  const suspPer = (pos.waiterSuspendedByLocation || {})[locId];
+  const suspended = suspPer != null ? !!suspPer : (pos.waiterSuspended === true);
   return {
     enabled: enPer != null ? !!enPer : (pos.waiterEnabled === true),
+    suspended,
     pin: (pinPer != null && pinPer !== '') ? String(pinPer) : String(pos.waiterPin || ''),
     tables: Array.isArray(tblPer) ? tblPer : (Array.isArray(pos.waiterTables) ? pos.waiterTables : []),
+    mode,
+    staff: staff.map((s) => ({ id: String(s.id || ''), name: String(s.name || ''), pin: String(s.pin || '') })).filter((s) => s.name && s.pin),
   };
 }
 // A store's enabled payment methods for the register/waiter (card/cash), from the
@@ -1501,13 +1510,22 @@ app.get('/api/pos/config', (req, res) => {
     // own. PINs are sent as booleans (has-a-pin), never the codes themselves.
     waiterEnabled: p.waiterEnabled === true,
     hasWaiterPin: !!p.waiterPin,
+    waiterPin: p.waiterPin || '',                 // single-mode PIN, shown to the owner
+    waiterPinByLoc: p.waiterPinByLocation || {},  // per-store single-mode PINs (owner-visible)
     waiterTables: Array.isArray(p.waiterTables) ? p.waiterTables : [],
     waiterTerminalDeviceId: p.waiterTerminalDeviceId || '',
     waiterTerminalName: p.waiterTerminalName || '',
     waiterTerminalByLocation: p.waiterTerminalByLocation || {},
     waiterEnabledByLocation: p.waiterEnabledByLocation || {},
     waiterTablesByLocation: p.waiterTablesByLocation || {},
-    waiterHasPinByLocation: Object.fromEntries(Object.entries(p.waiterPinByLocation || {}).map(([k, v]) => [k, !!v])),
+    // PIN mode + staff roster. Roster PINs are NEVER sent back — only names — so
+    // staff who open settings can't read each other's codes.
+    waiterPinMode: p.waiterPinMode === 'staff' ? 'staff' : 'single',
+    waiterPinModeByLocation: p.waiterPinModeByLocation || {},
+    waiterStaff: (Array.isArray(p.waiterStaff) ? p.waiterStaff : []).map((s) => ({ id: s.id, name: s.name })),
+    waiterStaffByLocation: Object.fromEntries(Object.entries(p.waiterStaffByLocation || {}).map(([k, arr]) => [k, (Array.isArray(arr) ? arr : []).map((s) => ({ id: s.id, name: s.name }))])),
+    waiterSuspended: p.waiterSuspended === true,
+    waiterSuspendedByLocation: p.waiterSuspendedByLocation || {},
     dbEnabled: db.enabled,
   });
 });
@@ -2035,20 +2053,24 @@ function waiterAuthEx(req) {
   if (adminOk(req)) return { pos, locationId: req.query.location || (req.body && req.body.locationId) || '' };
   const given = String((req.body && req.body.pin) || req.query.pin || '').trim();
   if (!given) return null;
+  // Does this PIN unlock a given store? In single mode it must equal the store's
+  // PIN; in staff mode it must equal one roster member's PIN (and we learn who).
+  const tryStore = (lid) => {
+    const e = effectiveWaiter(pos, lid);
+    if (!e.enabled || e.suspended) return null;   // suspended = emergency lock-out
+    if (e.mode === 'staff') {
+      const m = e.staff.find((s) => s.pin === given);
+      return m ? { pos, locationId: lid, staffName: m.name, mode: 'staff' } : null;
+    }
+    return (e.pin && given === e.pin) ? { pos, locationId: lid, mode: 'single' } : null;
+  };
   const reqLoc = req.query.location || (req.body && req.body.locationId) || '';
-  // If the caller already knows its store, the PIN must match THAT store's PIN.
-  if (reqLoc) {
-    const e = effectiveWaiter(pos, reqLoc);
-    return (e.enabled && e.pin && given === e.pin) ? { pos, locationId: reqLoc } : null;
-  }
-  // No store yet (fresh login): accept the PIN if it matches ANY enabled store's
-  // PIN (or the global one), and return that store so the app locks onto it.
+  if (reqLoc) return tryStore(reqLoc);
+  // Fresh login (no store yet): try each store, then the global default. The PIN
+  // selects its store.
   let ids = [];
   try { ids = locations.publicList().map((l) => l.id); } catch {}
-  for (const lid of [...ids, '']) {
-    const e = effectiveWaiter(pos, lid);
-    if (e.enabled && e.pin && given === e.pin) return { pos, locationId: lid };
-  }
+  for (const lid of [...ids, '']) { const r = tryStore(lid); if (r) return r; }
   return null;
 }
 function waiterAuth(req) { const r = waiterAuthEx(req); return r ? r.pos : null; }
@@ -2076,7 +2098,40 @@ app.get('/api/waiter/config', (req, res) => {
     payments: { card: pay.card, cash: pay.cash },  // per-store cash/card availability
     hasTerminal: !!term.deviceId,
     terminalName: term.name || 'Terminal',
+    pinMode: eff.mode,                     // 'single' | 'staff'
+    // In staff mode the PIN identifies the waiter, so the app skips the name prompt.
+    waiterName: (auth.mode === 'staff' && auth.staffName) ? auth.staffName : '',
   });
+});
+
+// In single-PIN mode a waiter types their own name. To avoid two "Tim"s on a
+// shift, the app claims its name here: the server returns a de-duplicated name
+// (Tim, Tim2, Tim3…). Held in memory per store, keyed by a per-device id so the
+// same device can re-claim its own name without bumping the number. Entries lapse
+// after 12h of inactivity.
+const waiterNames = new Map(); // locId -> Map(nameLower -> { cid, name, at })
+function claimWaiterName(locId, wanted, cid) {
+  const now = Date.now(), TTL = 12 * 3600 * 1000;
+  let reg = waiterNames.get(locId); if (!reg) { reg = new Map(); waiterNames.set(locId, reg); }
+  for (const [k, v] of reg) if (now - v.at > TTL) reg.delete(k);
+  const base = String(wanted || '').trim().slice(0, 40) || 'Waiter';
+  // If this device already holds a name, release its old claim first.
+  for (const [k, v] of reg) if (v.cid === cid) reg.delete(k);
+  let name = base, n = 1;
+  while (true) {
+    const held = reg.get(name.toLowerCase());
+    if (!held || held.cid === cid) break;   // free, or ours
+    n += 1; name = `${base}${n}`;
+  }
+  reg.set(name.toLowerCase(), { cid, name, at: now });
+  return name;
+}
+app.post('/api/waiter/claim-name', (req, res) => {
+  const auth = waiterAuthEx(req);
+  if (!auth) return res.status(401).json({ error: 'Wrong PIN, or waiter mode is off.' });
+  const cid = String((req.body && req.body.cid) || '').slice(0, 64) || 'anon';
+  const name = claimWaiterName(auth.locationId || '', (req.body && req.body.name) || '', cid);
+  res.json({ name });
 });
 
 // Open tabs for a store: every OPEN Square order this app tagged as a waiter tab.
@@ -2131,6 +2186,7 @@ app.post('/api/waiter/tab', async (req, res) => {
   if (!pos) return res.status(401).json({ error: 'Wrong PIN, or waiter mode is off.' });
   try {
     const { cart, table, name, tabId, locationId } = req.body || {};
+    const by = String((req.body && req.body.by) || '').trim().slice(0, 40);
     if (!Array.isArray(cart) || cart.length === 0) return res.status(400).json({ error: 'Add at least one item.' });
     const squareLocationId = locations.squareIdFor(locationId);
     const posOverrideLocation = locationId || undefined;
@@ -2148,8 +2204,9 @@ app.post('/api/waiter/tab', async (req, res) => {
       // is never held for payment (payment comes later when the tab is settled).
       holdForPayment: false,
     });
-    // Tag it as a waiter tab so it shows in the tab list (and only there).
-    try { await orders.stampMeta(order.id, { bc_waiter: '1' }); } catch (e) { console.warn('[waiter] tag failed:', e.message); }
+    // Tag it as a waiter tab so it shows in the tab list (and only there), plus
+    // the waiter who opened it so the KDS docket can show "by <name>".
+    try { await orders.stampMeta(order.id, { bc_waiter: '1', bc_by: by || '' }); } catch (e) { console.warn('[waiter] tag failed:', e.message); }
     res.json({ tabId: order.id, total: (order.total_money && order.total_money.amount) || 0, currency: (order.total_money && order.total_money.currency) || sq.CURRENCY });
   } catch (e) { res.status(502).json({ error: e.message }); }
 });
@@ -2562,6 +2619,19 @@ app.post('/api/pos/waiter-settings', async (req, res) => {
     const ov = db.getOverrides() || {};
     ov.pos = ov.pos || {};
     const setMap = (key, val) => { const m = { ...(ov.pos[key] || {}) }; if (val === undefined) delete m[loc]; else m[loc] = val; ov.pos[key] = m; };
+    // Every PIN must be unique across ALL stores and staff (the code identifies
+    // the person AND the location). `otherPins` is the set already in use, minus
+    // the slot(s) this request is about to overwrite.
+    const cur = getSettings().pos || {};
+    const otherPins = (exKind, exLoc) => {
+      const set = new Set();
+      const add = (pin, kind, l) => { if (pin && !(kind === exKind && (l || '') === (exLoc || ''))) set.add(String(pin)); };
+      add(cur.waiterPin, 'single', '');
+      for (const [l, p] of Object.entries(cur.waiterPinByLocation || {})) add(p, 'single', l);
+      for (const st of (cur.waiterStaff || [])) add(st.pin, 'staff', '');
+      for (const [l, arr] of Object.entries(cur.waiterStaffByLocation || {})) for (const st of (arr || [])) add(st.pin, 'staff', l);
+      return set;
+    };
 
     if (b.enabled !== undefined) {
       if (loc) setMap('waiterEnabledByLocation', b.enabled === true);
@@ -2570,6 +2640,7 @@ app.post('/api/pos/waiter-settings', async (req, res) => {
     if (b.pin !== undefined) {
       const next = String(b.pin || '').trim();
       if (next && !/^\d{4,8}$/.test(next)) return res.status(400).json({ error: 'Waiter PIN must be 4–8 digits.' });
+      if (next && otherPins('single', loc).has(next)) return res.status(400).json({ error: `PIN ${next} is already used somewhere else — every PIN must be unique.` });
       if (loc) setMap('waiterPinByLocation', next || undefined);   // empty clears the override → falls back to global
       else ov.pos.waiterPin = next;
     }
@@ -2596,9 +2667,41 @@ app.post('/api/pos/waiter-settings', async (req, res) => {
         ov.pos.waiterTerminalName = nm;
       }
     }
+    if (b.pinMode !== undefined) {
+      const m = b.pinMode === 'staff' ? 'staff' : 'single';
+      if (loc) setMap('waiterPinModeByLocation', m); else ov.pos.waiterPinMode = m;
+    }
+    if (b.staff !== undefined) {
+      // Merge with the existing roster by id so a name edit doesn't require
+      // re-typing the (masked) PIN. Names are de-duplicated with a numeric suffix.
+      const existing = loc ? ((ov.pos.waiterStaffByLocation || {})[loc] || []) : (ov.pos.waiterStaff || []);
+      const byId = new Map(existing.map((s) => [s.id, s]));
+      const seenName = new Set(); const out = [];
+      for (const raw of (Array.isArray(b.staff) ? b.staff : []).slice(0, 60)) {
+        let name = String(raw.name || '').trim().slice(0, 40); if (!name) continue;
+        const provided = raw.pin != null && String(raw.pin).trim() ? String(raw.pin).trim() : '';
+        const pin = provided || (byId.get(raw.id) ? byId.get(raw.id).pin : '');
+        if (provided && !/^\d{4,8}$/.test(provided)) return res.status(400).json({ error: `PIN for ${name} must be 4–8 digits.` });
+        if (!pin) continue; // a staff member with no PIN can't log in — skip
+        let base = name, n = 1, key = name.toLowerCase();
+        while (seenName.has(key)) { n += 1; name = `${base}${n}`; key = name.toLowerCase(); }
+        seenName.add(key);
+        out.push({ id: raw.id || require('crypto').randomUUID(), name, pin });
+      }
+      const pins = out.map((s) => s.pin);
+      if (new Set(pins).size !== pins.length) return res.status(400).json({ error: 'Two staff have the same PIN — each needs a unique one.' });
+      const others = otherPins('staff', loc);
+      const clash = out.find((s) => others.has(s.pin));
+      if (clash) return res.status(400).json({ error: `${clash.name}’s PIN is already used somewhere else — every PIN must be unique.` });
+      if (loc) setMap('waiterStaffByLocation', out); else ov.pos.waiterStaff = out;
+    }
+    if (b.suspended !== undefined) {
+      if (loc) setMap('waiterSuspendedByLocation', b.suspended === true ? true : undefined);
+      else ov.pos.waiterSuspended = b.suspended === true;
+    }
     await db.saveOverrides(ov);
     const p = ov.pos; const eff = effectiveWaiter(p, loc);
-    res.json({ ok: true, locationId: loc, waiterEnabled: eff.enabled, hasWaiterPin: !!eff.pin, waiterTables: eff.tables });
+    res.json({ ok: true, locationId: loc, waiterEnabled: eff.enabled, suspended: eff.suspended, hasWaiterPin: !!eff.pin, waiterTables: eff.tables, waiterPinMode: eff.mode, waiterStaff: eff.staff.map((s) => ({ id: s.id, name: s.name })) });
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
