@@ -3603,6 +3603,35 @@ app.get('/.well-known/apple-developer-merchantid-domain-association', (_req, res
   res.type('text/plain').send(APPLE_PAY_ASSOC);
 });
 
+// Customer Display (CDS) web app manifest — served DYNAMICALLY so the installed
+// home-screen icon sticks to the location it was saved from. The display page is
+// /display?s=<station>; whatever station the icon was installed from is baked
+// into start_url here, so relaunching the CDS app always reopens that screen.
+// Registered before express.static so it wins over any static file of this name.
+app.get('/cds.webmanifest', (req, res) => {
+  const s = String(req.query.s || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 60);
+  const start = s ? `/display?s=${encodeURIComponent(s)}` : '/display';
+  res.setHeader('Cache-Control', 'no-cache');
+  res.type('application/manifest+json').send(JSON.stringify({
+    name: s ? `Bean Culture CDS · ${s}` : 'Bean Culture CDS',
+    short_name: 'CDS',
+    description: 'Bean Culture customer display screen.',
+    start_url: start,
+    scope: '/display',
+    id: start,                      // unique per station → each location installs as its own CDS app
+    display: 'standalone',
+    orientation: 'landscape',
+    background_color: '#16265e',
+    theme_color: '#16265e',
+    icons: [
+      { src: '/icons/cds-icon-192.png?v=20260916', sizes: '192x192', type: 'image/png', purpose: 'any' },
+      { src: '/icons/cds-icon-512.png?v=20260916', sizes: '512x512', type: 'image/png', purpose: 'any' },
+      { src: '/icons/cds-icon-1024.png?v=20260916', sizes: '1024x1024', type: 'image/png', purpose: 'any' },
+      { src: '/icons/cds-maskable-512.png?v=20260916', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+    ],
+  }, null, 2));
+});
+
 // Cache policy: Vite fingerprints /assets/* filenames, so they can be cached
 // forever (a new deploy = new filenames). index.html + the service worker must
 // stay fresh so new deploys are picked up immediately; icons/images cache a day.
@@ -3833,16 +3862,53 @@ function posShell(html) {
              '<meta name="theme-color" content="#3d0e20" />');
 }
 
+// Same idea for the FOH / waiter table-service app: installing from /foh gives a
+// dedicated "Bean Culture FOH" home-screen app (start_url:/foh), its own icon.
+function fohShell(html) {
+  return html
+    .replace(/<link rel="manifest" href="\/manifest\.webmanifest"\s*\/?>/,
+             '<link rel="manifest" href="/foh.webmanifest" />')
+    .replace(/<link rel="apple-touch-icon"[^>]*>/,
+             '<link rel="apple-touch-icon" href="/icons/foh-icon-180.png?v=20260916" />')
+    .replace(/<meta name="apple-mobile-web-app-title" content="[^"]*"\s*\/?>/,
+             '<meta name="apple-mobile-web-app-title" content="Bean Culture FOH" />')
+    .replace(/<meta name="theme-color" content="[^"]*"\s*\/?>/,
+             '<meta name="theme-color" content="#103a34" />');
+}
+
+// Customer Display (CDS): installing from /display?s=<station> gives a dedicated
+// "Bean Culture CDS" home-screen app whose manifest (and therefore start_url) is
+// pinned to that station, so the saved icon always reopens that location's screen.
+function displayShell(html, station) {
+  const s = String(station || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 60);
+  const href = s ? `/cds.webmanifest?s=${encodeURIComponent(s)}` : '/cds.webmanifest';
+  return html
+    .replace(/<link rel="manifest" href="\/manifest\.webmanifest"\s*\/?>/,
+             `<link rel="manifest" href="${href}" />`)
+    .replace(/<link rel="apple-touch-icon"[^>]*>/,
+             '<link rel="apple-touch-icon" href="/icons/cds-icon-180.png?v=20260916" />')
+    .replace(/<meta name="apple-mobile-web-app-title" content="[^"]*"\s*\/?>/,
+             `<meta name="apple-mobile-web-app-title" content="${s ? 'CDS · ' + seoEsc(s) : 'Bean Culture CDS'}" />`)
+    .replace(/<meta name="theme-color" content="[^"]*"\s*\/?>/,
+             '<meta name="theme-color" content="#16265e" />');
+}
+
 app.get('*', async (req, res) => {
   res.setHeader('Cache-Control', 'no-cache');
   const isKds = req.path === '/kds' || req.path === '/bump' || req.path.startsWith('/kds/');
   const isPos = req.path === '/pos' || req.path.startsWith('/pos/');
+  const isFoh = req.path === '/foh' || req.path === '/waiter' || req.path.startsWith('/foh/');
+  const isDisplay = req.path === '/display';
   let head = seoHead(req), body = '', title = '';
   try {
     if (isKds) {
       title = 'Bean Culture · Kitchen screen';
     } else if (isPos) {
       title = 'Bean Culture · POS';
+    } else if (isFoh) {
+      title = 'Bean Culture · FOH';
+    } else if (isDisplay) {
+      title = 'Bean Culture · Display';
     } else if (/^\/(item|menu)\//i.test(req.path)) {
       const menu = await seoMenu();
       const pg = pageSeoAndBody(req, resolvePath(menu, req.path), menu);
@@ -3856,6 +3922,8 @@ app.get('*', async (req, res) => {
   if (body) html = html.replace('<div id="root">', `<div id="root">${body}`);
   if (isKds) html = kdsShell(html);
   else if (isPos) html = posShell(html);
+  else if (isFoh) html = fohShell(html);
+  else if (isDisplay) html = displayShell(html, req.query.s);
   res.type('html').send(html);
 });
 
