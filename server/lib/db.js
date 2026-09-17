@@ -1149,7 +1149,7 @@ async function posPaymentUpsert({ checkoutId, squareOrderId, deviceId, amount, s
 // reduce the balance, and keep paid items marked.
 async function posPaymentsPaidForOrder(squareOrderId) {
   if (!pool || !squareOrderId) return [];
-  const r = await pool.query("SELECT amount, note, tender, line_uids FROM pos_payments WHERE square_order_id = $1 AND status = 'paid' ORDER BY created_at ASC", [squareOrderId]);
+  const r = await pool.query("SELECT amount, note, tender, line_uids, checkout_id, square_payment_id FROM pos_payments WHERE square_order_id = $1 AND status = 'paid' ORDER BY created_at ASC", [squareOrderId]);
   return r.rows || [];
 }
 async function posPaymentSetStatus(checkoutId, status, squarePaymentId) {
