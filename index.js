@@ -47,6 +47,24 @@ function waiterTerminalFor(pos, locId) {
   if (pos.waiterTerminalDeviceId) return { deviceId: pos.waiterTerminalDeviceId, name: pos.waiterTerminalName || 'Waiter Terminal' };
   return posTerminalFor(pos, locId);
 }
+// A human-readable note stamped onto the Square PAYMENT so the transaction — and
+// Square's own receipt — says what was paid for: the table, the item names when
+// it's an item split, and the payer. e.g. "T77 · Fritters, Wine — Rob". Kept
+// within Square's note length. This is what makes split payments legible in the
+// Square Dashboard and lets a customer be given a meaningful receipt.
+function waiterPayNote({ order, lineUids, who, label }) {
+  const booth = (order && order.metadata && order.metadata.bc_booth) || (order && order.ticket_name) || '';
+  const byUid = {};
+  for (const li of ((order && order.line_items) || [])) if (li.uid) byUid[li.uid] = li.name || 'Item';
+  const names = [...new Set((lineUids || []).map((u) => byUid[u]).filter(Boolean))];
+  const parts = [];
+  if (booth) parts.push('T' + booth);
+  if (names.length) parts.push(names.join(', '));
+  else if (label) parts.push(label);
+  let s = parts.join(' · ') || 'Waiter';
+  if (who) s += ' — ' + who;
+  return s.slice(0, 480);
+}
 // A store's effective waiter settings: its own per-store override if set, else
 // the global default. Keeps single-store setups working unchanged.
 function effectiveWaiter(pos, locId) {
@@ -2297,9 +2315,19 @@ app.post('/api/waiter/tab/close', async (req, res) => {
     const order = await orders.getOrder(tabId);
     if (!order) return res.status(404).json({ error: 'Tab not found.' });
     if (String(order.state) !== 'OPEN') return res.status(400).json({ error: 'That tab is already settled.' });
-    const amount = (order.total_money && order.total_money.amount) || 0;
+    const total = (order.total_money && order.total_money.amount) || 0;
     const currency = (order.total_money && order.total_money.currency) || sq.CURRENCY;
-    if (!(amount > 0)) return res.status(400).json({ error: 'This tab has nothing to pay.' });
+    // Settle only the BALANCE. Earlier split payments are standalone captures (not
+    // Square tenders), so the order still reads its full total — subtract both the
+    // real tenders and our captures, or the terminal would ask for the whole bill
+    // again (and cash would double-charge).
+    const tenderPaid = (order.tenders || []).reduce((s, t) => s + ((t.amount_money && t.amount_money.amount) || 0), 0);
+    let captured = 0;
+    try { if (db.enabled) captured = await db.posPaidTotalForOrder(tabId); } catch {}
+    const amount = Math.max(0, total - tenderPaid - captured);
+    if (!(amount > 0)) return res.status(400).json({ error: 'This tab is already fully paid.' });
+    const linkOrder = amount === total;   // link the order only when nothing's been paid yet
+    const noteLabel = waiterPayNote({ order, label: linkOrder ? 'Full bill' : 'Balance' });
     const squareLocationId = locations.squareIdFor(locationId) || order.location_id;
 
     if (tender === 'card') {
@@ -2307,23 +2335,30 @@ app.post('/api/waiter/tab/close', async (req, res) => {
       if (!term.deviceId) return res.status(400).json({ error: 'No waiter Terminal is set. Pair one in POS setup → Waiter mode.' });
       try {
         const checkout = await terminal.createCheckout({
-          amountMoney: { amount, currency }, deviceId: term.deviceId, orderId: tabId, referenceId: tabId,
-          note: `Table ${(order.metadata && order.metadata.bc_booth) || ''}`.trim().slice(0, 60) || 'Waiter tab',
-          showItemizedCart: pos.terminalShowCart === true, skipReceipt: pos.terminalSkipReceipt !== false,
+          amountMoney: { amount, currency }, deviceId: term.deviceId, orderId: linkOrder ? tabId : undefined, referenceId: tabId,
+          note: noteLabel, showItemizedCart: pos.terminalShowCart === true, skipReceipt: pos.terminalSkipReceipt !== false,
         });
-        try { await db.posPaymentUpsert({ checkoutId: checkout.id, squareOrderId: tabId, deviceId: term.deviceId, amount, status: 'waiting' }); } catch {}
+        try { await db.posPaymentUpsert({ checkoutId: checkout.id, squareOrderId: tabId, deviceId: term.deviceId, amount, status: 'waiting', note: noteLabel, tender: 'card' }); } catch {}
         return res.json({ tender: 'card', checkoutId: checkout.id, tabId, total: amount, currency, status: 'waiting', terminalName: term.name || 'Terminal' });
       } catch (e) {
-        console.warn('[waiter] terminal checkout FAILED:', e.message);
+        console.warn('[waiter] settle card checkout FAILED:', 'order=' + tabId, 'amount=' + amount, e.message);
         return res.status(502).json({ error: `Could not start the card payment: ${e.message}` });
       }
     }
-    // Cash → CASH payment against the tab; Square marks the order paid & closed.
+    // Cash → the balance. Link (and let Square close the order) only if it's the
+    // whole bill; a partial balance is a standalone capture, reconciled by us.
     const given = Math.max(amount, Math.round(Number(cashGiven) || amount));
-    const payment = await orders.createCashPayment({
-      orderId: tabId, amountMoney: { amount, currency },
-      buyerSuppliedMoney: { amount: given, currency }, squareLocationId,
-    });
+    let payment;
+    try {
+      payment = await orders.createCashPayment({
+        orderId: linkOrder ? tabId : undefined, amountMoney: { amount, currency },
+        buyerSuppliedMoney: { amount: given, currency }, squareLocationId, note: noteLabel,
+      });
+    } catch (e) {
+      console.warn('[waiter] settle cash FAILED:', 'order=' + tabId, 'amount=' + amount, e.message);
+      return res.status(502).json({ error: `Could not record the cash payment: ${e.message}` });
+    }
+    if (!linkOrder) { try { await db.posPaymentUpsert({ checkoutId: 'cash:' + ((payment && payment.id) || Date.now()), squareOrderId: tabId, deviceId: 'cash', amount, status: 'paid', note: noteLabel, tender: 'cash' }); } catch {} }
     try {
       if (db.enabled && typeof db.posRecordOrder === 'function') {
         await db.posRecordOrder({ squareOrderId: tabId, squarePaymentId: payment ? payment.id : null, source: 'Bean Culture Waiter', tender: 'cash', amount, status: 'paid', deviceName: 'Waiter' });
@@ -2352,28 +2387,44 @@ app.get('/api/waiter/tab/:id', async (req, res) => {
     try { if (db.enabled) captures = await db.posPaymentsPaidForOrder(order.id); } catch {}
     const capturePaid = captures.reduce((s, c) => s + (Number(c.amount) || 0), 0);
     const paid = Math.min(total, tenderPaid + capturePaid);
+    // Which line items have been paid, and by whom — from the uids each "by item"
+    // capture recorded — so the item split view keeps them marked across reloads.
+    const paidByUid = {};
+    for (const c of captures) {
+      for (const u of String(c.line_uids || '').split(',').filter(Boolean)) {
+        if (!paidByUid[u]) paidByUid[u] = { name: (c.note || '').replace(/^Split:\s*/i, '') || '', tender: (c.tender || '').toLowerCase() };
+      }
+    }
     res.json({
       tabId: order.id,
       state: order.state,
       table: (order.metadata && order.metadata.bc_booth) || order.ticket_name || '',
       total, paid, remaining: Math.max(0, total - paid),
       currency: (order.total_money && order.total_money.currency) || sq.CURRENCY,
+      paidUids: Object.keys(paidByUid),
       items: (order.line_items || []).map((li) => ({
         uid: li.uid || '', name: li.name || 'Item', variation: li.variation_name || '',
         quantity: li.quantity || '1',
         amount: (li.total_money && li.total_money.amount) || 0,
         modifiers: (li.modifiers || []).map((m) => m.name).filter(Boolean),
+        paid: !!paidByUid[li.uid || ''],
+        paidBy: (paidByUid[li.uid || ''] && paidByUid[li.uid || ''].name) || '',
+        paidTender: (paidByUid[li.uid || ''] && paidByUid[li.uid || ''].tender) || '',
       })),
       payments: [
         ...tenders.map((t) => ({
           amount: (t.amount_money && t.amount_money.amount) || 0,
           tender: (t.type || '').toLowerCase(),
           name: (t.note || '').replace(/^Split:\s*/i, '') || '',
+          paymentId: t.payment_id || t.id || null,
         })),
         ...captures.map((c) => ({
           amount: Number(c.amount) || 0,
-          tender: (c.tender || 'card').toLowerCase(),
+          tender: (c.tender || '').toLowerCase(),   // never assume card — show the real tender (blank if unknown legacy row)
           name: (c.note || '').replace(/^Split:\s*/i, '') || '',
+          // The Square payment id, so a receipt can be reprinted on the terminal.
+          // Cash captures encode it in the checkout id ("cash:<paymentId>").
+          paymentId: c.square_payment_id || (String(c.checkout_id || '').startsWith('cash:') ? c.checkout_id.slice(5) : null),
         })),
       ],
     });
@@ -2391,6 +2442,7 @@ app.post('/api/waiter/tab/pay', async (req, res) => {
   if (!pos) return res.status(401).json({ error: 'Wrong PIN, or waiter mode is off.' });
   try {
     const { tabId, amount, tender, cashGiven, payerName, locationId } = req.body || {};
+    const lineUids = Array.isArray(req.body && req.body.lineUids) ? req.body.lineUids.filter(Boolean).map(String) : [];
     if (!tabId) return res.status(400).json({ error: 'Missing tab.' });
     if (!['cash', 'card'].includes(tender)) return res.status(400).json({ error: 'Choose cash or card.' });
     { const pm = paymentsFor(pos, locationId); if (tender === 'cash' && !pm.cash) return res.status(400).json({ error: 'Cash is turned off for this store.' }); if (tender === 'card' && !pm.card) return res.status(400).json({ error: 'Card is turned off for this store.' }); }
@@ -2411,7 +2463,9 @@ app.post('/api/waiter/tab/pay', async (req, res) => {
     const currency = (order.total_money && order.total_money.currency) || sq.CURRENCY;
     const squareLocationId = locations.squareIdFor(locationId) || order.location_id;
     const who = String(payerName || '').trim().slice(0, 60);
-    const note = who ? `Split: ${who}` : 'Split';
+    // Square payment note = table · items · payer, so the transaction/receipt says
+    // what was bought. The app's own capture note stays just the payer name.
+    const note = waiterPayNote({ order, lineUids, who, label: 'Split' });
     // Link the order only when this one payment settles the ENTIRE order (Square's
     // rule for both card checkouts and cash payments); any split/partial is taken
     // standalone and reconciled via the captured-payment total on this order.
@@ -2425,7 +2479,7 @@ app.post('/api/waiter/tab/pay', async (req, res) => {
           amountMoney: { amount: want, currency }, deviceId: term.deviceId, orderId: linkOrder ? tabId : undefined, referenceId: tabId,
           note, showItemizedCart: pos.terminalShowCart === true, skipReceipt: pos.terminalSkipReceipt !== false,
         });
-        try { await db.posPaymentUpsert({ checkoutId: checkout.id, squareOrderId: tabId, deviceId: term.deviceId, amount: want, status: 'waiting', note: who, tender: 'card' }); } catch {}
+        try { await db.posPaymentUpsert({ checkoutId: checkout.id, squareOrderId: tabId, deviceId: term.deviceId, amount: want, status: 'waiting', note: who, tender: 'card', lineUids }); } catch {}
         return res.json({ tender: 'card', checkoutId: checkout.id, tabId, amount: want, currency, status: 'waiting', payerName: who, terminalName: term.name || 'Terminal' });
       } catch (e) {
         console.warn('[waiter] split card checkout FAILED:', 'device=' + term.deviceId, 'order=' + tabId, 'amount=' + want, e.message);
@@ -2445,7 +2499,7 @@ app.post('/api/waiter/tab/pay', async (req, res) => {
     }
     // A standalone (partial) cash capture isn't a Square tender, so record it here
     // too — that's what lets "remaining" subtract it and prevents a double-charge.
-    if (!linkOrder) { try { await db.posPaymentUpsert({ checkoutId: 'cash:' + ((payment && payment.id) || Date.now()), squareOrderId: tabId, deviceId: 'cash', amount: want, status: 'paid', note: who, tender: 'cash' }); } catch {} }
+    if (!linkOrder) { try { await db.posPaymentUpsert({ checkoutId: 'cash:' + ((payment && payment.id) || Date.now()), squareOrderId: tabId, deviceId: 'cash', amount: want, status: 'paid', note: who, tender: 'cash', lineUids }); } catch {} }
     try {
       if (db.enabled && typeof db.posRecordOrder === 'function') {
         await db.posRecordOrder({ squareOrderId: tabId, squarePaymentId: payment ? payment.id : null, source: 'Bean Culture Waiter', tender: 'cash', amount: want, status: 'paid', deviceName: `Waiter${who ? ' · ' + who : ''}` });
@@ -2453,6 +2507,21 @@ app.post('/api/waiter/tab/pay', async (req, res) => {
     } catch {}
     res.json({ tender: 'cash', tabId, amount: want, currency, change: Math.max(0, given - want), status: 'paid', payerName: who, paymentId: payment ? payment.id : null });
   } catch (e) { res.status(502).json({ error: e.message }); }
+});
+
+// Print a receipt on the WAITER's Terminal for a completed payment (card or cash).
+// Lets floor staff hand a customer a printed receipt — e.g. someone claiming food.
+app.post('/api/waiter/print-receipt', async (req, res) => {
+  const pos = waiterAuth(req);
+  if (!pos) return res.status(401).json({ error: 'Wrong PIN, or waiter mode is off.' });
+  try {
+    const { paymentId, locationId, duplicate } = req.body || {};
+    if (!paymentId) return res.status(400).json({ error: 'No payment to print.' });
+    const term = waiterTerminalFor(pos, locationId);
+    if (!term.deviceId) return res.status(400).json({ error: 'No waiter Terminal is set to print on.' });
+    const action = await terminal.printReceipt({ deviceId: term.deviceId, paymentId, duplicate: duplicate === true });
+    res.json({ ok: true, actionId: action.id || null, status: action.status || 'PENDING' });
+  } catch (e) { console.warn('[waiter] print receipt FAILED:', e.message); res.status(502).json({ error: e.message }); }
 });
 
 // Poll a waiter card checkout. Unlike the counter POS, a cancelled/declined card
@@ -2656,7 +2725,7 @@ app.post('/api/waiter/session/pay', async (req, res) => {
     const g = session.groups.find((x) => x.id === payerId);
     const a = session.adhoc.find((x) => x.id === payerId);
     const who = (g && g.name) || (a && a.name) || '';
-    const note = `${g ? 'Grp' : 'Split'}: ${who}${by ? ' (' + by + ')' : ''}`.slice(0, 60);
+    const note = waiterPayNote({ order, who, label: g ? 'Group' : 'Split share' }) + (by ? ` (${by})` : '');
     const currency = session.currency;
     const squareLocationId = locations.squareIdFor(locationId || data.locationId) || order.location_id;
     // Square rejects BOTH a Terminal checkout and a cash payment that is linked to
@@ -4195,7 +4264,10 @@ app.get('*', async (req, res) => {
       body = homeBody(await seoMenu(), req);
     }
   } catch { /* fall back to base head */ }
-  let html = indexHtml().replace('</head>', `    ${head}\n  </head>`);
+  // Stamp the LOADED page with the running deploy id so the client can tell when
+  // it's stale (a resumed home-screen PWA on an old bundle) and reload itself.
+  const buildTag = `<script>window.__BUILD__=${JSON.stringify(BUILD_ID)};</script>`;
+  let html = indexHtml().replace('</head>', `    ${head}\n    ${buildTag}\n  </head>`);
   if (title) html = html.replace(/<title>[\s\S]*?<\/title>/i, `<title>${seoEsc(title)}</title>`);
   if (body) html = html.replace('<div id="root">', `<div id="root">${body}`);
   if (isKds) html = kdsShell(html);
