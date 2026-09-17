@@ -5196,6 +5196,22 @@ export default function Admin({ onExit }) {
                   </div>
                   <input style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 10, marginBottom: 6 }} value={(s.cds && s.cds.welcomeTitle) ?? 'Welcome'} onChange={(e) => set({ cds: { ...(s.cds || {}), welcomeTitle: e.target.value } })} placeholder="Welcome heading" />
                   <input style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 10 }} value={(s.cds && s.cds.welcomeSub) || ''} onChange={(e) => set({ cds: { ...(s.cds || {}), welcomeSub: e.target.value } })} placeholder="Sub text (blank = store name)" />
+
+                  <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px dashed var(--line)' }}>
+                    <div style={{ fontSize: 'var(--fs-xs)', fontWeight: 700, marginBottom: 4 }}>Open a Customer Display{locs.length > 1 ? ' — per store' : ''}</div>
+                    <p className="muted" style={{ fontSize: 'var(--fs-xs)', margin: '0 0 8px' }}>Open a link below on the screen you want as the CDS, then “Add to Home Screen”. Each store shows its own name and only the banners ticked for that store, so advertising is per site. It runs at any counter regardless of which POS you ring sales on — so a store staying on the Square register can still use this as its branded idle/ads screen.</p>
+                    {(locs.length > 1 ? locs : [{ id: '', name: 'Customer Display' }]).map((l) => {
+                      const url = `${origin}/display?s=${encodeURIComponent(l.id || 'main')}${l.id ? `&loc=${encodeURIComponent(l.id)}` : ''}`;
+                      return (
+                        <div key={l.id || 'main'} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6, flexWrap: 'wrap' }}>
+                          <span style={{ minWidth: 110, fontSize: 'var(--fs-sm)', fontWeight: 600 }}>{l.name || l.id || 'Display'}</span>
+                          <input readOnly value={url} onFocus={(e) => e.target.select()} style={{ flex: 1, minWidth: 180, padding: '6px 8px', border: '1px solid var(--line)', borderRadius: 8, fontSize: 'var(--fs-xs)' }} />
+                          <a className="btn ghost" href={url} target="_blank" rel="noreferrer">Open</a>
+                          <button className="btn ghost" type="button" onClick={() => { try { navigator.clipboard.writeText(url); } catch {} }}>Copy</button>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', margin: '2px 0 12px', paddingBottom: 12, borderBottom: '1px solid var(--line)' }}>
                   <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>

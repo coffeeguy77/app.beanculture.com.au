@@ -9,6 +9,7 @@ import { formatMoney } from '../api.js';
 export default function PosDisplay() {
   const params = new URLSearchParams(window.location.search);
   const station = params.get('s') || params.get('station') || 'main';
+  const loc = params.get('loc') || '';   // which store this display is for (per-site ads + name)
   const [state, setState] = useState(null);
   const [offline, setOffline] = useState(false);
   const [adIdx, setAdIdx] = useState(0);
@@ -18,7 +19,7 @@ export default function PosDisplay() {
     let alive = true;
     async function tick() {
       try {
-        const r = await fetch(`/api/pos/display/state?station=${encodeURIComponent(station)}`, { cache: 'no-store' });
+        const r = await fetch(`/api/pos/display/state?station=${encodeURIComponent(station)}${loc ? `&loc=${encodeURIComponent(loc)}` : ''}`, { cache: 'no-store' });
         const d = await r.json();
         if (alive) { setState(d); setOffline(false); }
       } catch { if (alive) setOffline(true); }
@@ -26,7 +27,7 @@ export default function PosDisplay() {
     }
     tick();
     return () => { alive = false; if (timer.current) clearTimeout(timer.current); };
-  }, [station]);
+  }, [station, loc]);
 
   const currency = (state && state.currency) || 'AUD';
   const storeName = (state && state.storeName) || 'Bean Culture';
