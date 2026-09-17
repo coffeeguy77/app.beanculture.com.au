@@ -3941,6 +3941,12 @@ body:has(.store-shell) { background: var(--bc-canvas-deep, #160f12); }
 .pos-cash-row { display: flex; justify-content: space-between; padding: 8px 2px; font-size: 15px; }
 .pos-cash-row.big { font-family: 'Fraunces', Georgia, serif; font-size: 20px; font-weight: 700; border-top: 1px solid var(--pos-line); margin-top: 4px; padding-top: 12px; }
 .pos-cash-change { color: var(--pos-green); }
+.pos-cash-given { display: inline-flex; align-items: center; gap: 8px; font-weight: 700; }
+.pos-cash-clear { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border: 1px solid var(--pos-line); background: var(--pos-surface2); color: var(--pos-muted); border-radius: 999px; cursor: pointer; font-size: 13px; line-height: 1; padding: 0; }
+.pos-cash-pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 4px 0 8px; }
+.pos-cash-pad button { height: 52px; border: 1.5px solid var(--pos-line); background: var(--pos-surface2); border-radius: 12px; font: inherit; font-size: 20px; font-weight: 700; color: inherit; cursor: pointer; }
+.pos-cash-pad button:active { background: var(--pos-surface); }
+.pos-cash-pad .pos-cash-back { font-size: 18px; }
 .pos-tender-actions { display: flex; gap: 10px; margin-top: 16px; }
 .pos-tender-actions .pos-btn { flex: 1; }
 .pos-success-tick { width: 68px; height: 68px; border-radius: 50%; background: var(--pos-green); color: #fff; font-size: 38px; display: grid; place-items: center; margin: 0 auto 14px; }
