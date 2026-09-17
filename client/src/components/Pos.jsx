@@ -1580,10 +1580,13 @@ function TenderOverlay({ tender, setTender, total, currency, busy, methods, card
   const [reason, setReason] = useState('');
   const m = methods || { card: true, cash: true, unpaid: true };
   const change = Math.max(0, given - total);
-  // Suggested notes: exact, next round $ up, and common AUD notes above total.
-  const roundUp = (n) => Math.ceil(total / (n * 100)) * n * 100;
-  const suggestions = Array.from(new Set([total, roundUp(5), roundUp(10), roundUp(20), roundUp(50)]))
-    .filter((v) => v >= total).sort((a, b) => a - b).slice(0, 5);
+  const short = given > 0 && given < total;
+  // Quick notes: Exact, then the AUD notes AT OR ABOVE the amount — the next notes
+  // a customer would hand over. A $15 order shows Exact, $20, $50, $100 (never $10,
+  // which can't cover it). Deduped so an exact-note amount isn't listed twice.
+  const notes = [10, 20, 50, 100].map((n) => n * 100).filter((c) => c >= total);
+  const suggestions = [...new Set([total, ...notes])];
+  const key = (d) => setGiven((c) => Math.min(c * 10 + d, 9999999));
 
   return (
     <div className="pos-scrim" onClick={onClose}>
@@ -1639,14 +1642,23 @@ function TenderOverlay({ tender, setTender, total, currency, busy, methods, card
               ))}
             </div>
             <div className="pos-cash-row">
-              <span>Tendered</span><span className="pos-cash-given">{formatMoney(given, currency)}</span>
+              <span>Tendered</span>
+              <span className="pos-cash-given">{formatMoney(given, currency)}{given > 0 && <button className="pos-cash-clear" onClick={() => setGiven(0)} aria-label="Clear cash">✕</button>}</span>
+            </div>
+            {/* Number pad — type the exact cash handed over. */}
+            <div className="pos-cash-pad">
+              {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => <button key={n} onClick={() => key(n)}>{n}</button>)}
+              <button onClick={() => setGiven((c) => Math.min(c * 100, 9999999))}>00</button>
+              <button onClick={() => key(0)}>0</button>
+              <button className="pos-cash-back" onClick={() => setGiven((c) => Math.floor(c / 10))} aria-label="Backspace">⌫</button>
             </div>
             <div className="pos-cash-row big">
               <span>Change</span><span className="pos-cash-change">{formatMoney(change, currency)}</span>
             </div>
+            {short && <div className="pos-set-hint" style={{ color: '#c0392b', margin: '2px 0 0' }}>Short by {formatMoney(total - given, currency)} — add more or Clear.</div>}
             <div className="pos-tender-actions">
               <button className="pos-btn ghost" onClick={() => setTender('choose')}>Back</button>
-              <button className="pos-btn primary big" disabled={busy || given < total} onClick={() => onCash(given)}>
+              <button className="pos-btn primary big" disabled={busy || short} onClick={() => onCash(given || total)}>
                 {busy ? 'Sending…' : 'Complete cash sale'}
               </button>
             </div>
