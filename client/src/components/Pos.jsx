@@ -552,7 +552,9 @@ export default function Pos({ onExit }) {
         try { localStorage.setItem('bc-pos-active-checkout', JSON.stringify(cp)); } catch {}
       } else {
         const change = tenderType === 'cash' ? Math.max(0, (cashGiven || 0) - amount) : 0;
-        finishSuccess((res.orderId || '').slice(-4).toUpperCase(), res.orderId, tenderType, change);
+        // Pass the cash payment id through so the success screen can offer to print
+        // its receipt on the terminal (unpaid has no payment, so no receipt).
+        finishSuccess((res.orderId || '').slice(-4).toUpperCase(), res.orderId, tenderType, change, res.paymentId);
       }
     } catch (e) {
       const m = String((e && e.message) || '');
