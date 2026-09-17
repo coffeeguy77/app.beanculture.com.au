@@ -45,6 +45,7 @@ function waiterApi(auth, by) {
     claimName: (body) => post('/api/waiter/claim-name', body),
     tableOpen: (body) => post('/api/waiter/table/open', body, true),
     tableClose: (body) => post('/api/waiter/table/close', body),
+    printReceipt: (body) => post('/api/waiter/print-receipt', body),
   };
 }
 
@@ -78,6 +79,7 @@ const IconBack = (p) => <Svg s={p.s}><path d="M15 5l-7 7 7 7" /></Svg>;
 const IconSplit = (p) => <Svg s={p.s}><path d="M6 3v6a3 3 0 0 0 3 3h6a3 3 0 0 1 3 3v6" /><path d="M14 6l4-3 4 3" transform="translate(-4 0)" /></Svg>;
 const IconSearch = (p) => <Svg s={p.s}><circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" /></Svg>;
 const IconX = (p) => <Svg s={p.s}><path d="M6 6l12 12M18 6L6 18" /></Svg>;
+const IconPrint = (p) => <Svg s={p.s}><path d="M6 9V3h12v6" /><rect x="4" y="9" width="16" height="8" rx="2" /><path d="M8 17h8v4H8z" /></Svg>;
 
 export default function Waiter({ onExit, adminPass, actorName }) {
   const isAdmin = !!adminPass;
@@ -658,6 +660,14 @@ function Split({ api2, cfg, currency, location, ctx, setErr, onDone, onBack }) {
   const [method, setMethod] = useState('item');       // item | even | pct | custom
   const [settledUids, setSettledUids] = useState(() => new Set());
   const [payOpen, setPayOpen] = useState(false);      // custom-amount pay dialog
+  const [printing, setPrinting] = useState('');       // paymentId currently printing
+  const printRcpt = async (paymentId) => {
+    if (!paymentId) return;
+    setPrinting(paymentId); setErr('');
+    try { await api2.printReceipt({ paymentId, locationId: location }); }
+    catch (e) { setErr(e.message); }
+    finally { setTimeout(() => setPrinting(''), 1500); }
+  };
   const [card, setCard] = useState(null);
   const [busy, setBusy] = useState(false);
   const cardPoll = useCardPoll(api2, ctx.tabId, location, setErr);
@@ -705,7 +715,12 @@ function Split({ api2, cfg, currency, location, ctx, setErr, onDone, onBack }) {
       {tab.paid > 0 && <div className="wtr-paidnote">{formatMoney(tab.paid, cur)} already paid · {formatMoney(tab.remaining, cur)} left</div>}
       {tab.payments && tab.payments.length > 0 && (
         <div className="wtr-paidlist">
-          {tab.payments.map((p, i) => <div key={i} className="wtr-paidchip">{p.name || 'Paid'} · {formatMoney(p.amount, cur)}{p.tender ? ` · ${p.tender}` : ''}</div>)}
+          {tab.payments.map((p, i) => (
+            <div key={i} className="wtr-paidchip">
+              {p.name || 'Paid'} · {formatMoney(p.amount, cur)}{p.tender ? ` · ${p.tender}` : ''}
+              {cfg.hasTerminal && p.paymentId && <button className="wtr-chip-print" disabled={printing === p.paymentId} onClick={() => printRcpt(p.paymentId)} title="Print receipt on the terminal">{printing === p.paymentId ? '…' : <IconPrint s={14} />}</button>}
+            </div>
+          ))}
         </div>
       )}
 
@@ -1395,7 +1410,9 @@ function WaiterStyle() {
     .wtr-method{flex:1;border:1px solid var(--line,#e7dfe4);background:var(--surface,#fff);color:inherit;border-radius:10px;padding:10px;font-weight:800;font-size:13px;cursor:pointer}
     .wtr-method.on{background:var(--brand,#7a2e57);color:#fff;border-color:var(--brand,#7a2e57)}
     .wtr-paidlist{display:flex;flex-wrap:wrap;gap:6px}
-    .wtr-paidchip{background:#eef7ef;color:#276b3a;border-radius:20px;padding:5px 10px;font-size:12px;font-weight:700}
+    .wtr-paidchip{display:inline-flex;align-items:center;gap:6px;background:#eef7ef;color:#276b3a;border-radius:20px;padding:5px 10px;font-size:12px;font-weight:700}
+    .wtr-chip-print{display:inline-flex;align-items:center;justify-content:center;border:0;background:rgba(39,107,58,.14);color:#276b3a;border-radius:999px;width:24px;height:24px;cursor:pointer;padding:0}
+    .wtr-chip-print:disabled{opacity:.5;cursor:default}
     .wtr-payrow{display:flex;gap:8px}
     .wtr-payrow>*{flex:1}
     .wtr-people{justify-content:space-between}
