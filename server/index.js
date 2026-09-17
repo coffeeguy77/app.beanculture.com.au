@@ -1608,14 +1608,26 @@ app.get('/api/pos/display/state', (req, res) => {
   const key = String(req.query.station || 'main').slice(0, 60);
   const hit = posDisplays.get(key);
   const s = getSettings();
-  const storeName = s.storeName || 'Bean Culture';
+  // Which STORE this display belongs to: an explicit ?loc, else the station code
+  // when it is itself a real location id (an admin/POS CDS link uses the location
+  // id as the station). This lets each site show its own name and its own ads.
+  let loc = String(req.query.loc || '').slice(0, 80);
+  let locIds = [];
+  try { locIds = locations.publicList().map((l) => l.id); } catch {}
+  if (!loc && locIds.includes(key)) loc = key;
+  const store = loc ? locations.resolve(loc) : null;
+  const storeName = (store && store.name) || s.storeName || 'Bean Culture';
   const logo = (s.theme && (s.theme.logo || s.theme.logoUrl)) || (s.contact && s.contact.logo) || '';
   const fresh = hit && (Date.now() - hit.at < 90000);
   // CDS idle look + adverts: any hero/banner slide flagged `cds` becomes an idle
   // advert. Sent every poll so the display picks up changes without a reload.
+  // A banner shows on THIS store's CDS when it targets all stores (no locations
+  // set) or explicitly includes this location — the same per-site tick the banner
+  // already uses on the storefront.
   const cdsCfg = s.cds || {};
+  const showsHere = (h) => !Array.isArray(h.locations) || h.locations.length === 0 || (loc && h.locations.includes(loc));
   const ads = (Array.isArray(s.hero) ? s.hero : [])
-    .filter((h) => h && h.cds)
+    .filter((h) => h && h.cds && showsHere(h))
     .map((h) => ({ image: h.image || '', bg: h.bg || '', title: h.title || '', subtitle: h.subtitle || '', textColor: h.textColor || '#ffffff', fit: h.fit || 'cover' }));
   const cds = {
     welcomeTitle: cdsCfg.welcomeTitle || 'Welcome',
@@ -2416,11 +2428,15 @@ app.get('/api/waiter/tab/:id', async (req, res) => {
           amount: (t.amount_money && t.amount_money.amount) || 0,
           tender: (t.type || '').toLowerCase(),
           name: (t.note || '').replace(/^Split:\s*/i, '') || '',
+          paymentId: t.payment_id || t.id || null,
         })),
         ...captures.map((c) => ({
           amount: Number(c.amount) || 0,
           tender: (c.tender || '').toLowerCase(),   // never assume card — show the real tender (blank if unknown legacy row)
           name: (c.note || '').replace(/^Split:\s*/i, '') || '',
+          // The Square payment id, so a receipt can be reprinted on the terminal.
+          // Cash captures encode it in the checkout id ("cash:<paymentId>").
+          paymentId: c.square_payment_id || (String(c.checkout_id || '').startsWith('cash:') ? c.checkout_id.slice(5) : null),
         })),
       ],
     });
@@ -2503,6 +2519,21 @@ app.post('/api/waiter/tab/pay', async (req, res) => {
     } catch {}
     res.json({ tender: 'cash', tabId, amount: want, currency, change: Math.max(0, given - want), status: 'paid', payerName: who, paymentId: payment ? payment.id : null });
   } catch (e) { res.status(502).json({ error: e.message }); }
+});
+
+// Print a receipt on the WAITER's Terminal for a completed payment (card or cash).
+// Lets floor staff hand a customer a printed receipt — e.g. someone claiming food.
+app.post('/api/waiter/print-receipt', async (req, res) => {
+  const pos = waiterAuth(req);
+  if (!pos) return res.status(401).json({ error: 'Wrong PIN, or waiter mode is off.' });
+  try {
+    const { paymentId, locationId, duplicate } = req.body || {};
+    if (!paymentId) return res.status(400).json({ error: 'No payment to print.' });
+    const term = waiterTerminalFor(pos, locationId);
+    if (!term.deviceId) return res.status(400).json({ error: 'No waiter Terminal is set to print on.' });
+    const action = await terminal.printReceipt({ deviceId: term.deviceId, paymentId, duplicate: duplicate === true });
+    res.json({ ok: true, actionId: action.id || null, status: action.status || 'PENDING' });
+  } catch (e) { console.warn('[waiter] print receipt FAILED:', e.message); res.status(502).json({ error: e.message }); }
 });
 
 // Poll a waiter card checkout. Unlike the counter POS, a cancelled/declined card
