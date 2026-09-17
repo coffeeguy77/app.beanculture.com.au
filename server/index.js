@@ -47,6 +47,24 @@ function waiterTerminalFor(pos, locId) {
   if (pos.waiterTerminalDeviceId) return { deviceId: pos.waiterTerminalDeviceId, name: pos.waiterTerminalName || 'Waiter Terminal' };
   return posTerminalFor(pos, locId);
 }
+// A human-readable note stamped onto the Square PAYMENT so the transaction — and
+// Square's own receipt — says what was paid for: the table, the item names when
+// it's an item split, and the payer. e.g. "T77 · Fritters, Wine — Rob". Kept
+// within Square's note length. This is what makes split payments legible in the
+// Square Dashboard and lets a customer be given a meaningful receipt.
+function waiterPayNote({ order, lineUids, who, label }) {
+  const booth = (order && order.metadata && order.metadata.bc_booth) || (order && order.ticket_name) || '';
+  const byUid = {};
+  for (const li of ((order && order.line_items) || [])) if (li.uid) byUid[li.uid] = li.name || 'Item';
+  const names = [...new Set((lineUids || []).map((u) => byUid[u]).filter(Boolean))];
+  const parts = [];
+  if (booth) parts.push('T' + booth);
+  if (names.length) parts.push(names.join(', '));
+  else if (label) parts.push(label);
+  let s = parts.join(' · ') || 'Waiter';
+  if (who) s += ' — ' + who;
+  return s.slice(0, 480);
+}
 // A store's effective waiter settings: its own per-store override if set, else
 // the global default. Keeps single-store setups working unchanged.
 function effectiveWaiter(pos, locId) {
@@ -2309,7 +2327,7 @@ app.post('/api/waiter/tab/close', async (req, res) => {
     const amount = Math.max(0, total - tenderPaid - captured);
     if (!(amount > 0)) return res.status(400).json({ error: 'This tab is already fully paid.' });
     const linkOrder = amount === total;   // link the order only when nothing's been paid yet
-    const noteLabel = `Table ${(order.metadata && order.metadata.bc_booth) || ''}`.trim().slice(0, 60) || 'Waiter tab';
+    const noteLabel = waiterPayNote({ order, label: linkOrder ? 'Full bill' : 'Balance' });
     const squareLocationId = locations.squareIdFor(locationId) || order.location_id;
 
     if (tender === 'card') {
@@ -2441,7 +2459,9 @@ app.post('/api/waiter/tab/pay', async (req, res) => {
     const currency = (order.total_money && order.total_money.currency) || sq.CURRENCY;
     const squareLocationId = locations.squareIdFor(locationId) || order.location_id;
     const who = String(payerName || '').trim().slice(0, 60);
-    const note = who ? `Split: ${who}` : 'Split';
+    // Square payment note = table · items · payer, so the transaction/receipt says
+    // what was bought. The app's own capture note stays just the payer name.
+    const note = waiterPayNote({ order, lineUids, who, label: 'Split' });
     // Link the order only when this one payment settles the ENTIRE order (Square's
     // rule for both card checkouts and cash payments); any split/partial is taken
     // standalone and reconciled via the captured-payment total on this order.
@@ -2686,7 +2706,7 @@ app.post('/api/waiter/session/pay', async (req, res) => {
     const g = session.groups.find((x) => x.id === payerId);
     const a = session.adhoc.find((x) => x.id === payerId);
     const who = (g && g.name) || (a && a.name) || '';
-    const note = `${g ? 'Grp' : 'Split'}: ${who}${by ? ' (' + by + ')' : ''}`.slice(0, 60);
+    const note = waiterPayNote({ order, who, label: g ? 'Group' : 'Split share' }) + (by ? ` (${by})` : '');
     const currency = session.currency;
     const squareLocationId = locations.squareIdFor(locationId || data.locationId) || order.location_id;
     // Square rejects BOTH a Terminal checkout and a cash payment that is linked to
