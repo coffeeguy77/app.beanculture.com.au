@@ -3871,6 +3871,20 @@ body:has(.store-shell) { background: var(--bc-canvas-deep, #160f12); }
 .pos-btn:disabled { opacity: .45; cursor: not-allowed; }
 .pos-err { color: var(--pos-red); font-size: 13px; margin: 6px 0; }
 
+/* Pay-tender buttons (Cash / Card) shown directly on the register */
+.pos-pay-choices { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; }
+.pos-pay-btn { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 16px 10px; border-radius: 16px; border: 2px solid var(--pos-accent); background: var(--pos-surface); color: var(--pos-accent); font: inherit; cursor: pointer; min-height: 104px; }
+.pos-pay-btn.solo { grid-column: 1 / -1; }
+.pos-pay-btn.card { background: var(--pos-accent); border-color: var(--pos-accent); color: #fff; }
+.pos-pay-btn.card:hover:not(:disabled) { background: var(--pos-accent2); }
+.pos-pay-btn.cash:hover:not(:disabled) { background: var(--pos-on-bg); }
+.pos-pay-btn:disabled { opacity: .45; cursor: not-allowed; }
+.pos-pay-ic { display: grid; place-items: center; }
+.pos-pay-t { font-size: 13px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+.pos-pay-a { font-family: 'Fraunces', Georgia, serif; font-size: 20px; font-weight: 700; }
+.pos-pay-unpaid { display: block; width: 100%; margin-top: 10px; padding: 10px; border: 1px dashed var(--pos-line); background: transparent; color: var(--pos-muted); border-radius: 10px; font: inherit; font-weight: 600; font-size: 13px; cursor: pointer; }
+.pos-pay-unpaid:disabled { opacity: .45; cursor: not-allowed; }
+
 /* Configure workspace */
 .pos-cfg { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--pos-surface); }
 .pos-cfg-head { padding: 16px 22px 12px; border-bottom: 1px solid var(--pos-line); position: sticky; top: 0; background: var(--pos-surface); z-index: 2; }
