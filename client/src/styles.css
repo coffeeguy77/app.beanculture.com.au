@@ -4098,25 +4098,25 @@ body:has(.store-shell) { background: var(--bc-canvas-deep, #160f12); }
   flex-wrap: nowrap; align-items: center; justify-content: flex-start; gap: 4px;
   overflow: visible;
   padding: 6px 10px calc(6px + env(safe-area-inset-bottom));
-  min-height: 60px;
 }
 .catbar.has-cartfab .catbar-cats { flex-wrap: nowrap; }
 
-/* The circular Cart button. Sits in FRONT of the straight bar, lifted so its
-   top third rises above the top edge. */
+/* The circular Cart button. It's taken OUT of the bar's height calc (the circle
+   is absolutely positioned) so it can overlap the top edge WITHOUT inflating the
+   bar — that keeps the category rows compact with an even top/bottom gap. The
+   button still reserves its 82px column so the categories never slide under it. */
 .cartfab-item {
-  flex: 0 0 auto; width: 82px; align-self: center;
+  flex: 0 0 auto; width: 82px; align-self: stretch;
   background: none; border: none; padding: 0; cursor: pointer;
-  position: relative; display: flex; align-items: center; justify-content: center;
+  position: relative;
 }
 .cartfab {
-  position: relative;
+  position: absolute; left: 50%; bottom: 1px; transform: translateX(-50%);
   width: 76px; height: 76px; border-radius: 999px;
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
-  transform: translateY(-16px);
   transition: transform .12s ease;
 }
-.cartfab-item:active .cartfab { transform: translateY(-16px) scale(0.95); }
+.cartfab-item:active .cartfab { transform: translateX(-50%) scale(0.95); }
 .cartfab-item:focus-visible { outline: none; }
 .cartfab-item:focus-visible .cartfab { box-shadow: 0 0 0 3px var(--bc-canvas, #211218), 0 0 0 6px var(--accent, #d1547a); }
 .cartfab-ic { display: inline-flex; align-items: center; height: 26px; }
@@ -4197,9 +4197,8 @@ body:has(.store-shell) { background: var(--bc-canvas-deep, #160f12); }
 /* Very narrow phones: keep labels + circle from colliding. */
 @media (max-width: 360px) {
   .bottomnav.catbar.has-cartfab { padding-left: 6px; padding-right: 6px; gap: 2px; }
-  .cartfab-item { width: 72px; }
-  .cartfab { width: 66px; height: 66px; transform: translateY(-13px); }
-  .cartfab-item:active .cartfab { transform: translateY(-13px) scale(0.95); }
+  .cartfab-item { width: 68px; }
+  .cartfab { width: 64px; height: 64px; }
   .cartfab-ic, .cartfab-ic svg { height: 22px; }
   .cartfab-label { font-size: 10px; }
   .catbar-cats .navlabel { font-size: 8.5px; }
