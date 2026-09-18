@@ -233,9 +233,11 @@ function publicList() {
       free: !!l.free,
       // Complimentary categories at this event; everything else stays paid.
       freeCategories: Array.isArray(l.freeCategories) ? l.freeCategories : [],
-      // Hidden from the store picker (event booths etc.) — the app still resolves
-      // it when reached by ?loc=, but never lists it as a choosable store.
-      hidden: !!l.hidden,
+      // Hidden from the store picker (event booths, or a busy store running on
+      // the POS only) — the app still resolves it when reached by ?loc=, but
+      // never lists it as a choosable store. Same default as resolve(): events
+      // default hidden; every other store type defaults visible.
+      hidden: l.hidden != null ? !!l.hidden : (l.type === 'event'),
     };
   });
 }
