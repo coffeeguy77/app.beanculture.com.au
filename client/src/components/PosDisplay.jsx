@@ -53,10 +53,21 @@ export default function PosDisplay() {
   const onTouchStart = (e) => { touch.current = e.touches[0].clientX; };
   const onTouchEnd = (e) => { const dx = e.changedTouches[0].clientX - touch.current; if (Math.abs(dx) > 45) { dx < 0 ? nextAd() : prevAd(); } };
 
+  // Fullscreen fallback for when the CDS runs in a browser TAB (not installed as a
+  // home-screen app): a single tap requests fullscreen, which hides the Android
+  // status bar (clock / battery / wifi). Installed as a PWA it's already fullscreen
+  // via the manifest. Silently ignored where unsupported (iOS Safari).
+  const goFullscreen = () => {
+    try {
+      const el = document.documentElement;
+      if (!document.fullscreenElement && el.requestFullscreen) el.requestFullscreen().catch(() => {});
+    } catch { /* unsupported — no-op */ }
+  };
+
   return (
     // No `pointer-events:none` — the customer can swipe the banners and scroll a
     // long order — but there are no links/buttons, so nothing is "clickable".
-    <div className="cd-root" style={{ userSelect: 'none' }}>
+    <div className="cd-root" style={{ userSelect: 'none' }} onClick={goFullscreen}>
       {offline && <div className="cd-offline">Reconnecting…</div>}
 
       {status === 'paid' ? (
