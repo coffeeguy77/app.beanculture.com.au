@@ -4443,13 +4443,15 @@ export default function Admin({ onExit }) {
                             <option value="event">Event (corporate hire)</option>
                           </select>
                         </label>
-                        {l.type === 'event' && (() => {
-                          const effHidden = l.hidden != null ? !!l.hidden : true;
+                        {(() => {
+                          const isEvent = l.type === 'event';
+                          // Events default hidden; every other store type defaults visible.
+                          const effHidden = l.hidden != null ? !!l.hidden : isEvent;
                           return (
                             <div className="field" style={{ margin: 0 }}>
                               <label className="switch"><input type="checkbox" checked={effHidden} onChange={(e) => updLoc(l.id, { hidden: e.target.checked })} /> <span>Hide from the store picker (reach by booth QR only)</span></label>
                               <p className="muted" style={{ fontSize: 'var(--fs-xs)', margin: '4px 0 0' }}>
-                                On (recommended for events): this store never appears in “Choose your store”. Customers only reach it by scanning its custom / booth QR code. It still works normally when opened that way.
+                                On: this store never appears in “Choose your store” — customers only reach it by scanning its custom / booth / table QR code, and it still works normally when opened that way. Turn it on for a busy store that runs on the POS only and doesn’t want app orders (or leave it on for an event booth).
                               </p>
                             </div>
                           );

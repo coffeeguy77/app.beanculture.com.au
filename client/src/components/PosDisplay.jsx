@@ -39,13 +39,19 @@ export default function PosDisplay() {
   const idle = !hasOrder && status !== 'paid';
   const [reset, setReset] = useState(0);       // bumped on a manual swipe to restart auto-rotate
   const touch = useRef(0);
+  const enteredIdle = useRef(false);           // guards the once-per-idle random start
 
   const nextAd = () => { if (ads.length) { setAdIdx((i) => (i + 1) % ads.length); setReset((k) => k + 1); } };
   const prevAd = () => { if (ads.length) { setAdIdx((i) => (i - 1 + ads.length) % ads.length); setReset((k) => k + 1); } };
 
-  // Auto-rotate idle adverts (restarts whenever the customer swipes).
+  // Auto-rotate idle adverts (restarts whenever the customer swipes). Each time the
+  // display RETURNS to idle (after an order clears), it starts on a RANDOM banner —
+  // so it isn't always #1 — then keeps rotating in their set order.
   useEffect(() => {
-    if (!idle || ads.length < 2) { setAdIdx((i) => (idle ? i : 0)); return; }
+    if (!idle) { enteredIdle.current = false; setAdIdx(0); return; }
+    if (ads.length < 1) return;
+    if (!enteredIdle.current) { enteredIdle.current = true; setAdIdx(Math.floor(Math.random() * ads.length)); }
+    if (ads.length < 2) return;
     const iv = setInterval(() => setAdIdx((i) => (i + 1) % ads.length), (cds.adIntervalSec || 6) * 1000);
     return () => clearInterval(iv);
   }, [idle, ads.length, cds.adIntervalSec, reset]);
