@@ -3070,11 +3070,34 @@ export default function Admin({ onExit }) {
                                 {bn.image && <button className="link" style={{ color: '#c0392b' }} onClick={() => setBn({ image: '' })}>Remove image</button>}
                               </div>
                               <label style={{ display: 'grid', gap: 4 }}>
-                                <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>Links to product (opens it ready to order)</span>
-                                <select value={bn.itemId || ''} onChange={(e) => setBn({ itemId: e.target.value })} style={{ padding: 8, borderRadius: 10, border: '1px solid var(--line)' }}>
-                                  <option value="">— pick a product —</option>
-                                  {presetsSorted.filter((p) => (((p.section || '').trim() || '(no section)') === secName)).map((p) => <option key={p.id} value={'preset:' + p.id}>{p.name}</option>)}
-                                </select>
+                                <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>Links to product or combo (opens it ready to order)</span>
+                                {(() => {
+                                  // Only THIS section's products and combos — no cross-category access.
+                                  // A combo lives in the category named by its own "Section" (Combo
+                                  // Builder), so a combo set to this section shows here and opens its
+                                  // combo chooser when the banner is tapped (value 'combo:<id>' matches
+                                  // the combo tile the storefront already builds for this category).
+                                  const secProducts = presetsSorted.filter((p) => (((p.section || '').trim() || '(no section)') === secName));
+                                  const secCombos = (combos || []).filter((c) => c && c.active !== false && ((String(c.section || '').trim() || 'Combos') === secName));
+                                  return (
+                                    <select value={bn.itemId || ''} onChange={(e) => setBn({ itemId: e.target.value })} style={{ padding: 8, borderRadius: 10, border: '1px solid var(--line)' }}>
+                                      <option value="">— pick a product or combo —</option>
+                                      {secProducts.length > 0 && (
+                                        <optgroup label="Products">
+                                          {secProducts.map((p) => <option key={p.id} value={'preset:' + p.id}>{p.name}</option>)}
+                                        </optgroup>
+                                      )}
+                                      {secCombos.length > 0 && (
+                                        <optgroup label="Combo offers">
+                                          {secCombos.map((c) => <option key={c.id} value={'combo:' + c.id}>{c.name || 'Combo'}</option>)}
+                                        </optgroup>
+                                      )}
+                                    </select>
+                                  );
+                                })()}
+                                {(combos || []).some((c) => c && c.active !== false && ((String(c.section || '').trim() || 'Combos') === secName)) ? null : (
+                                  <span className="muted" style={{ fontSize: 'var(--fs-xs)' }}>Tip: to link a combo here (e.g. Tradies Special), set that combo’s <strong>Section</strong> to “{secName}” in Combo Builder — then it appears in this list.</span>
+                                )}
                               </label>
                             </div>
                           );
