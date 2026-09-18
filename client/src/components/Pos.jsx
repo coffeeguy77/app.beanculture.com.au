@@ -1086,7 +1086,7 @@ function RefundModal({ pass, posLoc, hasPin, currency, onPinSet, onClose }) {
     try {
       const r = await api.posRefund(pass, { orderId: sel.orderId, paymentId: sel.paymentId, amount, reason: reason.trim(), managerPin: pin.trim() });
       const rf = r.refund || {};
-      setDone({ amount, status: (rf.status || 'PENDING').toUpperCase(), id: rf.id || '' });
+      setDone({ amount, status: (rf.status || 'PENDING').toUpperCase(), id: rf.id || '', tender: sel.tender || '' });
       // Refresh the list so the refunded amount shows next time.
       api.posRecentOrders(pass, posLoc).then((d) => setOrders(d.orders || [])).catch(() => {});
     } catch (e) { setErr(e.message); }
@@ -1114,9 +1114,11 @@ function RefundModal({ pass, posLoc, hasPin, currency, onPinSet, onClose }) {
             <div className="pos-success-tick" style={{ margin: '6px auto' }}>✓</div>
             <div className="pos-success-title">Refund {done.status === 'COMPLETED' ? 'complete' : 'submitted'} · {formatMoney(done.amount, currency)}</div>
             <p className="pos-set-hint">
-              {done.status === 'COMPLETED'
-                ? 'Square has refunded this to the customer’s original payment.'
-                : 'Square accepted the refund and is processing it (status: PENDING). Card refunds usually settle within minutes; the customer’s Square refund receipt is sent once it completes.'}
+              {done.tender === 'cash'
+                ? <><b>Hand {formatMoney(done.amount, currency)} back to the customer in cash.</b> The refund is recorded in Square (and comes off your cash takings at cash-up).</>
+                : (done.status === 'COMPLETED'
+                  ? 'Square has refunded this to the customer’s card.'
+                  : 'Square accepted the refund and is processing it (status: PENDING). Card refunds usually settle within minutes; the customer’s Square refund receipt is sent once it completes.')}
               {done.id ? ` Refund id ${done.id.slice(-8)}.` : ''}
             </p>
             <button className="pos-btn primary big" style={{ width: '100%' }} onClick={onClose}>Done</button>
@@ -1132,7 +1134,7 @@ function RefundModal({ pass, posLoc, hasPin, currency, onPinSet, onClose }) {
                 <button key={o.orderId} type="button" className="pos-refund-order" onClick={() => { setSel(o); setTicked(new Set()); setCustom(''); }}>
                   <span className="pos-refund-order-main">
                     <b>{o.name || `#${o.orderId.slice(-4).toUpperCase()}`}</b>
-                    <span className="muted">{fmtDateTime(o.createdAt)} · {o.items.length} item{o.items.length === 1 ? '' : 's'}{o.refunded ? ` · ${formatMoney(o.refunded, o.currency)} refunded` : ''}</span>
+                    <span className="muted">{fmtDateTime(o.createdAt)} · {o.items.length} item{o.items.length === 1 ? '' : 's'}{o.tender ? ` · ${o.tender}` : ''}{o.refunded ? ` · ${formatMoney(o.refunded, o.currency)} refunded` : ''}</span>
                   </span>
                   <span className="pos-refund-order-amt">{formatMoney(o.total, o.currency)}</span>
                 </button>
