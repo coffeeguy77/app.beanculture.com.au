@@ -111,13 +111,13 @@ export default function PosDisplay() {
         // Idle adverts (banners flagged "Show on CDS"). Swipe to change.
         (() => {
           const ad = ads[adIdx % ads.length] || ads[0];
-          // Only treat the image as usable if it loads — a broken/slow image URL
-          // must never leave a blank advert; fall back to the banner's background
-          // (a gradient, or the default) and still show its title/subtitle.
+          // Show the <img> when there is one and it hasn't failed to load. When
+          // there's no usable image, fall back to the banner's OWN background —
+          // which may itself be an image set as `url(...)` (a pasted link, or an
+          // uploaded banner) OR a gradient — and only then to the default colour.
           const useImg = ad.image && !imgErr[ad.image];
-          const bgFallback = (ad.bg && !/^\s*url\(/i.test(ad.bg)) ? ad.bg : 'var(--cd-bg, #16265e)';
           return (
-            <div className="cd-ad" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd} style={useImg ? undefined : { background: bgFallback }}>
+            <div className="cd-ad" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd} style={useImg ? undefined : { background: ad.bg || 'var(--cd-bg, #16265e)' }}>
               {useImg && <img className="cd-ad-img" src={ad.image} alt="" draggable="false" onError={() => setImgErr((m) => ({ ...m, [ad.image]: true }))} />}
               {(ad.title || ad.subtitle) && (
                 <div className="cd-ad-cap" style={{ color: ad.textColor || '#fff' }}>
