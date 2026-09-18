@@ -3978,7 +3978,11 @@ app.get('/cds.webmanifest', (req, res) => {
     start_url: start,
     scope: '/display',
     id: start,                      // unique per station → each location installs as its own CDS app
-    display: 'standalone',
+    // Fullscreen so the installed CDS hides the Android status bar (clock/battery/
+    // wifi) and runs edge-to-edge. display_override lets browsers pick fullscreen
+    // first and fall back to standalone if unsupported.
+    display: 'fullscreen',
+    display_override: ['fullscreen', 'standalone'],
     orientation: 'landscape',
     background_color: '#16265e',
     theme_color: '#16265e',
