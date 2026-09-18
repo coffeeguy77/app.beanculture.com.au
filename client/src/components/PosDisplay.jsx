@@ -102,13 +102,8 @@ export default function PosDisplay() {
                   {ad.subtitle && <div className="cd-ad-sub">{ad.subtitle}</div>}
                 </div>
               )}
-              {ads.length > 1 && (
-                <>
-                  <button className="cd-ad-nav left" onClick={prevAd} aria-label="Previous">‹</button>
-                  <button className="cd-ad-nav right" onClick={nextAd} aria-label="Next">›</button>
-                  <div className="cd-ad-dots">{ads.map((_, i) => <span key={i} className={i === (adIdx % ads.length) ? 'on' : ''} />)}</div>
-                </>
-              )}
+              {/* Customer display: no on-screen arrows or position dots (it's not a
+                  touch control for customers). Swipe still changes the advert. */}
             </div>
           );
         })()
