@@ -120,6 +120,24 @@ export function setSeasonOptOut(v) {
 // checkout. Only display info is cached here (token, code, cached value) --
 // the server always re-validates the real balance at checkout time, this is
 // never trusted as the source of truth.
+// Bottom-nav cart style: 'menu' (default — the circular Cart button in the
+// bottom category bar) or 'floating' (a compact "View order" bar above the
+// category nav, with Coffee Bags restored to the 6th category slot). On-device
+// per the customer's preference, same mechanism as the theme/effect prefs.
+const CART_STYLE_KEY = 'bc-cart-style';
+export function getCartStyle() {
+  try {
+    const v = localStorage.getItem(CART_STYLE_KEY);
+    return v === 'floating' ? 'floating' : 'menu';
+  } catch { return 'menu'; }
+}
+export function setCartStylePreference(v) {
+  try {
+    if (v === 'floating') localStorage.setItem(CART_STYLE_KEY, 'floating');
+    else localStorage.setItem(CART_STYLE_KEY, 'menu');
+  } catch {}
+}
+
 const PIF_KEY = 'bc_pif_voucher';
 export function getPifVoucher() {
   try {

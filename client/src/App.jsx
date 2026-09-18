@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { api, formatMoney, imgUrl, comboDiscountFor } from './api.js';
 import { applyTheme } from './theme.js';
 import { STOREFRONT_THEMES, resolvePreset, applyStoreTheme, presetSwatch, buildTokens, seasonalAsPreset, BIRTHDAY_THEME } from './themes.js';
-import { getUser, setUser as saveUser, getSavedTheme, setSavedTheme, getSeasonOptOut, setSeasonOptOut, getStoredOrder, setStoredOrder, getFavorites, saveFavorites, getStoredThemeBlob, saveStoredTheme, getEffectPreference, setEffectPreference, getPifVoucher, setPifVoucher as savePifVoucher } from './store.js';
+import { getUser, setUser as saveUser, getSavedTheme, setSavedTheme, getSeasonOptOut, setSeasonOptOut, getStoredOrder, setStoredOrder, getFavorites, saveFavorites, getStoredThemeBlob, saveStoredTheme, getEffectPreference, setEffectPreference, getCartStyle, setCartStylePreference, getPifVoucher, setPifVoucher as savePifVoucher } from './store.js';
 import HeroSlider from './components/HeroSlider.jsx';
 import OrderTypeBar from './components/OrderTypeBar.jsx';
 import MenuDock from './components/MenuDock.jsx';
@@ -276,6 +276,9 @@ export default function App() {
   // palette above. { mode: 'theme-default' | 'none' | 'custom', effectId? }
   const [effectPref, setEffectPrefState] = useState(() => getEffectPreference());
   const setEffectPref = (pref) => { setEffectPrefState(pref); setEffectPreference(pref); };
+  // Bottom-nav cart style preference ('menu' | 'floating'), persisted on-device.
+  const [cartStyle, setCartStyleState] = useState(() => getCartStyle());
+  const setCartStyle = (v) => { const next = v === 'floating' ? 'floating' : 'menu'; setCartStyleState(next); setCartStylePreference(next); };
   // Ref-based memo cache for the resolved effect preset (NOT useMemo: this
   // component has an early `return` for the loading state below, and hooks
   // must never be called conditionally — a useMemo placed after that return
@@ -1392,8 +1395,16 @@ export default function App() {
   }
   if (config.announcement) notices.push({ id: 'announce', type: 'promotional', text: config.announcement, dismissible: true });
 
+  // Bottom category slots for the mobile nav. In the default 'menu' cart style
+  // the far-right slot becomes the circular Cart button, so Coffee Bags is
+  // dropped from the bar (still reachable via the top category dock). In
+  // 'floating' mode all footer slots stay (Coffee Bags in its 6th slot) and a
+  // compact "View order" bar floats above the nav when the basket has items.
+  const isCoffeeBagsSlot = (s) => /coffee\s*bags?/i.test((s && (s.label || (s.cats && s.cats[0]))) || '');
+  const navSlots = cartStyle === 'menu' ? footerSlots.filter((s) => !isCoffeeBagsSlot(s)) : footerSlots;
+
   return (
-    <div className={`app store-shell${(view === 'store' || view === 'reserve' || (!wide && view === 'checkout')) ? ' app-flush' : ''}`}
+    <div className={`app store-shell cart-${cartStyle}${(view === 'store' || view === 'reserve' || (!wide && view === 'checkout')) ? ' app-flush' : ''}`}
       style={{
         '--dock-icon-scale': config.dockIconScale || 1,
         '--footer-icon-scale': config.footerIconScale || 1,
@@ -1533,6 +1544,8 @@ export default function App() {
             return ok;
           }}
           onTheme={() => setShowTheme(true)}
+          cartStyle={cartStyle}
+          onCartStyle={setCartStyle}
           onBack={() => setView('home')}
           onSendCoffee={() => setShowPif(true)}
           onUseCoffee={(token, info) => { setPifVoucher({ token, ...(info || {}) }); setView('home'); }}
@@ -1697,47 +1710,66 @@ export default function App() {
         />
       )}
 
-      {view === 'home' && cartCount > 0 && (
+      {/* Floating cart bar — only in 'floating' cart style, on the menu, when the
+          basket has items. The circular Cart button (menu style) replaces it. */}
+      {cartStyle === 'floating' && view === 'home' && cartCount > 0 && (
         <button className="cartbar" onClick={() => setView('cart')}>
           <span className="badge">{cartCount}</span>
           <span>View order</span>
           <span className="cartbar-total">{formatMoney(cartTotal, currency)}</span>
+          <span className="cartbar-arrow" aria-hidden="true">›</span>
         </button>
       )}
 
       {(view === 'home' || view === 'account' || view === 'cart') && footerSlots.length > 0 && (
-        <nav className="bottomnav catbar">
-          {footerSlots.map((slot, i) => {
-            const activeSlot =
-              layoutMode === 'single' &&
-              activeGroup &&
-              slot.cats.length === activeGroup.length &&
-              slot.cats.every((c) => activeGroup.includes(c));
-            return (
-              <button
-                key={i}
-                className={`navitem ${activeSlot ? 'on' : ''}`}
-                onClick={() => {
-                  setQuery('');
-                  if (layoutMode === 'single') {
-                    // Same icon pressed again → advance to the next category in
-                    // this slot; a different icon → start at its first category.
-                    const same = footerCycle.current.slot === i;
-                    const idx = same ? (footerCycle.current.idx + 1) % slot.cats.length : 0;
-                    footerCycle.current = { slot: i, idx };
-                    setActiveGroup(slot.cats);
-                    setView('home');
-                    setActiveCat(slot.cats[idx]); // scrolls to that category's title
-                    setScrollTick((t) => t + 1);
-                  } else { setView('home'); setActiveCat(slot.cats[0]); setScrollTick((t) => t + 1); }
-                }}
-                aria-label={slot.label}
-              >
-                <span className="ic"><SlotIcon icon={slot.icon} iconSvg={slot.iconSvg} size={30} /></span>
-                {slot.label ? <span className="navlabel">{slot.label}</span> : null}
-              </button>
-            );
-          })}
+        <nav className={`bottomnav catbar${cartStyle === 'menu' ? ' has-cartfab' : ''}`}>
+          <div className="catbar-cats">
+            {navSlots.map((slot, i) => {
+              const activeSlot =
+                layoutMode === 'single' &&
+                activeGroup &&
+                slot.cats.length === activeGroup.length &&
+                slot.cats.every((c) => activeGroup.includes(c));
+              return (
+                <button
+                  key={i}
+                  className={`navitem ${activeSlot ? 'on' : ''}`}
+                  onClick={() => {
+                    setQuery('');
+                    if (layoutMode === 'single') {
+                      // Same icon pressed again → advance to the next category in
+                      // this slot; a different icon → start at its first category.
+                      const same = footerCycle.current.slot === i;
+                      const idx = same ? (footerCycle.current.idx + 1) % slot.cats.length : 0;
+                      footerCycle.current = { slot: i, idx };
+                      setActiveGroup(slot.cats);
+                      setView('home');
+                      setActiveCat(slot.cats[idx]); // scrolls to that category's title
+                      setScrollTick((t) => t + 1);
+                    } else { setView('home'); setActiveCat(slot.cats[0]); setScrollTick((t) => t + 1); }
+                  }}
+                  aria-label={slot.label}
+                >
+                  <span className="ic"><SlotIcon icon={slot.icon} iconSvg={slot.iconSvg} size={30} /></span>
+                  {slot.label ? <span className="navlabel">{slot.label}</span> : null}
+                </button>
+              );
+            })}
+          </div>
+          {cartStyle === 'menu' && (
+            <button
+              type="button"
+              className="cartfab-item"
+              onClick={() => setView('cart')}
+              aria-label={cartCount > 0 ? `Cart, ${cartCount} item${cartCount === 1 ? '' : 's'}` : 'Cart, empty'}
+            >
+              <span className="cartfab">
+                {cartCount > 0 && <span className="cartfab-badge" aria-hidden="true">{cartCount > 9 ? '9+' : cartCount}</span>}
+                <span className="cartfab-ic"><CartIcon size={26} /></span>
+                <span className="cartfab-label">Cart</span>
+              </span>
+            </button>
+          )}
         </nav>
       )}
     </div>

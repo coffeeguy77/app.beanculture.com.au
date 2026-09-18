@@ -4075,3 +4075,132 @@ body:has(.store-shell) { background: var(--bc-canvas-deep, #160f12); }
 .loc-qr { display: flex; gap: 12px; align-items: flex-start; margin-top: 8px; }
 .loc-qr-meta { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .loc-qr-meta code { font-size: var(--fs-xs); word-break: break-all; }
+
+/* ============================================================================
+   Mobile bottom nav — approved "Menu cart" style (circular Cart button) +
+   "Floating cart" alternative. Structural rules first (theme-agnostic), then
+   the store-shell colours under the mobile media query.
+   ============================================================================ */
+
+/* Category buttons live in their own flex row so the Cart circle can sit beside
+   them at the far right without a notch/dip in the bar. Works for both styles. */
+.catbar-cats {
+  display: flex; flex: 1 1 auto; min-width: 0;
+  align-items: center; justify-content: space-around;
+  flex-wrap: wrap; row-gap: 2px;
+}
+.catbar-cats .navitem { flex: 1 1 0; min-width: 44px; position: relative; }
+
+/* Menu-cart style: a straight, full-width bar with the circular Cart button
+   overlapping its top edge. overflow:visible lets the circle poke above; the
+   bar keeps a perfectly straight top border (no scoop around the circle). */
+.bottomnav.catbar.has-cartfab {
+  flex-wrap: nowrap; align-items: center; justify-content: flex-start; gap: 4px;
+  overflow: visible;
+  padding: 6px 10px calc(6px + env(safe-area-inset-bottom));
+  min-height: 60px;
+}
+.catbar.has-cartfab .catbar-cats { flex-wrap: nowrap; }
+
+/* The circular Cart button. Sits in FRONT of the straight bar, lifted so its
+   top third rises above the top edge. */
+.cartfab-item {
+  flex: 0 0 auto; width: 82px; align-self: center;
+  background: none; border: none; padding: 0; cursor: pointer;
+  position: relative; display: flex; align-items: center; justify-content: center;
+}
+.cartfab {
+  position: relative;
+  width: 76px; height: 76px; border-radius: 999px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+  transform: translateY(-16px);
+  transition: transform .12s ease;
+}
+.cartfab-item:active .cartfab { transform: translateY(-16px) scale(0.95); }
+.cartfab-item:focus-visible { outline: none; }
+.cartfab-item:focus-visible .cartfab { box-shadow: 0 0 0 3px var(--bc-canvas, #211218), 0 0 0 6px var(--accent, #d1547a); }
+.cartfab-ic { display: inline-flex; align-items: center; height: 26px; }
+.cartfab-ic svg { height: 26px; width: auto; }
+.cartfab-label { font-size: 11px; font-weight: 800; line-height: 1; letter-spacing: .2px; }
+.cartfab-badge {
+  position: absolute; top: 2px; right: 4px;
+  min-width: 20px; height: 20px; padding: 0 5px;
+  display: grid; place-items: center; border-radius: 999px;
+  font-size: 12px; font-weight: 800; line-height: 1;
+}
+
+/* Selected category — a small pink dot above the icon (both cart styles). */
+.catbar-cats .navitem.on::before {
+  content: ''; position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+  width: 5px; height: 5px; border-radius: 999px; background: var(--accent, #d1547a);
+}
+
+/* Floating-cart bar: a compact "View order" pill with total + arrow. */
+.cartbar-arrow { font-size: 20px; line-height: 1; margin-left: 2px; opacity: .9; }
+
+/* Account → Display: Cart style chooser. */
+.acct-cartstyle {
+  margin-top: 4px; padding: 12px; border-radius: 14px;
+  border: 1px solid var(--bc-border-light, var(--line));
+  background: var(--bc-ivory, #fff);
+}
+.acct-cartstyle-head { margin-bottom: 8px; }
+.acct-cartstyle-title { display: block; font-weight: 800; font-size: 15px; color: var(--bc-plum-raised, var(--brand)); }
+.acct-cartstyle-sub { display: block; font-size: 12.5px; color: var(--bc-text-muted, var(--muted)); margin-top: 1px; }
+.acct-cartstyle-opts { display: flex; gap: 8px; }
+.acct-cartstyle-opt {
+  flex: 1 1 0; text-align: left; cursor: pointer;
+  padding: 10px 12px; border-radius: 12px;
+  border: 1.5px solid var(--bc-border-light, var(--line));
+  background: var(--bc-ivory-raised, #fff);
+  display: flex; flex-direction: column; gap: 3px;
+}
+.acct-cartstyle-opt-name { font-weight: 700; font-size: 14px; color: var(--bc-text-dark, var(--ink)); }
+.acct-cartstyle-opt-desc { font-size: 12px; line-height: 1.3; color: var(--bc-text-muted, var(--muted)); }
+.acct-cartstyle-opt.on {
+  border-color: var(--accent, #d1547a);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent, #d1547a) 22%, transparent);
+}
+.acct-cartstyle-opt.on .acct-cartstyle-opt-name { color: var(--brand, #b5566e); }
+
+/* ── Mobile colours (store-shell dark burgundy theme) ── */
+@media (max-width: 767px) {
+  /* Straight burgundy bar + subtle pink top border. No blur/notch. */
+  .store-shell .bottomnav.catbar.has-cartfab {
+    background: var(--bc-plum-raised, #56162f);
+    border-top: 1.5px solid color-mix(in srgb, var(--bc-raspberry, #d94e78) 55%, transparent);
+    backdrop-filter: none;
+  }
+  .store-shell .catbar-cats .navitem { color: var(--bc-raspberry, #d94e78); }
+  .store-shell .catbar-cats .navlabel { color: var(--bc-text-light, #fff8f1); }
+  .store-shell .catbar-cats .navitem.on { color: var(--bc-coral, #ef7385); }
+  .store-shell .catbar-cats .navitem.on::before { background: var(--bc-coral, #ef7385); }
+
+  /* Pale-pink circle, burgundy icon + label, dark burgundy rim. */
+  .store-shell .cartfab {
+    background: var(--bc-blush, #f4e2e5);
+    color: var(--bc-berry, #9e2753);
+    box-shadow: 0 0 0 3px var(--bc-canvas, #211218), var(--bc-shadow-raised, 0 8px 22px rgba(15,6,10,.35));
+  }
+  .store-shell .cartfab-label { color: var(--bc-berry, #9e2753); }
+  .store-shell .cartfab-badge {
+    background: var(--bc-berry, #9e2753); color: var(--bc-text-light, #fff8f1);
+    border: 1.5px solid var(--bc-blush, #f4e2e5);
+  }
+
+  /* Floating-cart style: reveal the "View order" bar (hidden by default on
+     mobile) only when the customer has chosen it. Sits just above the nav. */
+  .store-shell.cart-floating .cartbar { display: flex; bottom: calc(72px + env(safe-area-inset-bottom)); }
+  .store-shell.cart-floating .cartbar .badge { background: var(--bc-champagne, #e8b65c); color: var(--bc-text-dark, #241816); }
+}
+
+/* Very narrow phones: keep labels + circle from colliding. */
+@media (max-width: 360px) {
+  .bottomnav.catbar.has-cartfab { padding-left: 6px; padding-right: 6px; gap: 2px; }
+  .cartfab-item { width: 72px; }
+  .cartfab { width: 66px; height: 66px; transform: translateY(-13px); }
+  .cartfab-item:active .cartfab { transform: translateY(-13px) scale(0.95); }
+  .cartfab-ic, .cartfab-ic svg { height: 22px; }
+  .cartfab-label { font-size: 10px; }
+  .catbar-cats .navlabel { font-size: 8.5px; }
+}
