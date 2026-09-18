@@ -385,14 +385,21 @@ export default function App() {
   useEffect(() => {
     if (!config) return;
     const locs = config.locations || [];
-    // Only PICKABLE (non-hidden) stores prompt the picker. A hidden event booth
-    // is reached only by its ?loc= QR — it must never make the picker appear, and
-    // arriving on one (locationId set) is a valid, already-chosen store.
+    // Only PICKABLE (non-hidden) stores prompt the picker. A hidden store (an
+    // event booth, or a busy store running on the POS only) is reached solely by
+    // its ?loc= QR — it must never make the picker appear.
     const visible = locs.filter((l) => !l.hidden);
-    if (visible.length > 1 && !qrLocked) {
-      const chosen = locationId && locs.some((l) => l.id === locationId);
-      if (!chosen) setShowStorePicker(true);
-    }
+    const chosenLoc = locationId ? locs.find((l) => l.id === locationId) : null;
+    // A hidden store is a valid choice ONLY when reached by its QR (?loc=). If the
+    // app is opened directly on a persisted hidden store, treat it as unchosen so
+    // the customer lands on a store they can actually order from in-app.
+    const chosenValid = chosenLoc && (qrLocked || !chosenLoc.hidden);
+    if (chosenValid || qrLocked) return;
+    if (visible.length > 1) { setShowStorePicker(true); return; }
+    // Exactly one pickable store while others are hidden (e.g. Tulip Tops is
+    // POS-only): select it silently instead of prompting, and never fall back to
+    // a hidden store sitting at locations[0].
+    if (visible.length === 1 && locs.length > 1) { setShowStorePicker(false); setLocationId(visible[0].id); }
   }, [config, locationId, qrLocked]);
 
   function chooseLocation(id) {
@@ -400,8 +407,12 @@ export default function App() {
     try { localStorage.setItem('bc-location', id); } catch {}
     setShowStorePicker(false);
   }
-  const chosenLocation = ((config && config.locations) || []).find((l) => l.id === locationId)
-    || ((config && config.locations) || [])[0] || null;
+  // Resolve the current store: an explicit match first (this is how a hidden,
+  // QR-only store is honoured when reached via ?loc=), otherwise fall back to the
+  // first PICKABLE store rather than a hidden one that happens to sit at [0].
+  const _allLocs = (config && config.locations) || [];
+  const chosenLocation = _allLocs.find((l) => l.id === locationId)
+    || _allLocs.find((l) => !l.hidden) || _allLocs[0] || null;
 
   // ── Event pricing model ──
   // A store can be wholly complimentary (the original event flag) OR free for
@@ -1466,10 +1477,15 @@ export default function App() {
       </header>
       {(() => {
         const locsArr = (config && config.locations) || [];
-        const multi = locsArr.length > 1;
-        // Show the store name for a real single store the owner configured, but
-        // not for the synthesised single-site default (nothing to choose).
-        const showChip = chosenLocation && (multi || (locsArr.length === 1 && !locsArr[0]._default));
+        // "Multi" (offer a Change-store control) counts only PICKABLE stores, so a
+        // setup with one visible store + a hidden POS-only store (e.g. Tulip Tops)
+        // shows a plain name chip, not a misleading "Change" that opens a one-item
+        // picker.
+        const visibleLocs = locsArr.filter((l) => !l.hidden);
+        const multi = visibleLocs.length > 1;
+        // Show the store name for a real configured store, but not for the
+        // synthesised single-site default (nothing worth naming).
+        const showChip = chosenLocation && (multi || !chosenLocation._default);
         if (!(showChip || weatherChip) || !(view === 'home' || !isMobile)) return null;
         return (
           <div className="store-bar">
