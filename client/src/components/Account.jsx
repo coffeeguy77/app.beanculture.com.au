@@ -61,7 +61,7 @@ function statePill(state) {
 }
 const fmtDate = (iso) => iso ? new Date(iso).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
 
-export default function Account({ user, currency, config, onSignIn, onSignOut, onReorder, onFavorite, onTheme, onBack, onSendCoffee, onUseCoffee }) {
+export default function Account({ user, currency, config, onSignIn, onSignOut, onReorder, onFavorite, onTheme, cartStyle = 'menu', onCartStyle, onBack, onSendCoffee, onUseCoffee }) {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [busy, setBusy] = useState(false);
@@ -423,6 +423,35 @@ function pifStatusPill(status) {
             <button type="button" className="acct-themes-mobile" onClick={onTheme}>
               <ThemeIcon size={20} /> <span>Themes</span>
             </button>
+          )}
+          {/* Display preference: which bottom cart control to show on mobile. */}
+          {onCartStyle && (
+            <div className="acct-cartstyle" role="group" aria-label="Cart style">
+              <div className="acct-cartstyle-head">
+                <span className="acct-cartstyle-title">Cart style</span>
+                <span className="acct-cartstyle-sub">How the cart shows on the bottom bar</span>
+              </div>
+              <div className="acct-cartstyle-opts">
+                <button
+                  type="button"
+                  className={`acct-cartstyle-opt${cartStyle !== 'floating' ? ' on' : ''}`}
+                  aria-pressed={cartStyle !== 'floating'}
+                  onClick={() => onCartStyle('menu')}
+                >
+                  <span className="acct-cartstyle-opt-name">Menu cart</span>
+                  <span className="acct-cartstyle-opt-desc">Circular Cart button in the menu bar</span>
+                </button>
+                <button
+                  type="button"
+                  className={`acct-cartstyle-opt${cartStyle === 'floating' ? ' on' : ''}`}
+                  aria-pressed={cartStyle === 'floating'}
+                  onClick={() => onCartStyle('floating')}
+                >
+                  <span className="acct-cartstyle-opt-name">Floating cart</span>
+                  <span className="acct-cartstyle-opt-desc">“View order” bar above the menu when you have items</span>
+                </button>
+              </div>
+            </div>
           )}
           {/* Add app icon: visual home-screen install guide (all screen sizes). */}
           <button type="button" className="acct-appicon" onClick={() => setShowInstall(true)}>
