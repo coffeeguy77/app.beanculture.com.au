@@ -5197,6 +5197,15 @@ export default function Admin({ onExit }) {
                   <input style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 10, marginBottom: 6 }} value={(s.cds && s.cds.welcomeTitle) ?? 'Welcome'} onChange={(e) => set({ cds: { ...(s.cds || {}), welcomeTitle: e.target.value } })} placeholder="Welcome heading" />
                   <input style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 10 }} value={(s.cds && s.cds.welcomeSub) || ''} onChange={(e) => set({ cds: { ...(s.cds || {}), welcomeSub: e.target.value } })} placeholder="Sub text (blank = store name)" />
 
+                  {/* CDS advert slide speed — how long each idle advert stays before the next. */}
+                  <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <span style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, whiteSpace: 'nowrap' }}>Advert speed</span>
+                    <input type="range" min="3" max="60" step="1" value={Number(s.cds && s.cds.adIntervalSec) > 0 ? Number(s.cds.adIntervalSec) : 6}
+                      onChange={(e) => set({ cds: { ...(s.cds || {}), adIntervalSec: Number(e.target.value) } })} style={{ flex: 1 }} />
+                    <span className="muted" style={{ fontSize: 'var(--fs-sm)', whiteSpace: 'nowrap', minWidth: 92, textAlign: 'right' }}>Every {Number(s.cds && s.cds.adIntervalSec) > 0 ? Number(s.cds.adIntervalSec) : 6}s</span>
+                  </div>
+                  <p className="muted" style={{ fontSize: 'var(--fs-xs)', margin: '4px 0 0' }}>How long each advert stays on the Customer Display before sliding to the next. Slide it right to slow the rotation down.</p>
+
                   <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px dashed var(--line)' }}>
                     <div style={{ fontSize: 'var(--fs-xs)', fontWeight: 700, marginBottom: 4 }}>Open a Customer Display{locs.length > 1 ? ' — per store' : ''}</div>
                     <p className="muted" style={{ fontSize: 'var(--fs-xs)', margin: '0 0 8px' }}>Open a link below on the screen you want as the CDS, then “Add to Home Screen”. Each store shows its own name and only the banners ticked for that store, so advertising is per site. It runs at any counter regardless of which POS you ring sales on — so a store staying on the Square register can still use this as its branded idle/ads screen.</p>
