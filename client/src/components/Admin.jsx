@@ -1841,23 +1841,28 @@ export default function Admin({ onExit }) {
   const rmCustomTable = (i) => setCustomTables(customTableList.filter((_, j) => j !== i));
 
   // ---- hero / banners ----
+  // All list mutators go through the FUNCTIONAL state form (read `cur` inside
+  // setS) so an async image-upload callback that lands seconds later merges into
+  // the LATEST list — never a stale snapshot from the render it was created in.
+  // (Uploading images to several banners in a row used to drop earlier banners'
+  // images, so they rendered blank / "not loading" on the CDS.)
   const hero = s?.hero || [];
-  const setHero = (arr) => set({ hero: arr });
-  const addSlide = () => setHero([...hero, { id: 'slide' + (hero.length + 1), title: '', subtitle: '', cta: '', bg: 'linear-gradient(135deg,#f7c9d6,#d1547a)', textColor: '#ffffff', link: { type: 'scroll', value: '' } }]);
-  const updSlide = (i, patch) => setHero(hero.map((x, j) => (j === i ? { ...x, ...patch } : x)));
-  const rmSlide = (i) => setHero(hero.filter((_, j) => j !== i));
-  const moveSlide = (i, d) => { const j = i + d; if (j < 0 || j >= hero.length) return; const a = [...hero]; [a[i], a[j]] = [a[j], a[i]]; setHero(a); };
+  const setHero = (updater) => setS((cur) => ({ ...cur, hero: (typeof updater === 'function' ? updater(cur.hero || []) : updater) }));
+  const addSlide = () => setHero((arr) => [...arr, { id: 'slide' + (arr.length + 1), title: '', subtitle: '', cta: '', bg: 'linear-gradient(135deg,#f7c9d6,#d1547a)', textColor: '#ffffff', link: { type: 'scroll', value: '' } }]);
+  const updSlide = (i, patch) => setHero((arr) => arr.map((x, j) => (j === i ? { ...x, ...patch } : x)));
+  const rmSlide = (i) => setHero((arr) => arr.filter((_, j) => j !== i));
+  const moveSlide = (i, d) => setHero((arr) => { const j = i + d; if (j < 0 || j >= arr.length) return arr; const a = [...arr]; [a[i], a[j]] = [a[j], a[i]]; return a; });
 
   // ---- CDS-only banners ----
   // A dedicated list that shows ONLY on the Customer Display (never in the
   // storefront hero carousel). Kept separate from `hero` so the CDS artwork
   // (e.g. tulip-themed slides for one site) doesn't clutter the web banners.
   const cdsBanners = s?.cdsBanners || [];
-  const setCdsBanners = (arr) => set({ cdsBanners: arr });
-  const addCdsBanner = () => setCdsBanners([...cdsBanners, { id: 'cds' + (cdsBanners.length + 1), title: '', subtitle: '', bg: 'linear-gradient(135deg,#16265e,#3a5bbf)', textColor: '#ffffff', locations: [] }]);
-  const updCdsBanner = (i, patch) => setCdsBanners(cdsBanners.map((x, j) => (j === i ? { ...x, ...patch } : x)));
-  const rmCdsBanner = (i) => setCdsBanners(cdsBanners.filter((_, j) => j !== i));
-  const moveCdsBanner = (i, d) => { const j = i + d; if (j < 0 || j >= cdsBanners.length) return; const a = [...cdsBanners]; [a[i], a[j]] = [a[j], a[i]]; setCdsBanners(a); };
+  const setCdsBanners = (updater) => setS((cur) => ({ ...cur, cdsBanners: (typeof updater === 'function' ? updater(cur.cdsBanners || []) : updater) }));
+  const addCdsBanner = () => setCdsBanners((arr) => [...arr, { id: 'cds' + (arr.length + 1), title: '', subtitle: '', bg: 'linear-gradient(135deg,#16265e,#3a5bbf)', textColor: '#ffffff', locations: [] }]);
+  const updCdsBanner = (i, patch) => setCdsBanners((arr) => arr.map((x, j) => (j === i ? { ...x, ...patch } : x)));
+  const rmCdsBanner = (i) => setCdsBanners((arr) => arr.filter((_, j) => j !== i));
+  const moveCdsBanner = (i, d) => setCdsBanners((arr) => { const j = i + d; if (j < 0 || j >= arr.length) return arr; const a = [...arr]; [a[i], a[j]] = [a[j], a[i]]; return a; });
 
   function uploadImage(file, cb, folder = 'banners') {
     const reader = new FileReader();
@@ -3045,7 +3050,14 @@ export default function Admin({ onExit }) {
                         </div>
                         {bannerOpen[secName] && (() => {
                           const bn = presetSectionNav[secName]?.banner || {};
-                          const setBn = (patch) => setSectionNav(secName, { banner: { ...bn, ...patch } });
+                          // Read the LATEST banner from state (not the closed-over `bn`) so an
+                          // async image-upload callback can't clobber a title typed meanwhile.
+                          const setBn = (patch) => setS((cur) => {
+                            const nav = { ...(cur.presetSectionNav || {}) };
+                            const prev = nav[secName] || {};
+                            nav[secName] = { ...prev, banner: { ...(prev.banner || {}), ...patch } };
+                            return { ...cur, presetSectionNav: nav };
+                          });
                           return (
                             <div style={{ margin: '0 0 10px', padding: 10, border: '1px solid var(--accent)', borderRadius: 10, background: 'var(--surface)', display: 'grid', gap: 8 }}>
                               <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--fs-sm)' }}>

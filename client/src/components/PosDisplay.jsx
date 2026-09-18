@@ -13,6 +13,7 @@ export default function PosDisplay() {
   const [state, setState] = useState(null);
   const [offline, setOffline] = useState(false);
   const [adIdx, setAdIdx] = useState(0);
+  const [imgErr, setImgErr] = useState({});   // ad image src -> failed to load
   const timer = useRef(null);
 
   useEffect(() => {
@@ -110,9 +111,14 @@ export default function PosDisplay() {
         // Idle adverts (banners flagged "Show on CDS"). Swipe to change.
         (() => {
           const ad = ads[adIdx % ads.length] || ads[0];
+          // Only treat the image as usable if it loads — a broken/slow image URL
+          // must never leave a blank advert; fall back to the banner's background
+          // (a gradient, or the default) and still show its title/subtitle.
+          const useImg = ad.image && !imgErr[ad.image];
+          const bgFallback = (ad.bg && !/^\s*url\(/i.test(ad.bg)) ? ad.bg : 'var(--cd-bg, #16265e)';
           return (
-            <div className="cd-ad" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd} style={ad.image ? undefined : { background: ad.bg || 'var(--cd-bg, #16265e)' }}>
-              {ad.image && <img className="cd-ad-img" src={ad.image} alt="" draggable="false" />}
+            <div className="cd-ad" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd} style={useImg ? undefined : { background: bgFallback }}>
+              {useImg && <img className="cd-ad-img" src={ad.image} alt="" draggable="false" onError={() => setImgErr((m) => ({ ...m, [ad.image]: true }))} />}
               {(ad.title || ad.subtitle) && (
                 <div className="cd-ad-cap" style={{ color: ad.textColor || '#fff' }}>
                   {ad.title && <div className="cd-ad-title">{ad.title}</div>}
