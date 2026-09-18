@@ -73,6 +73,9 @@ const MenuIcon = svg(<>
 const BannerIcon = svg(<>
   <rect x="3" y="5" width="18" height="14" rx="2" /><circle cx="8.5" cy="10" r="1.5" /><path d="M21 16l-5-5-9 8" />
 </>);
+const CdsIcon = svg(<>
+  <rect x="2.5" y="4" width="19" height="12" rx="2" /><path d="M8 20h8" /><path d="M12 16v4" />
+</>);
 const QrIcon = svg(<>
   <rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" />
   <path d="M14 14h3v3M21 14v3M14 21h3M21 18v3" />
@@ -124,6 +127,7 @@ const TABS = [
   { id: 'payitforward', label: 'Pay It Forward', Icon: PifIcon },
   { id: 'smartcampaigns', label: 'Smart Campaigns', Icon: WeatherIcon },
   { id: 'banners', label: 'Banners', Icon: BannerIcon },
+  { id: 'cds', label: 'Customer Display', Icon: CdsIcon },
   { id: 'users', label: 'Users', Icon: InsightsIcon },
   { id: 'coupons', label: 'Coupons', Icon: BannerIcon },
   { id: 'push', label: 'SMS & Email', Icon: BannerIcon },
@@ -138,7 +142,7 @@ const TAB_GROUPS = [
   { label: 'Overview', tabs: ['overview', 'insights'] },
   { label: 'Orders & Service', tabs: ['reservations', 'kds', 'tables', 'customtables'] },
   { label: 'Menu', tabs: ['menubuilder', 'productbuilder', 'combobuilder', 'availability'] },
-  { label: 'Marketing', tabs: ['banners', 'coupons', 'push', 'birthday', 'payitforward', 'smartcampaigns'] },
+  { label: 'Marketing', tabs: ['banners', 'cds', 'coupons', 'push', 'birthday', 'payitforward', 'smartcampaigns'] },
   { label: 'Customers', tabs: ['users'] },
   { label: 'Store', tabs: ['store', 'locations', 'seo', 'theme'] },
 ];
@@ -1843,6 +1847,17 @@ export default function Admin({ onExit }) {
   const updSlide = (i, patch) => setHero(hero.map((x, j) => (j === i ? { ...x, ...patch } : x)));
   const rmSlide = (i) => setHero(hero.filter((_, j) => j !== i));
   const moveSlide = (i, d) => { const j = i + d; if (j < 0 || j >= hero.length) return; const a = [...hero]; [a[i], a[j]] = [a[j], a[i]]; setHero(a); };
+
+  // ---- CDS-only banners ----
+  // A dedicated list that shows ONLY on the Customer Display (never in the
+  // storefront hero carousel). Kept separate from `hero` so the CDS artwork
+  // (e.g. tulip-themed slides for one site) doesn't clutter the web banners.
+  const cdsBanners = s?.cdsBanners || [];
+  const setCdsBanners = (arr) => set({ cdsBanners: arr });
+  const addCdsBanner = () => setCdsBanners([...cdsBanners, { id: 'cds' + (cdsBanners.length + 1), title: '', subtitle: '', bg: 'linear-gradient(135deg,#16265e,#3a5bbf)', textColor: '#ffffff', locations: [] }]);
+  const updCdsBanner = (i, patch) => setCdsBanners(cdsBanners.map((x, j) => (j === i ? { ...x, ...patch } : x)));
+  const rmCdsBanner = (i) => setCdsBanners(cdsBanners.filter((_, j) => j !== i));
+  const moveCdsBanner = (i, d) => { const j = i + d; if (j < 0 || j >= cdsBanners.length) return; const a = [...cdsBanners]; [a[i], a[j]] = [a[j], a[i]]; setCdsBanners(a); };
 
   function uploadImage(file, cb, folder = 'banners') {
     const reader = new FileReader();
@@ -5186,42 +5201,9 @@ export default function Admin({ onExit }) {
                 <div className="group-title">Banners (hero carousel)</div>
                 <p className="muted" style={{ fontSize: 'var(--fs-xs)', margin: '0 0 10px' }}>Recommended image: <strong>1200 × 800px</strong> (3:2). Images are stretched to fill the banner — nothing is cropped, so design to this shape.</p>
 
-                <div style={{ border: '1px solid var(--line)', borderRadius: 12, padding: 12, margin: '0 0 14px', background: 'var(--admin-surface-2, #f7f2f4)' }}>
-                  <div className="group-title" style={{ margin: '0 0 4px' }}>Customer Display (CDS)</div>
-                  <p className="muted" style={{ fontSize: 'var(--fs-xs)', margin: '0 0 8px' }}>The second screen at <b>/display</b>. When the counter is idle it shows this logo + greeting, or rotates any banner below that you tick <b>“Show on Customer Display”</b>. While an order is being built, the live cart takes over.</p>
-                  <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginBottom: 8 }}>
-                    {s.cds && s.cds.logo ? <img src={s.cds.logo} alt="" style={{ height: 46, borderRadius: 8, background: '#fff', padding: 4 }} /> : <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>No CDS logo (uses your store logo)</span>}
-                    <label className="btn ghost" style={{ cursor: 'pointer' }}>Upload logo<input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files[0]; if (f) uploadImage(f, (url) => set({ cds: { ...(s.cds || {}), logo: url } }), 'cds'); }} /></label>
-                    {s.cds && s.cds.logo && <button className="link" style={{ color: '#c0392b' }} onClick={() => set({ cds: { ...(s.cds || {}), logo: '' } })}>Remove</button>}
-                  </div>
-                  <input style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 10, marginBottom: 6 }} value={(s.cds && s.cds.welcomeTitle) ?? 'Welcome'} onChange={(e) => set({ cds: { ...(s.cds || {}), welcomeTitle: e.target.value } })} placeholder="Welcome heading" />
-                  <input style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 10 }} value={(s.cds && s.cds.welcomeSub) || ''} onChange={(e) => set({ cds: { ...(s.cds || {}), welcomeSub: e.target.value } })} placeholder="Sub text (blank = store name)" />
-
-                  {/* CDS advert slide speed — how long each idle advert stays before the next. */}
-                  <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 12 }}>
-                    <span style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, whiteSpace: 'nowrap' }}>Advert speed</span>
-                    <input type="range" min="3" max="60" step="1" value={Number(s.cds && s.cds.adIntervalSec) > 0 ? Number(s.cds.adIntervalSec) : 6}
-                      onChange={(e) => set({ cds: { ...(s.cds || {}), adIntervalSec: Number(e.target.value) } })} style={{ flex: 1 }} />
-                    <span className="muted" style={{ fontSize: 'var(--fs-sm)', whiteSpace: 'nowrap', minWidth: 92, textAlign: 'right' }}>Every {Number(s.cds && s.cds.adIntervalSec) > 0 ? Number(s.cds.adIntervalSec) : 6}s</span>
-                  </div>
-                  <p className="muted" style={{ fontSize: 'var(--fs-xs)', margin: '4px 0 0' }}>How long each advert stays on the Customer Display before sliding to the next. Slide it right to slow the rotation down.</p>
-
-                  <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px dashed var(--line)' }}>
-                    <div style={{ fontSize: 'var(--fs-xs)', fontWeight: 700, marginBottom: 4 }}>Open a Customer Display{locs.length > 1 ? ' — per store' : ''}</div>
-                    <p className="muted" style={{ fontSize: 'var(--fs-xs)', margin: '0 0 8px' }}>Open a link below on the screen you want as the CDS, then “Add to Home Screen”. Each store shows its own name and only the banners ticked for that store, so advertising is per site. It runs at any counter regardless of which POS you ring sales on — so a store staying on the Square register can still use this as its branded idle/ads screen.</p>
-                    {(locs.length > 1 ? locs : [{ id: '', name: 'Customer Display' }]).map((l) => {
-                      const url = `${origin}/display?s=${encodeURIComponent(l.id || 'main')}${l.id ? `&loc=${encodeURIComponent(l.id)}` : ''}`;
-                      return (
-                        <div key={l.id || 'main'} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6, flexWrap: 'wrap' }}>
-                          <span style={{ minWidth: 110, fontSize: 'var(--fs-sm)', fontWeight: 600 }}>{l.name || l.id || 'Display'}</span>
-                          <input readOnly value={url} onFocus={(e) => e.target.select()} style={{ flex: 1, minWidth: 180, padding: '6px 8px', border: '1px solid var(--line)', borderRadius: 8, fontSize: 'var(--fs-xs)' }} />
-                          <a className="btn ghost" href={url} target="_blank" rel="noreferrer">Open</a>
-                          <button className="btn ghost" type="button" onClick={() => { try { navigator.clipboard.writeText(url); } catch {} }}>Copy</button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
+                <p className="muted" style={{ fontSize: 'var(--fs-xs)', margin: '0 0 12px', padding: '8px 10px', border: '1px dashed var(--line)', borderRadius: 10, background: 'var(--admin-surface-2, #f7f2f4)' }}>
+                  Customer Display settings and its own screen-only banners now live in <b>Marketing → Customer Display</b>. These hero banners are for the storefront — tick <b>“Show on Customer Display”</b> on any one below to <em>also</em> show it on the CDS.
+                </p>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', margin: '2px 0 12px', paddingBottom: 12, borderBottom: '1px solid var(--line)' }}>
                   <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
                     <input type="checkbox" checked={s.heroAutoplay !== false} onChange={(e) => set({ heroAutoplay: e.target.checked })} />
@@ -5325,6 +5307,113 @@ export default function Admin({ onExit }) {
                   ))}
                 </div>
                 <button className="btn ghost full" style={{ marginTop: 10 }} onClick={addSlide}>+ Add banner</button>
+              </div>
+            )}
+
+            {/* ───────── CUSTOMER DISPLAY (CDS) ───────── */}
+            {tab === 'cds' && (
+              <div className="card" style={card}>
+                <div className="group-title">Customer Display (CDS)</div>
+                <p className="muted" style={{ fontSize: 'var(--fs-xs)', margin: '0 0 12px' }}>The second screen at <b>/display</b>. When the counter is idle it shows your logo + greeting, then rotates the CDS banners below. While an order is being rung up, the live cart takes over. Banners here are <b>CDS-only</b> — they never appear on your website hero carousel.</p>
+
+                {/* ---- Idle look: logo + welcome ---- */}
+                <div style={{ border: '1px solid var(--line)', borderRadius: 12, padding: 12, margin: '0 0 14px' }}>
+                  <div className="group-title" style={{ margin: '0 0 6px' }}>Idle screen</div>
+                  <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginBottom: 8 }}>
+                    {s.cds && s.cds.logo ? <img src={s.cds.logo} alt="" style={{ height: 46, borderRadius: 8, background: '#fff', padding: 4 }} /> : <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>No CDS logo (uses your store logo)</span>}
+                    <label className="btn ghost" style={{ cursor: 'pointer' }}>Upload logo<input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files[0]; if (f) uploadImage(f, (url) => set({ cds: { ...(s.cds || {}), logo: url } }), 'cds'); }} /></label>
+                    {s.cds && s.cds.logo && <button className="link" style={{ color: '#c0392b' }} onClick={() => set({ cds: { ...(s.cds || {}), logo: '' } })}>Remove</button>}
+                  </div>
+                  <input style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 10, marginBottom: 6 }} value={(s.cds && s.cds.welcomeTitle) ?? 'Welcome'} onChange={(e) => set({ cds: { ...(s.cds || {}), welcomeTitle: e.target.value } })} placeholder="Welcome heading" />
+                  <input style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 10 }} value={(s.cds && s.cds.welcomeSub) || ''} onChange={(e) => set({ cds: { ...(s.cds || {}), welcomeSub: e.target.value } })} placeholder="Sub text (blank = store name)" />
+
+                  {/* CDS advert slide speed — how long each idle advert stays before the next. */}
+                  <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <span style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, whiteSpace: 'nowrap' }}>Advert speed</span>
+                    <input type="range" min="3" max="60" step="1" value={Number(s.cds && s.cds.adIntervalSec) > 0 ? Number(s.cds.adIntervalSec) : 6}
+                      onChange={(e) => set({ cds: { ...(s.cds || {}), adIntervalSec: Number(e.target.value) } })} style={{ flex: 1 }} />
+                    <span className="muted" style={{ fontSize: 'var(--fs-sm)', whiteSpace: 'nowrap', minWidth: 92, textAlign: 'right' }}>Every {Number(s.cds && s.cds.adIntervalSec) > 0 ? Number(s.cds.adIntervalSec) : 6}s</span>
+                  </div>
+                  <p className="muted" style={{ fontSize: 'var(--fs-xs)', margin: '4px 0 0' }}>How long each advert stays on the Customer Display before sliding to the next. Slide it right to slow the rotation down.</p>
+                </div>
+
+                {/* ---- Launcher links (per store) ---- */}
+                <div style={{ border: '1px solid var(--line)', borderRadius: 12, padding: 12, margin: '0 0 14px' }}>
+                  <div className="group-title" style={{ margin: '0 0 4px' }}>Open a Customer Display{locs.length > 1 ? ' — per store' : ''}</div>
+                  <p className="muted" style={{ fontSize: 'var(--fs-xs)', margin: '0 0 8px' }}>Open a link below on the screen you want as the CDS, then “Add to Home Screen”. Each store shows its own name and only the banners targeted to that store, so advertising is per site. It runs at any counter regardless of which POS you ring sales on — so a store staying on the Square register can still use this as its branded idle/ads screen.</p>
+                  {(locs.length > 1 ? locs : [{ id: '', name: 'Customer Display' }]).map((l) => {
+                    const url = `${origin}/display?s=${encodeURIComponent(l.id || 'main')}${l.id ? `&loc=${encodeURIComponent(l.id)}` : ''}`;
+                    return (
+                      <div key={l.id || 'main'} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6, flexWrap: 'wrap' }}>
+                        <span style={{ minWidth: 110, fontSize: 'var(--fs-sm)', fontWeight: 600 }}>{l.name || l.id || 'Display'}</span>
+                        <input readOnly value={url} onFocus={(e) => e.target.select()} style={{ flex: 1, minWidth: 180, padding: '6px 8px', border: '1px solid var(--line)', borderRadius: 8, fontSize: 'var(--fs-xs)' }} />
+                        <a className="btn ghost" href={url} target="_blank" rel="noreferrer">Open</a>
+                        <button className="btn ghost" type="button" onClick={() => { try { navigator.clipboard.writeText(url); } catch {} }}>Copy</button>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* ---- CDS-only banners ---- */}
+                <div className="group-title" style={{ margin: '4px 0 4px' }}>CDS banners <span className="muted" style={{ fontWeight: 400, fontSize: 'var(--fs-sm)' }}>— shown only on the Customer Display</span></div>
+                <p className="muted" style={{ fontSize: 'var(--fs-xs)', margin: '0 0 10px' }}>Recommended image: <strong>1200 × 800px</strong> (3:2). Images are stretched to fill the screen — nothing is cropped, so design to this shape. These never appear on your website.</p>
+                {!data.cloudinary && <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 0 }}>Add Cloudinary keys in Railway to enable image upload; you can still paste a URL.</p>}
+                <div className="admin-bannergrid">
+                  {cdsBanners.map((sl, i) => (
+                    <div key={i} {...dropZone('cdsbanner', i, (f, t) => setCdsBanners(reorderArray(cdsBanners, f, t)))}
+                      className={isDragOver('cdsbanner', i) ? 'drag-over' : ''}
+                      style={{ border: '1px solid var(--line)', borderRadius: 12, padding: 10 }}>
+                      {(() => {
+                        const img = sl.image || (typeof sl.bg === 'string' && (sl.bg.match(/url\((['"]?)(.*?)\1\)/) || [])[2]) || '';
+                        return img ? (
+                          <div style={{ borderRadius: 8, marginBottom: 8, overflow: 'hidden', position: 'relative', background: '#f3f3f3' }}>
+                            <img src={img} alt="" style={{ width: '100%', height: 'auto', display: 'block' }} />
+                            {sl.title && <strong style={{ position: 'absolute', left: 8, bottom: 8, color: sl.textColor || '#fff', textShadow: '0 1px 3px rgba(0,0,0,.5)' }}>{sl.title}</strong>}
+                          </div>
+                        ) : (
+                          <div style={{ height: 70, borderRadius: 8, marginBottom: 8, background: sl.bg, backgroundSize: 'cover', backgroundPosition: 'center', display: 'flex', alignItems: 'flex-end', padding: 8, color: sl.textColor || '#fff' }}>
+                            <strong>{sl.title || '(no title)'}</strong>
+                          </div>
+                        );
+                      })()}
+                      <div style={{ ...row, justifyContent: 'flex-end', marginBottom: 6 }}>
+                        <span {...dragHandle('cdsbanner', i)} style={{ marginRight: 'auto' }}>⠿</span>
+                        <button className="link" onClick={() => moveCdsBanner(i, -1)}>↑</button>
+                        <button className="link" onClick={() => moveCdsBanner(i, 1)}>↓</button>
+                        <button className="link" style={{ color: '#c0392b' }} onClick={() => rmCdsBanner(i)}>Remove</button>
+                      </div>
+                      <input style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 10, marginBottom: 6 }} value={sl.title || ''} onChange={(e) => updCdsBanner(i, { title: e.target.value })} placeholder="Title (optional — overlaid on the image)" />
+                      <input style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 10, marginBottom: 6 }} value={sl.subtitle || ''} onChange={(e) => updCdsBanner(i, { subtitle: e.target.value })} placeholder="Subtitle (optional)" />
+                      <div style={row}>
+                        <label className="btn ghost" style={{ padding: '8px 12px', fontSize: 'var(--fs-base)', cursor: 'pointer' }}>
+                          Upload image
+                          <input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files[0]; if (f) uploadImage(f, (url) => updCdsBanner(i, { image: url, bg: `url(${url}) center/cover no-repeat` }), 'cds'); e.target.value = ''; }} />
+                        </label>
+                        <input style={{ flex: 1, padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 10, fontSize: 'var(--fs-xs)' }} value={sl.bg || ''} onChange={(e) => updCdsBanner(i, { bg: e.target.value })} placeholder="background (gradient or url(...) center/cover)" />
+                      </div>
+                      {locs.length > 1 && (
+                        <div style={{ marginTop: 8, padding: '8px 10px', border: '1px dashed var(--line)', borderRadius: 10 }}>
+                          <div style={{ fontSize: 'var(--fs-xs)', fontWeight: 700, marginBottom: 4 }}>Show at</div>
+                          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+                            <label className="switch"><input type="checkbox" checked={!(Array.isArray(sl.locations) && sl.locations.length)} onChange={() => updCdsBanner(i, { locations: [] })} /> <span>All stores</span></label>
+                            {locs.map((l) => {
+                              const sel = (sl.locations || []).includes(l.id);
+                              return (
+                                <label key={l.id} className="switch"><input type="checkbox" checked={sel} onChange={(e) => {
+                                  const cur = new Set(sl.locations || []);
+                                  e.target.checked ? cur.add(l.id) : cur.delete(l.id);
+                                  updCdsBanner(i, { locations: [...cur] });
+                                }} /> <span>{l.name || l.id}</span></label>
+                              );
+                            })}
+                          </div>
+                          <p className="muted" style={{ fontSize: 'var(--fs-xs)', margin: '4px 0 0' }}>Leave “All stores” on to show on every CDS, or tick specific stores — e.g. the tulip-themed set only at Tulip Tops.</p>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                <button className="btn ghost full" style={{ marginTop: 10 }} onClick={addCdsBanner}>+ Add CDS banner</button>
               </div>
             )}
 
