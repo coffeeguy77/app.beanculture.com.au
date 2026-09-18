@@ -43,6 +43,8 @@ const IcoGrid = () => <Ico><rect x="3" y="3" width="7" height="7" rx="1" /><rect
 const IcoBell = () => <Ico><path d="M6 8a6 6 0 0 1 12 0c0 7 3 8 3 8H3s3-1 3-8" /><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" /></Ico>;
 const IcoBellOff = () => <Ico><path d="M18.6 14A18 18 0 0 1 18 8" /><path d="M6 8a6 6 0 0 1 9.3-5" /><path d="M6 8c0 7-3 8-3 8h13" /><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" /><line x1="3" y1="3" x2="21" y2="21" /></Ico>;
 const IcoRefresh = () => <Ico><path d="M21 12a9 9 0 1 1-2.64-6.36" /><path d="M21 3v6h-6" /></Ico>;
+const IcoCash = () => <Ico><rect x="2.5" y="6" width="19" height="12" rx="2" /><circle cx="12" cy="12" r="2.5" /><path d="M6 9v6M18 9v6" /></Ico>;
+const IcoCard = () => <Ico><rect x="2.5" y="5" width="15" height="14" rx="2.5" /><path d="M2.5 9.5h15" /><path d="M19 9c1.5 1.6 1.5 4.4 0 6" /><path d="M21 7c2.4 2.6 2.4 7.4 0 10" /></Ico>;
 
 // Cafe timezone — Canberra (same offset as Australia/Sydney). All POS order
 // timestamps are shown in this zone so the till reads local time regardless of
@@ -860,9 +862,29 @@ export default function Pos({ onExit }) {
             <div className="pos-total-row"><span>Total</span><span className="pos-total">{formatMoney(total, currency)}</span></div>
             <div className="pos-gst">GST included</div>
             {err && <div className="pos-err">{err}</div>}
-            <button className="pos-btn primary big pay" disabled={!cart.length || busy} onClick={startCharge}>
-              Charge {formatMoney(total, currency)}
-            </button>
+            {/* Pick the tender straight away — no "Charge" step. Cash opens the
+                keypad; Card goes straight to the terminal. Only the store's
+                enabled methods show. */}
+            <div className="pos-pay-choices">
+              {payMethods.cash && (
+                <button className={`pos-pay-btn cash${payMethods.card ? '' : ' solo'}`} disabled={!cart.length || busy} onClick={() => setTender('cash')}>
+                  <span className="pos-pay-ic"><IcoCash /></span>
+                  <span className="pos-pay-t">Cash</span>
+                  <span className="pos-pay-a">{formatMoney(total, currency)}</span>
+                </button>
+              )}
+              {payMethods.card && (
+                <button className={`pos-pay-btn card${payMethods.cash ? '' : ' solo'}`} disabled={!cart.length || busy || !curTerm.deviceId}
+                  title={curTerm.deviceId ? '' : 'No card terminal paired — pair one in setup (⚙)'} onClick={() => submit('card')}>
+                  <span className="pos-pay-ic"><IcoCard /></span>
+                  <span className="pos-pay-t">Card{!curTerm.deviceId ? ' · no reader' : ''}</span>
+                  <span className="pos-pay-a">{formatMoney(total, currency)}</span>
+                </button>
+              )}
+            </div>
+            {payMethods.unpaid && (
+              <button className="pos-pay-unpaid" disabled={!cart.length || busy} onClick={() => setTender('unpaid')}>Send to kitchen (unpaid)</button>
+            )}
           </div>
         </aside>
 
@@ -1626,7 +1648,7 @@ function TenderOverlay({ tender, setTender, total, currency, busy, methods, card
             <p className="pos-set-hint" style={{ margin: '0 0 10px' }}>This order won’t be charged. Note why so free coffees stay accountable (they still cost cup + materials).</p>
             <input className="pos-set-select" autoFocus placeholder="Reason (e.g. staff coffee, remake, comp)" value={reason} onChange={(e) => setReason(e.target.value)} />
             <div className="pos-tender-actions" style={{ marginTop: 12 }}>
-              <button className="pos-btn ghost" onClick={() => setTender('choose')}>Back</button>
+              <button className="pos-btn ghost" onClick={() => onClose()}>Back</button>
               <button className="pos-btn primary big" disabled={busy || !reason.trim()} onClick={() => onKitchen(reason.trim())}>
                 {busy ? 'Sending…' : 'Send to kitchen'}
               </button>
@@ -1659,7 +1681,7 @@ function TenderOverlay({ tender, setTender, total, currency, busy, methods, card
             </div>
             {short && <div className="pos-set-hint" style={{ color: '#c0392b', margin: '2px 0 0' }}>Short by {formatMoney(total - given, currency)} — add more or Clear.</div>}
             <div className="pos-tender-actions">
-              <button className="pos-btn ghost" onClick={() => setTender('choose')}>Back</button>
+              <button className="pos-btn ghost" onClick={() => onClose()}>Back</button>
               <button className="pos-btn primary big" disabled={busy || short} onClick={() => onCash(given || total)}>
                 {busy ? 'Sending…' : 'Complete cash sale'}
               </button>
