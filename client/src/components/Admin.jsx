@@ -157,6 +157,107 @@ function shellWidthClass(tab) {
   return 'w-standard';
 }
 
+// ── Banner scheduling (shared by hero / CDS / category banners) ──
+// A banner can be switched on/off, and optionally scheduled to only appear
+// within a date range, or on chosen weekdays within a time window. The SERVER is
+// the source of truth (evaluated in the venue's timezone); this editor and its
+// status pill are the admin-side controls + a local-clock preview.
+const DOW_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']; // 0=Sun … 6=Sat
+function hhmmToMinC(s) { const m = /^(\d{1,2}):(\d{2})$/.exec(String(s || '').trim()); return m ? (+m[1]) * 60 + (+m[2]) : null; }
+// Mirror of the server's bannerActive(), using THIS device's local time — a hint
+// for the admin only ("Showing now" / "Hidden now"); the store's timezone rules
+// on the live site.
+function bannerShowingNow(b) {
+  if (!b) return false;
+  if (b.enabled === false) return false;
+  const sch = b.sched;
+  if (!sch || !sch.mode || sch.mode === 'always') return true;
+  const now = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  const dateStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  if (sch.mode === 'range') {
+    if (sch.from && dateStr < sch.from) return false;
+    if (sch.to && dateStr > sch.to) return false;
+    return true;
+  }
+  if (sch.mode === 'weekly') {
+    const days = Array.isArray(sch.days) ? sch.days.map(Number) : [];
+    if (days.length && !days.includes(now.getDay())) return false;
+    const s = hhmmToMinC(sch.start), e = hhmmToMinC(sch.end);
+    if (s !== null && e !== null) {
+      const mins = now.getHours() * 60 + now.getMinutes();
+      const inWin = s <= e ? (mins >= s && mins < e) : (mins >= s || mins < e);
+      if (!inWin) return false;
+    }
+    return true;
+  }
+  return true;
+}
+function BannerSchedule({ value, onChange, showEnable = true }) {
+  const sch = (value && value.sched) || {};
+  const mode = sch.mode || 'always';
+  const setSched = (patch) => onChange({ sched: { ...sch, ...patch } });
+  const toggleDay = (d) => {
+    const set = new Set(Array.isArray(sch.days) ? sch.days.map(Number) : []);
+    set.has(d) ? set.delete(d) : set.add(d);
+    setSched({ days: [...set].sort((a, b) => a - b) });
+  };
+  const showing = bannerShowingNow(value);
+  const fieldCss = { padding: '7px 9px', border: '1px solid var(--line)', borderRadius: 9, fontSize: 'var(--fs-sm)' };
+  return (
+    <div style={{ marginTop: 8, padding: 10, border: '1px dashed var(--line)', borderRadius: 10, background: 'var(--admin-surface-2, #faf5f7)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        {showEnable && (
+          <label className="switch" style={{ fontWeight: 700 }}>
+            <input type="checkbox" checked={value && value.enabled !== false} onChange={(e) => onChange({ enabled: e.target.checked })} /> <span>Show this banner</span>
+          </label>
+        )}
+        <span style={{ marginLeft: showEnable ? 0 : 'auto', fontSize: 'var(--fs-xs)', fontWeight: 800, padding: '2px 9px', borderRadius: 999,
+          background: showing ? 'rgba(79,128,105,.16)' : 'rgba(192,57,67,.14)', color: showing ? '#2f6b4f' : '#b23140' }}
+          title="Preview based on THIS device's clock — the live site uses the store's timezone">
+          {showing ? '● Showing now' : '● Hidden now'}
+        </span>
+      </div>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginTop: 8 }}>
+        <span className="muted" style={{ fontSize: 'var(--fs-sm)', fontWeight: 600 }}>Schedule</span>
+        <select value={mode} onChange={(e) => setSched({ mode: e.target.value })} style={fieldCss}>
+          <option value="always">Always on</option>
+          <option value="range">Date range (from / to)</option>
+          <option value="weekly">Days &amp; times</option>
+        </select>
+      </div>
+      {mode === 'range' && (
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginTop: 8 }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 'var(--fs-sm)' }}>From <input type="date" value={sch.from || ''} onChange={(e) => setSched({ from: e.target.value })} style={fieldCss} /></label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 'var(--fs-sm)' }}>To <input type="date" value={sch.to || ''} onChange={(e) => setSched({ to: e.target.value })} style={fieldCss} /></label>
+          <span className="muted" style={{ fontSize: 'var(--fs-xs)' }}>Leave a date blank for open-ended. Both inclusive.</span>
+        </div>
+      )}
+      {mode === 'weekly' && (
+        <div style={{ marginTop: 8 }}>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {DOW_LABELS.map((lbl, d) => {
+              const on = Array.isArray(sch.days) && sch.days.map(Number).includes(d);
+              return (
+                <button type="button" key={d} onClick={() => toggleDay(d)}
+                  style={{ padding: '6px 10px', borderRadius: 999, cursor: 'pointer', fontSize: 'var(--fs-xs)', fontWeight: 700,
+                    border: '1px solid ' + (on ? 'var(--accent)' : 'var(--line)'), background: on ? 'var(--accent)' : '#fff', color: on ? '#fff' : 'var(--muted)' }}>
+                  {lbl}
+                </button>
+              );
+            })}
+          </div>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 8, flexWrap: 'wrap' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 'var(--fs-sm)' }}>From <input type="time" value={sch.start || ''} onChange={(e) => setSched({ start: e.target.value })} style={fieldCss} /></label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 'var(--fs-sm)' }}>To <input type="time" value={sch.end || ''} onChange={(e) => setSched({ end: e.target.value })} style={fieldCss} /></label>
+            <span className="muted" style={{ fontSize: 'var(--fs-xs)' }}>No days ticked = every day. No times = all day. Overnight (e.g. 20:00–02:00) is fine.</span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Admin({ onExit }) {
   // Restore the admin passcode from this device so a reload/return visit stays
   // signed in (lightly base64-obscured, not security — the passcode still
@@ -3108,6 +3209,7 @@ export default function Admin({ onExit }) {
                                   );
                                 })()}
                               </label>
+                              <BannerSchedule value={bn} onChange={(patch) => setBn(patch)} showEnable={false} />
                             </div>
                           );
                         })()}
@@ -5337,6 +5439,7 @@ export default function Admin({ onExit }) {
                           <p className="muted" style={{ fontSize: 'var(--fs-xs)', margin: '4px 0 0' }}>Leave “All stores” on to show everywhere, or tick specific stores to limit this banner — e.g. hide a kitchen special at a no-kitchen pop-up, or show a barista-lessons / roastery banner only at the pop-up.</p>
                         </div>
                       )}
+                      <BannerSchedule value={sl} onChange={(patch) => updSlide(i, patch)} />
                     </div>
                   ))}
                 </div>
@@ -5444,6 +5547,7 @@ export default function Admin({ onExit }) {
                           <p className="muted" style={{ fontSize: 'var(--fs-xs)', margin: '4px 0 0' }}>Leave “All stores” on to show on every CDS, or tick specific stores — e.g. the tulip-themed set only at Tulip Tops.</p>
                         </div>
                       )}
+                      <BannerSchedule value={sl} onChange={(patch) => updCdsBanner(i, patch)} />
                     </div>
                   ))}
                 </div>
