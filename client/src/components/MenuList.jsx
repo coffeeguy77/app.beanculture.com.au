@@ -10,14 +10,16 @@ function fromPrice(item) {
   return prices.length ? Math.min(...prices) : null;
 }
 
-export default function MenuList({ categories, currency, onPick, scrollTo, scrollKey, onScrolled, kitchenClosedCats, smartByCategory, onSmartLink, isFreeCat }) {
+export default function MenuList({ categories, allCategories, currency, onPick, scrollTo, scrollKey, onScrolled, kitchenClosedCats, smartByCategory, onSmartLink, isFreeCat }) {
   const kShut = new Set((kitchenClosedCats || []).map((c) => (c || '').toLowerCase()));
-  // Every item across ALL categories, by id — so a category's feature banner can
-  // point at a combo that lives in a DIFFERENT category (e.g. a Breakfast banner
-  // featuring the Tradies combo that sits in the Combos section) and still open
-  // it. Products stay scoped to their own category via cat.items below.
+  // Every item across the WHOLE menu, by id — built from `allCategories` (the
+  // full, unfiltered menu) NOT the currently-shown `categories`, because in the
+  // single-page layout only the active category is rendered. This lets a
+  // category's feature banner point at a combo that lives in a DIFFERENT category
+  // (e.g. a Breakfast banner featuring the Tradies combo in the Combos section)
+  // and still open it. Products stay scoped to their own category via cat.items.
   const allItemsById = new Map();
-  for (const c of (categories || [])) for (const it of (c.items || [])) if (it && !allItemsById.has(it.id)) allItemsById.set(it.id, it);
+  for (const c of (allCategories || categories || [])) for (const it of (c.items || [])) if (it && !allItemsById.has(it.id)) allItemsById.set(it.id, it);
   // Keyed on scrollKey (a nonce bumped on every dock/footer pick) — NOT on the
   // category name — so pressing the same footer slot again still fires, and so
   // clearing the target after the scroll (onScrolled) can't re-run this effect
