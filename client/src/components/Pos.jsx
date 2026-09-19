@@ -244,6 +244,9 @@ export default function Pos({ onExit }) {
   const [busy, setBusy] = useState(false);
   const [success, setSuccess] = useState(null);    // { orderId, tender, change, paymentId }
   const [printMsg, setPrintMsg] = useState('');     // receipt-print status on the success screen
+  const [emailOpen, setEmailOpen] = useState(false); // email-receipt entry open on the success screen
+  const [emailVal, setEmailVal] = useState('');      // typed customer email
+  const [emailMsg, setEmailMsg] = useState('');      // '' | 'sending' | 'sent' | <error text>
   const [cardPay, setCardPay] = useState(() => { try { return JSON.parse(localStorage.getItem('bc-pos-active-checkout') || 'null'); } catch { return null; } });
   const [showSetup, setShowSetup] = useState(false);    // card-terminal pairing modal
   const [showSettings, setShowSettings] = useState(false); // the ⚙ settings sheet
@@ -508,9 +511,18 @@ export default function Pos({ onExit }) {
     try { await api.posPrintReceipt(pass, { paymentId: success.paymentId, location: posLoc }); setPrintMsg('done'); }
     catch (e) { setPrintMsg(e.message || 'Print failed'); }
   }
+  async function emailSuccessReceipt() {
+    if (!success || !success.paymentId) return;
+    const addr = emailVal.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(addr)) { setEmailMsg('Enter a valid email address'); return; }
+    setEmailMsg('sending');
+    try { await api.posEmailReceipt(pass, { paymentId: success.paymentId, email: addr }); setEmailMsg('sent'); }
+    catch (e) { setEmailMsg(e.message || 'Send failed'); }
+  }
   function finishSuccess(shortId, orderId, tenderType, change, paymentId) {
     const paidTotal = cartTotal(cart) - comboDiscountFor(cart);
     setPrintMsg('');
+    setEmailOpen(false); setEmailVal(''); setEmailMsg('');
     setSuccess({ orderId, shortId, tender: tenderType, change, paymentId: paymentId || null });
     setCartOpen(false);
     clearCart();
@@ -979,6 +991,24 @@ export default function Pos({ onExit }) {
               </button>
             )}
             {printMsg && printMsg !== 'printing' && printMsg !== 'done' && <div className="pos-success-id" style={{ color: 'var(--pos-danger, #c0392b)' }}>{printMsg}</div>}
+            {success.paymentId && (
+              emailMsg === 'sent' ? (
+                <button className="pos-btn ghost big" onClick={() => { setEmailMsg(''); setEmailVal(''); setEmailOpen(true); }}>✓ Emailed — send another</button>
+              ) : !emailOpen ? (
+                <button className="pos-btn ghost big" onClick={() => { setEmailOpen(true); setEmailMsg(''); }}>✉️ Email receipt</button>
+              ) : (
+                <div style={{ display: 'flex', gap: 8, width: '100%', alignItems: 'stretch' }}>
+                  <input type="email" inputMode="email" autoFocus placeholder="customer@email.com" value={emailVal}
+                    onChange={(e) => { setEmailVal(e.target.value); if (emailMsg && emailMsg !== 'sending') setEmailMsg(''); }}
+                    onKeyDown={(e) => { if (e.key === 'Enter') emailSuccessReceipt(); }}
+                    style={{ flex: 1, minWidth: 0, padding: '12px 14px', borderRadius: 12, border: '1px solid var(--pos-line, #d9cfc9)', fontSize: 16, background: 'var(--pos-surface, #fff)', color: 'var(--pos-ink, #241816)' }} />
+                  <button className="pos-btn primary" disabled={emailMsg === 'sending'} onClick={emailSuccessReceipt} style={{ whiteSpace: 'nowrap' }}>
+                    {emailMsg === 'sending' ? 'Sending…' : 'Send'}
+                  </button>
+                </div>
+              )
+            )}
+            {emailMsg && emailMsg !== 'sending' && emailMsg !== 'sent' && <div className="pos-success-id" style={{ color: 'var(--pos-danger, #c0392b)' }}>{emailMsg}</div>}
             <button className="pos-btn primary big" onClick={() => { setSuccess(null); setMode('register'); lastActivityRef.current = Date.now(); }}>Done</button>
           </div>
         </div>
