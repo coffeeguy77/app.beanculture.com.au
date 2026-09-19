@@ -1975,6 +1975,40 @@ app.post('/api/pos/print-receipt', async (req, res) => {
   } catch (e) { res.status(502).json({ error: e.message }); }
 });
 
+// Email a receipt for a completed POS payment. We email Square's own hosted
+// receipt (its receipt_url — the official, itemised receipt) so the customer
+// gets a proper record, sent from the store's configured address (Resend).
+app.post('/api/pos/email-receipt', async (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const { paymentId } = req.body || {};
+    const email = String((req.body || {}).email || '').trim();
+    if (!paymentId) return res.status(400).json({ error: 'No payment to email (paid sales only).' });
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ error: 'Enter a valid email address.' });
+    if (!notify.emailConfigured) return res.status(400).json({ error: 'Email isn’t set up yet (add RESEND_API_KEY and EMAIL_FROM in Railway).' });
+    // Pull the payment for its official Square receipt link + amount.
+    let payment = {};
+    try { payment = (await sq.squareFetch(`/v2/payments/${encodeURIComponent(paymentId)}`)).payment || {}; }
+    catch (e) { return res.status(502).json({ error: 'Could not load the payment from Square.' }); }
+    const receiptUrl = payment.receipt_url || '';
+    const amt = payment.amount_money && payment.amount_money.amount;
+    const cur = (payment.amount_money && payment.amount_money.currency) || sq.CURRENCY;
+    const storeName = getSettings().storeName || 'Bean Culture';
+    const money = amt != null ? `$${(Number(amt) / 100).toFixed(2)} ${cur}` : '';
+    const lines = [
+      `Thanks for visiting ${storeName}!`,
+      '',
+      money ? `Amount paid: ${money}` : '',
+      receiptUrl ? `Your receipt: ${receiptUrl}` : 'Your receipt is attached to this email.',
+      '',
+      `— ${storeName}`,
+    ].filter((l) => l !== null && l !== undefined);
+    const ok = await notify.sendEmail(email, `Your ${storeName} receipt`, lines.join('\n'));
+    if (!ok) return res.status(502).json({ error: 'Could not send the email — check the address and try again.' });
+    res.json({ ok: true });
+  } catch (e) { res.status(502).json({ error: e.message }); }
+});
+
 // Cancel an in-progress checkout (staff pressed Cancel).
 app.post('/api/pos/checkout/:id/cancel', async (req, res) => {
   if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized' });
