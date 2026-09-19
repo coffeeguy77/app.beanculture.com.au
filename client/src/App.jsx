@@ -1614,6 +1614,7 @@ export default function App() {
             })()}
             <MenuList
               categories={filteredMenu}
+              allCategories={menu?.categories}
               currency={currency}
               onPick={(item) => { setActiveItem(item); track('product_view', { ref: item.name }); }}
               scrollTo={activeCat}
