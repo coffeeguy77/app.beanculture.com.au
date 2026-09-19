@@ -166,7 +166,9 @@ app.get('/api/config', async (_req, res) => {
         appearance: e.appearance, randomness: e.randomness, accessibility: e.accessibility,
       })),
     activeSeasonalTheme: activeSeasonal(settings),
-    hero: settings.hero,
+    // Only banners that are switched on AND inside their schedule (date range or
+    // weekly days/times, in the venue's timezone) reach the storefront carousel.
+    hero: Array.isArray(settings.hero) ? settings.hero.filter((b) => catalog.bannerActive(b)) : settings.hero,
     heroRatio: settings.heroRatio,
     heroAutoplay: settings.heroAutoplay,
     heroInterval: settings.heroInterval,
@@ -1630,8 +1632,8 @@ app.get('/api/pos/display/state', (req, res) => {
   // Two sources, in order: the dedicated CDS-only banners (Admin → Marketing →
   // Customer Display), then any storefront hero banner the admin also ticked
   // "Show on Customer Display" (legacy/shared). Both honour per-store targeting.
-  const cdsOnly = (Array.isArray(s.cdsBanners) ? s.cdsBanners : []).filter((h) => h && showsHere(h)).map(toAd);
-  const heroFlagged = (Array.isArray(s.hero) ? s.hero : []).filter((h) => h && h.cds && showsHere(h)).map(toAd);
+  const cdsOnly = (Array.isArray(s.cdsBanners) ? s.cdsBanners : []).filter((h) => h && showsHere(h) && catalog.bannerActive(h)).map(toAd);
+  const heroFlagged = (Array.isArray(s.hero) ? s.hero : []).filter((h) => h && h.cds && showsHere(h) && catalog.bannerActive(h)).map(toAd);
   const ads = [...cdsOnly, ...heroFlagged];
   const cds = {
     welcomeTitle: cdsCfg.welcomeTitle || 'Welcome',
