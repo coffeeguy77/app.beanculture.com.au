@@ -61,6 +61,7 @@ export const api = {
   posDisplayPush: (pass, payload) => req(`/api/pos/display/push?pass=${encodeURIComponent(pass || '')}`, { method: 'POST', body: JSON.stringify(payload) }),
   posDisplayState: (station) => req(`/api/pos/display/state?station=${encodeURIComponent(station || 'main')}`),
   posPrintReceipt: (pass, { paymentId, location, duplicate }) => req(`/api/pos/print-receipt?pass=${encodeURIComponent(pass || '')}`, { method: 'POST', body: JSON.stringify({ paymentId, location, duplicate }) }),
+  posEmailReceipt: (pass, { paymentId, email }) => req(`/api/pos/email-receipt?pass=${encodeURIComponent(pass || '')}`, { method: 'POST', body: JSON.stringify({ paymentId, email }) }),
   loyaltyAdjust: (pass, accountId, points, reason) => req(`/api/admin/loyalty/adjust?pass=${encodeURIComponent(pass || '')}`, { method: 'POST', body: JSON.stringify({ accountId, points, reason }) }),
   loyaltyEnroll: (pass, phone, name) => req(`/api/admin/loyalty/enroll?pass=${encodeURIComponent(pass || '')}`, { method: 'POST', body: JSON.stringify({ phone, name }) }),
   loyaltyHistory: (pass, accountId) => req(`/api/admin/loyalty/history?pass=${encodeURIComponent(pass || '')}&accountId=${encodeURIComponent(accountId || '')}`),
