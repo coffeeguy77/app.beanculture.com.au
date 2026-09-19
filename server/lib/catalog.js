@@ -102,6 +102,38 @@ function scheduleActiveNow(sch, now) {
   return s <= e ? (now.minutes >= s && now.minutes < e) : (now.minutes >= s || now.minutes < e);
 }
 
+// Is a BANNER visible right now? A banner (hero / CDS / category feature) can be
+// switched off, or scheduled to only show within a date range OR on set weekdays
+// within a time window. All evaluated in the venue's timezone so "8am Mon–Fri"
+// means the store's local time, never the viewer's.
+//   b.enabled === false            → never show
+//   b.sched.mode 'always'|missing  → always show (subject to enabled)
+//   b.sched.mode 'range'           → show when today is within [from, to] (either open-ended)
+//   b.sched.mode 'weekly'          → show on ticked days, and (if a window is set) within [start,end]
+function bannerActive(b, now = venueNow()) {
+  if (!b) return false;
+  if (b.enabled === false) return false;
+  const sch = b.sched || null;
+  const mode = sch && sch.mode;
+  if (!sch || !mode || mode === 'always') return true;
+  if (mode === 'range') {
+    if (sch.from && now.date < sch.from) return false;   // before it starts
+    if (sch.to && now.date > sch.to) return false;       // after it ends
+    return true;
+  }
+  if (mode === 'weekly') {
+    const days = Array.isArray(sch.days) ? sch.days.map(Number) : [];
+    if (days.length && !days.includes(now.dow)) return false;
+    const s = hhmmToMin(sch.start), e = hhmmToMin(sch.end);
+    if (s !== null && e !== null) {
+      const inWin = s <= e ? (now.minutes >= s && now.minutes < e) : (now.minutes >= s || now.minutes < e);
+      if (!inWin) return false;
+    }
+    return true;
+  }
+  return true;
+}
+
 // Apply the availability overlay to the assembled sections (mutates item soldOut,
 // drops categories that are outside their menu window). Returns the kept sections.
 function applyAvailability(sections, settings, now = venueNow(), hiddenItemIds = null) {
@@ -668,7 +700,7 @@ async function getMenu(opts = {}) {
       if (posCfg.on === true) {
         const locs = Array.isArray(posCfg.locations) ? posCfg.locations : [];
         if (!(opts.pos && opts.location && locs.includes(opts.location))) continue;
-        const banner = nav.banner && nav.banner.on && (nav.banner.title || nav.banner.image)
+        const banner = nav.banner && nav.banner.on && bannerActive(nav.banner) && (nav.banner.title || nav.banner.image)
           ? { title: nav.banner.title || '', image: nav.banner.image || null, itemId: nav.banner.itemId || null, hideText: nav.banner.hideText === true }
           : null;
         sections.push({ category: secName, items: tiles, showImages: nav.showImages !== false, custom: true, builder: true, topNav: true, footerNav: false, eventOnly: false, posOnly: true, banner });
@@ -676,7 +708,7 @@ async function getMenu(opts = {}) {
       }
       if (!(nav.top === true || nav.footer === true || nav.event === true)) continue;
       const eventOnly = nav.top !== true && nav.footer !== true && nav.event === true;
-      const banner = nav.banner && nav.banner.on && (nav.banner.title || nav.banner.image)
+      const banner = nav.banner && nav.banner.on && bannerActive(nav.banner) && (nav.banner.title || nav.banner.image)
         ? { title: nav.banner.title || '', image: nav.banner.image || null, itemId: nav.banner.itemId || null, hideText: nav.banner.hideText === true }
         : null;
       sections.push({ category: secName, items: tiles, showImages: nav.showImages !== false, custom: true, builder: true, topNav: nav.top === true, footerNav: nav.footer === true, eventOnly, banner });
@@ -834,7 +866,7 @@ async function getMenu(opts = {}) {
       // hasn't configured it at all — so ticking Footer actually surfaces combos
       // in the footer menu instead of being ignored.
       const nav = comboNav[secName];
-      const banner = nav && nav.banner && nav.banner.on && (nav.banner.title || nav.banner.image)
+      const banner = nav && nav.banner && nav.banner.on && bannerActive(nav.banner) && (nav.banner.title || nav.banner.image)
         ? { title: nav.banner.title || '', image: nav.banner.image || null, itemId: nav.banner.itemId || null, hideText: nav.banner.hideText === true }
         : null;
       sections.push({
@@ -1233,6 +1265,6 @@ module.exports = {
   getMenu, getFullMenu, getAllCategories, getAllProducts, getItemConfig, cleanName,
   searchItemsByName, createReservationCatalogItem, inspectItem, setReportingCategory,
   findOrCreateCategory, setupReservationPrinting, listAllCatalog,
-  venueNow, nextOpenDate, applyAvailability, scheduleActiveNow,
+  venueNow, nextOpenDate, applyAvailability, scheduleActiveNow, bannerActive,
   getVariationCategoryMap, getVariationUpgradeMap,
 };
