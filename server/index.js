@@ -1847,6 +1847,7 @@ app.post('/api/pos/order', async (req, res) => {
       eventId: posEvLoc && posEvLoc.type === 'event' ? posEvLoc.id : undefined,
       appLocationId: posEvLoc ? posEvLoc.id : undefined,
       posOverrideLocation: locationId || (posEvLoc && posEvLoc.id) || undefined, // apply POS-only price overrides
+      allowAdhoc: true, // POS (admin-authed) may add manual "Extras" lines at a keyed-in price
       reason: (tender === 'unpaid' || locations.isFree(locationId)) ? reason : undefined,
       // Card orders are held OFF the kitchen screen until the Terminal payment
       // completes — so a cancelled/declined card checkout never reaches the
