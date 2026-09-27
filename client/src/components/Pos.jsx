@@ -220,6 +220,7 @@ export default function Pos({ onExit }) {
   const [activeCat, setActiveCat] = useState(null);
   const [configuring, setConfiguring] = useState(null); // { item, initial? }
   const [combo, setCombo] = useState(null);             // a combo item being built (uses ComboModal)
+  const [extraEdit, setExtraEdit] = useState(null);     // null | { editKey?, amount(cents), label } — manual Extras keypad
   const [query, setQuery] = useState('');
   // Device-level POS tile view (each iPad chooses): tile size + whether to show
   // product images/icons on the tiles. Persisted per device in localStorage.
@@ -454,7 +455,22 @@ export default function Pos({ onExit }) {
     if (!itemHasOptions(withCat)) { addLine(buildQuickCartItem(withCat)); return; }
     setConfiguring({ item: withCat });
   }
+  // Manual "Extras" — a random-price line that isn't a catalogue item (e.g. a
+  // cup of milk). Adds/edits a cart line the register prices itself; the server
+  // turns it into an ad-hoc Square line (POS-only, price-clamped).
+  function saveExtra({ editKey, amount, label }) {
+    const cents = Math.max(0, Math.round(Number(amount) || 0));
+    if (cents <= 0) { setExtraEdit(null); return; }
+    const lbl = (label || '').trim() || 'Extras';
+    const key = editKey || `extra-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+    const line = { key, extra: true, label: lbl, itemName: lbl, variationName: '', modifierNames: [], unitPrice: cents, quantity: 1, note: '' };
+    if (editKey) replaceLine(editKey, line); else addLine(line);
+    setExtraEdit(null);
+  }
   function editLine(line) {
+    // Manual Extras line → reopen its keypad (edit the amount / label), not the
+    // product configure sheet (it has no catalogue item behind it).
+    if (line.extra) { setExtraEdit({ editKey: line.key, amount: line.unitPrice, label: line.label || line.itemName || '' }); return; }
     // Find the source menu item to re-open the same configure component.
     let found = null;
     for (const c of (menu.categories || [])) {
@@ -545,11 +561,13 @@ export default function Pos({ onExit }) {
     try {
       const amount = cartTotal(cart) - comboDiscountFor(cart);
       const payload = {
-        cart: cart.map((c) => ({
-          variationId: c.variationId, quantity: c.quantity, modifierIds: c.modifierIds, note: c.note, presetId: c.presetId, custom: c.custom,
-          // Combo tags — the server re-derives + applies the combo discount from these.
-          ...(c.comboInstanceId ? { comboId: c.comboId, comboInstanceId: c.comboInstanceId, comboGroupId: c.comboGroupId, comboItemId: c.comboItemId || c.itemId } : {}),
-        })),
+        cart: cart.map((c) => c.extra
+          ? { extra: true, amount: c.unitPrice, label: c.label || c.itemName || 'Extras', quantity: c.quantity, note: c.note }
+          : ({
+              variationId: c.variationId, quantity: c.quantity, modifierIds: c.modifierIds, note: c.note, presetId: c.presetId, custom: c.custom,
+              // Combo tags — the server re-derives + applies the combo discount from these.
+              ...(c.comboInstanceId ? { comboId: c.comboId, comboInstanceId: c.comboInstanceId, comboGroupId: c.comboGroupId, comboItemId: c.comboItemId || c.itemId } : {}),
+            })),
         dineIn, table: dineIn ? table : '', name: orderName.trim(),
         locationId: posLoc || undefined,
         tender: tenderType,
@@ -869,6 +887,13 @@ export default function Pos({ onExit }) {
             ))}
           </div>
 
+          {!configureMode && (
+            <button type="button" className="pos-add-extra" onClick={() => setExtraEdit({ amount: 0, label: '' })}
+              style={{ margin: '2px 12px 0', padding: '11px 12px', borderRadius: 12, border: '1px dashed var(--pos-line, #d9cfc9)', background: 'var(--pos-surface, #fff)', color: 'var(--pos-ink, #241816)', fontWeight: 700, fontSize: 15, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+              ＋ Add extra amount
+            </button>
+          )}
+
           <div className="pos-cart-foot">
             {comboSaving > 0 && <div className="pos-total-row saving"><span>Combo savings</span><span>−{formatMoney(comboSaving, currency)}</span></div>}
             <div className="pos-total-row"><span>Total</span><span className="pos-total">{formatMoney(total, currency)}</span></div>
@@ -906,6 +931,11 @@ export default function Pos({ onExit }) {
 
       {/* Combo builder (reuses the customer combo modal) */}
       {combo && <ComboModal item={combo} currency={currency} onClose={() => setCombo(null)} onAdd={(entries) => addCombo(entries)} />}
+
+      {/* Manual "Extras" — keypad an arbitrary amount + optional label */}
+      {extraEdit && (
+        <ExtraOverlay currency={currency} initial={extraEdit} onCancel={() => setExtraEdit(null)} onSave={saveExtra} />
+      )}
 
       {/* Phone-only bottom bar: opens the order (hidden on wide screens / while configuring) */}
       {!configureMode && (
@@ -1626,6 +1656,43 @@ function SettingsSheet({ cfg, posLoc, multiStore, curTerm, theme, onTheme, idleS
       {showCashUp && (
         <CashUpModal pass={pass} posLoc={posLoc} currency={cfg.currency || 'AUD'} onClose={() => setShowCashUp(false)} />
       )}
+    </div>
+  );
+}
+
+// ── Manual "Extras": the cash keypad, but it ADDS a random-price line to the
+//    cart (not a payment). Optional label; defaults to "Extras". ──
+function ExtraOverlay({ currency, initial, onCancel, onSave }) {
+  const [amount, setAmount] = useState(Math.max(0, Math.round(Number(initial && initial.amount) || 0)));
+  const [label, setLabel] = useState((initial && initial.label) || '');
+  const editing = !!(initial && initial.editKey);
+  const key = (d) => setAmount((c) => Math.min(c * 10 + d, 100000000));
+  return (
+    <div className="pos-scrim" onClick={onCancel}>
+      <div className="pos-tender" onClick={(e) => e.stopPropagation()}>
+        <div className="pos-tender-title">{editing ? 'Edit extra' : 'Add extra amount'}</div>
+        <p className="pos-set-hint" style={{ margin: '0 0 10px' }}>A one-off, keyed-in price for something that isn’t a product (e.g. a cup of milk). It’s added to the cart and charged with the rest of the order.</p>
+        <div className="pos-cash-row">
+          <span>Amount</span>
+          <span className="pos-cash-given">{formatMoney(amount, currency)}{amount > 0 && <button className="pos-cash-clear" onClick={() => setAmount(0)} aria-label="Clear amount">✕</button>}</span>
+        </div>
+        <div className="pos-cash-pad">
+          {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => <button key={n} onClick={() => key(n)}>{n}</button>)}
+          <button onClick={() => setAmount((c) => Math.min(c * 100, 100000000))}>00</button>
+          <button onClick={() => key(0)}>0</button>
+          <button className="pos-cash-back" onClick={() => setAmount((c) => Math.floor(c / 10))} aria-label="Backspace">⌫</button>
+        </div>
+        <label className="pos-set-label" style={{ marginTop: 12, display: 'block' }}>Label <span style={{ fontWeight: 400, color: 'var(--pos-muted, #9a8f89)' }}>(optional — defaults to “Extras”)</span></label>
+        <input className="pos-set-select" style={{ width: '100%' }} placeholder="Extras" value={label}
+          maxLength={40} onChange={(e) => setLabel(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter' && amount > 0) onSave({ editKey: initial && initial.editKey, amount, label }); }} />
+        <div className="pos-tender-actions" style={{ marginTop: 12 }}>
+          <button className="pos-btn ghost" onClick={onCancel}>Cancel</button>
+          <button className="pos-btn primary big" disabled={amount <= 0} onClick={() => onSave({ editKey: initial && initial.editKey, amount, label })}>
+            {editing ? 'Save' : `Add ${formatMoney(amount, currency)}`}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
