@@ -93,7 +93,7 @@ function buildNote({ dineIn, table }) {
   return dineIn ? `DINE-IN · ${tableLabel(table) || '?'}` : 'TAKEAWAY';
 }
 
-async function createOrder({ cart, dineIn, table, name, coupon, couponContext, customerId, pickupAt, idempotencyKey, note: customerNote, pifVoucher, source, squareLocationId, cardPayment, free, freeCategories, shipping, eventId, appLocationId, src, reason, posOverrideLocation, birthdayGift, holdForPayment }) {
+async function createOrder({ cart, dineIn, table, name, coupon, couponContext, customerId, pickupAt, idempotencyKey, note: customerNote, pifVoucher, source, squareLocationId, cardPayment, free, freeCategories, shipping, eventId, appLocationId, src, reason, posOverrideLocation, birthdayGift, holdForPayment, allowAdhoc }) {
   const LOC = squareLocationId || LOCATION_ID;
   // Birthday gift credit in cents (eligibility already checked by the caller).
   const bdayCents = birthdayGift ? Math.max(0, Math.round(Number(birthdayGift.cents) || 0)) : 0;
@@ -161,6 +161,18 @@ async function createOrder({ cart, dineIn, table, name, coupon, couponContext, c
   // just an array index; it only needs to be unique within this one order.
   const lineItems = cart.map((ci, i) => {
     const uid = `li${i}`;
+    // Manual "Extras" line entered at the register (a random-price add such as a
+    // cup of milk). A fully ad-hoc Square line — name + base_price_money. Only
+    // honoured for POS orders (allowAdhoc); the public app can NEVER set a price,
+    // so a customer can't inject a $0 or negative line. Amount is clamped to a
+    // sane range to guard against a fat-fingered keypad entry.
+    if (allowAdhoc && ci.extra === true) {
+      const cents = Math.max(0, Math.min(1_000_000, Math.round(Number(ci.amount) || 0))); // 0 … $10,000
+      const label = (String(ci.label || '').trim() || 'Extras').slice(0, 255);
+      const el = { uid, name: label, quantity: String(Math.max(1, Math.round(Number(ci.quantity) || 1))), base_price_money: { amount: cents, currency: CURRENCY } };
+      if (ci.note) el.note = String(ci.note).slice(0, 500);
+      return el;
+    }
     // Custom (from-scratch) item: fully ad-hoc line, priced from settings.
     if (ci.custom === true) {
       const cl = customLineFor(ci, uid);
