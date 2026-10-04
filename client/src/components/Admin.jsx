@@ -4857,11 +4857,11 @@ export default function Admin({ onExit }) {
                   <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 0 }}>Added to the Square order as surcharge lines (shown on the receipt). A card surcharge in Australia must not exceed your cost of acceptance — set your own %. Remember to press <strong>Save changes</strong>.</p>
 
                   <div className="avail-sched" style={{ marginBottom: 12 }}>
-                    <label className="switch"><input type="checkbox" checked={!!scfg.weekend?.enabled} onChange={(e) => setWeekendSc({ enabled: e.target.checked })} /> <span>Weekend surcharge</span></label>
+                    <label className="switch"><input type="checkbox" checked={!!scfg.weekend?.enabled} onChange={(e) => setWeekendSc(e.target.checked ? { enabled: true, ...(Number(scfg.weekend?.percent) > 0 ? {} : { percent: 10 }) } : { enabled: false })} /> <span>Weekend surcharge</span></label>
                     {scfg.weekend?.enabled && (
                       <div style={{ display: 'grid', gap: 8, marginTop: 8 }}>
                         <label className="field" style={{ margin: 0, maxWidth: 160 }}><span>Percent (%)</span>
-                          <input type="number" step="0.1" min="0" value={scfg.weekend?.percent ?? 10} onChange={(e) => setWeekendSc({ percent: Number(e.target.value) })} />
+                          <input type="number" step="0.1" min="0" value={scfg.weekend?.percent ?? ''} onChange={(e) => setWeekendSc({ percent: e.target.value === '' ? undefined : Number(e.target.value) })} />
                         </label>
                         <div>
                           <div className="muted" style={{ fontSize: 'var(--fs-xs)', marginBottom: 4 }}>Days it applies</div>
@@ -4894,11 +4894,11 @@ export default function Admin({ onExit }) {
                   </div>
 
                   <div className="avail-sched" style={{ marginBottom: 12 }}>
-                    <label className="switch"><input type="checkbox" checked={!!scfg.holiday?.enabled} onChange={(e) => setHolidaySc({ enabled: e.target.checked })} /> <span>Public holiday surcharge</span></label>
+                    <label className="switch"><input type="checkbox" checked={!!scfg.holiday?.enabled} onChange={(e) => setHolidaySc(e.target.checked ? { enabled: true, ...(Number(scfg.holiday?.percent) > 0 ? {} : { percent: 10 }) } : { enabled: false })} /> <span>Public holiday surcharge</span></label>
                     {scfg.holiday?.enabled && (
                       <div style={{ display: 'grid', gap: 8, marginTop: 8 }}>
                         <label className="field" style={{ margin: 0, maxWidth: 160 }}><span>Percent (%)</span>
-                          <input type="number" step="0.1" min="0" value={scfg.holiday?.percent ?? 10} onChange={(e) => setHolidaySc({ percent: Number(e.target.value) })} />
+                          <input type="number" step="0.1" min="0" value={scfg.holiday?.percent ?? ''} onChange={(e) => setHolidaySc({ percent: e.target.value === '' ? undefined : Number(e.target.value) })} />
                         </label>
                         <label className="field" style={{ margin: 0 }}><span>Dates it applies (one per line, YYYY-MM-DD)</span>
                           <textarea rows={2} value={(scfg.holiday?.dates || []).join('\n')} onChange={(e) => setHolidaySc({ dates: e.target.value.split('\n').map((x) => x.trim()).filter(Boolean) })} placeholder="2026-12-25&#10;2027-01-01" />
@@ -4927,11 +4927,11 @@ export default function Admin({ onExit }) {
                   </div>
 
                   <div className="avail-sched">
-                    <label className="switch"><input type="checkbox" checked={!!scfg.card?.enabled} onChange={(e) => setCardSc({ enabled: e.target.checked })} /> <span>Card surcharge</span></label>
+                    <label className="switch"><input type="checkbox" checked={!!scfg.card?.enabled} onChange={(e) => setCardSc(e.target.checked ? { enabled: true, ...(Number(scfg.card?.percent) > 0 ? {} : { percent: 1.5 }) } : { enabled: false })} /> <span>Card surcharge</span></label>
                     {scfg.card?.enabled && (
                       <div style={{ display: 'grid', gap: 8, marginTop: 8 }}>
                         <label className="field" style={{ margin: 0, maxWidth: 160 }}><span>Percent (%)</span>
-                          <input type="number" step="0.1" min="0" value={scfg.card?.percent ?? 1.5} onChange={(e) => setCardSc({ percent: Number(e.target.value) })} />
+                          <input type="number" step="0.1" min="0" value={scfg.card?.percent ?? ''} onChange={(e) => setCardSc({ percent: e.target.value === '' ? undefined : Number(e.target.value) })} />
                         </label>
                         <label className="field" style={{ margin: 0 }}><span>Label on receipt</span>
                           <input value={scfg.card?.label || 'Card surcharge'} onChange={(e) => setCardSc({ label: e.target.value })} />
@@ -5506,6 +5506,49 @@ export default function Admin({ onExit }) {
                     <span className="muted" style={{ fontSize: 'var(--fs-sm)', whiteSpace: 'nowrap', minWidth: 92, textAlign: 'right' }}>Every {Number(s.cds && s.cds.adIntervalSec) > 0 ? Number(s.cds.adIntervalSec) : 6}s</span>
                   </div>
                   <p className="muted" style={{ fontSize: 'var(--fs-xs)', margin: '4px 0 0' }}>How long each advert stays on the Customer Display before sliding to the next. Slide it right to slow the rotation down.</p>
+                </div>
+
+                {/* ---- Surcharge notice band styler (with live preview) ---- */}
+                <div style={{ border: '1px solid var(--line)', borderRadius: 12, padding: 12, margin: '0 0 14px' }}>
+                  <div className="group-title" style={{ margin: '0 0 4px' }}>Surcharge notice band</div>
+                  <p className="muted" style={{ fontSize: 'var(--fs-xs)', margin: '0 0 10px' }}>The band across the bottom of the Customer Display, over the scrolling banners, on days a surcharge applies (e.g. a public holiday). Style it here — it only shows on those days.</p>
+                  {(() => {
+                    const bandCfg = (s.cds && s.cds.band) || {};
+                    const bg = bandCfg.bg || '#e8b65c';
+                    const color = bandCfg.color || '#241318';
+                    const scale = Number(bandCfg.scale) > 0 ? Number(bandCfg.scale) : 1;
+                    const setBand = (patch) => set({ cds: { ...(s.cds || {}), band: { ...bandCfg, ...patch } } });
+                    const h = (s.surcharges && s.surcharges.holiday) || {};
+                    const sample = `${Number(h.percent) > 0 ? Number(h.percent) : 10}% ${h.label || 'Public Holiday Surcharge'}`;
+                    return (
+                      <div style={{ display: 'grid', gap: 12 }}>
+                        <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap' }}>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--fs-sm)', fontWeight: 600 }}>
+                            Band colour
+                            <input type="color" value={bg} onChange={(e) => setBand({ bg: e.target.value })} style={{ width: 44, height: 32, border: '1px solid var(--line)', borderRadius: 8, background: 'none', cursor: 'pointer', padding: 2 }} />
+                          </label>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--fs-sm)', fontWeight: 600 }}>
+                            Text colour
+                            <input type="color" value={color} onChange={(e) => setBand({ color: e.target.value })} style={{ width: 44, height: 32, border: '1px solid var(--line)', borderRadius: 8, background: 'none', cursor: 'pointer', padding: 2 }} />
+                          </label>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                          <span style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, whiteSpace: 'nowrap' }}>Text size</span>
+                          <input type="range" min="0.6" max="2" step="0.05" value={scale} onChange={(e) => setBand({ scale: Number(e.target.value) })} style={{ flex: 1 }} />
+                          <span className="muted" style={{ fontSize: 'var(--fs-sm)', whiteSpace: 'nowrap', minWidth: 56, textAlign: 'right' }}>{Math.round(scale * 100)}%</span>
+                        </div>
+                        {/* Live preview — a mini Customer Display with the band across the bottom. */}
+                        <div>
+                          <div className="muted" style={{ fontSize: 'var(--fs-xs)', marginBottom: 4 }}>Preview</div>
+                          <div style={{ position: 'relative', width: '100%', aspectRatio: '3 / 2', maxWidth: 360, borderRadius: 12, overflow: 'hidden', border: '1px solid var(--line)', background: 'linear-gradient(135deg,#3a1526,#6a1f36)', boxShadow: 'inset 0 0 40px rgba(0,0,0,.45)' }}>
+                            <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,.5)', fontSize: 13, fontWeight: 600, letterSpacing: '.5px' }}>idle banners…</div>
+                            <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, background: bg, color, textAlign: 'center', fontWeight: 800, letterSpacing: '.3px', lineHeight: 1.15, fontSize: `${Math.round(15 * scale)}px`, padding: `${Math.round(7 * scale)}px 10px`, boxShadow: '0 -4px 14px rgba(0,0,0,.35)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sample}</div>
+                          </div>
+                        </div>
+                        <button type="button" className="link" style={{ justifySelf: 'start', fontSize: 'var(--fs-xs)' }} onClick={() => setBand({ bg: '#e8b65c', color: '#241318', scale: 1 })}>Reset to default</button>
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 {/* ---- Launcher links (per store) ---- */}

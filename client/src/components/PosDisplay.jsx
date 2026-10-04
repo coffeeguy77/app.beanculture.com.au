@@ -37,6 +37,9 @@ export default function PosDisplay() {
   const hasOrder = cart.length > 0;
   const cds = (state && state.cds) || {};
   const ads = cds.ads || [];
+  // Operator-styled surcharge notice band (Admin → Marketing → Customer Display).
+  const band = cds.band || {};
+  const bandScale = Number(band.scale) > 0 ? Number(band.scale) : 1;
   const idle = !hasOrder && status !== 'paid';
   const [reset, setReset] = useState(0);       // bumped on a manual swipe to restart auto-rotate
   const touch = useRef(0);
@@ -74,7 +77,7 @@ export default function PosDisplay() {
   return (
     // No `pointer-events:none` — the customer can swipe the banners and scroll a
     // long order — but there are no links/buttons, so nothing is "clickable".
-    <div className={`cd-root${(cds.surchargeBand && !hasOrder) ? ' has-sc-band' : ''}`} style={{ userSelect: 'none' }} onClick={goFullscreen}>
+    <div className={`cd-root${(cds.surchargeBand && !hasOrder) ? ' has-sc-band' : ''}`} style={{ userSelect: 'none', '--sc-scale': bandScale }} onClick={goFullscreen}>
       {offline && <div className="cd-offline">Reconnecting…</div>}
 
       {/* Standing surcharge notice (e.g. "10% Public Holiday Surcharge") — a band
@@ -82,7 +85,7 @@ export default function PosDisplay() {
           surcharge before ordering. Hidden while an order is on screen (the
           surcharge is itemised in the order there instead, so it can't cover the
           running total). */}
-      {cds.surchargeBand && !hasOrder ? <div className="cd-surcharge-band">{cds.surchargeBand}</div> : null}
+      {cds.surchargeBand && !hasOrder ? <div className="cd-surcharge-band" style={{ background: band.bg || undefined, color: band.color || undefined }}>{cds.surchargeBand}</div> : null}
 
       {status === 'paid' ? (
         <div className="cd-center">
