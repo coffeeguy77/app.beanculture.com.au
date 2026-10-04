@@ -77,6 +77,10 @@ export default function PosDisplay() {
     <div className="cd-root" style={{ userSelect: 'none' }} onClick={goFullscreen}>
       {offline && <div className="cd-offline">Reconnecting…</div>}
 
+      {/* Standing surcharge notice (e.g. "10% Public Holiday Surcharge"), shown
+          across the top whenever an order-level surcharge is active today here. */}
+      {cds.surchargeBand ? <div className="cd-surcharge-band">{cds.surchargeBand}</div> : null}
+
       {status === 'paid' ? (
         <div className="cd-center">
           <div className="cd-thanks-tick">✓</div>

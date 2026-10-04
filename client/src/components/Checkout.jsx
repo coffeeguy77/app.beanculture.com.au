@@ -261,14 +261,17 @@ export default function Checkout({ config, location, cart, currency, onQty, onCo
   // A surcharge with a non-empty `locations` list only applies at those stores
   // (the server is authoritative; this keeps the estimate honest per store).
   const scAppliesHere = (conf) => { const ls = (conf && conf.locations) || []; return !ls.length || (location && ls.includes(location.id)); };
+  const holidayActive = !!(scfg.holiday && scfg.holiday.activeToday) && scAppliesHere(scfg.holiday) && payTotal > 0;
   const weekendActive = !!(scfg.weekend && scfg.weekend.activeToday) && scAppliesHere(scfg.weekend) && payTotal > 0;
   const cardActive = !!(scfg.card && scfg.card.enabled) && scAppliesHere(scfg.card) && cardChoice !== 'balance' && payTotal > 0;
+  const holidaySc = holidayActive ? Math.round(payTotal * (scfg.holiday.percent || 0) / 100) : 0;
   const weekendSc = weekendActive ? Math.round(payTotal * (scfg.weekend.percent || 0) / 100) : 0;
-  const cardSc = cardActive ? Math.round((payTotal + weekendSc) * (scfg.card.percent || 0) / 100) : 0;
-  const grandTotal = payTotal + weekendSc + cardSc + shipCost;
+  const cardSc = cardActive ? Math.round((payTotal + holidaySc + weekendSc) * (scfg.card.percent || 0) / 100) : 0;
+  const grandTotal = payTotal + holidaySc + weekendSc + cardSc + shipCost;
   const surchargeRows = (
     <>
       {shipCost > 0 && <div className="row"><span>Shipping</span><span>+{formatMoney(shipCost, currency)}</span></div>}
+      {holidaySc > 0 && <div className="row"><span>{scfg.holiday.label || 'Public Holiday Surcharge'} ({scfg.holiday.percent}%)</span><span>+{formatMoney(holidaySc, currency)}</span></div>}
       {weekendSc > 0 && <div className="row"><span>{scfg.weekend.label || 'Weekend surcharge'} ({scfg.weekend.percent}%)</span><span>+{formatMoney(weekendSc, currency)}</span></div>}
       {cardSc > 0 && <div className="row"><span>{scfg.card.label || 'Card surcharge'} ({scfg.card.percent}%)</span><span>+{formatMoney(cardSc, currency)}</span></div>}
     </>

@@ -1353,6 +1353,7 @@ export default function Admin({ onExit }) {
   const setSurcharge = (patch) => set({ surcharges: { ...scfg, ...patch } });
   const setWeekendSc = (patch) => setSurcharge({ weekend: { ...(scfg.weekend || {}), ...patch } });
   const setCardSc = (patch) => setSurcharge({ card: { ...(scfg.card || {}), ...patch } });
+  const setHolidaySc = (patch) => setSurcharge({ holiday: { ...(scfg.holiday || {}), ...patch } });
   const weekendDays = Array.isArray(scfg.weekend?.days) ? scfg.weekend.days : [0, 6];
   const toggleWeekendDay = (d) => setWeekendSc({ days: weekendDays.includes(d) ? weekendDays.filter((x) => x !== d) : [...weekendDays, d].sort() });
   const DOWS = [['Sun', 0], ['Mon', 1], ['Tue', 2], ['Wed', 3], ['Thu', 4], ['Fri', 5], ['Sat', 6]];
@@ -4888,6 +4889,39 @@ export default function Admin({ onExit }) {
                             </div>
                           </div>
                         )}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="avail-sched" style={{ marginBottom: 12 }}>
+                    <label className="switch"><input type="checkbox" checked={!!scfg.holiday?.enabled} onChange={(e) => setHolidaySc({ enabled: e.target.checked })} /> <span>Public holiday surcharge</span></label>
+                    {scfg.holiday?.enabled && (
+                      <div style={{ display: 'grid', gap: 8, marginTop: 8 }}>
+                        <label className="field" style={{ margin: 0, maxWidth: 160 }}><span>Percent (%)</span>
+                          <input type="number" step="0.1" min="0" value={scfg.holiday?.percent ?? 10} onChange={(e) => setHolidaySc({ percent: Number(e.target.value) })} />
+                        </label>
+                        <label className="field" style={{ margin: 0 }}><span>Dates it applies (one per line, YYYY-MM-DD)</span>
+                          <textarea rows={2} value={(scfg.holiday?.dates || []).join('\n')} onChange={(e) => setHolidaySc({ dates: e.target.value.split('\n').map((x) => x.trim()).filter(Boolean) })} placeholder="2026-12-25&#10;2027-01-01" />
+                        </label>
+                        <div>
+                          <button type="button" className="btn ghost" style={{ padding: '6px 12px', fontSize: 'var(--fs-sm)' }} onClick={() => { const d = new Date(); const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; const cur = scfg.holiday?.dates || []; if (!cur.includes(iso)) setHolidaySc({ dates: [...cur, iso] }); }}>+ Add today</button>
+                        </div>
+                        <label className="field" style={{ margin: 0 }}><span>Label on receipt &amp; customer display</span>
+                          <input value={scfg.holiday?.label || 'Public Holiday Surcharge'} onChange={(e) => setHolidaySc({ label: e.target.value })} />
+                        </label>
+                        {locs.length > 1 && (
+                          <div>
+                            <div className="muted" style={{ fontSize: 'var(--fs-xs)', marginBottom: 4 }}>Applies at</div>
+                            <div className="avail-chipwrap">
+                              <button type="button" className={`avail-chip${!(scfg.holiday?.locations || []).length ? ' on' : ''}`} onClick={() => setHolidaySc({ locations: [] })}>All stores</button>
+                              {locs.map((l) => {
+                                const on = (scfg.holiday?.locations || []).includes(l.id);
+                                return <button type="button" key={l.id} className={`avail-chip${on ? ' on' : ''}`} onClick={() => { const set = new Set(scfg.holiday?.locations || []); on ? set.delete(l.id) : set.add(l.id); setHolidaySc({ locations: [...set] }); }}>{l.name || l.id}</button>;
+                              })}
+                            </div>
+                          </div>
+                        )}
+                        <p className="muted" style={{ fontSize: 'var(--fs-xs)', margin: 0 }}>Shows a band on the Customer Display and a line in the cart on these dates. Applies to cash and card. On a listed date it replaces the weekend surcharge (never both).</p>
                       </div>
                     )}
                   </div>

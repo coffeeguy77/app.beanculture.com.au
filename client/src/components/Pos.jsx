@@ -313,6 +313,21 @@ export default function Pos({ onExit }) {
   useEffect(() => { try { localStorage.setItem(THEME_KEY, theme); } catch {} }, [theme]);
   useEffect(() => { try { if (kdsIdleSec != null) localStorage.setItem(IDLE_KEY, String(kdsIdleSec)); } catch {} }, [kdsIdleSec]);
   useEffect(() => { try { localStorage.setItem('bc-pos-display-code', displayCode); } catch {} }, [displayCode]);
+
+  // Order-level surcharge active at THIS store today (public holiday, or weekend)
+  // — applies to cash AND card. Mirrors the server, which is authoritative. Used
+  // for the cart line, the amount charged (so cash change is right), and the CDS.
+  const orderSubtotal = cartTotal(cart) - comboDiscountFor(cart);
+  const orderSurcharges = (() => {
+    const sc = (cfg && cfg.surcharges) || {};
+    const here = (conf) => { const ls = (conf && conf.locations) || []; return !ls.length || (posLoc && ls.includes(posLoc)); };
+    if (sc.holiday && sc.holiday.activeToday && here(sc.holiday)) return [{ label: sc.holiday.label || 'Public Holiday Surcharge', percent: Number(sc.holiday.percent) || 0 }];
+    if (sc.weekend && sc.weekend.activeToday && here(sc.weekend)) return [{ label: sc.weekend.label || 'Weekend surcharge', percent: Number(sc.weekend.percent) || 0 }];
+    return [];
+  })();
+  const surchargeFee = orderSubtotal > 0 ? orderSurcharges.reduce((s, x) => s + Math.round(orderSubtotal * (x.percent || 0) / 100), 0) : 0;
+  const chargeTotal = orderSubtotal + surchargeFee;
+
   // Mirror the live order to the customer display (a second screen on /display with
   // the same station code). Debounced; paused while the thank-you screen shows.
   useEffect(() => {
@@ -320,15 +335,17 @@ export default function Pos({ onExit }) {
     const station = (displayCode.trim() || posLoc || 'main');
     const t = setTimeout(() => {
       const items = cart.map((c) => ({ name: c.itemName, variation: c.variationName, options: c.modifierNames || [], quantity: c.quantity, amount: c.unitPrice }));
+      // Show the surcharge as its own line on the customer display so the total matches.
+      if (surchargeFee > 0) items.push({ name: orderSurcharges.map((x) => `${x.percent}% ${x.label}`).join(' · '), variation: '', options: [], quantity: 1, amount: surchargeFee });
       api.posDisplayPush(pass, {
-        station, cart: items, total: cartTotal(cart) - comboDiscountFor(cart),
+        station, cart: items, total: chargeTotal,
         name: orderName.trim(), dineIn, table: dineIn ? table : '',
         status: cart.length ? 'building' : 'idle',
       }).catch(() => {});
     }, 300);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cart, orderName, dineIn, table, displayCode, mode, pass, posLoc, success]);
+  }, [cart, orderName, dineIn, table, displayCode, mode, pass, posLoc, success, chargeTotal, surchargeFee]);
 
   // Paint the mobile status bar (theme-color meta) to match the POS theme, and
   // restore whatever it was (the storefront colour) when the POS closes — this
@@ -536,7 +553,7 @@ export default function Pos({ onExit }) {
     catch (e) { setEmailMsg(e.message || 'Send failed'); }
   }
   function finishSuccess(shortId, orderId, tenderType, change, paymentId) {
-    const paidTotal = cartTotal(cart) - comboDiscountFor(cart);
+    const paidTotal = chargeTotal; // items + any order-level surcharge actually charged
     setPrintMsg('');
     setEmailOpen(false); setEmailVal(''); setEmailMsg('');
     setSuccess({ orderId, shortId, tender: tenderType, change, paymentId: paymentId || null });
@@ -559,7 +576,7 @@ export default function Pos({ onExit }) {
     if (!cart.length || busy) return;
     setBusy(true); setErr('');
     try {
-      const amount = cartTotal(cart) - comboDiscountFor(cart);
+      const amount = chargeTotal; // cash change / card amount must include the order surcharge
       const payload = {
         cart: cart.map((c) => c.extra
           ? { extra: true, amount: c.unitPrice, label: c.label || c.itemName || 'Extras', quantity: c.quantity, note: c.note }
@@ -896,7 +913,15 @@ export default function Pos({ onExit }) {
 
           <div className="pos-cart-foot">
             {comboSaving > 0 && <div className="pos-total-row saving"><span>Combo savings</span><span>−{formatMoney(comboSaving, currency)}</span></div>}
-            <div className="pos-total-row"><span>Total</span><span className="pos-total">{formatMoney(total, currency)}</span></div>
+            {surchargeFee > 0 && (
+              <>
+                <div className="pos-total-row"><span>Subtotal</span><span>{formatMoney(total, currency)}</span></div>
+                {orderSurcharges.map((x, i) => (
+                  <div key={i} className="pos-total-row"><span>{x.label} ({x.percent}%)</span><span>+{formatMoney(Math.round(total * (x.percent || 0) / 100), currency)}</span></div>
+                ))}
+              </>
+            )}
+            <div className="pos-total-row"><span>Total</span><span className="pos-total">{formatMoney(chargeTotal, currency)}</span></div>
             <div className="pos-gst">GST included</div>
             {err && <div className="pos-err">{err}</div>}
             {/* Pick the tender straight away — no "Charge" step. Cash opens the
@@ -907,7 +932,7 @@ export default function Pos({ onExit }) {
                 <button className={`pos-pay-btn cash${payMethods.card ? '' : ' solo'}`} disabled={!cart.length || busy} onClick={() => setTender('cash')}>
                   <span className="pos-pay-ic"><IcoCash /></span>
                   <span className="pos-pay-t">Cash</span>
-                  <span className="pos-pay-a">{formatMoney(total, currency)}</span>
+                  <span className="pos-pay-a">{formatMoney(chargeTotal, currency)}</span>
                 </button>
               )}
               {payMethods.card && (
@@ -915,7 +940,7 @@ export default function Pos({ onExit }) {
                   title={curTerm.deviceId ? '' : 'No card terminal paired — pair one in setup (⚙)'} onClick={() => submit('card')}>
                   <span className="pos-pay-ic"><IcoCard /></span>
                   <span className="pos-pay-t">Card{!curTerm.deviceId ? ' · no reader' : ''}</span>
-                  <span className="pos-pay-a">{formatMoney(total, currency)}</span>
+                  <span className="pos-pay-a">{formatMoney(chargeTotal, currency)}</span>
                 </button>
               )}
             </div>
@@ -942,7 +967,7 @@ export default function Pos({ onExit }) {
         <div className="pos-mobilebar">
           <div className="pos-mobilebar-info">
             <span className="pos-mobilebar-count">{cartCount(cart)} item{cartCount(cart) === 1 ? '' : 's'}</span>
-            <span className="pos-mobilebar-total">{formatMoney(total, currency)}</span>
+            <span className="pos-mobilebar-total">{formatMoney(chargeTotal, currency)}</span>
           </div>
           <button className="pos-btn primary big" disabled={!cart.length} onClick={() => setCartOpen(true)}>
             View order
@@ -952,7 +977,7 @@ export default function Pos({ onExit }) {
 
       {/* Tender overlay */}
       {tender && (
-        <TenderOverlay tender={tender} setTender={setTender} total={total} currency={currency}
+        <TenderOverlay tender={tender} setTender={setTender} total={chargeTotal} currency={currency}
           busy={busy} methods={payMethods} cardEnabled={!!curTerm.deviceId} cardSurchargePct={(cfg.surcharges && cfg.surcharges.card && cfg.surcharges.card.enabled) ? cfg.surcharges.card.percent : 0}
           onCard={() => submit('card')} onCash={(given) => submit('cash', given)} onKitchen={(reason) => submit('unpaid', undefined, reason)} onClose={() => setTender(null)} />
       )}
