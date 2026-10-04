@@ -3358,11 +3358,30 @@ body:has(.store-shell) { background: var(--bc-canvas-deep, #160f12); }
 .avail-menuchip:hover { border-style: solid; border-color: var(--admin-accent, var(--brand)); }
 .avail-menuchip-plus { font-weight: 800; color: var(--admin-accent, var(--brand)); }
 .avail-chipwrap { display: flex; gap: 6px; flex-wrap: wrap; }
+/* Toggle buttons (store / day / option pickers). Proper rectangular buttons with
+   a clear SELECTED state — tapping shows a filled accent + tick, so it's obvious
+   which ones are on. */
 .avail-chip {
-  display: inline-flex; align-items: center; gap: 6px; background: var(--admin-accent-soft, var(--brand-soft));
-  color: var(--admin-text, var(--ink)); border-radius: 999px; padding: 5px 6px 5px 12px; font-size: var(--fs-sm); font-weight: 600;
+  display: inline-flex; align-items: center; gap: 6px;
+  background: var(--admin-surface, #fff);
+  color: var(--admin-text, var(--ink));
+  border: 1.5px solid var(--admin-border, var(--line));
+  border-radius: 10px; padding: 9px 14px;
+  font-size: var(--fs-sm); font-weight: 700; cursor: pointer;
+  transition: background .12s ease, border-color .12s ease, color .12s ease, box-shadow .12s ease;
 }
-.avail-chip button { border: none; background: rgba(0,0,0,0.12); color: inherit; width: 20px; height: 20px; border-radius: 50%; cursor: pointer; font-size: 12px; line-height: 1; }
+.avail-chip:hover { border-color: var(--admin-accent, var(--brand)); }
+.avail-chip:active { transform: translateY(1px); }
+.avail-chip.on {
+  background: var(--admin-accent, var(--brand));
+  border-color: var(--admin-accent, var(--brand));
+  color: #fff;
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--admin-accent, var(--brand)) 32%, transparent);
+}
+.avail-chip.on::before { content: '✓'; font-weight: 900; }
+/* Inner remove (×) for the selected-item tag variant. */
+.avail-chip button { border: none; background: rgba(0,0,0,0.15); color: inherit; width: 20px; height: 20px; border-radius: 50%; cursor: pointer; font-size: 12px; line-height: 1; flex: none; }
+.avail-chip.on button { background: rgba(255,255,255,0.28); }
 .avail-add { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; padding: 7px 10px; border: none; border-bottom: 1px solid var(--admin-border, var(--line)); background: transparent; cursor: pointer; color: var(--admin-text, var(--ink)); }
 .avail-add:hover { background: var(--admin-accent-soft, var(--brand-soft)); }
 .avail-add-plus { margin-left: auto; font-size: 18px; font-weight: 800; color: var(--admin-accent, var(--brand)); }
