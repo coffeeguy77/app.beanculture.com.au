@@ -3805,17 +3805,22 @@ body:has(.store-shell) { background: var(--bc-canvas-deep, #160f12); }
 .cd-store { font-family: 'Fraunces', Georgia, serif; font-size: clamp(24px, 4vw, 48px); font-weight: 700; color: var(--pos-accent, #d9a441); }
 .cd-logo { max-height: clamp(40px, 8vh, 96px); max-width: 60vw; object-fit: contain; }
 .cd-offline { position: absolute; top: 10px; right: 14px; font-size: 14px; color: var(--pos-muted, #9a8f8a); z-index: 3; }
-/* Standing surcharge notice band across the top of the customer display. */
+/* Standing surcharge notice band across the BOTTOM of the customer display,
+   overlaying the scrolling idle banners. */
 .cd-surcharge-band {
-  position: absolute; top: 0; left: 0; right: 0; z-index: 6;
+  position: absolute; bottom: 0; left: 0; right: 0; z-index: 6;
   /* Fixed warm amber on dark text — a classic notice band that stays high-contrast
      on the dark customer display regardless of the chosen colour theme. */
   background: #e8b65c; color: #241318;
   text-align: center; font-weight: 800; letter-spacing: .3px; line-height: 1.15;
   font-size: clamp(16px, 3.2vw, 34px);
-  padding: calc(1.3vh + env(safe-area-inset-top, 0px)) 4vw 1.3vh;
-  box-shadow: 0 4px 18px rgba(0,0,0,.35);
+  padding: 1.3vh 4vw calc(1.3vh + env(safe-area-inset-bottom, 0px));
+  box-shadow: 0 -4px 18px rgba(0,0,0,.35);
 }
+/* When the band is showing, lift the idle-banner caption + welcome text so the
+   band never covers them. */
+.cd-root.has-sc-band .cd-ad-cap { padding-bottom: 12vh; }
+.cd-root.has-sc-band .cd-center { padding-bottom: 10vh; }
 .cd-welcome-logo { max-height: 28vh; max-width: 70vw; object-fit: contain; margin-bottom: 1vh; }
 .cd-ad { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; }
 /* Fill the whole CDS screen: no cropping and no letterbox gaps (stretched to the
