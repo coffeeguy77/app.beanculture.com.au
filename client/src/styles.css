@@ -3813,14 +3813,17 @@ body:has(.store-shell) { background: var(--bc-canvas-deep, #160f12); }
      on the dark customer display regardless of the chosen colour theme. */
   background: #e8b65c; color: #241318;
   text-align: center; font-weight: 800; letter-spacing: .3px; line-height: 1.15;
-  font-size: clamp(16px, 3.2vw, 34px);
-  padding: 1.3vh 4vw calc(1.3vh + env(safe-area-inset-bottom, 0px));
+  /* Text size + band height scale together via --sc-scale (operator slider), so
+     bigger text grows the band and always stays inside it. Colours are set
+     inline from the saved style; these are the fallbacks. */
+  font-size: calc(clamp(16px, 3.2vw, 34px) * var(--sc-scale, 1));
+  padding: calc(1.3vh * var(--sc-scale, 1)) 4vw calc(1.3vh * var(--sc-scale, 1) + env(safe-area-inset-bottom, 0px));
   box-shadow: 0 -4px 18px rgba(0,0,0,.35);
 }
 /* When the band is showing, lift the idle-banner caption + welcome text so the
-   band never covers them. */
-.cd-root.has-sc-band .cd-ad-cap { padding-bottom: 12vh; }
-.cd-root.has-sc-band .cd-center { padding-bottom: 10vh; }
+   band never covers them — the lift grows with the band's size. */
+.cd-root.has-sc-band .cd-ad-cap { padding-bottom: calc(12vh * var(--sc-scale, 1)); }
+.cd-root.has-sc-band .cd-center { padding-bottom: calc(10vh * var(--sc-scale, 1)); }
 .cd-welcome-logo { max-height: 28vh; max-width: 70vw; object-fit: contain; margin-bottom: 1vh; }
 .cd-ad { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; }
 /* Fill the whole CDS screen: no cropping and no letterbox gaps (stretched to the
