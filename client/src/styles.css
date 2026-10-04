@@ -3857,6 +3857,9 @@ body:has(.store-shell) { background: var(--bc-canvas-deep, #160f12); }
 .cd-qty { flex: none; min-width: 2.6ch; font-weight: 800; color: var(--pos-accent, #d9a441); }
 .cd-item-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .cd-item-name { font-weight: 600; }
+/* The surcharge line in the live order reads as a fee, not a product: its name is
+   regular weight (the item names above stay bold) while the price stays bold. */
+.cd-item--sc .cd-item-name { font-weight: 400; }
 .cd-item-opts { font-size: 0.62em; color: var(--pos-muted, #9a8f8a); }
 .cd-item-price { flex: none; font-weight: 700; }
 .cd-total { flex: none; display: flex; align-items: baseline; justify-content: space-between;
