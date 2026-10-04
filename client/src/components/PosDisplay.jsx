@@ -102,7 +102,7 @@ export default function PosDisplay() {
           </div>
           <div className="cd-items">
             {cart.map((c, i) => (
-              <div key={i} className="cd-item">
+              <div key={i} className={`cd-item${c.surcharge ? ' cd-item--sc' : ''}`}>
                 <span className="cd-qty">{c.quantity > 1 ? `${c.quantity}×` : ''}</span>
                 <span className="cd-item-main">
                   <span className="cd-item-name">{c.name}{c.variation ? ` · ${c.variation}` : ''}</span>

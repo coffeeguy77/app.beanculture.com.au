@@ -336,7 +336,7 @@ export default function Pos({ onExit }) {
     const t = setTimeout(() => {
       const items = cart.map((c) => ({ name: c.itemName, variation: c.variationName, options: c.modifierNames || [], quantity: c.quantity, amount: c.unitPrice }));
       // Show the surcharge as its own line on the customer display so the total matches.
-      if (surchargeFee > 0) items.push({ name: orderSurcharges.map((x) => `${x.percent}% ${x.label}`).join(' · '), variation: '', options: [], quantity: 1, amount: surchargeFee });
+      if (surchargeFee > 0) items.push({ name: orderSurcharges.map((x) => `${x.percent}% ${x.label}`).join(' · '), variation: '', options: [], quantity: 1, amount: surchargeFee, surcharge: true });
       api.posDisplayPush(pass, {
         station, cart: items, total: chargeTotal,
         name: orderName.trim(), dineIn, table: dineIn ? table : '',
@@ -346,6 +346,20 @@ export default function Pos({ onExit }) {
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cart, orderName, dineIn, table, displayCode, mode, pass, posLoc, success, chargeTotal, surchargeFee]);
+
+  // Keep the POS config fresh without a manual reload. The register fetches its
+  // config once at boot, so a surcharge switched on in admin (e.g. a public
+  // holiday) wouldn't reach a counter that's been open all day — and a
+  // date-based surcharge wouldn't flip across midnight. Re-pull it every couple
+  // of minutes and update only `cfg`/currency; menu, cart and store stay put.
+  useEffect(() => {
+    if (!pass) return;
+    const iv = setInterval(async () => {
+      try { const c = await api.posConfig(pass); setCfg(c); } catch {}
+    }, 120000);
+    return () => clearInterval(iv);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pass]);
 
   // Paint the mobile status bar (theme-color meta) to match the POS theme, and
   // restore whatever it was (the storefront colour) when the POS closes — this
