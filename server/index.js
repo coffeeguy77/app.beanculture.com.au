@@ -1635,6 +1635,11 @@ app.get('/api/pos/display/state', (req, res) => {
   const cdsOnly = (Array.isArray(s.cdsBanners) ? s.cdsBanners : []).filter((h) => h && showsHere(h) && catalog.bannerActive(h)).map(toAd);
   const heroFlagged = (Array.isArray(s.hero) ? s.hero : []).filter((h) => h && h.cds && showsHere(h) && catalog.bannerActive(h)).map(toAd);
   const ads = [...cdsOnly, ...heroFlagged];
+  // A standing notice band for the customer display, e.g. "10% Public Holiday
+  // Surcharge" — shown whenever an order-level surcharge is active today at this
+  // store (card surcharge is excluded; it's shown at payment, not on the CDS).
+  const scActive = surcharges.activeOrderSurcharges(loc || null);
+  const surchargeBand = scActive.length ? scActive.map((x) => `${x.percent}% ${x.label}`).join('  ·  ') : '';
   const cds = {
     welcomeTitle: cdsCfg.welcomeTitle || 'Welcome',
     welcomeSub: cdsCfg.welcomeSub || '',
@@ -1642,6 +1647,7 @@ app.get('/api/pos/display/state', (req, res) => {
     adIntervalSec: Number(cdsCfg.adIntervalSec) > 0 ? Number(cdsCfg.adIntervalSec) : 6,
     ratio: s.heroRatio || '3 / 2',
     ads,
+    surchargeBand,
   };
   res.json({ storeName, logo, currency: sq.CURRENCY, cds, ...(fresh ? hit.data : { cart: [], total: 0, name: '', status: 'idle', change: 0 }) });
 });
