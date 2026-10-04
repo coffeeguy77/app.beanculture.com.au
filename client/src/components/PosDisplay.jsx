@@ -40,6 +40,13 @@ export default function PosDisplay() {
   // Operator-styled surcharge notice band (Admin → Marketing → Customer Display).
   const band = cds.band || {};
   const bandScale = Number(band.scale) > 0 ? Number(band.scale) : 1;
+  // Identify the surcharge line in the live order so it reads as a fee (lighter
+  // name) rather than a product. Primary signal is the POS flag (c.surcharge);
+  // the fallback matches the line's name to the server's current surcharge-band
+  // text, so it still works when the counter is running an older build that
+  // doesn't send the flag. Separators/spacing are normalised before comparing.
+  const scText = String(cds.surchargeBand || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  const isSurchargeLine = (c) => c.surcharge === true || (!!scText && String(c.name || '').replace(/\s+/g, ' ').trim().toLowerCase() === scText);
   const idle = !hasOrder && status !== 'paid';
   const [reset, setReset] = useState(0);       // bumped on a manual swipe to restart auto-rotate
   const touch = useRef(0);
@@ -102,7 +109,7 @@ export default function PosDisplay() {
           </div>
           <div className="cd-items">
             {cart.map((c, i) => (
-              <div key={i} className={`cd-item${c.surcharge ? ' cd-item--sc' : ''}`}>
+              <div key={i} className={`cd-item${isSurchargeLine(c) ? ' cd-item--sc' : ''}`}>
                 <span className="cd-qty">{c.quantity > 1 ? `${c.quantity}×` : ''}</span>
                 <span className="cd-item-main">
                   <span className="cd-item-name">{c.name}{c.variation ? ` · ${c.variation}` : ''}</span>
