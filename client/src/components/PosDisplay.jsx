@@ -74,12 +74,15 @@ export default function PosDisplay() {
   return (
     // No `pointer-events:none` — the customer can swipe the banners and scroll a
     // long order — but there are no links/buttons, so nothing is "clickable".
-    <div className="cd-root" style={{ userSelect: 'none' }} onClick={goFullscreen}>
+    <div className={`cd-root${(cds.surchargeBand && !hasOrder) ? ' has-sc-band' : ''}`} style={{ userSelect: 'none' }} onClick={goFullscreen}>
       {offline && <div className="cd-offline">Reconnecting…</div>}
 
-      {/* Standing surcharge notice (e.g. "10% Public Holiday Surcharge"), shown
-          across the top whenever an order-level surcharge is active today here. */}
-      {cds.surchargeBand ? <div className="cd-surcharge-band">{cds.surchargeBand}</div> : null}
+      {/* Standing surcharge notice (e.g. "10% Public Holiday Surcharge") — a band
+          across the BOTTOM, over the scrolling idle banners, so customers see the
+          surcharge before ordering. Hidden while an order is on screen (the
+          surcharge is itemised in the order there instead, so it can't cover the
+          running total). */}
+      {cds.surchargeBand && !hasOrder ? <div className="cd-surcharge-band">{cds.surchargeBand}</div> : null}
 
       {status === 'paid' ? (
         <div className="cd-center">
