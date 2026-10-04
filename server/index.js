@@ -1640,6 +1640,13 @@ app.get('/api/pos/display/state', (req, res) => {
   // store (card surcharge is excluded; it's shown at payment, not on the CDS).
   const scActive = surcharges.activeOrderSurcharges(loc || null);
   const surchargeBand = scActive.length ? scActive.map((x) => `${x.percent}% ${x.label}`).join('  ·  ') : '';
+  // Operator-styled look for that band (Admin → Marketing → Customer Display).
+  const bandCfg = cdsCfg.band || {};
+  const band = {
+    bg: bandCfg.bg || '#e8b65c',
+    color: bandCfg.color || '#241318',
+    scale: Number(bandCfg.scale) > 0 ? Number(bandCfg.scale) : 1,
+  };
   const cds = {
     welcomeTitle: cdsCfg.welcomeTitle || 'Welcome',
     welcomeSub: cdsCfg.welcomeSub || '',
@@ -1648,6 +1655,7 @@ app.get('/api/pos/display/state', (req, res) => {
     ratio: s.heroRatio || '3 / 2',
     ads,
     surchargeBand,
+    band,
   };
   res.json({ storeName, logo, currency: sq.CURRENCY, cds, ...(fresh ? hit.data : { cart: [], total: 0, name: '', status: 'idle', change: 0 }) });
 });
