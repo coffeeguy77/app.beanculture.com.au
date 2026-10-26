@@ -539,12 +539,35 @@ async function createCashPayment({ orderId, amountMoney, buyerSuppliedMoney, squ
 
 // Cancel an unpaid OPEN order (e.g. a card checkout the customer abandoned) so
 // it drops off the KDS (the ticket feed filters out CANCELED orders).
+//
+// CRITICAL: a free-coffee redemption creates a Square loyalty reward on the order
+// at order-creation time, which IMMEDIATELY deducts the customer's points (Square
+// only *redeems* the reward when the order is PAID). So before cancelling an
+// unpaid order we must DELETE any reward on it — that returns the held points to
+// the customer. Without this, an abandoned or declined checkout silently burns
+// the customer's points and they get no free coffee (and pay full price on the
+// retry). This runs for every cancel path (app cancel-on-failure, the held-order
+// sweep, and any direct caller), so the points are always returned.
 async function cancelOrder(orderId) {
   try {
     const cur = await squareFetch(`/v2/orders/${orderId}`);
-    const version = cur.order && cur.order.version;
+    let version = cur.order && cur.order.version;
     const state = cur.order && cur.order.state;
     if (state === 'COMPLETED' || state === 'CANCELED') return cur.order; // nothing to do
+
+    // Return any loyalty points held by rewards on this unpaid order.
+    const rewards = (cur.order && cur.order.rewards) || [];
+    if (rewards.length) {
+      const loyalty = require('./loyalty');
+      for (const rw of rewards) { if (rw && rw.id) await loyalty.deleteReward(rw.id); }
+      // Deleting a reward removes its discount and BUMPS the order version, so the
+      // version we read above is now stale — re-read it or the CANCEL below 409s.
+      try {
+        const re = await squareFetch(`/v2/orders/${orderId}`);
+        if (re.order && re.order.version != null) version = re.order.version;
+      } catch { /* fall back to the version we had */ }
+    }
+
     const data = await squareFetch(`/v2/orders/${orderId}`, {
       method: 'PUT',
       body: { order: { version, state: 'CANCELED' }, idempotency_key: idem() },

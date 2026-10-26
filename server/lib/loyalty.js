@@ -3,7 +3,8 @@
 // tied to order_id; Square auto-redeems when the order is paid via Square).
 
 const { squareFetch, LOCATION_ID, idem } = require('./squareClient');
-const { normalizePhone } = require('./customers');
+const customers = require('./customers');
+const { normalizePhone } = customers;
 
 let programCache = { data: null, at: 0 };
 
@@ -77,6 +78,18 @@ async function accumulateForOrder({ accountId, customerId, phone, orderId, locat
     let id = accountId;
     if (!id && customerId) { const a = await getAccountByCustomerId(customerId); id = a && a.id; }
     if (!id && phone) { const a = await getAccountByPhone(phone); id = a && a.id; }
+    // Fallback: a loyalty account mapped by PHONE but not linked to this Square
+    // customer_id isn't found by customer_id (common for members who signed up by
+    // phone, or were enrolled before we started linking the customer_id). Look the
+    // customer's phone up from their record and try by phone — otherwise these
+    // members silently earn NOTHING on every order (the complaint we're fixing).
+    if (!id && customerId) {
+      try {
+        const c = await customers.get(customerId);
+        const ph = c && c.phone_number;
+        if (ph) { const a = await getAccountByPhone(ph); id = a && a.id; }
+      } catch { /* best-effort */ }
+    }
     if (!id) return false; // not a loyalty member (or not signed in) — nothing to accrue
     await squareFetch(`/v2/loyalty/accounts/${id}/accumulate`, {
       method: 'POST',
