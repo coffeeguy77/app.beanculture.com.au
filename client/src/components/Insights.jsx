@@ -715,6 +715,50 @@ function ProductRankingCard({ title, items }) {
   );
 }
 
+// ── Retail bag mix (1kg / 500g / 200g) ──────────────────────────────────────
+// How retail coffee bags split by size, so the owner can plan bagging ratios.
+// Wholesale bags (sold at the $30 / $35 price points) are excluded server-side.
+function BagMixCard({ sales }) {
+  const bags = sales && sales.bags;
+  const cur = (sales && sales.currency) || 'AUD';
+  const sizes = (bags && bags.sizes) || [];
+  const total = bags ? bags.totalUnits : 0;
+  const maxU = Math.max(1, ...sizes.map((s) => s.units || 0));
+  const ratioStr = sizes.map((s) => (s.ratio != null ? s.ratio : 0)).join(' : ');
+  return (
+    <DashboardCard span="3" title="Retail bag mix"
+      subtitle="1kg vs 500g vs 200g — wholesale ($30 / $35) excluded"
+      right={<span className="ins-period">{num(total)} retail bag{total === 1 ? '' : 's'}</span>}>
+      {!bags || total === 0 ? (
+        <EmptyState>No retail bag sales in this period.</EmptyState>
+      ) : (
+        <>
+          <ol className="ins-rank">
+            {sizes.map((s) => (
+              <li key={s.grams} className="ins-rank-row">
+                <div className="ins-rank-top">
+                  <span className="ins-rank-name">{s.label}</span>
+                  <span className="ins-rank-n">{num(s.units)} · {s.pct}%</span>
+                </div>
+                <div className="ins-rank-track">
+                  <div className="ins-rank-fill" style={{ width: `${Math.round((s.units / maxU) * 100)}%` }} />
+                </div>
+              </li>
+            ))}
+          </ol>
+          <div className="ins-bagmix-foot">
+            <div className="ins-bagmix-ratio"><span>Ratio 200g : 500g : 1kg</span><strong>{ratioStr}</strong></div>
+            <div className="ins-muted-sm">
+              {formatMoney(bags.totalRevenue || 0, cur)} retail bag revenue
+              {bags.wholesaleExcludedUnits > 0 ? ` · ${num(bags.wholesaleExcludedUnits)} wholesale bag${bags.wholesaleExcludedUnits === 1 ? '' : 's'} excluded` : ''}
+            </div>
+          </div>
+        </>
+      )}
+    </DashboardCard>
+  );
+}
+
 // ── Skeleton dashboards ──────────────────────────────────────────────────────
 function ExecSkeleton() {
   return (
@@ -973,6 +1017,13 @@ export default function Insights({ days, onDays, dashboard, analytics, customers
         <div className="ins-section"><div className="ins-grid">
           <DashboardCard span="3" title="Revenue performance"><Skeleton h={220} r={12} /></DashboardCard>
         </div></div>
+      )}
+
+      {/* ── Retail bag mix (1kg / 500g / 200g) ── */}
+      {dashboard && !dashboard.error && sales && !sales.error && (
+        <div className="ins-section">
+          <div className="ins-grid"><BagMixCard sales={sales} /></div>
+        </div>
       )}
 
       {/* ── Loyalty + customers ── */}
