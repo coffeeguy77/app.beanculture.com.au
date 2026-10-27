@@ -1602,23 +1602,23 @@ img { max-width: 100%; }
 .ins-period { font-size: 12.5px; color: var(--ins-ink2); font-weight: 600; }
 
 /* Compare-stores table: metrics down the side, stores across the top (rotated) */
-.cmp-focus { font: inherit; font-size: 13px; font-weight: 600; color: var(--ins-ink, #23202a); background: var(--ins-surface, #fff); border: 1px solid var(--ins-line, #e7e2ea); border-radius: 9px; padding: 7px 10px; cursor: pointer; }
+.cmp-focus { font: inherit; font-size: 13px; font-weight: 600; color: var(--ins-ink, #23202a); background: var(--ins-card, #fff); border: 1px solid var(--ins-line, #e7e2ea); border-radius: 9px; padding: 7px 10px; cursor: pointer; }
 .cmp-empty { color: var(--ins-ink2, #6c6675); font-size: 14px; padding: 14px 2px; }
-.cmp-wrap { overflow-x: auto; border: 1px solid var(--ins-line, #e7e2ea); border-radius: 14px; background: var(--ins-surface, #fff); }
+.cmp-wrap { overflow-x: auto; border: 1px solid var(--ins-line, #e7e2ea); border-radius: 14px; background: var(--ins-card, #fff); }
 .cmp-table { border-collapse: collapse; width: 100%; }
 .cmp-table th, .cmp-table td { border-bottom: 1px solid var(--ins-line, #eee); border-right: 1px solid var(--ins-line, #eee); }
 .cmp-table tr:last-child th, .cmp-table tr:last-child td { border-bottom: none; }
-.cmp-corner { background: var(--ins-surface, #fff); position: sticky; left: 0; z-index: 3; }
+.cmp-corner { background: var(--ins-card, #fff); position: sticky; left: 0; z-index: 3; }
 /* Store names read HORIZONTALLY across the top; long names wrap onto a couple
    of lines rather than being turned sideways. The table stays horizontally
    scrollable (.cmp-wrap) when there are many stores. */
 .cmp-store { padding: 10px 10px; vertical-align: bottom; text-align: center; min-width: 84px; }
 .cmp-store span { display: block; margin: 0 auto; white-space: normal; overflow-wrap: anywhere; font-size: 12.5px; line-height: 1.25; font-weight: 700; color: var(--ins-ink, #23202a); max-width: 140px; }
-.cmp-total-h { padding: 10px 10px; vertical-align: bottom; text-align: center; min-width: 64px; background: color-mix(in srgb, var(--ins-accent, #6d1f3a) 10%, #fff); }
+.cmp-total-h { padding: 10px 10px; vertical-align: bottom; text-align: center; min-width: 64px; background: color-mix(in srgb, var(--ins-accent, #6d1f3a) 14%, var(--ins-card, #fff)); }
 .cmp-total-h span { display: block; white-space: normal; font-size: 12.5px; line-height: 1.25; font-weight: 800; color: var(--ins-accent, #6d1f3a); }
-.cmp-metric { position: sticky; left: 0; z-index: 2; background: var(--ins-surface, #fff); text-align: left; padding: 12px 14px; font-size: 13.5px; font-weight: 700; color: var(--ins-ink, #23202a); white-space: nowrap; }
+.cmp-metric { position: sticky; left: 0; z-index: 2; background: var(--ins-card, #fff); text-align: left; padding: 12px 14px; font-size: 13.5px; font-weight: 700; color: var(--ins-ink, #23202a); white-space: nowrap; }
 .cmp-cell { text-align: right; padding: 12px 14px; font-size: 14px; font-weight: 600; color: var(--ins-ink, #23202a); font-variant-numeric: tabular-nums; }
-.cmp-total { text-align: right; padding: 12px 14px; font-size: 14px; font-weight: 800; color: var(--ins-accent, #6d1f3a); font-variant-numeric: tabular-nums; background: color-mix(in srgb, var(--ins-accent, #6d1f3a) 6%, #fff); }
+.cmp-total { text-align: right; padding: 12px 14px; font-size: 14px; font-weight: 800; color: var(--ins-accent, #6d1f3a); font-variant-numeric: tabular-nums; background: color-mix(in srgb, var(--ins-accent, #6d1f3a) 10%, var(--ins-card, #fff)); }
 .cmp-best { background: #e5f5ea; color: #1c6b3f; font-weight: 800; }
 .cmp-worst { background: #fdeceb; color: #b3352b; }
 .cmp-note { font-size: 12px; color: var(--ins-ink2, #6c6675); margin: 8px 2px 0; }
@@ -1907,7 +1907,11 @@ body:has(.store-shell) { background: #F7F4EF; }
 .site-loc svg { color: inherit; flex: none; }
 .site-loc:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .site-header .iconbtn { width: 40px; height: 40px; }
-.site-header .icon-row { gap: 6px; }
+.site-header .icon-row { gap: 6px; align-items: center; }
+/* Temperature chip docked in the header icon row — slimmer than the standalone
+   version so it sits neatly beside the 40px icon buttons. */
+.site-header .wx-chip { height: 40px; padding: 0 12px; font-size: 15px; box-shadow: none; }
+@media (max-width: 600px) { .site-header .wx-chip { height: 36px; padding: 0 10px; font-size: 14px; } }
 
 /* ── Notification strip (unified announcement / closed / kitchen) ── */
 .site-notice {
