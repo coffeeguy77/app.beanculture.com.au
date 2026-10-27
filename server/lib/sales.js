@@ -4,6 +4,32 @@
 
 const { squareFetch, LOCATION_ID, CURRENCY } = require('./squareClient');
 
+// ── Retail coffee-bag mix (1kg vs 500g vs 200g) ──
+// The owner wants the RETAIL bagging ratio, so wholesale bags — the ones sold at
+// the $30 and $35 price points — are excluded. Size comes from the line item's
+// name + variation text; the per-unit (catalog) price decides retail vs wholesale,
+// so a 500g at $38 counts as retail while a 500g at $35 is skipped as wholesale.
+const WHOLESALE_UNIT_CENTS = new Set([3000, 3500]); // $30 and $35 wholesale price points
+const BAG_SIZE_LABEL = { 200: '200g', 500: '500g', 1000: '1kg' };
+
+// Read a coffee-bag size in grams from a line item, or null if it isn't a bag.
+function bagSizeGrams(li) {
+  const s = `${li.name || ''} ${li.variation_name || ''}`.toLowerCase();
+  if (/\b1\s*kg\b|\b1000\s*g\b/.test(s)) return 1000;
+  if (/\b500\s*g\b|\b0?\.5\s*kg\b/.test(s)) return 500;
+  if (/\b200\s*g\b/.test(s)) return 200;
+  return null;
+}
+
+// Per-unit price in cents, preferring the catalog base price (the true price
+// point, unaffected by order-level discounts), falling back to net ÷ quantity.
+function unitCents(li, qty) {
+  if (li.base_price_money && li.base_price_money.amount != null) return li.base_price_money.amount;
+  const gross = (li.gross_sales_money && li.gross_sales_money.amount)
+    || (li.total_money && li.total_money.amount) || 0;
+  return qty ? Math.round(gross / qty) : gross;
+}
+
 async function salesSummary(days = 30) {
   const since = new Date(Date.now() - days * 86400000);
   const dayMap = new Map();
@@ -23,6 +49,10 @@ async function salesSummary(days = 30) {
   let appRevenue = 0, appCount = 0;
   const appList = [];
   let revenue = 0, count = 0;
+  // Retail bag mix: units + revenue per size (grams), across ALL completed orders
+  // (counter + app), wholesale excluded. Keyed by grams (200 / 500 / 1000).
+  const bagMix = new Map();
+  let bagWholesaleUnits = 0, bagWholesaleRevenue = 0;
   let cursor, pages = 0;
   // Aggregate each page as it arrives (rather than collecting every order into
   // one array and capping at 10k) so a full 365-day window with high order
@@ -49,6 +79,18 @@ async function salesSummary(days = 30) {
       revenue += amt; count += 1;
       const when = o.closed_at || o.created_at;
       const day = when ? new Date(when).toISOString().slice(0, 10) : null;
+      // Retail bag mix — scan this order's line items for coffee bags.
+      for (const li of (o.line_items || [])) {
+        const g = bagSizeGrams(li);
+        if (!g) continue;
+        const qty = Math.max(0, parseFloat(li.quantity) || 0);
+        if (!qty) continue;
+        const lineRev = (li.total_money && li.total_money.amount) || 0;
+        if (WHOLESALE_UNIT_CENTS.has(unitCents(li, qty))) { bagWholesaleUnits += qty; bagWholesaleRevenue += lineRev; continue; }
+        const b = bagMix.get(g) || { units: 0, revenue: 0 };
+        b.units += qty; b.revenue += lineRev;
+        bagMix.set(g, b);
+      }
       if (day) {
         const e = dayMap.get(day) || { revenue: 0, orders: 0 };
         e.revenue += amt; e.orders += 1;
@@ -108,7 +150,29 @@ async function salesSummary(days = 30) {
     // Newest first for the "each order" list.
     list: appList.sort((a, b) => String(b.at || '').localeCompare(String(a.at || ''))),
   };
-  return { revenue, orders: count, avgOrder: count ? Math.round(revenue / count) : 0, currency: CURRENCY, daily, topClients, app };
+  // Assemble the retail bag mix (always the three sizes, in size order) with each
+  // size's share of retail units, and a normalised ratio against the smallest
+  // non-zero size for an at-a-glance "200g : 500g : 1kg" reading.
+  const bagSizes = [200, 500, 1000].map((g) => {
+    const b = bagMix.get(g) || { units: 0, revenue: 0 };
+    return { grams: g, label: BAG_SIZE_LABEL[g], units: Math.round(b.units), revenue: b.revenue };
+  });
+  const bagTotalUnits = bagSizes.reduce((n, s) => n + s.units, 0);
+  const bagTotalRevenue = bagSizes.reduce((n, s) => n + s.revenue, 0);
+  const minUnits = Math.min(...bagSizes.map((s) => s.units).filter((u) => u > 0), Infinity);
+  const bags = {
+    sizes: bagSizes.map((s) => ({
+      ...s,
+      pct: bagTotalUnits ? Math.round((s.units / bagTotalUnits) * 1000) / 10 : 0,
+      // Ratio relative to the smallest-selling retail size (e.g. 1 : 2.4 : 0.6).
+      ratio: Number.isFinite(minUnits) && minUnits > 0 ? Math.round((s.units / minUnits) * 10) / 10 : 0,
+    })),
+    totalUnits: bagTotalUnits,
+    totalRevenue: bagTotalRevenue,
+    wholesaleExcludedUnits: Math.round(bagWholesaleUnits),
+    wholesaleExcludedRevenue: bagWholesaleRevenue,
+  };
+  return { revenue, orders: count, avgOrder: count ? Math.round(revenue / count) : 0, currency: CURRENCY, daily, topClients, app, bags };
 }
 
 // A human label for an app order in the dashboard list: the buyer's own name
