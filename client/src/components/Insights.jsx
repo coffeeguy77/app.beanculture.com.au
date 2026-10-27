@@ -725,12 +725,31 @@ function BagMixCard({ sales }) {
   const total = bags ? bags.totalUnits : 0;
   const maxU = Math.max(1, ...sizes.map((s) => s.units || 0));
   const ratioStr = sizes.map((s) => (s.ratio != null ? s.ratio : 0)).join(' : ');
+  const ratioLabel = sizes.map((s) => s.label).join(' : ');
+  const topItems = (bags && bags.topItems) || [];
   return (
     <DashboardCard span="3" title="Retail bag mix"
-      subtitle="1kg vs 500g vs 200g — wholesale ($30 / $35) excluded"
+      subtitle="Coffee bags by size — wholesale ($30 / $35) excluded"
       right={<span className="ins-period">{num(total)} retail bag{total === 1 ? '' : 's'}</span>}>
       {!bags || total === 0 ? (
-        <EmptyState>No retail bag sales in this period.</EmptyState>
+        // Nothing matched — surface the busiest items so we can see how the bags
+        // are actually named in Square (and tune if the size isn't on the label).
+        <div>
+          <EmptyState>No coffee bags with a weight (e.g. “250g”, “1kg”) were found in this period{bags && bags.storesScanned > 1 ? ` across ${bags.storesScanned} stores` : ''}.</EmptyState>
+          {topItems.length > 0 && (
+            <div className="ins-bagmix-foot">
+              <div className="ins-muted-sm" style={{ marginBottom: 6 }}>Busiest items sold (to check how bags are named):</div>
+              <ol className="ins-rank" style={{ gap: 6 }}>
+                {topItems.slice(0, 8).map((it, i) => (
+                  <li key={it.label + i} className="ins-rank-top" style={{ marginBottom: 0 }}>
+                    <span className="ins-rank-name" title={it.label}>{it.label}</span>
+                    <span className="ins-rank-n">{num(it.units)}</span>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
+        </div>
       ) : (
         <>
           <ol className="ins-rank">
@@ -747,7 +766,7 @@ function BagMixCard({ sales }) {
             ))}
           </ol>
           <div className="ins-bagmix-foot">
-            <div className="ins-bagmix-ratio"><span>Ratio 200g : 500g : 1kg</span><strong>{ratioStr}</strong></div>
+            <div className="ins-bagmix-ratio"><span>Ratio {ratioLabel}</span><strong>{ratioStr}</strong></div>
             <div className="ins-muted-sm">
               {formatMoney(bags.totalRevenue || 0, cur)} retail bag revenue
               {bags.wholesaleExcludedUnits > 0 ? ` · ${num(bags.wholesaleExcludedUnits)} wholesale bag${bags.wholesaleExcludedUnits === 1 ? '' : 's'} excluded` : ''}
@@ -881,11 +900,15 @@ function StoreCompare({ days }) {
     </div>
   );
 
-  if (err) return <div className="ins-section">{head}<div className="cmp-empty">{err}</div></div>;
-  if (!data) return <div className="ins-section">{head}<div className="cmp-empty">Loading…</div></div>;
+  // Compare stores only makes sense with more than one location. With a single
+  // store (or while we don't yet know), render nothing at all — no section, no
+  // switcher — so the dashboard stays compact. Stay quiet on error too, since
+  // this comparison is secondary to the headline figures above.
+  if (!data || err) return null;
 
   const cur = data.currency || 'AUD';
   const all = data.stores || [];
+  if (all.length <= 1) return null;
   const stores = focus ? all.filter((s) => s.id === focus) : all;
   const rows = [
     { key: 'orders', label: 'Orders', fmt: (v) => num(v) },
