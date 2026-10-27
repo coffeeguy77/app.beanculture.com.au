@@ -1462,6 +1462,7 @@ export default function App() {
           </nav>
           <div className="site-header-right">
             <div className="icon-row">
+              {weatherChip}
               <button className="iconbtn" title="About / contact" aria-label="Store info" onClick={() => setView('store')}><StoreIcon size={22} /></button>
               <button className="iconbtn theme-headerbtn" title="Theme" aria-label="Theme" onClick={() => setShowTheme(true)}><ThemeIcon size={22} /></button>
               {pifEnabled && (
@@ -1497,7 +1498,9 @@ export default function App() {
         // Show the store name for a real configured store, but not for the
         // synthesised single-site default (nothing worth naming).
         const showChip = chosenLocation && (multi || !chosenLocation._default);
-        if (!(showChip || weatherChip) || !(view === 'home' || !isMobile)) return null;
+        // Temperature now lives in the header icon row (more compact); the
+        // store-bar shows only when there's a store chip to display.
+        if (!showChip || !(view === 'home' || !isMobile)) return null;
         return (
           <div className="store-bar">
             {showChip && (multi && !qrLocked ? (
@@ -1518,7 +1521,6 @@ export default function App() {
                 </span>
               </div>
             ))}
-            {weatherChip}
           </div>
         );
       })()}
