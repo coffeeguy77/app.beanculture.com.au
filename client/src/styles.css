@@ -1742,6 +1742,11 @@ img { max-width: 100%; }
 .ins-rank-n { color: var(--ins-ink2); font-weight: 700; flex: 0 0 auto; }
 .ins-rank-track { height: 8px; background: var(--ins-bg); border-radius: 5px; overflow: hidden; }
 .ins-rank-fill { height: 100%; background: var(--ins-accent); border-radius: 5px; }
+/* Retail bag-mix card footer: the headline ratio + totals line. */
+.ins-bagmix-foot { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--ins-bg); display: grid; gap: 6px; }
+.ins-bagmix-ratio { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.ins-bagmix-ratio span { font-size: 13px; color: var(--ins-ink2); }
+.ins-bagmix-ratio strong { font-size: 20px; font-weight: 800; color: var(--ins-ink); letter-spacing: 1px; font-variant-numeric: tabular-nums; }
 
 /* ── States ── */
 .ins-empty { padding: 20px 14px; text-align: center; font-size: 13.5px; color: var(--ins-ink2); background: var(--ins-bg); border: 1px dashed var(--ins-line); border-radius: 12px; }
